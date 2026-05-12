@@ -1,0 +1,29 @@
+# === tools ===
+# 認証情報（絶対にコミットしない）
+tools/data/persist/
+
+# 画像キャッシュ（大容量・再ダウンロード可能）
+tools/data/images/
+
+# SplatNet 3 の生データ（個人データのため除外）
+tools/data/data/
+
+# gear_db.json（個人データ・update.py で再生成可能）
+tools/data/gear_db.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# === app ===
+app/node_modules/
+app/dist/
+app/.env
+app/.env.local
+
+# === 共通 ===
+.DS_Store
+Thumbs.db
+*.log
