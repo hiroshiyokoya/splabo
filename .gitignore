@@ -27,3 +27,4 @@ app/.env.local
 .DS_Store
 Thumbs.db
 *.log
+TODO.md
