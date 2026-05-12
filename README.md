@@ -1,12 +1,16 @@
-# splatoon-gear
+# geartoon
 
-Splatoon 3 の所持ギアを管理・検索するためのモノレポです。
+Splatoon 3 の所持ギアを管理・検索するデスクトップアプリです。
 
 ```
-splatoon-gear/
+geartoon/
 ├── tools/   # データ取得パイプライン（Docker + Python）
-└── app/     # ギア管理 Web UI（Vite + React）
+└── app/     # ギア管理 UI（Vite + React → Tauri）
 ```
+
+## 関連リポジトリ
+
+- [geartoon-mobile](https://github.com/hiroshiyokoya/geartoon-mobile) — Android ビューワー（Kotlin + Jetpack Compose）
 
 ## 必要なもの
 

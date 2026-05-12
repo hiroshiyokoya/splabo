@@ -2,6 +2,11 @@
 
 ## 完了
 
+### 環境構築
+- WSL 依存を排除しクロスプラットフォーム対応（Windows / macOS / Linux）
+- `splatoon-gear/geartoon/` に再構成、GitHub リポジトリ（`hiroshiyokoya/geartoon`）に push
+- `geartoon-mobile` リポジトリ作成（`hiroshiyokoya/geartoon-mobile`）
+
 ### データパイプライン（`tools/`）
 - SplatNet 3 からギアデータ取得（nxapi + Docker）
 - ギア・スキル画像のダウンロード（`scripts/download_gear_images.py`）
