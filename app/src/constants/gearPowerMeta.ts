@@ -4,6 +4,10 @@
  * スプラトゥーン3のギアパワーには2種類ある:
  *   - stackable: メイン10pt + サブ3pt で積算されるパワー（両スロット出現）
  *   - main_only: メインスロットにのみ存在するパワー（発動型）
+ *
+ * スキルIDの調べ方:
+ *   - 一覧表示: geartoon/tools で `python3 scripts/find_combo.py --list-skills` を実行する
+ *   - ローカルDB: geartoon/tools/data/gear_db.json の primary_skill.id と additional_skills[].id を参照する
  */
 
 import type { GearCategory } from '../types'
