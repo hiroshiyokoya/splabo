@@ -131,16 +131,34 @@ def collect_owned_skill_names(db: dict) -> list[str]:
     return sorted(names)
 
 
+def collect_owned_skills(db: dict) -> list[tuple[int, str]]:
+    """gear_db 全体から、メインまたはサブとして登場するスキルを重複なく集める。はてなは除く。"""
+    skills: dict[int, str] = {}
+    for cat in ("head", "clothing", "shoes"):
+        for gear in db.get(cat, []):
+            s = gear.get("primary_skill") or {}
+            sid = s.get("id")
+            name = (s.get("name") or "").strip()
+            if isinstance(sid, int) and sid != -1 and name and name != "はてな":
+                skills.setdefault(sid, name)
+            for sub in gear.get("additional_skills", []):
+                sid = sub.get("id")
+                name = (sub.get("name") or "").strip()
+                if isinstance(sid, int) and sid != -1 and name and name != "はてな":
+                    skills.setdefault(sid, name)
+    return sorted(skills.items(), key=lambda x: x[0])
+
+
 def print_owned_skill_list() -> None:
     if not GEAR_DB.exists():
         print(f"gear_db が見つかりません: {GEAR_DB}", file=sys.stderr)
         print("先に python3 scripts/build_gear_db.py を実行してください。", file=sys.stderr)
         sys.exit(1)
     db = load_json(GEAR_DB)
-    skills = collect_owned_skill_names(db)
-    for name in skills:
-        print(name)
-    print(f"\n計 {len(skills)} スキル（所持ギアに登場する名称）", file=sys.stderr)
+    skills = collect_owned_skills(db)
+    for sid, name in skills:
+        print(f"{sid}\t{name}")
+    print(f"\n計 {len(skills)} スキル（所持ギアに登場するIDと名称）", file=sys.stderr)
 
 
 def gear_ap(gear: dict, skill_names: list[str]) -> dict[str, int]:
