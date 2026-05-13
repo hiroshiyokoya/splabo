@@ -24,9 +24,9 @@ AP 計算:
 例:
   python3 scripts/find_combo.py --list-skills
   python3 scripts/find_combo.py "インク回復力アップ:20"
-  python3 scripts/find_combo.py "カムバック:10" "スペシャル増加量アップ:6"
+  python3 scripts/find_combo.py "カムバック" "スペシャル増加量アップ:6"
   python3 scripts/find_combo.py "インク効率アップ(メイン):10" "スペシャル増加量アップ:10" --limit 5
-  python3 scripts/find_combo.py "カムバック:10" --json results.json
+  python3 scripts/find_combo.py "カムバック" --json results.json
 """
 
 import json
@@ -38,8 +38,37 @@ MAIN_AP = 10
 SUB_AP = 3
 MAX_AP_PER_PIECE = MAIN_AP + SUB_AP * 3  # 19
 
+# メインスロットにのみ存在するギアパワーID（geartoon/app の定義と揃える）
+MAIN_ONLY_SKILL_IDS: set[int] = {
+    100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111
+}
 
-def parse_args(argv: list[str]) -> tuple[dict[str, int], int, Path | None]:
+def load_json(path: Path) -> dict:
+    for enc in ("utf-8", "utf-8-sig", "cp932"):
+        try:
+            return json.loads(path.read_text(encoding=enc))
+        except UnicodeDecodeError:
+            continue
+    return json.loads(path.read_bytes().decode("utf-8", errors="replace"))
+
+
+def build_skill_name_to_id(db: dict) -> dict[str, int]:
+    name_to_id: dict[str, int] = {}
+    for cat in ("head", "clothing", "shoes"):
+        for gear in db.get(cat, []):
+            s = gear["primary_skill"]
+            if s.get("name") and s.get("id") is not None:
+                name_to_id.setdefault(s["name"], s["id"])
+            for sub in gear.get("additional_skills", []):
+                if sub.get("name") and sub.get("id") is not None:
+                    name_to_id.setdefault(sub["name"], sub["id"])
+    return name_to_id
+
+
+def parse_args(
+    argv: list[str],
+    skill_name_to_id: dict[str, int],
+) -> tuple[dict[str, int], int, Path | None]:
     requirements: dict[str, int] = {}
     limit = 20
     out_json: Path | None = None
@@ -53,11 +82,38 @@ def parse_args(argv: list[str]) -> tuple[dict[str, int], int, Path | None]:
             out_json = Path(argv[i + 1])
             i += 2
         else:
-            name, _, ap_str = arg.rpartition(":")
+            if ":" in arg:
+                name, _, ap_str = arg.rpartition(":")
+                if not name:
+                    print(f"Invalid argument: {arg!r}", file=sys.stderr)
+                    sys.exit(1)
+                requirements[name.strip()] = int(ap_str)
+                i += 1
+                continue
+
+            name = arg.strip()
             if not name:
                 print(f"Invalid argument: {arg!r}", file=sys.stderr)
                 sys.exit(1)
-            requirements[name.strip()] = int(ap_str)
+
+            skill_id = skill_name_to_id.get(name)
+            if skill_id is None:
+                print(f"未知のスキル名です: {name}", file=sys.stderr)
+                print("ヒント: --list-skills で所持ギアに登場するスキル名を確認できます。", file=sys.stderr)
+                sys.exit(1)
+
+            if skill_id in MAIN_ONLY_SKILL_IDS:
+                requirements[name] = MAIN_AP
+            else:
+                print(
+                    f"スタック型スキルは 'スキル名:目標AP' 形式で指定してください: {name}",
+                    file=sys.stderr,
+                )
+                print(
+                    "例: \"インク回復力アップ:20\"  \"スペシャル増加量アップ:6\"",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
             i += 1
     return requirements, limit, out_json
 
@@ -80,8 +136,7 @@ def print_owned_skill_list() -> None:
         print(f"gear_db が見つかりません: {GEAR_DB}", file=sys.stderr)
         print("先に python3 scripts/build_gear_db.py を実行してください。", file=sys.stderr)
         sys.exit(1)
-    with open(GEAR_DB, encoding="utf-8") as f:
-        db = json.load(f)
+    db = load_json(GEAR_DB)
     skills = collect_owned_skill_names(db)
     for name in skills:
         print(name)
@@ -134,11 +189,11 @@ def main() -> None:
         print_owned_skill_list()
         sys.exit(0)
 
-    requirements, limit, out_json = parse_args(sys.argv)
-    skill_names = list(requirements.keys())
+    db = load_json(GEAR_DB)
 
-    with open(GEAR_DB, encoding='utf-8') as f:
-        db = json.load(f)
+    skill_name_to_id = build_skill_name_to_id(db)
+    requirements, limit, out_json = parse_args(sys.argv, skill_name_to_id)
+    skill_names = list(requirements.keys())
 
     # AP ベクトルを事前計算
     heads     = [(g, gear_ap(g, skill_names)) for g in db["head"]]

@@ -63,7 +63,7 @@ def main() -> None:
         db[category] = [gear_entry(n, category, id_field) for n in nodes]
         print(f"  {category}: {len(db[category])} items")
 
-    OUT_JSON.write_text(json.dumps(db, ensure_ascii=False, indent=2))
+    OUT_JSON.write_text(json.dumps(db, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\nSaved → {OUT_JSON}")
 
 
