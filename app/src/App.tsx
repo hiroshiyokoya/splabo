@@ -1,10 +1,13 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useGearDB } from './hooks/useGearDB'
 import { GearCard } from './components/GearCard'
 import { FilterDrawer, emptyFilter, countActiveFilters } from './components/FilterDrawer'
 import type { FilterState } from './components/FilterDrawer'
 import type { GearCategory, GearItem, Skill } from './types'
 import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from './constants/gearPowerMeta'
+
+const SCROLL_TOP_THRESHOLD = 600
+const SCROLL_TOP_HIDE_AFTER_MS = 1000
 
 const TABS: { key: GearCategory; label: string; icon: string }[] = [
   { key: 'head',     label: '頭ギア',  icon: '🪖' },
@@ -85,6 +88,67 @@ function App() {
   const [sortKey, setSortKey]       = useState<SortKey>('name')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [filter, setFilter]         = useState<FilterState>(emptyFilter)
+  const [showScrollTop, setShowScrollTop] = useState(false)
+  const appTopRef = useRef<HTMLDivElement | null>(null)
+  const scrollTopHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scrollTopHoverRef = useRef(false)
+
+  useEffect(() => {
+    const threshold = SCROLL_TOP_THRESHOLD
+    const hideAfterMs = SCROLL_TOP_HIDE_AFTER_MS
+
+    const clearHideTimer = () => {
+      if (scrollTopHideTimerRef.current != null) {
+        clearTimeout(scrollTopHideTimerRef.current)
+        scrollTopHideTimerRef.current = null
+      }
+    }
+
+    const armHideTimer = () => {
+      clearHideTimer()
+      scrollTopHideTimerRef.current = setTimeout(() => {
+        scrollTopHideTimerRef.current = null
+        if (!scrollTopHoverRef.current) setShowScrollTop(false)
+      }, hideAfterMs)
+    }
+
+    const onScroll = () => {
+      const y = window.scrollY
+      if (y > threshold) {
+        setShowScrollTop(true)
+        if (!scrollTopHoverRef.current) armHideTimer()
+      } else {
+        clearHideTimer()
+        setShowScrollTop(false)
+      }
+    }
+
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      clearHideTimer()
+      window.removeEventListener('scroll', onScroll)
+    }
+  }, [])
+
+  useEffect(() => {
+    const el = appTopRef.current
+    if (!el) return
+
+    const update = () => {
+      const h = Math.ceil(el.getBoundingClientRect().height)
+      document.documentElement.style.setProperty('--app-top-height', `${h}px`)
+    }
+
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('resize', update)
+      ro.disconnect()
+    }
+  }, [])
 
   // 全スキル一覧（id 昇順・重複なし）
   const allSkills = useMemo<Skill[]>(() => {
@@ -155,7 +219,7 @@ function App() {
 
   return (
     <div className="app">
-      <div className="app-top app-top--sticky">
+      <div ref={appTopRef} className="app-top app-top--sticky">
         <header className="app-header">
           <div className="app-header__left">
             <img src="/geartoon-logo.png" alt="geartoon" height="68" style={{ display: 'block' }} />
@@ -193,20 +257,20 @@ function App() {
             onClick={() => setDrawerOpen(true)}
             aria-label="絞り込み"
           >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-            style={{ flexShrink: 0 }}
-          >
-            <path
-              d="M3 5h18l-7 8v6l-4 2v-8L3 5z"
-              fill="currentColor"
-            />
-          </svg>
-          絞り込み
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+              style={{ flexShrink: 0 }}
+            >
+              <path
+                d="M3 5h18l-7 8v6l-4 2v-8L3 5z"
+                fill="currentColor"
+              />
+            </svg>
+            絞り込み
             {activeFilterCount > 0 && (
               <span className="filter-btn__badge">{activeFilterCount}</span>
             )}
@@ -256,6 +320,53 @@ function App() {
         <span className="app-footer__divider">·</span>
         <span className="app-footer__note">geartoon — personal gear wardrobe for Splatoon 3</span>
       </footer>
+
+      {showScrollTop && (
+        <button
+          className="scroll-top scroll-top--below-sticky"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          onMouseEnter={() => {
+            scrollTopHoverRef.current = true
+            if (scrollTopHideTimerRef.current != null) {
+              clearTimeout(scrollTopHideTimerRef.current)
+              scrollTopHideTimerRef.current = null
+            }
+          }}
+          onMouseLeave={() => {
+            scrollTopHoverRef.current = false
+            if (window.scrollY > SCROLL_TOP_THRESHOLD) {
+              scrollTopHideTimerRef.current = setTimeout(() => {
+                scrollTopHideTimerRef.current = null
+                if (!scrollTopHoverRef.current) setShowScrollTop(false)
+              }, SCROLL_TOP_HIDE_AFTER_MS)
+            }
+          }}
+          aria-label="一番上に戻る"
+          title="一番上に戻る"
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 19V7"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+            />
+            <path
+              d="M7 11l5-5 5 5"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      )}
 
       <FilterDrawer
         open={drawerOpen}
