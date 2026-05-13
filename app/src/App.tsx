@@ -29,7 +29,18 @@ function sortItems(items: GearItem[], key: SortKey): GearItem[] {
       case 'rarity': return b.rarity - a.rarity
       case 'exp':    return b.exp - a.exp
       case 'brand':  return a.brand.localeCompare(b.brand, 'ja')
-      case 'skill':  return a.primary_skill.name.localeCompare(b.primary_skill.name, 'ja')
+      case 'skill': {
+        // 絞り込みパネルと同じ並び: 発動型 → スタック型、各グループ内はID昇順
+        const aId = a.primary_skill.id
+        const bId = b.primary_skill.id
+
+        const aType = aId === -1 ? 2 : (isMainOnly(aId) ? 0 : 1)
+        const bType = bId === -1 ? 2 : (isMainOnly(bId) ? 0 : 1)
+        if (aType !== bType) return aType - bType
+
+        if (aId !== bId) return aId - bId
+        return a.primary_skill.name.localeCompare(b.primary_skill.name, 'ja')
+      }
     }
   })
 }
