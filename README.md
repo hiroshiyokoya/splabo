@@ -22,6 +22,7 @@ geartoon/
 | Rust + Cargo | Tauri デスクトップアプリ化（後で追加） |
 
 Windows / macOS / Linux 対応（WSL 不要）。
+現状の動作確認は Windows のみで、macOS と Linux は未検証。
 
 ---
 
@@ -124,13 +125,15 @@ Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して
 
 ## 注意事項
 
+- 本ツールは個人の利用を目的としています。
 - SplatNet 3 は任天堂が公式に公開している API ではありません。任天堂側の仕様変更により、予告なく動作しなくなる可能性があります。
-- 本ツールは個人の所持ギア管理を目的としています。過度なアクセスや商用利用はしないでください。
 - SplatNet 3 からダウンロードされるギア・スキル画像の著作権は任天堂株式会社に帰属します。これらの画像は個人利用の範囲内でのみ使用し、再配布・商用利用・二次創作物への無断使用は行わないでください。
 - `tools/data/persist/` 配下の認証情報ファイルにはトークン類が含まれるため、コミットしないでください（`.gitignore` で除外済み）。
 - 認証に使用する Nintendo アカウントの情報はローカルにのみ保存されます。外部サーバーへの送信は nxapi・imink の仕様に準じます。
 
 ## 免責事項
+
+本ソフトウェアは MIT License の下で無保証で提供されます。詳細は `LICENSE` を参照してください。
 
 This project is not affiliated with or endorsed by Nintendo. "Splatoon" is a trademark of Nintendo Co., Ltd.
 

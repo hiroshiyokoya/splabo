@@ -227,7 +227,7 @@ function App() {
       </div>
 
       <footer className="app-footer">
-        <span className="app-footer__copy">© 2026 Hiroshi Yokoya</span>
+        <span className="app-footer__copy">© 2026 hiroshiyokoya</span>
         <span className="app-footer__divider">·</span>
         <span className="app-footer__note">geartoon — personal gear collection for Splatoon 3</span>
       </footer>
