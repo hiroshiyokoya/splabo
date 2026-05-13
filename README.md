@@ -118,3 +118,11 @@ Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して
 - 本ツールは個人の所持ギア管理を目的としています。過度なアクセスや商用利用はしないでください。
 - `tools/data/persist/` 配下の認証情報ファイルにはトークン類が含まれるため、コミットしないでください（`.gitignore` で除外済み）。
 - 認証に使用する Nintendo アカウントの情報はローカルにのみ保存されます。外部サーバーへの送信は nxapi・imink の仕様に準じます。
+
+## 免責事項
+
+This project is not affiliated with or endorsed by Nintendo. "Splatoon" is a trademark of Nintendo Co., Ltd.
+
+## License
+
+[MIT](LICENSE)
