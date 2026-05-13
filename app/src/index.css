@@ -116,17 +116,114 @@ body {
   padding-left: 0.1rem;
 }
 
-.app-count {
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: var(--accent-dim);
-  background: var(--accent-active-bg);
-  border: 1px solid rgba(200, 240, 48, 0.2);
-  border-radius: 999px;
-  padding: 0.25rem 0.75rem;
+.app-header__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.28rem;
   align-self: flex-end;
   margin-bottom: 0.15rem;
+  max-width: min(100%, 40rem);
+}
+
+.app-header__toolbar {
+  --header-tool-h: 2.35rem;
+
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.65rem;
+  row-gap: 0.4rem;
+}
+
+.app-db-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--header-tool-h);
+  min-height: var(--header-tool-h);
+  padding: 0 1.1rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 999px;
+  border: 1px solid rgba(200, 240, 48, 0.25);
+  background: var(--accent-active-bg);
+  color: var(--accent-dim);
   white-space: nowrap;
+}
+
+.app-db-refresh:hover:not(:disabled) {
+  border-color: rgba(200, 240, 48, 0.45);
+  color: var(--accent);
+}
+
+.app-db-refresh:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.app-db-counter {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--header-tool-h);
+  min-height: var(--header-tool-h);
+  flex-shrink: 0;
+  padding: 0 0.75rem;
+  border-radius: 6px;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  color: var(--accent-dim);
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(165deg, #14141c 0%, #0c0c12 55%, #08080e 100%);
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -2px 8px rgba(0, 0, 0, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.app-db-meta {
+  margin: 0;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+}
+
+.app-db-meta__inner {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.35rem;
+  letter-spacing: normal;
+  white-space: nowrap;
+}
+
+.app-db-meta__label {
+  opacity: 0.9;
+}
+
+.app-db-meta__value {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Header divider ── */

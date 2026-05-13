@@ -83,7 +83,7 @@ function applyFilter(items: GearItem[], filter: FilterState): GearItem[] {
 }
 
 function App() {
-  const { data, loading, error } = useGearDB()
+  const { data, loading, error, lastFetchedAt } = useGearDB()
   const [activeTab, setActiveTab]   = useState<GearCategory>('head')
   const [sortKey, setSortKey]       = useState<SortKey>('name')
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -225,7 +225,40 @@ function App() {
             <img src="/geartoon-logo.png" alt="geartoon" height="68" style={{ display: 'block' }} />
             <p className="app-subtitle">Splatoon 3 Gear Wardrobe</p>
           </div>
-          <span className="app-count">{total.toLocaleString()} ギア</span>
+          <div className="app-header__right">
+            <div className="app-header__toolbar">
+              <span
+                className="app-db-counter"
+                aria-label={`データに収録されている全ギアは ${total.toLocaleString()} 件です`}
+              >
+                {`全${total.toLocaleString()}ギア取得`}
+              </span>
+              <button
+                type="button"
+                className="app-db-refresh"
+                title="開発用プレースホルダー。本番では update パイプラインと接続予定。"
+              >
+                データ更新
+              </button>
+            </div>
+            <p className="app-db-meta">
+              <span className="app-db-meta__inner">
+                <span className="app-db-meta__label">Last updated:</span>
+                <span className="app-db-meta__value">
+                  {lastFetchedAt
+                    ? lastFetchedAt.toLocaleString('ja-JP', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      })
+                    : '—'}
+                </span>
+              </span>
+            </p>
+          </div>
         </header>
 
         <div className="header-divider" />
