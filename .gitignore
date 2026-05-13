@@ -23,6 +23,10 @@ app/dist/
 app/.env
 app/.env.local
 
+# PNG生成ツール（ローカル作業用・git管理外）
+app/gen-*.html
+app/gen-*.mjs
+
 # === 共通 ===
 .DS_Store
 Thumbs.db
