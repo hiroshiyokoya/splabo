@@ -1,0 +1,208 @@
+import { useMemo } from 'react'
+import type { GearCategory, Skill } from '../types'
+import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY } from '../constants/gearPowerMeta'
+
+// スタック型のスナップ値（スプラ仕様: サブ3pt × 最大3 + メイン10pt）
+const STEP_VALUES = [0, 3, 6, 9, 10, 13, 16, 19] as const
+
+export interface FilterState {
+  /** メインのみ型: ON にしたスキルID */
+  mainOnlyIds: Set<number>
+  /** スタック型: skillId → 最低pt（0 または未登録 = フィルターなし） */
+  skillMinPoints: Map<number, number>
+  /** ブランド絞り込み */
+  brands: Set<string>
+}
+
+export function emptyFilter(): FilterState {
+  return {
+    mainOnlyIds: new Set(),
+    skillMinPoints: new Map(),
+    brands: new Set(),
+  }
+}
+
+/** アクティブなフィルター数（バッジ用） */
+export function countActiveFilters(f: FilterState): number {
+  const activePoints = [...f.skillMinPoints.values()].filter(v => v > 0).length
+  return f.mainOnlyIds.size + activePoints + f.brands.size
+}
+
+interface Props {
+  open: boolean
+  onClose: () => void
+  activeTab: GearCategory
+  allSkills: Skill[]
+  allBrands: string[]
+  filter: FilterState
+  onToggleMainOnly: (id: number) => void
+  onSetSkillPoints: (id: number, points: number) => void
+  onToggleBrand: (brand: string) => void
+  onClearBrands: () => void
+  onReset: () => void
+}
+
+function stepUp(current: number): number {
+  const idx = STEP_VALUES.indexOf(current as typeof STEP_VALUES[number])
+  return idx < STEP_VALUES.length - 1 ? STEP_VALUES[idx + 1] : current
+}
+
+function stepDown(current: number): number {
+  const idx = STEP_VALUES.indexOf(current as typeof STEP_VALUES[number])
+  return idx > 0 ? STEP_VALUES[idx - 1] : 0
+}
+
+export function FilterDrawer({
+  open,
+  onClose,
+  activeTab,
+  allSkills,
+  allBrands,
+  filter,
+  onToggleMainOnly,
+  onSetSkillPoints,
+  onToggleBrand,
+  onClearBrands,
+  onReset,
+}: Props) {
+  // 現在のタブに対応する発動型スキルのみ表示
+  const mainOnlySkills = useMemo(
+    () => allSkills.filter(s => isMainOnly(s.id) && MAIN_ONLY_SKILL_CATEGORY[s.id] === activeTab),
+    [allSkills, activeTab],
+  )
+  const stackableSkills = useMemo(
+    () => allSkills.filter(s => !isMainOnly(s.id)),
+    [allSkills],
+  )
+  const activeCount = countActiveFilters(filter)
+
+  return (
+    <>
+      {/* オーバーレイ */}
+      <div
+        className={`drawer-overlay ${open ? 'drawer-overlay--visible' : ''}`}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* ドロワー本体 */}
+      <div
+        className={`drawer ${open ? 'drawer--open' : ''}`}
+        role="dialog"
+        aria-label="絞り込み設定"
+        aria-modal="true"
+      >
+        {/* ヘッダー */}
+        <div className="drawer-header">
+          <span className="drawer-title">絞り込み</span>
+          <div className="drawer-header__actions">
+            {activeCount > 0 && (
+              <button className="drawer-reset" onClick={onReset}>
+                リセット
+              </button>
+            )}
+            <button className="drawer-close" onClick={onClose} aria-label="閉じる">
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* 本文 */}
+        <div className="drawer-body">
+
+          {/* 発動型 */}
+          <section className="drawer-section">
+            <div className="drawer-section__label">
+              発動型
+              <span className="drawer-section__note">1つだけ選択</span>
+            </div>
+            <div className="skill-chips">
+              {mainOnlySkills.map(s => (
+                <button
+                  key={s.id}
+                  className={`skill-chip ${filter.mainOnlyIds.has(s.id) ? 'skill-chip--active' : ''}`}
+                  onClick={() => onToggleMainOnly(s.id)}
+                  title={s.name}
+                >
+                  <img src={`/data/${s.image}`} alt="" aria-hidden="true" />
+                  <span>{s.name}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {/* スタック型 */}
+          <section className="drawer-section">
+            <div className="drawer-section__label">
+              スタック型
+              <span className="drawer-section__note">メイン 10pt / サブ 3pt</span>
+            </div>
+            <div className="skill-chips">
+              {stackableSkills.map(s => {
+                const pts = filter.skillMinPoints.get(s.id) ?? 0
+                const isActive = pts > 0
+                return (
+                  <div
+                    key={s.id}
+                    className={`skill-chip skill-chip--stepper ${isActive ? 'skill-chip--active' : ''}`}
+                  >
+                    <img src={`/data/${s.image}`} alt="" aria-hidden="true" />
+                    <span className="skill-chip__name">{s.name}</span>
+                    <div className="stepper">
+                      <button
+                        className="stepper__btn"
+                        onClick={() => onSetSkillPoints(s.id, stepDown(pts))}
+                        disabled={pts === 0}
+                        aria-label={`${s.name} を下げる`}
+                      >
+                        −
+                      </button>
+                      <span className="stepper__value">
+                        {pts === 0 ? '−' : `${pts}pt`}
+                      </span>
+                      <button
+                        className="stepper__btn"
+                        onClick={() => onSetSkillPoints(s.id, stepUp(pts))}
+                        disabled={pts === 19}
+                        aria-label={`${s.name} を上げる`}
+                      >
+                        ＋
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+
+          {/* ブランド */}
+          <section className="drawer-section">
+            <div className="drawer-section__label">
+              ブランド
+              {filter.brands.size > 0 && (
+                <button
+                  className="drawer-section__clear"
+                  onClick={onClearBrands}
+                >
+                  クリア
+                </button>
+              )}
+            </div>
+            <div className="brand-chips">
+              {allBrands.map(brand => (
+                <button
+                  key={brand}
+                  className={`brand-chip ${filter.brands.has(brand) ? 'brand-chip--active' : ''}`}
+                  onClick={() => onToggleBrand(brand)}
+                >
+                  {brand}
+                </button>
+              ))}
+            </div>
+          </section>
+
+        </div>
+      </div>
+    </>
+  )
+}

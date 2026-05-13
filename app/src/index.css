@@ -335,6 +335,362 @@ body {
   opacity: 0.6;
 }
 
+/* ── Filter button ── */
+
+.filter-btn {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  padding: 0.5rem 1.1rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.filter-btn:hover {
+  border-color: rgba(200, 240, 48, 0.4);
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.filter-btn--active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.filter-btn__badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: var(--accent);
+  color: var(--accent-dark);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  line-height: 1.5;
+}
+
+/* ── Filter result count ── */
+
+.filter-result {
+  font-size: 0.8rem;
+  color: var(--accent-dim);
+  margin-bottom: 0.75rem;
+  font-weight: 700;
+}
+
+/* ── Drawer overlay ── */
+
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+
+.drawer-overlay--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ── Drawer panel ── */
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100dvh;
+  width: 340px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  z-index: 101;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.drawer--open {
+  transform: translateX(0);
+}
+
+/* ── Drawer header ── */
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.25rem 1rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.drawer-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.drawer-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.drawer-reset {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.drawer-reset:hover {
+  border-color: var(--accent2);
+  color: var(--accent2);
+}
+
+.drawer-close {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  transition: color 0.15s;
+  line-height: 1;
+}
+
+.drawer-close:hover {
+  color: var(--text);
+}
+
+/* ── Drawer body ── */
+
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.drawer-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.drawer-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.drawer-body::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+/* ── Drawer sections ── */
+
+.drawer-section__label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 0.6rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.drawer-section__note {
+  font-size: 0.7rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.7;
+}
+
+.drawer-section__clear {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  transition: color 0.12s;
+}
+
+.drawer-section__clear:hover {
+  color: var(--accent2);
+}
+
+/* ── Skill chips ── */
+
+.skill-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.skill-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  transition: all 0.12s;
+  text-align: left;
+  width: 100%;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.skill-chip img {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--border);
+}
+
+.skill-chip:hover {
+  border-color: rgba(200, 240, 48, 0.4);
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.skill-chip--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(200, 240, 48, 0.08);
+}
+
+/* ── Stepper (スタック型pt指定) ── */
+
+.skill-chip--stepper {
+  cursor: default;
+  justify-content: space-between;
+}
+
+.skill-chip--stepper:hover {
+  border-color: var(--border);
+  color: var(--text-muted);
+  background: var(--bg);
+}
+
+.skill-chip--stepper.skill-chip--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(200, 240, 48, 0.08);
+}
+
+.skill-chip--stepper.skill-chip--active:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(200, 240, 48, 0.08);
+}
+
+.skill-chip__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.stepper__btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.12s;
+  line-height: 1;
+  padding: 0;
+}
+
+.stepper__btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.stepper__btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.stepper__value {
+  font-size: 0.78rem;
+  font-weight: 700;
+  min-width: 32px;
+  text-align: center;
+  color: inherit;
+}
+
+/* ── Brand chips ── */
+
+.brand-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.brand-chip {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.brand-chip:hover {
+  border-color: rgba(200, 240, 48, 0.4);
+  color: var(--text);
+}
+
+.brand-chip--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(200, 240, 48, 0.08);
+}
+
 /* ── Status messages ── */
 
 .status {

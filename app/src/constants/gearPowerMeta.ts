@@ -3,8 +3,10 @@
  *
  * スプラトゥーン3のギアパワーには2種類ある:
  *   - stackable: メイン10pt + サブ3pt で積算されるパワー（両スロット出現）
- *   - main_only: メインスロットにのみ存在するパワー（オン/オフの概念）
+ *   - main_only: メインスロットにのみ存在するパワー（発動型）
  */
+
+import type { GearCategory } from '../types'
 
 /** メインスロットにのみ存在するギアパワーのID集合 */
 export const MAIN_ONLY_SKILL_IDS = new Set<number>([
@@ -21,6 +23,25 @@ export const MAIN_ONLY_SKILL_IDS = new Set<number>([
   110, // 対物攻撃力アップ
   111, // 受け身術
 ])
+
+/**
+ * 発動型スキルが付くギアカテゴリのマッピング
+ * （データ実測: 各スキルは1カテゴリ固定）
+ */
+export const MAIN_ONLY_SKILL_CATEGORY: Record<number, GearCategory> = {
+  100: 'head',     // スタートダッシュ
+  101: 'head',     // ラストスパート
+  102: 'head',     // 逆境強化
+  103: 'head',     // カムバック
+  104: 'clothing', // イカニンジャ
+  105: 'clothing', // リベンジ
+  106: 'clothing', // サーマルインク
+  107: 'clothing', // 復活ペナルティアップ
+  108: 'clothing', // ギアパワー倍化（所持データなし、ゲーム上は存在）
+  109: 'shoes',    // ステルスジャンプ
+  110: 'shoes',    // 対物攻撃力アップ
+  111: 'shoes',    // 受け身術
+}
 
 /** ギアパワーの種別 */
 export type GearPowerType = 'stackable' | 'main_only'

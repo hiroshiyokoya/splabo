@@ -1,7 +1,10 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useGearDB } from './hooks/useGearDB'
 import { GearCard } from './components/GearCard'
-import type { GearCategory, GearItem } from './types'
+import { FilterDrawer, emptyFilter, countActiveFilters } from './components/FilterDrawer'
+import type { FilterState } from './components/FilterDrawer'
+import type { GearCategory, GearItem, Skill } from './types'
+import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY } from './constants/gearPowerMeta'
 
 const TABS: { key: GearCategory; label: string; icon: string }[] = [
   { key: 'head',     label: '頭ギア',  icon: '🪖' },
@@ -31,15 +34,97 @@ function sortItems(items: GearItem[], key: SortKey): GearItem[] {
   })
 }
 
+function applyFilter(items: GearItem[], filter: FilterState): GearItem[] {
+  let result = items
+
+  // メインのみ型: OR で絞り込む
+  if (filter.mainOnlyIds.size > 0) {
+    result = result.filter(gear =>
+      [...filter.mainOnlyIds].some(id => hasMainOnlySkill(gear, id))
+    )
+  }
+
+  // スタック型: 各スキルの最低pt を満たすもの（AND）
+  for (const [skillId, minPts] of filter.skillMinPoints) {
+    if (minPts === 0) continue
+    result = result.filter(gear => calcSkillPoints(gear, skillId) >= minPts)
+  }
+
+  // ブランド: OR で絞り込む
+  if (filter.brands.size > 0) {
+    result = result.filter(gear => filter.brands.has(gear.brand))
+  }
+
+  return result
+}
+
 function App() {
   const { data, loading, error } = useGearDB()
-  const [activeTab, setActiveTab] = useState<GearCategory>('head')
-  const [sortKey, setSortKey] = useState<SortKey>('name')
+  const [activeTab, setActiveTab]   = useState<GearCategory>('head')
+  const [sortKey, setSortKey]       = useState<SortKey>('name')
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [filter, setFilter]         = useState<FilterState>(emptyFilter)
+
+  // 全スキル一覧（id 昇順・重複なし）
+  const allSkills = useMemo<Skill[]>(() => {
+    if (!data) return []
+    const map = new Map<number, Skill>()
+    for (const cat of ['head', 'clothing', 'shoes'] as GearCategory[]) {
+      for (const gear of data[cat]) {
+        if (gear.primary_skill.id !== -1) map.set(gear.primary_skill.id, gear.primary_skill)
+        for (const s of gear.additional_skills) {
+          if (s.id !== -1) map.set(s.id, s)
+        }
+      }
+    }
+    return [...map.values()].sort((a, b) => a.id - b.id)
+  }, [data])
+
+  // 全ブランド一覧（五十音順・重複なし）
+  const allBrands = useMemo<string[]>(() => {
+    if (!data) return []
+    const set = new Set<string>()
+    for (const cat of ['head', 'clothing', 'shoes'] as GearCategory[]) {
+      for (const gear of data[cat]) set.add(gear.brand)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'ja'))
+  }, [data])
 
   const items = useMemo(() => {
     if (!data) return []
-    return sortItems(data[activeTab], sortKey)
-  }, [data, activeTab, sortKey])
+    return sortItems(applyFilter(data[activeTab], filter), sortKey)
+  }, [data, activeTab, sortKey, filter])
+
+  const handleToggleMainOnly = useCallback((id: number) => {
+    setFilter(prev => {
+      // シングルセレクト: 選択済みならOFF、未選択なら差し替え
+      const next = prev.mainOnlyIds.has(id) ? new Set<number>() : new Set([id])
+      return { ...prev, mainOnlyIds: next }
+    })
+  }, [])
+
+  const handleSetSkillPoints = useCallback((id: number, points: number) => {
+    setFilter(prev => {
+      const next = new Map(prev.skillMinPoints)
+      next.set(id, points)
+      return { ...prev, skillMinPoints: next }
+    })
+  }, [])
+
+  const handleToggleBrand = useCallback((brand: string) => {
+    setFilter(prev => {
+      const next = new Set(prev.brands)
+      next.has(brand) ? next.delete(brand) : next.add(brand)
+      return { ...prev, brands: next }
+    })
+  }, [])
+
+  const handleClearBrands = useCallback(() =>
+    setFilter(prev => ({ ...prev, brands: new Set() })), [])
+
+  const handleReset = useCallback(() => setFilter(emptyFilter()), [])
+
+  const activeFilterCount = countActiveFilters(filter)
 
   if (loading) return <div className="status">ギアデータを読み込み中...</div>
   if (error)   return <div className="status status--error">エラー: {error}</div>
@@ -64,13 +149,34 @@ function App() {
           <button
             key={key}
             className={`tab ${activeTab === key ? 'tab--active' : ''}`}
-            onClick={() => setActiveTab(key)}
+            onClick={() => {
+              setActiveTab(key)
+              // タブ切り替え時: 新しいタブに対応しない発動型フィルターをクリア
+              setFilter(prev => {
+                if (prev.mainOnlyIds.size === 0) return prev
+                const [selectedId] = prev.mainOnlyIds
+                if (MAIN_ONLY_SKILL_CATEGORY[selectedId] === key) return prev
+                return { ...prev, mainOnlyIds: new Set() }
+              })
+            }}
           >
             <span className="tab__icon">{icon}</span>
             {label}
             <span className="tab__badge">{data[key].length}</span>
           </button>
         ))}
+
+        {/* 絞り込みボタン */}
+        <button
+          className={`filter-btn ${activeFilterCount > 0 ? 'filter-btn--active' : ''}`}
+          onClick={() => setDrawerOpen(true)}
+          aria-label="絞り込み"
+        >
+          ⚙ 絞り込み
+          {activeFilterCount > 0 && (
+            <span className="filter-btn__badge">{activeFilterCount}</span>
+          )}
+        </button>
 
         <select
           className="sort-select"
@@ -84,10 +190,20 @@ function App() {
         </select>
       </nav>
 
+      {/* 絞り込み結果カウント */}
+      {activeFilterCount > 0 && (
+        <div className="filter-result">
+          {items.length} 件 / {data[activeTab].length} 件
+        </div>
+      )}
+
       <div className="gear-grid">
         {items.map((gear) => (
           <GearCard key={gear.id} gear={gear} />
         ))}
+        {items.length === 0 && (
+          <div className="status">該当するギアがありません</div>
+        )}
       </div>
 
       <footer className="app-footer">
@@ -95,6 +211,20 @@ function App() {
         <span className="app-footer__divider">·</span>
         <span className="app-footer__note">geartoon — personal gear collection for Splatoon 3</span>
       </footer>
+
+      <FilterDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        activeTab={activeTab}
+        allSkills={allSkills}
+        allBrands={allBrands}
+        filter={filter}
+        onToggleMainOnly={handleToggleMainOnly}
+        onSetSkillPoints={handleSetSkillPoints}
+        onToggleBrand={handleToggleBrand}
+        onClearBrands={handleClearBrands}
+        onReset={handleReset}
+      />
     </div>
   )
 }
