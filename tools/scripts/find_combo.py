@@ -156,7 +156,7 @@ def gear_ap(gear: dict, skill_names: list[str]) -> dict[str, int]:
     return ap
 
 
-def format_gear(gear: dict, skill_names: list[str]) -> str:
+def format_gear(gear: dict, skill_names: list[str], main_only_skills: set[str]) -> str:
     subs = [s["name"] for s in gear["additional_skills"]]
     ap_parts = []
     for s in skill_names:
@@ -167,7 +167,7 @@ def format_gear(gear: dict, skill_names: list[str]) -> str:
             if sub["name"] == s:
                 v += SUB_AP
         if v:
-            ap_parts.append(f"{s} {v}AP")
+            ap_parts.append(s if s in main_only_skills else f"{s} {v}AP")
     ap_str = f"  [{', '.join(ap_parts)}]" if ap_parts else ""
     return (
         f"{gear['name']} ({gear['brand']})"
@@ -194,6 +194,11 @@ def main() -> None:
     skill_name_to_id = build_skill_name_to_id(db)
     requirements, limit, out_json = parse_args(sys.argv, skill_name_to_id)
     skill_names = list(requirements.keys())
+    main_only_skills = {
+        name
+        for name in skill_names
+        if (skill_name_to_id.get(name) in MAIN_ONLY_SKILL_IDS)
+    }
 
     # AP ベクトルを事前計算
     heads     = [(g, gear_ap(g, skill_names)) for g in db["head"]]
@@ -245,11 +250,14 @@ def main() -> None:
     print(f"\n{len(valid)} 件の組み合わせが見つかりました（上位 {min(limit, len(valid))} 件を表示）\n")
 
     for i, combo in enumerate(valid[:limit], 1):
-        ap_str = "  ".join(f"{s}: {combo['total_ap'][s]}AP" for s in skill_names)
+        ap_str = "  ".join(
+            (s if s in main_only_skills else f"{s}: {combo['total_ap'][s]}AP")
+            for s in skill_names
+        )
         print(f"─── {i:3d}  {ap_str}")
-        print(f"  [頭] {format_gear(combo['head'],     skill_names)}")
-        print(f"  [服] {format_gear(combo['clothing'], skill_names)}")
-        print(f"  [靴] {format_gear(combo['shoes'],    skill_names)}")
+        print(f"  [頭] {format_gear(combo['head'],     skill_names, main_only_skills)}")
+        print(f"  [服] {format_gear(combo['clothing'], skill_names, main_only_skills)}")
+        print(f"  [靴] {format_gear(combo['shoes'],    skill_names, main_only_skills)}")
         print()
 
     if out_json:
