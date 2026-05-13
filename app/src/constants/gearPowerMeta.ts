@@ -43,6 +43,28 @@ export const MAIN_ONLY_SKILL_CATEGORY: Record<number, GearCategory> = {
   111: 'shoes',    // 受け身術
 }
 
+/**
+ * 発動型スキルの表示順（個人で調整したい場合はここを編集する）
+ * - 絞り込みパネルの発動型表示順
+ * - 「メインパワー」並び替え時の発動型の順序
+ *
+ * 指定がないカテゴリは、スキルID昇順になる。
+ */
+export const MAIN_ONLY_SKILL_ORDER: Partial<Record<GearCategory, number[]>> = {
+  head: [
+    100, // スタートダッシュ
+    103, // カムバック
+    101, // ラストスパート
+  ],
+}
+
+export function getMainOnlySkillSortRank(skillId: number, category: GearCategory): number {
+  const order = MAIN_ONLY_SKILL_ORDER[category]
+  if (!order) return Number.POSITIVE_INFINITY
+  const idx = order.indexOf(skillId)
+  return idx === -1 ? Number.POSITIVE_INFINITY : idx
+}
+
 /** ギアパワーの種別 */
 export type GearPowerType = 'stackable' | 'main_only'
 

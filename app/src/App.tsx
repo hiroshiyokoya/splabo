@@ -4,7 +4,7 @@ import { GearCard } from './components/GearCard'
 import { FilterDrawer, emptyFilter, countActiveFilters } from './components/FilterDrawer'
 import type { FilterState } from './components/FilterDrawer'
 import type { GearCategory, GearItem, Skill } from './types'
-import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY } from './constants/gearPowerMeta'
+import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank } from './constants/gearPowerMeta'
 
 const TABS: { key: GearCategory; label: string; icon: string }[] = [
   { key: 'head',     label: '頭ギア',  icon: '🪖' },
@@ -22,7 +22,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'exp',    label: 'EXP' },
 ]
 
-function sortItems(items: GearItem[], key: SortKey): GearItem[] {
+function sortItems(items: GearItem[], key: SortKey, category: GearCategory): GearItem[] {
   return [...items].sort((a, b) => {
     switch (key) {
       case 'name':   return a.name.localeCompare(b.name, 'ja')
@@ -37,6 +37,12 @@ function sortItems(items: GearItem[], key: SortKey): GearItem[] {
         const aType = aId === -1 ? 2 : (isMainOnly(aId) ? 0 : 1)
         const bType = bId === -1 ? 2 : (isMainOnly(bId) ? 0 : 1)
         if (aType !== bType) return aType - bType
+
+        if (aType === 0 && bType === 0) {
+          const ra = getMainOnlySkillSortRank(aId, category)
+          const rb = getMainOnlySkillSortRank(bId, category)
+          if (ra !== rb) return ra - rb
+        }
 
         if (aId !== bId) return aId - bId
         return a.primary_skill.name.localeCompare(b.primary_skill.name, 'ja')
@@ -103,7 +109,7 @@ function App() {
 
   const items = useMemo(() => {
     if (!data) return []
-    return sortItems(applyFilter(data[activeTab], filter), sortKey)
+    return sortItems(applyFilter(data[activeTab], filter), sortKey, activeTab)
   }, [data, activeTab, sortKey, filter])
 
   const handleToggleMainOnly = useCallback((id: number) => {

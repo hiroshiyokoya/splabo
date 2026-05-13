@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { GearCategory, Skill } from '../types'
-import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY } from '../constants/gearPowerMeta'
+import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank } from '../constants/gearPowerMeta'
 
 // スタック型のスナップ値（スプラ仕様: サブ3pt × 最大3 + メイン10pt）
 const STEP_VALUES = [0, 3, 6, 9, 10, 13, 16, 19] as const
@@ -67,7 +67,14 @@ export function FilterDrawer({
 }: Props) {
   // 現在のタブに対応する発動型スキルのみ表示
   const mainOnlySkills = useMemo(
-    () => allSkills.filter(s => isMainOnly(s.id) && MAIN_ONLY_SKILL_CATEGORY[s.id] === activeTab),
+    () => allSkills
+      .filter(s => isMainOnly(s.id) && MAIN_ONLY_SKILL_CATEGORY[s.id] === activeTab)
+      .toSorted((a, b) => {
+        const ra = getMainOnlySkillSortRank(a.id, activeTab)
+        const rb = getMainOnlySkillSortRank(b.id, activeTab)
+        if (ra !== rb) return ra - rb
+        return a.id - b.id
+      }),
     [allSkills, activeTab],
   )
   const stackableSkills = useMemo(
