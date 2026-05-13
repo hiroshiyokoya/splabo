@@ -27,6 +27,9 @@ app/.env.local
 app/gen-*.html
 app/gen-*.mjs
 
+# srcバックアップ（ローカル作業用）
+app/src.bak/
+
 # === 共通 ===
 .DS_Store
 Thumbs.db
