@@ -155,60 +155,75 @@ function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <div className="app-header__left">
-          <img src="/geartoon-logo.png" alt="geartoon" height="68" style={{ display: 'block' }} />
-          <p className="app-subtitle">Splatoon Gear Collection</p>
-        </div>
-        <span className="app-count">{total.toLocaleString()} ギア</span>
-      </header>
+      <div className="app-top app-top--sticky">
+        <header className="app-header">
+          <div className="app-header__left">
+            <img src="/geartoon-logo.png" alt="geartoon" height="68" style={{ display: 'block' }} />
+            <p className="app-subtitle">Splatoon 3 Gear Wardrobe</p>
+          </div>
+          <span className="app-count">{total.toLocaleString()} ギア</span>
+        </header>
 
-      <div className="header-divider" />
+        <div className="header-divider" />
 
-      <nav className="tabs">
-        {TABS.map(({ key, label, icon }) => (
-          <button
-            key={key}
-            className={`tab ${activeTab === key ? 'tab--active' : ''}`}
-            onClick={() => {
-              setActiveTab(key)
-              // タブ切り替え時: 新しいタブに対応しない発動型フィルターをクリア
-              setFilter(prev => {
-                if (prev.mainOnlyIds.size === 0) return prev
-                const [selectedId] = prev.mainOnlyIds
-                if (MAIN_ONLY_SKILL_CATEGORY[selectedId] === key) return prev
-                return { ...prev, mainOnlyIds: new Set() }
-              })
-            }}
-          >
-            <span className="tab__icon">{icon}</span>
-            {label}
-            <span className="tab__badge">{data[key].length}</span>
-          </button>
-        ))}
-
-        <button
-          className={`filter-btn ${activeFilterCount > 0 ? 'filter-btn--active' : ''}`}
-          onClick={() => setDrawerOpen(true)}
-          aria-label="絞り込み"
-        >
-          ⚙ 絞り込み
-          {activeFilterCount > 0 && (
-            <span className="filter-btn__badge">{activeFilterCount}</span>
-          )}
-        </button>
-
-        <select
-          className="sort-select"
-          value={sortKey}
-          onChange={e => setSortKey(e.target.value as SortKey)}
-          aria-label="並び替え"
-        >
-          {SORT_OPTIONS.map(({ key, label }) => (
-            <option key={key} value={key}>{label}</option>
+        <nav className="tabs">
+          {TABS.map(({ key, label, icon }) => (
+            <button
+              key={key}
+              className={`tab ${activeTab === key ? 'tab--active' : ''}`}
+              onClick={() => {
+                setActiveTab(key)
+                // タブ切り替え時: 新しいタブに対応しない発動型フィルターをクリア
+                setFilter(prev => {
+                  if (prev.mainOnlyIds.size === 0) return prev
+                  const [selectedId] = prev.mainOnlyIds
+                  if (MAIN_ONLY_SKILL_CATEGORY[selectedId] === key) return prev
+                  return { ...prev, mainOnlyIds: new Set() }
+                })
+              }}
+            >
+              <span className="tab__icon">{icon}</span>
+              {label}
+              <span className="tab__badge">{data[key].length}</span>
+            </button>
           ))}
-        </select>
-      </nav>
+
+          <button
+            className={`filter-btn ${activeFilterCount > 0 ? 'filter-btn--active' : ''}`}
+            onClick={() => setDrawerOpen(true)}
+            aria-label="絞り込み"
+          >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+            style={{ flexShrink: 0 }}
+          >
+            <path
+              d="M3 5h18l-7 8v6l-4 2v-8L3 5z"
+              fill="currentColor"
+            />
+          </svg>
+          絞り込み
+            {activeFilterCount > 0 && (
+              <span className="filter-btn__badge">{activeFilterCount}</span>
+            )}
+          </button>
+
+          <select
+            className="sort-select"
+            value={sortKey}
+            onChange={e => setSortKey(e.target.value as SortKey)}
+            aria-label="並び替え"
+          >
+            {SORT_OPTIONS.map(({ key, label }) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
+          </select>
+        </nav>
+      </div>
 
       {/* 絞り込み結果カウント */}
       {activeFilterCount > 0 && (
@@ -227,9 +242,19 @@ function App() {
       </div>
 
       <footer className="app-footer">
-        <span className="app-footer__copy">© 2026 hiroshiyokoya</span>
+        <span className="app-footer__copy">
+          © 2026{' '}
+          <a
+            className="app-footer__copy-link"
+            href="https://github.com/hiroshiyokoya/geartoon"
+            target="_blank"
+            rel="noreferrer"
+          >
+            hiroshiyokoya
+          </a>
+        </span>
         <span className="app-footer__divider">·</span>
-        <span className="app-footer__note">geartoon — personal gear collection for Splatoon 3</span>
+        <span className="app-footer__note">geartoon — personal gear wardrobe for Splatoon 3</span>
       </footer>
 
       <FilterDrawer
