@@ -3,16 +3,18 @@
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
 
-  --bg:          #151520;
-  --surface:     #1e1e30;
-  --surface-hover: #262640;
-  --border:      #2e2e48;
-  --text:        #e8e8f0;
-  --text-muted:  #7878a0;
-  --accent:      #f5c518;
-  --accent-dim:  #c89e12;
-  --star-on:     #f5c518;
-  --star-off:    #3a3a58;
+  --bg:            #1a1a1e;
+  --surface:       #17172a;
+  --surface-hover: #20203a;
+  --border:        #2a2a45;
+  --text:          #eeeef8;
+  --text-muted:    #6060a0;
+  --accent:        #c8f030;
+  --accent-dim:    #9dc024;
+  --accent-dark:   #0d0d1a;
+  --accent2:       #ff7621;
+  --star-on:       #ffd700;
+  --star-off:      #2a2a45;
 }
 
 * { box-sizing: border-box; }
@@ -22,6 +24,9 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  /* Subtle dot grid background */
+  background-image: radial-gradient(circle, #ffffff08 1px, transparent 1px);
+  background-size: 28px 28px;
 }
 
 /* ── App layout ── */
@@ -29,59 +34,119 @@ body {
 .app {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 1.5rem 1.5rem 3rem;
+  padding: 0 1.5rem 3rem;
 }
+
+/* ── App header ── */
 
 .app-header {
+  padding: 2rem 0 1.5rem;
+  margin-bottom: 0;
   display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
-  margin-bottom: 1.25rem;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
-.app-title {
-  font-size: 1.6rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--accent);
-  margin: 0;
+.app-header__left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+/* .app-title は LogoSvg コンポーネントに移行済み */
+
+.app-subtitle {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding-left: 0.1rem;
 }
 
 .app-count {
-  font-size: 0.85rem;
-  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--accent-dim);
+  background: rgba(200, 240, 48, 0.08);
+  border: 1px solid rgba(200, 240, 48, 0.2);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  align-self: flex-end;
+  margin-bottom: 0.15rem;
+  white-space: nowrap;
+}
+
+/* ── Header divider ── */
+
+.header-divider {
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent2) 40%, transparent 100%);
+  border-radius: 2px;
+  margin-bottom: 1.5rem;
+  opacity: 0.6;
 }
 
 /* ── Tabs ── */
 
 .tabs {
   display: flex;
-  gap: 0.25rem;
-  margin-bottom: 1.5rem;
-  border-bottom: 2px solid var(--border);
+  gap: 0.5rem;
+  margin-bottom: 1.75rem;
   padding-bottom: 0;
+  border-bottom: none;
 }
 
 .tab {
-  background: none;
-  border: none;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
   padding: 0.5rem 1.5rem;
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 0.95rem;
+  font-weight: 700;
   color: var(--text-muted);
   cursor: pointer;
-  border-bottom: 3px solid transparent;
-  margin-bottom: -2px;
-  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: 0;
+  transition: all 0.15s;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .tab:hover {
+  border-color: rgba(200, 240, 48, 0.4);
   color: var(--text);
+  background: var(--surface-hover);
 }
 
 .tab--active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  box-shadow: 0 0 12px rgba(200, 240, 48, 0.3);
+}
+
+.tab__icon {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.tab__badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  line-height: 1.5;
+  color: inherit;
+  opacity: 0.8;
+}
+
+.tab--active .tab__badge {
+  background: rgba(0, 0, 0, 0.2);
+  opacity: 1;
 }
 
 /* ── Gear grid ── */
@@ -222,15 +287,30 @@ body {
   opacity: 0.15;
 }
 
-/* ── Status messages ── */
+/* ── Footer ── */
 
-.status {
-  text-align: center;
-  padding: 4rem;
+.app-footer {
+  margin-top: 3rem;
+  padding: 1.25rem 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   color: var(--text-muted);
-  font-size: 1rem;
+  font-size: 0.75rem;
 }
 
-.status--error {
-  color: #e05c5c;
+.app-footer__copy {
+  font-weight: 600;
+  color: var(--text-muted);
 }
+
+.app-footer__divider {
+  opacity: 0.4;
+}
+
+.app-footer__note {
+  opacity: 0.6;
+}
+
+/* ─
