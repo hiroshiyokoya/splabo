@@ -4,7 +4,7 @@ import { GearCard } from './components/GearCard'
 import { FilterDrawer, emptyFilter, countActiveFilters } from './components/FilterDrawer'
 import type { FilterState } from './components/FilterDrawer'
 import type { GearCategory, GearItem, Skill } from './types'
-import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank } from './constants/gearPowerMeta'
+import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from './constants/gearPowerMeta'
 
 const TABS: { key: GearCategory; label: string; icon: string }[] = [
   { key: 'head',     label: '頭ギア',  icon: '🪖' },
@@ -41,6 +41,10 @@ function sortItems(items: GearItem[], key: SortKey, category: GearCategory): Gea
         if (aType === 0 && bType === 0) {
           const ra = getMainOnlySkillSortRank(aId, category)
           const rb = getMainOnlySkillSortRank(bId, category)
+          if (ra !== rb) return ra - rb
+        } else if (aType === 1 && bType === 1) {
+          const ra = getStackableSkillSortRank(aId)
+          const rb = getStackableSkillSortRank(bId)
           if (ra !== rb) return ra - rb
         }
 

@@ -56,12 +56,40 @@ export const MAIN_ONLY_SKILL_ORDER: Partial<Record<GearCategory, number[]>> = {
     103, // カムバック
     101, // ラストスパート
   ],
+  clothing: [
+    104, // イカニンジャ
+    105, // リベンジ
+    106, // サーマルインク
+    107, // 復活ペナルティアップ
+    108, // ギアパワー倍化（所持データなし、ゲーム上は存在）
+  ],
+  shoes: [
+    109, // ステルスジャンプ
+    110, // 対物攻撃力アップ
+    111, // 受け身術
+  ],
 }
 
 export function getMainOnlySkillSortRank(skillId: number, category: GearCategory): number {
   const order = MAIN_ONLY_SKILL_ORDER[category]
   if (!order) return Number.POSITIVE_INFINITY
   const idx = order.indexOf(skillId)
+  return idx === -1 ? Number.POSITIVE_INFINITY : idx
+}
+
+/**
+ * スタック型スキルの表示順（個人で調整したい場合はここを編集する）
+ * - 絞り込みパネルのスタック型表示順
+ * - 「メインパワー」並び替え時のスタック型の順序
+ *
+ * 配列に含まれないスキルは、後ろにスキルID昇順で並ぶ。
+ */
+export const STACKABLE_SKILL_ORDER: number[] = [
+  // 例: ここに優先したいスキルIDを並べる
+]
+
+export function getStackableSkillSortRank(skillId: number): number {
+  const idx = STACKABLE_SKILL_ORDER.indexOf(skillId)
   return idx === -1 ? Number.POSITIVE_INFINITY : idx
 }
 
