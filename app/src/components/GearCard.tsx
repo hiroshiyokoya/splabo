@@ -4,7 +4,7 @@ interface Props {
   gear: GearItem
 }
 
-const MAX_RARITY = 4
+const MAX_RARITY = 5
 
 function Stars({ rarity }: { rarity: number }) {
   return (
