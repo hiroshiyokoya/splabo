@@ -1,4 +1,4 @@
-# geartoon
+<img src="app/public/geartoon-logo.png" alt="geartoon" height="60">
 
 Splatoon 3 の所持ギアを管理・検索するデスクトップアプリです。
 
