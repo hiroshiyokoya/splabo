@@ -76,6 +76,13 @@ export function FilterDrawer({
   )
   const activeCount = countActiveFilters(filter)
 
+  // 発動型 = 10pt 固定。スタック型との合計が 19pt を超えないよう制限
+  const mainOnlyPts = filter.mainOnlyIds.size > 0 ? 10 : 0
+  const stackTotalPts = [...filter.skillMinPoints.values()].reduce((sum, v) => sum + v, 0)
+  const ptsBudget = 19 - mainOnlyPts  // スタック型に使える残り pt
+  // スタック型で10pt以上使っている = メインスロット使用中 → 発動型は選べない
+  const mainSlotUsedByStack = stackTotalPts >= 10
+
   return (
     <>
       {/* オーバーレイ */}
@@ -117,17 +124,22 @@ export function FilterDrawer({
               <span className="drawer-section__note">1つだけ選択</span>
             </div>
             <div className="skill-chips">
-              {mainOnlySkills.map(s => (
-                <button
-                  key={s.id}
-                  className={`skill-chip ${filter.mainOnlyIds.has(s.id) ? 'skill-chip--active' : ''}`}
-                  onClick={() => onToggleMainOnly(s.id)}
-                  title={s.name}
-                >
-                  <img src={`/data/${s.image}`} alt="" aria-hidden="true" />
-                  <span>{s.name}</span>
-                </button>
-              ))}
+              {mainOnlySkills.map(s => {
+                const isActive = filter.mainOnlyIds.has(s.id)
+                const isDisabled = !isActive && mainSlotUsedByStack
+                return (
+                  <button
+                    key={s.id}
+                    className={`skill-chip ${isActive ? 'skill-chip--active' : ''} ${isDisabled ? 'skill-chip--disabled' : ''}`}
+                    onClick={() => !isDisabled && onToggleMainOnly(s.id)}
+                    disabled={isDisabled}
+                    title={s.name}
+                  >
+                    <img src={`/data/${s.image}`} alt="" aria-hidden="true" />
+                    <span>{s.name}</span>
+                  </button>
+                )
+              })}
             </div>
           </section>
 
@@ -141,6 +153,8 @@ export function FilterDrawer({
               {stackableSkills.map(s => {
                 const pts = filter.skillMinPoints.get(s.id) ?? 0
                 const isActive = pts > 0
+                const nextPts = stepUp(pts)
+                const disableIncrease = nextPts === pts || (stackTotalPts - pts + nextPts) > ptsBudget
                 return (
                   <div
                     key={s.id}
@@ -163,7 +177,7 @@ export function FilterDrawer({
                       <button
                         className="stepper__btn"
                         onClick={() => onSetSkillPoints(s.id, stepUp(pts))}
-                        disabled={pts === 19}
+                        disabled={disableIncrease}
                         aria-label={`${s.name} を上げる`}
                       >
                         ＋

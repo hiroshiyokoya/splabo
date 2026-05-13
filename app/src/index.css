@@ -3,6 +3,7 @@
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
 
+  /* ── Base colors ── */
   --bg:            #1a1a1e;
   --surface:       #17172a;
   --surface-hover: #20203a;
@@ -15,6 +16,31 @@
   --accent2:       #ff7621;
   --star-on:       #ffd700;
   --star-off:      #2a2a45;
+
+  /* ── Accent translucent ── */
+  --accent-hover-border: rgba(200, 240, 48, 0.4);
+  --accent-hover-bg:     rgba(200, 240, 48, 0.05);
+  --accent-active-bg:    rgba(200, 240, 48, 0.08);
+  --accent-glow:         rgba(200, 240, 48, 0.3);
+
+  /* ── Chip glass effect ── */
+  --chip-bg:     rgba(255, 255, 255, 0.02);
+  --chip-border: rgba(255, 255, 255, 0.06);
+  --chip-text:   rgba(255, 255, 255, 0.75);
+  --blur-chip:   16px;
+
+  /* ── Drawer ── */
+  --drawer-width: 340px;
+  --drawer-bg:    rgba(20, 18, 38, 0.08);
+  --blur-drawer:  2px;
+
+  /* ── Layout ── */
+  --card-radius:    12px;
+  --card-min-width: 180px;
+
+  /* ── Background dot grid ── */
+  --dot-color: #ffffff08;
+  --dot-size:  28px;
 }
 
 * { box-sizing: border-box; }
@@ -25,8 +51,8 @@ body {
   color: var(--text);
   min-height: 100vh;
   /* Subtle dot grid background */
-  background-image: radial-gradient(circle, #ffffff08 1px, transparent 1px);
-  background-size: 28px 28px;
+  background-image: radial-gradient(circle, var(--dot-color) 1px, transparent 1px);
+  background-size: var(--dot-size) var(--dot-size);
 }
 
 /* ── App layout ── */
@@ -69,7 +95,7 @@ body {
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--accent-dim);
-  background: rgba(200, 240, 48, 0.08);
+  background: var(--accent-active-bg);
   border: 1px solid rgba(200, 240, 48, 0.2);
   border-radius: 999px;
   padding: 0.25rem 0.75rem;
@@ -100,7 +126,7 @@ body {
 }
 
 .sort-select {
-  margin-left: auto;
+  margin-left: 0;
   background: var(--surface);
   border: 1.5px solid var(--border);
   border-radius: 999px;
@@ -120,7 +146,7 @@ body {
 }
 
 .sort-select:hover {
-  border-color: rgba(200, 240, 48, 0.4);
+  border-color: var(--accent-hover-border);
   color: var(--text);
   background-color: var(--surface-hover);
 }
@@ -143,7 +169,7 @@ body {
 }
 
 .tab:hover {
-  border-color: rgba(200, 240, 48, 0.4);
+  border-color: var(--accent-hover-border);
   color: var(--text);
   background: var(--surface-hover);
 }
@@ -152,7 +178,7 @@ body {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-dark);
-  box-shadow: 0 0 12px rgba(200, 240, 48, 0.3);
+  box-shadow: 0 0 12px var(--accent-glow);
 }
 
 .tab__icon {
@@ -180,7 +206,7 @@ body {
 
 .gear-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width), 1fr));
   gap: 1rem;
 }
 
@@ -189,7 +215,7 @@ body {
 .gear-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--card-radius);
   padding: 0.6rem 0.75rem 0.7rem;
   display: flex;
   flex-direction: column;
@@ -338,6 +364,7 @@ body {
 /* ── Filter button ── */
 
 .filter-btn {
+  margin-left: auto;
   background: var(--surface);
   border: 1.5px solid var(--border);
   border-radius: 999px;
@@ -353,7 +380,7 @@ body {
 }
 
 .filter-btn:hover {
-  border-color: rgba(200, 240, 48, 0.4);
+  border-color: var(--accent-hover-border);
   color: var(--text);
   background: var(--surface-hover);
 }
@@ -387,7 +414,7 @@ body {
 .drawer-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: transparent;
   z-index: 100;
   opacity: 0;
   pointer-events: none;
@@ -406,9 +433,12 @@ body {
   top: 0;
   right: 0;
   height: 100dvh;
-  width: 340px;
-  background: var(--surface);
-  border-left: 1px solid var(--border);
+  width: var(--drawer-width);
+  background: var(--drawer-bg);
+  backdrop-filter: blur(var(--blur-drawer));
+  -webkit-backdrop-filter: blur(var(--blur-drawer));
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
   z-index: 101;
   display: flex;
   flex-direction: column;
@@ -552,15 +582,17 @@ body {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--chip-bg);
+  backdrop-filter: blur(var(--blur-chip));
+  -webkit-backdrop-filter: blur(var(--blur-chip));
+  border: 1px solid var(--chip-border);
   border-radius: 8px;
   padding: 0.4rem 0.75rem;
   cursor: pointer;
   transition: all 0.12s;
   text-align: left;
   width: 100%;
-  color: var(--text-muted);
+  color: var(--chip-text);
   font-size: 0.85rem;
   font-weight: 600;
 }
@@ -574,15 +606,26 @@ body {
 }
 
 .skill-chip:hover {
-  border-color: rgba(200, 240, 48, 0.4);
+  border-color: var(--accent-hover-border);
   color: var(--text);
-  background: var(--surface-hover);
+  background: var(--accent-hover-bg);
 }
 
 .skill-chip--active {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(200, 240, 48, 0.08);
+  background: var(--accent-active-bg);
+}
+
+.skill-chip--disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.skill-chip--disabled:hover {
+  border-color: var(--chip-border);
+  color: var(--text-muted);
+  background: var(--chip-bg);
 }
 
 /* ── Stepper (スタック型pt指定) ── */
@@ -593,21 +636,21 @@ body {
 }
 
 .skill-chip--stepper:hover {
-  border-color: var(--border);
+  border-color: var(--chip-border);
   color: var(--text-muted);
-  background: var(--bg);
+  background: var(--chip-bg);
 }
 
 .skill-chip--stepper.skill-chip--active {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(200, 240, 48, 0.08);
+  background: var(--accent-active-bg);
 }
 
 .skill-chip--stepper.skill-chip--active:hover {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(200, 240, 48, 0.08);
+  background: var(--accent-active-bg);
 }
 
 .skill-chip__name {
@@ -635,6 +678,7 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 0.85rem;
+  font-weight: 700;
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.12s;
@@ -669,26 +713,29 @@ body {
 }
 
 .brand-chip {
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--chip-bg);
+  backdrop-filter: blur(var(--blur-chip));
+  -webkit-backdrop-filter: blur(var(--blur-chip));
+  border: 1px solid var(--chip-border);
   border-radius: 999px;
   padding: 0.3rem 0.85rem;
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--chip-text);
   cursor: pointer;
   transition: all 0.12s;
 }
 
 .brand-chip:hover {
-  border-color: rgba(200, 240, 48, 0.4);
+  border-color: var(--accent-hover-border);
   color: var(--text);
+  background: var(--accent-hover-bg);
 }
 
 .brand-chip--active {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(200, 240, 48, 0.08);
+  background: var(--accent-active-bg);
 }
 
 /* ── Status messages ── */

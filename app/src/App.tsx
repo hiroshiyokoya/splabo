@@ -166,7 +166,6 @@ function App() {
           </button>
         ))}
 
-        {/* 絞り込みボタン */}
         <button
           className={`filter-btn ${activeFilterCount > 0 ? 'filter-btn--active' : ''}`}
           onClick={() => setDrawerOpen(true)}
