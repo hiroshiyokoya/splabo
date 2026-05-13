@@ -30,6 +30,19 @@ export function GearCard({ gear }: Props) {
 
   return (
     <div className="gear-card">
+
+      {/* 上段: ブランドロゴ（左）・レアリティ（右） */}
+      <div className="gear-card__header">
+        <img
+          className="gear-card__brand-logo"
+          src={`/data/${gear.brand_image}`}
+          alt={gear.brand}
+          title={gear.brand}
+        />
+        <Stars rarity={gear.rarity} />
+      </div>
+
+      {/* ギア画像（中央） */}
       <div className="gear-card__image-wrap">
         <img
           className="gear-card__image"
@@ -39,33 +52,24 @@ export function GearCard({ gear }: Props) {
         />
       </div>
 
-      <Stars rarity={gear.rarity} />
-
+      {/* ギア名（中央） */}
       <div className="gear-card__name" title={gear.name}>{gear.name}</div>
 
-      <div className="gear-card__meta">
-        <span className="gear-card__brand" title={gear.brand}>
-          <img
-            className="gear-card__brand-logo"
-            src={`/data/${gear.brand_image}`}
-            alt={gear.brand}
-          />
-        </span>
-        <span className="gear-card__exp">EXP {gear.exp.toLocaleString()}</span>
-      </div>
+      {/* EXP（右寄り） */}
+      <div className="gear-card__exp">EXP {gear.exp.toLocaleString()}</div>
 
+      {/* スキル: メイン + サブ3つ（横幅いっぱい） */}
       <div className="gear-card__skills">
         <SkillIcon image={gear.primary_skill.image} name={gear.primary_skill.name} size="main" />
-        <div className="gear-card__sub-skills">
-          {subSlots.map((skill, i) =>
-            skill ? (
-              <SkillIcon key={i} image={skill.image} name={skill.name} size="sub" />
-            ) : (
-              <div key={i} className="skill-icon skill-icon--sub skill-icon--empty" />
-            )
-          )}
-        </div>
+        {subSlots.map((skill, i) =>
+          skill ? (
+            <SkillIcon key={i} image={skill.image} name={skill.name} size="sub" />
+          ) : (
+            <div key={i} className="skill-icon skill-icon--sub skill-icon--empty" />
+          )
+        )}
       </div>
+
     </div>
   )
 }

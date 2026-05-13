@@ -163,10 +163,10 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 1rem 0.875rem 0.875rem;
+  padding: 0.6rem 0.75rem 0.7rem;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.15rem;
   transition: background 0.15s, transform 0.1s;
 }
 
@@ -175,33 +175,51 @@ body {
   transform: translateY(-2px);
 }
 
-.gear-card__image-wrap {
+/* ── Header: ブランドロゴ（左）・レアリティ（右） ── */
+
+.gear-card__header {
   display: flex;
-  justify-content: center;
-  margin-bottom: 0.25rem;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0;
 }
 
-.gear-card__image {
-  width: 88px;
-  height: 88px;
+.gear-card__brand-logo {
+  width: 40px;
+  height: 40px;
   object-fit: contain;
+  background: #fff;
+  border-radius: 8px;
+  padding: 1px;
 }
 
 /* ── Stars ── */
 
 .gear-stars {
   display: flex;
-  gap: 2px;
-  justify-content: center;
+  gap: 1px;
 }
 
 .star {
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   color: var(--star-off);
 }
 
 .star.filled {
   color: var(--star-on);
+}
+
+/* ── Gear image ── */
+
+.gear-card__image-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.gear-card__image {
+  width: 108px;
+  height: 108px;
+  object-fit: contain;
 }
 
 /* ── Card text ── */
@@ -216,50 +234,29 @@ body {
   line-height: 1.3;
 }
 
-.gear-card__meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.25rem;
-  margin-top: 0.1rem;
-}
-
-.gear-card__brand {
-  display: flex;
-  align-items: center;
-}
-
-.gear-card__brand-logo {
-  width: 20px;
-  height: 20px;
-  object-fit: contain;
-}
-
 .gear-card__exp {
   font-size: 0.7rem;
   color: var(--text-muted);
+  text-align: right;
   white-space: nowrap;
 }
 
-/* ── Skills ── */
+/* ── Skills: メイン+サブ3つで横幅いっぱい ── */
 
 .gear-card__skills {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-
-.gear-card__sub-skills {
-  display: flex;
-  gap: 0.3rem;
+  gap: 5px;
+  margin-top: 0.25rem;
+  align-items: flex-end;
 }
 
 .skill-icon {
+  flex: 1;
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   overflow: hidden;
   background: var(--border);
-  flex-shrink: 0;
+  min-width: 0;
 }
 
 .skill-icon img {
@@ -270,13 +267,11 @@ body {
 }
 
 .skill-icon--main {
-  width: 44px;
-  height: 44px;
+  flex: 1.3;
 }
 
 .skill-icon--sub {
-  width: 28px;
-  height: 28px;
+  flex: 1;
 }
 
 .skill-icon--unknown {
@@ -313,4 +308,15 @@ body {
   opacity: 0.6;
 }
 
-/* ─
+/* ── Status messages ── */
+
+.status {
+  text-align: center;
+  padding: 4rem;
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+.status--error {
+  color: #e05c5c;
+}
