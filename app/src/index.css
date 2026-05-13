@@ -1,25 +1,349 @@
 :root {
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
-  font-size: 16px;
-  color-scheme: light dark;
-  color: #213547;
-  background-color: #ffffff;
+  font-family: system-ui, 'Segoe UI', Roboto, 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
+
+  --bg:            #1a1a1e;
+  --surface:       #17172a;
+  --surface-hover: #20203a;
+  --border:        #2a2a45;
+  --text:          #eeeef8;
+  --text-muted:    #6060a0;
+  --accent:        #c8f030;
+  --accent-dim:    #9dc024;
+  --accent-dark:   #0d0d1a;
+  --accent2:       #ff7621;
+  --star-on:       #ffd700;
+  --star-off:      #2a2a45;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #ffffffde;
-    background-color: #242424;
-  }
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  /* Subtle dot grid background */
+  background-image: radial-gradient(circle, #ffffff08 1px, transparent 1px);
+  background-size: 28px 28px;
 }
 
-#root {
-  max-width: 1280px;
+/* ── App layout ── */
+
+.app {
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 0 1.5rem 3rem;
+}
+
+/* ── App header ── */
+
+.app-header {
+  padding: 2rem 0 1.5rem;
+  margin-bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.app-header__left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+/* .app-title は LogoSvg コンポーネントに移行済み */
+
+.app-subtitle {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding-left: 0.1rem;
+}
+
+.app-count {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--accent-dim);
+  background: rgba(200, 240, 48, 0.08);
+  border: 1px solid rgba(200, 240, 48, 0.2);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  align-self: flex-end;
+  margin-bottom: 0.15rem;
+  white-space: nowrap;
+}
+
+/* ── Header divider ── */
+
+.header-divider {
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent2) 40%, transparent 100%);
+  border-radius: 2px;
+  margin-bottom: 1.5rem;
+  opacity: 0.6;
+}
+
+/* ── Tabs ── */
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.75rem;
+  padding-bottom: 0;
+  border-bottom: none;
+  align-items: center;
+}
+
+.sort-select {
+  margin-left: auto;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  padding: 0.5rem 1.1rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236060a0' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2rem;
+}
+
+.sort-select:hover {
+  border-color: rgba(200, 240, 48, 0.4);
+  color: var(--text);
+  background-color: var(--surface-hover);
+}
+
+.tab {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  padding: 0.5rem 1.5rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-bottom: 0;
+  transition: all 0.15s;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tab:hover {
+  border-color: rgba(200, 240, 48, 0.4);
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.tab--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  box-shadow: 0 0 12px rgba(200, 240, 48, 0.3);
+}
+
+.tab__icon {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.tab__badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  line-height: 1.5;
+  color: inherit;
+  opacity: 0.8;
+}
+
+.tab--active .tab__badge {
+  background: rgba(0, 0, 0, 0.2);
+  opacity: 1;
+}
+
+/* ── Gear grid ── */
+
+.gear-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+/* ── Gear card ── */
+
+.gear-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.6rem 0.75rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.gear-card:hover {
+  background: var(--surface-hover);
+  transform: translateY(-2px);
+}
+
+/* ── Header: ブランドロゴ（左）・レアリティ（右） ── */
+
+.gear-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+
+.gear-card__brand-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 8px;
+  padding: 1px;
+}
+
+/* ── Stars ── */
+
+.gear-stars {
+  display: flex;
+  gap: 1px;
+}
+
+.star {
+  font-size: 0.72rem;
+  color: var(--star-off);
+}
+
+.star.filled {
+  color: var(--star-on);
+}
+
+/* ── Gear image ── */
+
+.gear-card__image-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.gear-card__image {
+  width: 108px;
+  height: 108px;
+  object-fit: contain;
+}
+
+/* ── Card text ── */
+
+.gear-card__name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.gear-card__exp {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ── Skills: メイン+サブ3つで横幅いっぱい ── */
+
+.gear-card__skills {
+  display: flex;
+  gap: 5px;
+  margin-top: 0.25rem;
+  align-items: flex-end;
+}
+
+.skill-icon {
+  flex: 1;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--border);
+  min-width: 0;
+}
+
+.skill-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.skill-icon--main {
+  flex: 1.3;
+}
+
+.skill-icon--sub {
+  flex: 1;
+}
+
+.skill-icon--unknown {
+  opacity: 0.4;
+}
+
+.skill-icon--empty {
+  opacity: 0.15;
+}
+
+/* ── Footer ── */
+
+.app-footer {
+  margin-top: 3rem;
+  padding: 1.25rem 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.app-footer__copy {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.app-footer__divider {
+  opacity: 0.4;
+}
+
+.app-footer__note {
+  opacity: 0.6;
+}
+
+/* ── Status messages ── */
+
+.status {
+  text-align: center;
+  padding: 4rem;
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+.status--error {
+  color: #e05c5c;
 }

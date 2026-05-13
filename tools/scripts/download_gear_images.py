@@ -53,6 +53,18 @@ def collect_gear_by_category(equipment: dict) -> dict[str, set[str]]:
     return result
 
 
+def collect_brand_urls(equipment: dict) -> set[str]:
+    """equipment JSON から brand_img URL を収集する。"""
+    urls: set[str] = set()
+    for section in GEAR_SECTIONS:
+        nodes = equipment.get("data", {}).get(section, {}).get("nodes", [])
+        for node in nodes:
+            url = node.get("brand", {}).get("image", {}).get("url", "")
+            if url:
+                urls.add(url)
+    return urls
+
+
 def collect_skill_urls(*json_files) -> set[str]:
     """複数の JSON ファイルから skill_img URL を収集する。"""
     urls: set[str] = set()
@@ -89,9 +101,12 @@ def main() -> None:
     all_json = sorted(DATA_DIR.glob("*.json"))
     skill_urls = collect_skill_urls(*all_json)
 
+    brand_urls = collect_brand_urls(equipment)
+
     total_gear = sum(len(v) for v in gear_by_cat.values())
     print(f"Gear images : {total_gear}  (head={len(gear_by_cat.get('head', []))}, clothing={len(gear_by_cat.get('clothing', []))}, shoes={len(gear_by_cat.get('shoes', []))})")
     print(f"Skill images: {len(skill_urls)}")
+    print(f"Brand images: {len(brand_urls)}")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -114,6 +129,16 @@ def main() -> None:
         fname = filename_from_url(url)
         if download(url, skill_dir / fname):
             print(f"  [skill] {fname}")
+            downloaded += 1
+        else:
+            skipped += 1
+
+    brand_dir = OUT_DIR / "brand"
+    brand_dir.mkdir(exist_ok=True)
+    for url in sorted(brand_urls):
+        fname = filename_from_url(url)
+        if download(url, brand_dir / fname):
+            print(f"  [brand] {fname}")
             downloaded += 1
         else:
             skipped += 1

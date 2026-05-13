@@ -41,14 +41,15 @@ def skill_entry(power_node: dict) -> dict:
 
 def gear_entry(node: dict, category: str, id_field: str) -> dict:
     return {
-        "id":      node[id_field],
-        "name":    node["name"],
-        "rarity":  node["rarity"],
-        "brand":   node["brand"]["name"],
-        "image":   local_image(node["image"]["url"], f"gear/{category}"),
+        "id":          node[id_field],
+        "name":        node["name"],
+        "rarity":      node["rarity"],
+        "brand":       node["brand"]["name"],
+        "brand_image": local_image(node["brand"]["image"]["url"], "brand"),
+        "image":       local_image(node["image"]["url"], f"gear/{category}"),
         "primary_skill":     skill_entry(node["primaryGearPower"]),
         "additional_skills": [skill_entry(p) for p in node["additionalGearPowers"]],
-        "exp":     node["stats"]["exp"],
+        "exp":         node["stats"]["exp"],
     }
 
 

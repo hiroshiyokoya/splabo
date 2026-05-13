@@ -1,4 +1,4 @@
-# geartoon
+<img src="app/public/geartoon-logo.png" alt="geartoon" height="300">
 
 Splatoon 3 の所持ギアを管理・検索するデスクトップアプリです。
 
@@ -98,6 +98,14 @@ npm run dev
 
 ---
 
+## 参考リポジトリ
+
+Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して以下を参照しました。
+
+- [samuelthomas2774/nxapi](https://github.com/samuelthomas2774/nxapi) — Nintendo Switch Online の認証・API アクセスライブラリ。本プロジェクトの認証基盤として使用。
+- [misenhower/splatoon3.ink](https://github.com/misenhower/splatoon3.ink) — nxapi + Docker による SplatNet 3 データ取得の実装例として参照。
+- [imink-app/f-API](https://github.com/imink-app/f-API) — Nintendo 認証に必要な f-token 生成 API（nxapi が内部で利用）。
+
 ## 技術メモ
 
 - **nxapi バージョン**: `1.6.1-next.254`（プレリリース）を使用。安定版では `nxapi-znca-api` への認証ができないため。
@@ -106,5 +114,15 @@ npm run dev
 
 ## 注意事項
 
-- SplatNet 3 は公式に安定提供された公開 API ではないため、任天堂側の仕様変更で動かなくなる可能性があります。
+- SplatNet 3 は任天堂が公式に公開している API ではありません。任天堂側の仕様変更により、予告なく動作しなくなる可能性があります。
+- 本ツールは個人の所持ギア管理を目的としています。過度なアクセスや商用利用はしないでください。
 - `tools/data/persist/` 配下の認証情報ファイルにはトークン類が含まれるため、コミットしないでください（`.gitignore` で除外済み）。
+- 認証に使用する Nintendo アカウントの情報はローカルにのみ保存されます。外部サーバーへの送信は nxapi・imink の仕様に準じます。
+
+## 免責事項
+
+This project is not affiliated with or endorsed by Nintendo. "Splatoon" is a trademark of Nintendo Co., Ltd.
+
+## License
+
+[MIT](LICENSE)
