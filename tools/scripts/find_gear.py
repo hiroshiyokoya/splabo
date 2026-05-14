@@ -18,8 +18,8 @@ Usage:
   -h, --help         このヘルプを表示
 
 例:
-  python3 scripts/find_gear.py --skill カムバック
-  python3 scripts/find_gear.py --skill カムバック --main
+  python3 scripts/find_gear.py --skill インク回復力アップ
+  python3 scripts/find_gear.py --skill インク回復力アップ --main
   python3 scripts/find_gear.py --skill インク回復力アップ --category clothing
   python3 scripts/find_gear.py --brand アナアキ --rarity 2
   python3 scripts/find_gear.py --category head --list
