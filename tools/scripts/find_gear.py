@@ -6,14 +6,14 @@ Usage:
   python3 scripts/find_gear.py [オプション]
 
 検索オプション（複数指定で AND 絞り込み）:
-  --skill  SKILL     指定スキルが付いているギアを検索（メイン or サブ）
-  --ap     N         --skill と組み合わせ: そのスキルの合計 AP が N 以上のギアに絞り込む
-                     AP 計算: メインスロット=10AP、サブスロット=3AP（最大19AP）
-  --main             --skill と組み合わせ: メインスロットのみ対象
-  --sub              --skill と組み合わせ: サブスロットのみ対象
-  --brand  BRAND     ブランド名で絞り込み（部分一致）
-  --category CAT     カテゴリで絞り込み: head / clothing / shoes
-  --rarity N         レアリティで絞り込み（0〜4）
+  --skill  SKILL[:N]  指定スキルが付いているギアを検索（メイン or サブ）
+                      "スキル名:N" 形式で合計 AP が N 以上のギアに絞り込む
+                      AP 計算: メインスロット=10AP、サブスロット=3AP（最大19AP）
+  --main              --skill と組み合わせ: メインスロットのみ対象
+  --sub               --skill と組み合わせ: サブスロットのみ対象
+  --brand  BRAND      ブランド名で絞り込み（部分一致）
+  --category CAT      カテゴリで絞り込み: head / clothing / shoes
+  --rarity N          レアリティで絞り込み（0〜4）
 
 表示オプション:
   --list             ギア名・ブランド・スキル構成を1行で簡潔に表示
@@ -21,13 +21,15 @@ Usage:
 
 例:
   python3 scripts/find_gear.py --skill インク回復力アップ
-  python3 scripts/find_gear.py --skill インク回復力アップ --ap 13
-  python3 scripts/find_gear.py --skill インク回復力アップ --ap 10 --category clothing
+  python3 scripts/find_gear.py --skill "インク回復力アップ:13"
+  python3 scripts/find_gear.py --skill "インク回復力アップ:10" --category clothing
   python3 scripts/find_gear.py --skill インク回復力アップ --main
   python3 scripts/find_gear.py --skill インク回復力アップ --category clothing
   python3 scripts/find_gear.py --brand アナアキ --rarity 2
   python3 scripts/find_gear.py --category head --list
 """
+
+from __future__ import annotations
 
 import json
 import sys
@@ -36,6 +38,21 @@ from pathlib import Path
 GEAR_DB = Path(__file__).parent.parent / "data" / "gear_db.json"
 
 CATEGORY_LABEL = {"head": "頭", "clothing": "服", "shoes": "靴"}
+
+
+def parse_skill_arg(value: str) -> tuple[str, int | None]:
+    """'スキル名' または 'スキル名:N' を (skill_name, min_ap | None) に分解する。"""
+    if ":" in value:
+        name, _, ap_str = value.rpartition(":")
+        if not name:
+            print(f"--skill の形式が不正です: {value!r}  （例: 'インク回復力アップ:13'）", file=sys.stderr)
+            sys.exit(1)
+        try:
+            return name.strip(), int(ap_str)
+        except ValueError:
+            print(f"--skill の AP 部分に整数を指定してください: {ap_str!r}", file=sys.stderr)
+            sys.exit(1)
+    return value.strip(), None
 
 
 def parse_args(argv: list[str]) -> dict:
@@ -56,14 +73,7 @@ def parse_args(argv: list[str]) -> dict:
             print(__doc__)
             sys.exit(0)
         elif arg == "--skill" and i + 1 < len(argv):
-            opts["skill"] = argv[i + 1]
-            i += 2
-        elif arg == "--ap" and i + 1 < len(argv):
-            try:
-                opts["min_ap"] = int(argv[i + 1])
-            except ValueError:
-                print(f"--ap には整数を指定してください: {argv[i + 1]!r}", file=sys.stderr)
-                sys.exit(1)
+            opts["skill"], opts["min_ap"] = parse_skill_arg(argv[i + 1])
             i += 2
         elif arg == "--main":
             opts["main_only"] = True
@@ -90,10 +100,6 @@ def parse_args(argv: list[str]) -> dict:
         else:
             print(f"不明な引数: {arg!r}", file=sys.stderr)
             sys.exit(1)
-
-    if opts["min_ap"] is not None and opts["skill"] is None:
-        print("--ap は --skill と組み合わせて使用してください。", file=sys.stderr)
-        sys.exit(1)
 
     return opts
 
