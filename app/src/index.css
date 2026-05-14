@@ -1514,4 +1514,99 @@ body {
   max-height: 260px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color:
+  scrollbar-color: var(--border) transparent;
+}
+
+.combo-result-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.12s;
+  text-align: left;
+  width: 100%;
+  position: relative;
+}
+
+.combo-result-row:hover {
+  border-color: var(--accent-hover-border);
+  background: var(--accent-hover-bg);
+}
+
+.combo-result-row--best {
+  border-color: rgba(200, 240, 48, 0.4);
+  background: var(--accent-active-bg);
+}
+
+.combo-result-row__badge {
+  position: absolute;
+  top: -8px;
+  left: 10px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  background: var(--accent);
+  color: var(--accent-dark);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  line-height: 1.6;
+}
+
+.combo-result-row__gears {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.combo-result-row__gears img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #000;
+}
+
+.combo-result-row__plus {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.combo-result-row__ap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  flex: 1;
+}
+
+.combo-result-ap-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.combo-result-ap-chip img {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #000;
+}
+
+/* ── Status messages ── */
+
+.status {
+  text-align: center;
+  padding: 4rem;
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+.status--error {
+  color: #e05c5c;
+}

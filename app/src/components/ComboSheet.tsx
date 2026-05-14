@@ -443,4 +443,68 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
                 onClick={handleGenerate}
                 disabled={activeRequirements === 0 || searching}
               >
-                {searching ? '�
+                {searching ? '🔍 探索中...' : '⚡ コンボ生成'}
+              </button>
+              {activeRequirements === 0 && (
+                <span className="combo-gen-hint">目標スキルを指定してください</span>
+              )}
+            </div>
+
+            {/* 結果リスト */}
+            {comboResults !== null && (
+              <div className="combo-results">
+                <div className="combo-results__count">
+                  {comboResults.length === 0
+                    ? '条件に合う組み合わせが見つかりませんでした'
+                    : `${comboResults.length} 件の候補（タップで適用）`}
+                </div>
+                <div className="combo-results__list">
+                  {comboResults.map((combo, i) => (
+                    <button
+                      key={i}
+                      className={`combo-result-row ${i === 0 ? 'combo-result-row--best' : ''}`}
+                      onClick={() => handleApplyCombo(combo)}
+                    >
+                      {i === 0 && <span className="combo-result-row__badge">ベスト</span>}
+                      <div className="combo-result-row__gears">
+                        <img src={`/data/${combo.head.image}`}     alt={combo.head.name}     title={combo.head.name} />
+                        <span className="combo-result-row__plus">+</span>
+                        <img src={`/data/${combo.clothing.image}`} alt={combo.clothing.name} title={combo.clothing.name} />
+                        <span className="combo-result-row__plus">+</span>
+                        <img src={`/data/${combo.shoes.image}`}    alt={combo.shoes.name}    title={combo.shoes.name} />
+                      </div>
+                      <div className="combo-result-row__ap">
+                        {Object.entries(combo.totalAp)
+                          .sort(([aId, aAp], [bId, bAp]) => {
+                            const aMain = isMainOnly(Number(aId))
+                            const bMain = isMainOnly(Number(bId))
+                            if (aMain && !bMain) return -1
+                            if (!aMain && bMain) return 1
+                            return bAp - aAp
+                          })
+                          .map(([skillIdStr, ap]) => {
+                            const sid = Number(skillIdStr)
+                            const mainOnly = isMainOnly(sid)
+                            const info = stackableSkills.find(s => s.id === sid)
+                              ?? Object.values(mainOnlyByCategory).flat().find(s => s.id === sid)
+                            return info ? (
+                              <div key={skillIdStr} className="combo-result-ap-chip">
+                                <img src={`/data/${info.image}`} alt={info.name} title={info.name} />
+                                {!mainOnly && <span>{ap}pt</span>}
+                              </div>
+                            ) : null
+                          })}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        </div>
+      </div>
+    </div>
+  )
+}
