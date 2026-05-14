@@ -2,9 +2,9 @@ import type { GearItem } from '../types'
 
 interface Props {
   gear:      GearItem
-  /** コンボ探索モードで選択済みの場合 true */
+  /** コーデモードで選択済みの場合 true */
   selected?: boolean
-  /** コンボ探索モードでタップ時のコールバック */
+  /** コーデモードでタップ時のコールバック */
   onSelect?: () => void
 }
 

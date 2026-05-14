@@ -214,7 +214,7 @@ function App() {
 
   const handleReset = useCallback(() => setFilter(emptyFilter()), [])
 
-  // ── コンボ探索 ──────────────────────────────────────────────
+  // ── コーデ ──────────────────────────────────────────────────
 
   /** カードタップ → 現在タブのスロットに入れる（タブは自動遷移しない） */
   const handleSelectForCombo = useCallback((gear: GearItem) => {
@@ -231,7 +231,7 @@ function App() {
     setComboSlots(emptySlots())
   }, [])
 
-  /** コンボ候補をタップしてスロットに適用 */
+  /** コーデ候補をタップしてスロットに適用 */
   const handleApplyCombo = useCallback((combo: ComboResult) => {
     setComboSlots({ head: combo.head, clothing: combo.clothing, shoes: combo.shoes })
   }, [])

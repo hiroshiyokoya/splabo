@@ -41,6 +41,14 @@
   /* ── Background dot grid ── */
   --dot-color: #ffffff08;
   --dot-size:  28px;
+
+  /* ── Combo sheet theme ── */
+  /* カラーテーマ選択肢: A=パープル(default), B=ネイビー+オレンジ, C=グリーン, D=ダークオレンジ */
+  --sheet-bg:            rgba(35, 25, 70, 0.75);   /* シート背景色 */
+  --sheet-surface:       rgba(35, 25, 70, 0.35);   /* AP barなど内部パネル背景 */
+  --sheet-border-top:    rgba(200, 240, 48, 0.6);  /* 上辺ボーダー色 */
+  --sheet-border-width:  2px;                       /* 上辺ボーダー太さ */
+  --sheet-blur:          14px;                      /* 背景ブラー強度 */
 }
 
 * { box-sizing: border-box; }
@@ -984,10 +992,10 @@ body {
 /* ── Combo sheet 本体 ── */
 
 .combo-sheet {
-  background: rgba(20, 18, 38, 0.88);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--sheet-bg);
+  backdrop-filter: blur(var(--sheet-blur));
+  -webkit-backdrop-filter: blur(var(--sheet-blur));
+  border-top: var(--sheet-border-width) solid var(--sheet-border-top);
   border-radius: 16px 16px 0 0;
   box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4);
   height: 0;
@@ -1239,8 +1247,8 @@ body {
 /* ── Combo AP bar ── */
 
 .combo-ap-bar {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   padding: 0 0.75rem;
   height: 36px;

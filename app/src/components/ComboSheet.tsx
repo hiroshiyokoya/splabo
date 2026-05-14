@@ -21,13 +21,13 @@ const STEP_VALUES = [
   29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
   39, 41, 42, 44, 45, 47, 48, 51, 54, 57,
 ] as const
-function stepUp(v: number) {
-  const i = STEP_VALUES.indexOf(v as typeof STEP_VALUES[number])
-  return i >= 0 && i < STEP_VALUES.length - 1 ? STEP_VALUES[i + 1] : v
+/** v より大きく、aAvail 以下のメインスロットで達成可能な最小の STEP_VALUE を返す */
+function stepUp(v: number, aAvail: number = 3, maxPts: number = 57) {
+  return STEP_VALUES.find(x => x > v && x <= maxPts && minMainsNeeded(x) <= aAvail) ?? v
 }
-function stepDown(v: number) {
-  const i = STEP_VALUES.indexOf(v as typeof STEP_VALUES[number])
-  return i > 0 ? STEP_VALUES[i - 1] : 0
+/** v より小さく、aAvail 以下のメインスロットで達成可能な最大の STEP_VALUE を返す */
+function stepDown(v: number, aAvail: number = 3) {
+  return [...STEP_VALUES].reverse().find(x => x < v && minMainsNeeded(x) <= aAvail) ?? 0
 }
 /** v を達成するのに最低何メインスロット必要か（不可能なら Infinity） */
 function minMainsNeeded(v: number): number {
@@ -237,11 +237,6 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
     setComboResults(null)
   }
 
-  const handleClose = () => {
-    setIsOpen(false)
-    setSnapExpanded(false)
-  }
-
   const toggleMainOnly = (cat: GearCategory, id: number) => {
     setMainOnlySel(prev => ({
       ...prev,
@@ -255,16 +250,15 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
     const isActive = pts > 0
     // このスキルに割り当てられる上限 = 現在値 + 残りプール
     const maxPts = pts + remainingPool
-    const next = stepUp(pts)
-    // +ボタン: 合計プール超過 OR 残りメインスロットで達成不可 の場合は無効
-    const canStepUp = next !== pts && next <= maxPts && minMainsNeeded(next) <= aAvail
+    const next = stepUp(pts, aAvail, maxPts)
+    const canStepUp = next !== pts
     return (
       <div key={s.id} className={`combo-skill-row ${isActive ? 'combo-skill-row--active' : ''}`}>
         <img className="combo-skill-row__icon" src={`/data/${s.image}`} alt={s.name} />
         <span className="combo-skill-row__name">{s.name}</span>
         <div className="stepper">
           <button className="stepper__btn"
-            onClick={() => { const n = stepDown(pts); setSkillPoints(prev => { const m = new Map(prev); m.set(s.id, n); return m }); setComboResults(null) }}
+            onClick={() => { const n = stepDown(pts, aAvail); setSkillPoints(prev => { const m = new Map(prev); m.set(s.id, n); return m }); setComboResults(null) }}
             disabled={pts === 0}
             aria-label={`${s.name} を下げる`}>−</button>
           <span className="stepper__value">{pts === 0 ? '−' : `${pts}pt`}</span>
@@ -288,7 +282,7 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         role="button"
-        aria-label={isOpen ? (snapExpanded ? '縮小' : 'コンボ探索を閉じる') : 'コンボ探索を開く'}
+        aria-label={isOpen ? (snapExpanded ? '縮小' : 'コーデを閉じる') : 'コーデを開く'}
         style={{ touchAction: 'none' }}
       >
         <div className="combo-sheet__handle" />
@@ -299,20 +293,17 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
         ref={sheetRef}
         className={`combo-sheet${isOpen ? ' combo-sheet--open' : ''}${snapExpanded ? ' combo-sheet--expanded' : ''}`}
         role="dialog"
-        aria-label="コンボ探索"
+        aria-label="コーデ"
         aria-modal="false"
       >
         {/* ヘッダー */}
         <div className="combo-sheet__header">
-          <span className="combo-sheet__title">🎮 コンボ探索</span>
-          <div className="combo-sheet__header-actions">
-            {anyFilled && (
-              <button className="combo-sheet__clear-btn" onClick={() => { onClearAll(); setComboResults(null) }}>
-                クリア
-              </button>
-            )}
-            <button className="combo-sheet__close" onClick={handleClose} aria-label="閉じる">✕</button>
-          </div>
+          <span className="combo-sheet__title">🎮 コーデ</span>
+          {anyFilled && (
+            <button className="combo-sheet__clear-btn" onClick={() => { onClearAll(); setComboResults(null) }}>
+              クリア
+            </button>
+          )}
         </div>
 
         <div className="combo-sheet__body">
@@ -436,14 +427,14 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
               </div>
             </div>
 
-            {/* コンボ生成ボタン */}
+            {/* コーデ生成ボタン */}
             <div className="combo-sheet__actions">
               <button
                 className="combo-gen-btn"
                 onClick={handleGenerate}
                 disabled={activeRequirements === 0 || searching}
               >
-                {searching ? '🔍 探索中...' : '⚡ コンボ生成'}
+                {searching ? '🔍 探索中...' : '⚡ コーデ生成'}
               </button>
               {activeRequirements === 0 && (
                 <span className="combo-gen-hint">目標スキルを指定してください</span>
