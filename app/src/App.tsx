@@ -2,7 +2,10 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useGearDB } from './hooks/useGearDB'
 import { GearCard } from './components/GearCard'
 import { FilterDrawer, emptyFilter, countActiveFilters } from './components/FilterDrawer'
+import { ComboSheet, emptySlots } from './components/ComboSheet'
 import type { FilterState } from './components/FilterDrawer'
+import type { ComboSlots } from './components/ComboSheet'
+import type { ComboResult } from './utils/findCombo'
 import type { GearCategory, GearItem, Skill } from './types'
 import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from './constants/gearPowerMeta'
 
@@ -86,8 +89,10 @@ function App() {
   const { data, loading, error, lastFetchedAt } = useGearDB()
   const [activeTab, setActiveTab]   = useState<GearCategory>('head')
   const [sortKey, setSortKey]       = useState<SortKey>('name')
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [filter, setFilter]         = useState<FilterState>(emptyFilter)
+  const [drawerOpen, setDrawerOpen]       = useState(false)
+  const [filter, setFilter]               = useState<FilterState>(emptyFilter)
+  const [comboOpen, setComboOpen]   = useState(false)
+  const [comboSlots, setComboSlots] = useState<ComboSlots>(emptySlots)
   const [showScrollTop, setShowScrollTop] = useState(false)
   const appTopRef = useRef<HTMLDivElement | null>(null)
   const scrollTopHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -209,6 +214,28 @@ function App() {
 
   const handleReset = useCallback(() => setFilter(emptyFilter()), [])
 
+  // ── コンボ探索 ──────────────────────────────────────────────
+
+  /** カードタップ → 現在タブのスロットに入れる（タブは自動遷移しない） */
+  const handleSelectForCombo = useCallback((gear: GearItem) => {
+    setComboSlots(prev => ({ ...prev, [activeTab]: gear }))
+  }, [activeTab])
+
+  /** スロット解除 → そのカテゴリのタブに戻して再選択しやすくする */
+  const handleClearComboSlot = useCallback((cat: GearCategory) => {
+    setComboSlots(prev => ({ ...prev, [cat]: null }))
+    setActiveTab(cat)
+  }, [])
+
+  const handleClearAllComboSlots = useCallback(() => {
+    setComboSlots(emptySlots())
+  }, [])
+
+  /** コンボ候補をタップしてスロットに適用 */
+  const handleApplyCombo = useCallback((combo: ComboResult) => {
+    setComboSlots({ head: combo.head, clothing: combo.clothing, shoes: combo.shoes })
+  }, [])
+
   const activeFilterCount = countActiveFilters(filter)
 
   if (loading) return <div className="status">ギアデータを読み込み中...</div>
@@ -218,7 +245,7 @@ function App() {
   const total = data.head.length + data.clothing.length + data.shoes.length
 
   return (
-    <div className="app">
+    <div className={`app${comboOpen ? ' app--combo-open' : ''}`}>
       <div ref={appTopRef} className="app-top app-top--sticky">
         <header className="app-header">
           <div className="app-header__left">
@@ -329,9 +356,14 @@ function App() {
         </div>
       )}
 
-      <div className="gear-grid">
+      <div className={`gear-grid${comboOpen ? ' gear-grid--combo-mode' : ''}`}>
         {items.map((gear) => (
-          <GearCard key={gear.id} gear={gear} />
+          <GearCard
+            key={gear.id}
+            gear={gear}
+            selected={comboOpen && comboSlots[activeTab]?.id === gear.id}
+            onSelect={comboOpen ? () => handleSelectForCombo(gear) : undefined}
+          />
         ))}
         {items.length === 0 && (
           <div className="status">該当するギアがありません</div>
@@ -401,6 +433,15 @@ function App() {
         </button>
       )}
 
+      <ComboSheet
+        data={data}
+        slots={comboSlots}
+        onClearSlot={handleClearComboSlot}
+        onClearAll={handleClearAllComboSlots}
+        onApplyCombo={handleApplyCombo}
+        onIsOpenChange={setComboOpen}
+      />
+
       <FilterDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
@@ -419,3 +460,4 @@ function App() {
 }
 
 export default App
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
