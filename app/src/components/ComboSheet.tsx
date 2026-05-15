@@ -32,6 +32,10 @@ function stepUp(v: number, aAvail: number = 3, maxPts: number = 57) {
 function stepDown(v: number, aAvail: number = 3) {
   return [...STEP_VALUES].reverse().find(x => x < v && minMainsNeeded(x) <= aAvail) ?? 0
 }
+/** aAvail・maxPts 制約の中で達成可能な最大の STEP_VALUE を返す */
+function stepMax(aAvail: number, maxPts: number) {
+  return [...STEP_VALUES].reverse().find(x => x <= maxPts && minMainsNeeded(x) <= aAvail) ?? 0
+}
 /** v を達成するのに最低何メインスロット必要か（不可能なら Infinity） */
 function minMainsNeeded(v: number): number {
   for (let a = 0; a <= 3; a++) {
@@ -426,12 +430,12 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
     const next = stepUp(pts, aAvail, maxPts)
     const canStepUp = next !== pts
 
-    const stepDownOnce = () => {
+    const stepDownOnce = (e: React.MouseEvent<HTMLButtonElement>) => {
       if (stepperIgnoreClickRef.current) {
         stepperIgnoreClickRef.current = false
         return
       }
-      const n = stepDown(pts, aAvail)
+      const n = e.shiftKey ? 0 : stepDown(pts, aAvail)
       if (n === pts) return
       setSkillPoints(prev => {
         const m = new Map(prev)
@@ -440,15 +444,17 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
       })
       setComboResults(null)
     }
-    const stepUpOnce = () => {
+    const stepUpOnce = (e: React.MouseEvent<HTMLButtonElement>) => {
       if (stepperIgnoreClickRef.current) {
         stepperIgnoreClickRef.current = false
         return
       }
       if (!canStepUp) return
+      const n = e.shiftKey ? stepMax(aAvail, maxPts) : next
+      if (n === pts) return
       setSkillPoints(prev => {
         const m = new Map(prev)
-        m.set(s.id, next)
+        m.set(s.id, n)
         return m
       })
       setComboResults(null)

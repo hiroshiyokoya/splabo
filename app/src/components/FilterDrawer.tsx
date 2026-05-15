@@ -57,6 +57,10 @@ function stepDown(current: number): number {
   return idx > 0 ? STEP_VALUES[idx - 1] : 0
 }
 
+function stepMax(maxAllowed: number): number {
+  return [...STEP_VALUES].filter(x => x <= maxAllowed).pop() ?? 0
+}
+
 export function FilterDrawer({
   open,
   onClose,
@@ -184,7 +188,7 @@ export function FilterDrawer({
                     <div className="stepper">
                       <button
                         className="stepper__btn"
-                        onClick={() => onSetSkillPoints(s.id, stepDown(pts))}
+                        onClick={e => onSetSkillPoints(s.id, e.shiftKey ? 0 : stepDown(pts))}
                         disabled={pts === 0}
                         aria-label={`${s.name} を下げる`}
                       >
@@ -195,7 +199,7 @@ export function FilterDrawer({
                       </span>
                       <button
                         className="stepper__btn"
-                        onClick={() => onSetSkillPoints(s.id, stepUp(pts))}
+                        onClick={e => onSetSkillPoints(s.id, e.shiftKey ? stepMax(ptsBudget - (stackTotalPts - pts)) : stepUp(pts))}
                         disabled={disableIncrease}
                         aria-label={`${s.name} を上げる`}
                       >
