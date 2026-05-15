@@ -716,7 +716,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                 {stackableSkills.map(s => renderStackableRow(s))}
                 <div className={`combo-skill-row ${akiTarget > 0 ? 'combo-skill-row--active' : ''}`}>
                   <img className="combo-skill-row__icon" src="/data/images/skill/dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91_0.png" alt="アキ枠" />
-                  <span className="combo-skill-row__name">アキ枠</span>
+                  <span className="combo-skill-row__name">アキ</span>
                   <div className="stepper">
                     <button
                       type="button"
