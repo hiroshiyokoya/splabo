@@ -80,6 +80,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
   const [isOpen, setIsOpen]             = useState(false)
   const [snapExpanded, setSnapExpanded] = useState(false)
   const [skillPoints, setSkillPoints]   = useState<Map<number, number>>(new Map())
+  const [akiTarget, setAkiTarget]       = useState(0)
   /** スロット解除直後のみ: 同スロットを再タップで戻すためのスナップショット */
   const [slotUndo, setSlotUndo] = useState<ComboSlots>(emptySlots())
   /** 削除直後のみ true: 丸い UNDO ボタンを表示 */
@@ -222,13 +223,14 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
 
   const activeRequirements =
     [...skillPoints.values()].filter(v => v > 0).length +
-    Object.values(mainOnlySel).filter(v => v !== null).length
+    Object.values(mainOnlySel).filter(v => v !== null).length +
+    (akiTarget > 0 ? 1 : 0)
 
   // ── AP プール制約ロジック ──
   // 選択中の発動型数（0〜3）。発動型はメインスロット1枠=10APを占有する
   const numMainOnly = (Object.values(mainOnlySel) as (number | null)[]).filter(v => v !== null).length
-  // スタック型に使えるAPプール = 空きメインスロット×10 + サブスロット9枠×3
-  const stackablePool = (3 - numMainOnly) * 10 + 27
+  // スタック型に使えるAPプール = 空きメインスロット×10 + (サブスロット9枠 - アキ目標枠)×3
+  const stackablePool = (3 - numMainOnly) * 10 + Math.max(0, 9 - akiTarget) * 3
   // 現在スタック型に割り当てたAP合計
   const allocatedStackable = [...skillPoints.values()].reduce((s, v) => s + v, 0)
   // 残りプール（スタック型間で再配分可能）
@@ -366,7 +368,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
 
     setSearching(true)
     setTimeout(() => {
-      const results = findCombo(data, requirements, 50)
+      const results = findCombo(data, requirements, 50, akiTarget)
       setComboResults(results)
       setSearching(false)
     }, 0)
@@ -375,6 +377,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
   const handleClearRequirements = () => {
     setSkillPoints(new Map())
     setMainOnlySel({ head: null, clothing: null, shoes: null })
+    setAkiTarget(0)
     setComboResults(null)
   }
 
@@ -711,6 +714,28 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
               {/* スタック型 全14個を3列グリッドで */}
               <div className="combo-stackable-grid">
                 {stackableSkills.map(s => renderStackableRow(s))}
+              </div>
+
+              {/* アキ枠 */}
+              <div className="combo-skill-row combo-aki-row">
+                <span className="combo-skill-row__name combo-aki-row__label">アキ枠（合計）</span>
+                <div className="stepper">
+                  <button
+                    type="button"
+                    className="stepper__btn"
+                    onClick={e => { setAkiTarget(e.shiftKey ? 0 : Math.max(0, akiTarget - 1)); setComboResults(null) }}
+                    disabled={akiTarget === 0}
+                    aria-label="アキ枠を減らす"
+                  >−</button>
+                  <span className="stepper__value">{akiTarget === 0 ? '−' : akiTarget}</span>
+                  <button
+                    type="button"
+                    className="stepper__btn"
+                    onClick={e => { setAkiTarget(e.shiftKey ? 9 : Math.min(9, akiTarget + 1)); setComboResults(null) }}
+                    disabled={akiTarget >= 9}
+                    aria-label="アキ枠を増やす"
+                  >＋</button>
+                </div>
               </div>
             </div>
 

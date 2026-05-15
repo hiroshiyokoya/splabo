@@ -40,6 +40,11 @@ function gearAp(gear: GearItem, skillIds: number[]): Record<number, number> {
   return ap
 }
 
+/** 1ギアのアキ（id=-1）サブスロット数 */
+function countEmptySlots(gear: GearItem): number {
+  return gear.additional_skills.filter(s => s.id === -1).length
+}
+
 /** 3着について、スキルIDごとの装備内AP（メイン10・サブ3、id=-1 は除く） */
 function outfitApBySkill(head: GearItem, clothing: GearItem, shoes: GearItem): Map<number, number> {
   const map = new Map<number, number>()
@@ -85,6 +90,8 @@ export function getComboSortKey(combo: ComboResult): ComboSortKey {
     vals.push(v)
   }
   vals.sort((a, b) => b - a)
+  // アキ枠は1pt換算でallSumに加算（サブ3ptより低い価値として意図的に設定）
+  allSum += countEmptySlots(combo.head) + countEmptySlots(combo.clothing) + countEmptySlots(combo.shoes)
   return { targetSum, allSum, perSkillDesc: vals }
 }
 
@@ -250,17 +257,18 @@ function pickNearGroups(
  * 特定スロット前提の枝刈りは行わない（惜しい候補の取りこぼしを防ぐ）。
  */
 export function findCombo(
-  data:         GearDB,
-  requirements: SkillRequirement[],
-  limit = 50,
+  data:            GearDB,
+  requirements:    SkillRequirement[],
+  limit        = 50,
+  minAkiSlots  = 0,
 ): ComboResult[] {
-  if (requirements.length === 0) return []
+  if (requirements.length === 0 && minAkiSlots === 0) return []
 
   const skillIds = requirements.map(r => r.skillId)
 
-  const heads     = data.head.map(g     => ({ gear: g, ap: gearAp(g, skillIds) }))
-  const clothings = data.clothing.map(g => ({ gear: g, ap: gearAp(g, skillIds) }))
-  const shoesAll  = data.shoes.map(g    => ({ gear: g, ap: gearAp(g, skillIds) }))
+  const heads     = data.head.map(g     => ({ gear: g, ap: gearAp(g, skillIds), aki: countEmptySlots(g) }))
+  const clothings = data.clothing.map(g => ({ gear: g, ap: gearAp(g, skillIds), aki: countEmptySlots(g) }))
+  const shoesAll  = data.shoes.map(g    => ({ gear: g, ap: gearAp(g, skillIds), aki: countEmptySlots(g) }))
 
   const valid: ComboResult[] = []
   const nearLimit = Math.min(NEAR_LIMIT, limit)
@@ -269,19 +277,22 @@ export function findCombo(
 
   for (const h of heads) {
     for (const c of clothings) {
+      const hcAki = h.aki + c.aki
       /** 同一 (h,c) で不足が最小になる靴だけヒープ候補にする（全靴より欠損が悪いものは捨ててよい） */
       let minNearDeficit = Infinity
-      const bestNearShoes: GAp[] = []
+      const bestNearShoes: typeof shoesAll = []
 
       for (const sh of shoesAll) {
-        const met = requirements.every(r =>
+        const skillsMet = requirements.every(r =>
           h.ap[r.skillId] + c.ap[r.skillId] + sh.ap[r.skillId] >= r.minAp,
         )
-        if (met) {
+        const akiMet = hcAki + sh.aki >= minAkiSlots
+        if (skillsMet && akiMet) {
           valid.push(buildComboResult(h, c, sh, skillIds))
           continue
         }
         const d = deficitSum(requirements, h.ap, c.ap, sh.ap)
+          + Math.max(0, minAkiSlots - (hcAki + sh.aki)) * 3
         if (d < minNearDeficit) {
           minNearDeficit = d
           bestNearShoes.length = 0
