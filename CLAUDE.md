@@ -36,9 +36,9 @@ bashのマウント経由でgitを実行すると、Windowsホスト上の実際
 | git log / diff / status の確認 | **ユーザーがWindowsターミナル（PowerShell）から実行** |
 | コミットメッセージの作成 | Claude が提案し、ユーザーが貼り付けて実行 |
 
-### Claude Code（Mac上で直接アクセス）の場合
+### Claude Code（ローカルに直接アクセスする環境）の場合
 
-Claude CodeはMacのファイルシステムに直接アクセスするため、sync問題は発生しない。
+Claude Code はホストのファイルシステムに直接アクセスするため、sync問題は発生しない。
 bashからのgit操作（add・commit・push等）を Claude Code が直接実行してよい。
 
 | 操作 | 方法 |
