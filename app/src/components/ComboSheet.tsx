@@ -711,30 +711,29 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                 )
               })}
 
-              {/* スタック型 全14個を3列グリッドで */}
+              {/* スタック型 + アキ枠を同列グリッドで */}
               <div className="combo-stackable-grid">
                 {stackableSkills.map(s => renderStackableRow(s))}
-              </div>
-
-              {/* アキ枠 */}
-              <div className="combo-skill-row combo-aki-row">
-                <span className="combo-skill-row__name combo-aki-row__label">アキ枠（合計）</span>
-                <div className="stepper">
-                  <button
-                    type="button"
-                    className="stepper__btn"
-                    onClick={e => { setAkiTarget(e.shiftKey ? 0 : Math.max(0, akiTarget - 1)); setComboResults(null) }}
-                    disabled={akiTarget === 0}
-                    aria-label="アキ枠を減らす"
-                  >−</button>
-                  <span className="stepper__value">{akiTarget === 0 ? '−' : akiTarget}</span>
-                  <button
-                    type="button"
-                    className="stepper__btn"
-                    onClick={e => { setAkiTarget(e.shiftKey ? 9 : Math.min(9, akiTarget + 1)); setComboResults(null) }}
-                    disabled={akiTarget >= 9}
-                    aria-label="アキ枠を増やす"
-                  >＋</button>
+                <div className={`combo-skill-row ${akiTarget > 0 ? 'combo-skill-row--active' : ''}`}>
+                  <img className="combo-skill-row__icon" src="/data/images/skill/dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91_0.png" alt="アキ枠" />
+                  <span className="combo-skill-row__name">アキ枠</span>
+                  <div className="stepper">
+                    <button
+                      type="button"
+                      className="stepper__btn"
+                      onClick={e => { setAkiTarget(e.shiftKey ? 0 : Math.max(0, akiTarget - 1)); setComboResults(null) }}
+                      disabled={akiTarget === 0}
+                      aria-label="アキ枠を減らす"
+                    >−</button>
+                    <span className="stepper__value">{akiTarget === 0 ? '−' : akiTarget}</span>
+                    <button
+                      type="button"
+                      className="stepper__btn"
+                      onClick={e => { setAkiTarget(e.shiftKey ? 9 : Math.min(9, akiTarget + 1)); setComboResults(null) }}
+                      disabled={akiTarget >= 9}
+                      aria-label="アキ枠を増やす"
+                    >＋</button>
+                  </div>
                 </div>
               </div>
             </div>

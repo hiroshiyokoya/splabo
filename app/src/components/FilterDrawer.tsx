@@ -216,25 +216,26 @@ export function FilterDrawer({
                 )
               })}
             </div>
-          </section>
-
-          {/* アキ（空きサブスロット） */}
-          <section className="drawer-section">
-            <div className="drawer-section__label">アキ枠</div>
-            <div className="stepper stepper--standalone">
-              <button
-                className="stepper__btn"
-                onClick={e => onSetAkiMin(e.shiftKey ? 0 : Math.max(0, filter.akiMin - 1))}
-                disabled={filter.akiMin === 0}
-                aria-label="アキ枠を減らす"
-              >−</button>
-              <span className="stepper__value">{filter.akiMin === 0 ? '−' : filter.akiMin}</span>
-              <button
-                className="stepper__btn"
-                onClick={e => onSetAkiMin(e.shiftKey ? 3 : Math.min(3, filter.akiMin + 1))}
-                disabled={filter.akiMin >= 3 || ptsBudget - 3 < 0}
-                aria-label="アキ枠を増やす"
-              >＋</button>
+              {/* アキ枠（スタック型と同列） */}
+              <div className={`skill-chip skill-chip--stepper ${filter.akiMin > 0 ? 'skill-chip--active' : ''}`}>
+                <img src="/data/images/skill/dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91_0.png" alt="" aria-hidden="true" />
+                <span className="skill-chip__name">アキ枠</span>
+                <div className="stepper">
+                  <button
+                    className="stepper__btn"
+                    onClick={e => onSetAkiMin(e.shiftKey ? 0 : Math.max(0, filter.akiMin - 1))}
+                    disabled={filter.akiMin === 0}
+                    aria-label="アキ枠を減らす"
+                  >−</button>
+                  <span className="stepper__value">{filter.akiMin === 0 ? '−' : filter.akiMin}</span>
+                  <button
+                    className="stepper__btn"
+                    onClick={e => onSetAkiMin(e.shiftKey ? 3 : Math.min(3, filter.akiMin + 1))}
+                    disabled={filter.akiMin >= 3 || ptsBudget - 3 < 0}
+                    aria-label="アキ枠を増やす"
+                  >＋</button>
+                </div>
+              </div>
             </div>
           </section>
 
