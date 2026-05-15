@@ -1085,6 +1085,7 @@ body {
 }
 
 .combo-sheet__clear-btn {
+  margin-top: 6px;
   background: none;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -1686,8 +1687,9 @@ body {
   scrollbar-color: var(--border) transparent;
 }
 
-/* 1 位の「ベスト」バッジが top: -8px はみ出すため、スクロール枠内に余白を確保 */
-.combo-results__list:has(.combo-result-row--best) {
+/* 1 位の「ベスト」／「惜しい」バッジが top: -8px はみ出すため、スクロール枠内に余白を確保 */
+.combo-results__list:has(.combo-result-row--best),
+.combo-results__list:has(.combo-result-row--near) {
   padding-top: 12px;
 }
 
@@ -1716,6 +1718,16 @@ body {
   background: var(--accent-active-bg);
 }
 
+.combo-result-row--near {
+  border-color: rgba(255, 120, 120, 0.35);
+  background: rgba(255, 80, 80, 0.06);
+}
+
+.combo-result-row--near:hover {
+  border-color: rgba(255, 140, 140, 0.45);
+  background: rgba(255, 80, 80, 0.09);
+}
+
 .combo-result-row__badge {
   position: absolute;
   top: -8px;
@@ -1733,6 +1745,16 @@ body {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.22),
     0 1px 6px rgba(0, 0, 0, 0.22);
+}
+
+.combo-result-row__badge--near {
+  color: #fff;
+  background: rgba(220, 70, 70, 0.62);
+  backdrop-filter: blur(8px) saturate(1.2);
+  -webkit-backdrop-filter: blur(8px) saturate(1.2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 1px 6px rgba(0, 0, 0, 0.28);
 }
 
 .combo-result-row__gears {

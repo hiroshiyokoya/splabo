@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react'
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import type { GearCategory, GearItem, GearDB } from '../types'
-import { findCombo, MAIN_AP, SUB_AP } from '../utils/findCombo'
-import type { ComboResult } from '../utils/findCombo'
+import { findCombo, MAIN_AP, SUB_AP, getComboSortKey, comboBestBadgeKeysEqual } from '../utils/findCombo'
+import type { ComboResult, ComboSortKey } from '../utils/findCombo'
 import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from '../constants/gearPowerMeta'
 
 export type ComboSlots = {
@@ -88,6 +88,12 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
   const drag = useRef<{ startY: number; startH: number; moved: boolean } | null>(null)
   /** 削除直後に表示する UNDO ボタンを消すタイマー（カテゴリ別） */
   const undoBtnTimers = useRef<Partial<Record<GearCategory, ReturnType<typeof setTimeout>>>>({})
+  /** スタック型ステッパ長押し: 遅延後に連続変更 */
+  const stepperHoldRef = useRef<{ t?: ReturnType<typeof setTimeout>; i?: ReturnType<typeof setInterval> } | null>(null)
+  /** 長押しで連続したあと発火する click を1回無視する */
+  const stepperIgnoreClickRef = useRef(false)
+  /** 長押し tick 内で参照する最新のプール・aAvail（毎レンダーで更新） */
+  const comboStepperCtxRef = useRef({ skillPoints, remainingPool: 0, aAvail: 3 })
 
   useEffect(() => { onIsOpenChange?.(isOpen) }, [isOpen])
 
@@ -203,6 +209,13 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
     return map
   }, [data])
 
+  /** リスト先頭の満たす候補と targetSum・allSum が同じなら「ベスト」（単体AP配列は見ない） */
+  const bestPerfectSortKeys = useMemo((): ComboSortKey | null => {
+    if (comboResults === null) return null
+    const firstPerfect = comboResults.find(c => c.matchKind !== 'near')
+    return firstPerfect ? getComboSortKey(firstPerfect) : null
+  }, [comboResults])
+
   const activeRequirements =
     [...skillPoints.values()].filter(v => v > 0).length +
     Object.values(mainOnlySel).filter(v => v !== null).length
@@ -220,6 +233,63 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
   const canSelectMainOnly = remainingPool >= 10
   // スタック型に使えるメインスロット数
   const aAvail = 3 - numMainOnly
+
+  comboStepperCtxRef.current = { skillPoints, remainingPool, aAvail }
+
+  const clearStepperHold = useCallback(() => {
+    const h = stepperHoldRef.current
+    if (!h) return
+    if (h.t != null) clearTimeout(h.t)
+    if (h.i != null) clearInterval(h.i)
+    stepperHoldRef.current = null
+  }, [])
+
+  const STEP_HOLD_MS = 340
+  const STEP_REPEAT_MS = 82
+
+  const startStepperHold = useCallback((skillId: number, dir: 'up' | 'down') => {
+    stepperIgnoreClickRef.current = false
+    clearStepperHold()
+    const t = setTimeout(() => {
+      stepperIgnoreClickRef.current = true
+      const tick = () => {
+        const ctx = comboStepperCtxRef.current
+        const pts = ctx.skillPoints.get(skillId) ?? 0
+        if (dir === 'down') {
+          const n = stepDown(pts, ctx.aAvail)
+          if (n === pts) {
+            clearStepperHold()
+            return
+          }
+          setSkillPoints(prev => {
+            const m = new Map(prev)
+            m.set(skillId, n)
+            return m
+          })
+        }
+        else {
+          const maxPts = pts + ctx.remainingPool
+          const next = stepUp(pts, ctx.aAvail, maxPts)
+          if (next === pts) {
+            clearStepperHold()
+            return
+          }
+          setSkillPoints(prev => {
+            const m = new Map(prev)
+            m.set(skillId, next)
+            return m
+          })
+        }
+        setComboResults(null)
+      }
+      tick()
+      const i = setInterval(tick, STEP_REPEAT_MS)
+      stepperHoldRef.current = { i }
+    }, STEP_HOLD_MS)
+    stepperHoldRef.current = { t }
+  }, [clearStepperHold])
+
+  useEffect(() => () => clearStepperHold(), [clearStepperHold])
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -352,24 +422,70 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
   const renderStackableRow = (s: { id: number; name: string; image: string }) => {
     const pts = skillPoints.get(s.id) ?? 0
     const isActive = pts > 0
-    // このスキルに割り当てられる上限 = 現在値 + 残りプール
     const maxPts = pts + remainingPool
     const next = stepUp(pts, aAvail, maxPts)
     const canStepUp = next !== pts
+
+    const stepDownOnce = () => {
+      if (stepperIgnoreClickRef.current) {
+        stepperIgnoreClickRef.current = false
+        return
+      }
+      const n = stepDown(pts, aAvail)
+      if (n === pts) return
+      setSkillPoints(prev => {
+        const m = new Map(prev)
+        m.set(s.id, n)
+        return m
+      })
+      setComboResults(null)
+    }
+    const stepUpOnce = () => {
+      if (stepperIgnoreClickRef.current) {
+        stepperIgnoreClickRef.current = false
+        return
+      }
+      if (!canStepUp) return
+      setSkillPoints(prev => {
+        const m = new Map(prev)
+        m.set(s.id, next)
+        return m
+      })
+      setComboResults(null)
+    }
+
+    const capturePtr = (e: React.PointerEvent<HTMLButtonElement>) => {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    }
+
     return (
       <div key={s.id} className={`combo-skill-row ${isActive ? 'combo-skill-row--active' : ''}`}>
         <img className="combo-skill-row__icon" src={`/data/${s.image}`} alt={s.name} />
         <span className="combo-skill-row__name">{s.name}</span>
         <div className="stepper">
-          <button className="stepper__btn"
-            onClick={() => { const n = stepDown(pts, aAvail); setSkillPoints(prev => { const m = new Map(prev); m.set(s.id, n); return m }); setComboResults(null) }}
+          <button
+            type="button"
+            className="stepper__btn"
+            onClick={stepDownOnce}
+            onPointerDown={e => { capturePtr(e); startStepperHold(s.id, 'down') }}
+            onPointerUp={clearStepperHold}
+            onPointerCancel={clearStepperHold}
+            onLostPointerCapture={clearStepperHold}
             disabled={pts === 0}
-            aria-label={`${s.name} を下げる`}>−</button>
+            aria-label={`${s.name} を下げる`}
+          >−</button>
           <span className="stepper__value">{pts === 0 ? '−' : `${pts}pt`}</span>
-          <button className="stepper__btn"
-            onClick={() => { setSkillPoints(prev => { const m = new Map(prev); m.set(s.id, next); return m }); setComboResults(null) }}
+          <button
+            type="button"
+            className="stepper__btn"
+            onClick={stepUpOnce}
+            onPointerDown={e => { capturePtr(e); startStepperHold(s.id, 'up') }}
+            onPointerUp={clearStepperHold}
+            onPointerCancel={clearStepperHold}
+            onLostPointerCapture={clearStepperHold}
             disabled={!canStepUp}
-            aria-label={`${s.name} を上げる`}>＋</button>
+            aria-label={`${s.name} を上げる`}
+          >＋</button>
         </div>
       </div>
     )
@@ -612,13 +728,26 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                 <div className="combo-results__count">
                   {comboResults.length === 0
                     ? '条件に合う組み合わせが見つかりませんでした'
-                    : `${comboResults.length} 件の候補（タップで適用）`}
+                    : (() => {
+                        const total = comboResults.length
+                        const nearN = comboResults.filter(c => c.matchKind === 'near').length
+                        const perfectN = total - nearN
+                        return nearN > 0
+                          ? `${total} 件（条件を満たす ${perfectN} / 惜しい ${nearN}）— タップで適用`
+                          : `${total} 件の候補（タップで適用）`
+                      })()}
                 </div>
                 <div className="combo-results__list">
-                  {comboResults.map((combo, i) => (
+                  {comboResults.map(combo => {
+                    const isNear = combo.matchKind === 'near'
+                    const sk = getComboSortKey(combo)
+                    const isBest = !isNear && bestPerfectSortKeys !== null &&
+                      comboBestBadgeKeysEqual(sk, bestPerfectSortKeys)
+                    return (
                     <button
-                      key={i}
-                      className={`combo-result-row ${i === 0 ? 'combo-result-row--best' : ''}`}
+                      key={`${combo.head.id}-${combo.clothing.id}-${combo.shoes.id}-${combo.matchKind ?? 'perfect'}-${combo.deficitSum ?? 0}`}
+                      type="button"
+                      className={`combo-result-row${isBest ? ' combo-result-row--best' : ''}${isNear ? ' combo-result-row--near' : ''}`}
                       onClick={() => {
                         for (const c of ['head', 'clothing', 'shoes'] as GearCategory[]) clearUndoFlashTimer(c)
                         setUndoBtnFlash({ head: false, clothing: false, shoes: false })
@@ -626,7 +755,8 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                         onApplyCombo(combo)
                       }}
                     >
-                      {i === 0 && <span className="combo-result-row__badge">ベスト</span>}
+                      {isBest && <span className="combo-result-row__badge">ベスト</span>}
+                      {isNear && <span className="combo-result-row__badge combo-result-row__badge--near">惜しい</span>}
                       <div className="combo-result-row__gears">
                         <img src={`/data/${combo.head.image}`}     alt={combo.head.name}     title={combo.head.name} />
                         <span className="combo-result-row__plus">+</span>
@@ -661,7 +791,8 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                           })}
                       </div>
                     </button>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}
