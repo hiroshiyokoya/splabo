@@ -275,8 +275,20 @@ function App() {
   const activeFilterCount = countActiveFilters(filter)
 
   if (loading) return <div className="status">ギアデータを読み込み中...</div>
-  if (error)   return <div className="status status--error">エラー: {error}</div>
-  if (!data)   return null
+  if (error || !data) {
+    return (
+      <div className="empty-state">
+        <div className="empty-state__icon">{error ? '⚠️' : '📭'}</div>
+        <p className="empty-state__title">
+          {error ? 'データの読み込みに失敗しました' : 'ギアデータがありません'}
+        </p>
+        <p className="empty-state__body">
+          右上の「データ更新」ボタンからギアデータを取得してください。
+          {error && <><br /><span className="empty-state__detail">{error}</span></>}
+        </p>
+      </div>
+    )
+  }
 
   const total = data.head.length + data.clothing.length + data.shoes.length
 
