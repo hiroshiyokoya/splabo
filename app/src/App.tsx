@@ -3,6 +3,7 @@ import { useGearDB } from './hooks/useGearDB'
 import { GearCard } from './components/GearCard'
 import { FilterDrawer, emptyFilter, countActiveFilters } from './components/FilterDrawer'
 import { ComboSheet, emptySlots } from './components/ComboSheet'
+import { AboutDialog } from './components/AboutDialog'
 import type { FilterState } from './components/FilterDrawer'
 import type { ComboSlots } from './components/ComboSheet'
 import type { ComboResult } from './utils/findCombo'
@@ -115,6 +116,8 @@ function App() {
   const [activeTab, setActiveTab]   = useState<GearCategory>('head')
   const [sortKey, setSortKey]       = useState<SortKey>('name')
   const [drawerOpen, setDrawerOpen]       = useState(false)
+  const [aboutOpen, setAboutOpen]         = useState(false)
+
   const [filter, setFilter]               = useState<FilterState>(emptyFilter)
   const [comboOpen, setComboOpen]   = useState(false)
   const [comboSlots, setComboSlots] = useState<ComboSlots>(emptySlots)
@@ -505,6 +508,18 @@ function App() {
         onClearBrands={handleClearBrands}
         onReset={handleReset}
       />
+
+      <button
+        type="button"
+        className="about-corner-btn"
+        onClick={() => setAboutOpen(true)}
+        aria-label="geartoon について"
+        title="About"
+      >
+        About
+      </button>
+
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   )
 }
