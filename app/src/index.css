@@ -982,6 +982,7 @@ body {
   bottom: 0;
   left: 0;
   width: fit-content;
+  max-width: 100vw;
   z-index: 150;
   display: flex;
   flex-direction: column;
@@ -1007,7 +1008,8 @@ body {
 }
 
 .combo-sheet--open {
-  height: 210px;
+  /* スロット縦拡大に合わせてピーク時のクリップを防ぐ */
+  height: 226px;
 }
 
 .combo-sheet--expanded {
@@ -1105,9 +1107,51 @@ body {
   gap: 0.75rem;
 }
 
+/* スロット + 合計AP をスクロール時も見えるように固定（候補リストが長いとき） */
+.combo-sheet__sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: 0 -1rem;
+  padding: 0 1rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: var(--sheet-bg);
+  backdrop-filter: blur(var(--sheet-blur));
+  -webkit-backdrop-filter: blur(var(--sheet-blur));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+}
+
 .combo-sheet__body::-webkit-scrollbar { width: 4px; }
 .combo-sheet__body::-webkit-scrollbar-track { background: transparent; }
 .combo-sheet__body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+
+/* 展開ブロック: ピーク時は高さ0だが intrinsic 幅は第2段と同じに保つ */
+.combo-sheet__expand-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.combo-sheet__expand-block--peek-hidden {
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  flex-shrink: 0;
+  /* 親の flex gap と相殺してピーク高さを食わない */
+  margin-top: -0.75rem;
+  width: max-content;
+  max-width: 100%;
+  min-width: max-content;
+  align-self: flex-start;
+}
 
 /* ── Combo slots ── */
 
@@ -1120,37 +1164,95 @@ body {
 }
 
 .combo-slot {
+  /* 248:107 の縦横比を保ったまま拡大（内側の寸法も同倍率） */
+  --combo-slot-scale: 1.12;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
+  gap: 0.3rem;
   background: var(--chip-bg);
   border: 1px dashed var(--border);
   border-radius: 10px;
-  padding: 0.5rem;
-  width: 248px;
-  height: 107px;
+  /* 上下の余白を抑える（空スロット） */
+  padding: 0.15rem 0.45rem;
+  width: calc(248px * var(--combo-slot-scale));
+  height: calc(107px * var(--combo-slot-scale));
 }
 
 .combo-slot--filled {
+  position: relative;
   flex-direction: row;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.2rem 0.4rem;
+  gap: 0.28rem;
+  /* 上下パディングなしで画像を縦いっぱいに近づける */
+  padding: 0 0.32rem;
   border-style: solid;
   border-color: rgba(255, 255, 255, 0.1);
-  cursor: pointer;
+  cursor: default;
   transition: border-color 0.15s;
 }
 
 .combo-slot--filled:hover {
-  border-color: var(--accent2);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.combo-slot__icon-btn {
+  position: absolute;
+  top: calc(4px * var(--combo-slot-scale));
+  right: calc(4px * var(--combo-slot-scale));
+  z-index: 4;
+  width: calc(28px * var(--combo-slot-scale));
+  height: calc(28px * var(--combo-slot-scale));
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px) saturate(1.25);
+  -webkit-backdrop-filter: blur(10px) saturate(1.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 1px 6px rgba(0, 0, 0, 0.28);
+  transition:
+    background 0.18s,
+    box-shadow 0.18s,
+    transform 0.12s;
+}
+
+.combo-slot__icon-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 2px 10px rgba(0, 0, 0, 0.35);
+  transform: scale(1.05);
+}
+
+.combo-slot__icon-btn:active {
+  transform: scale(0.96);
+}
+
+.combo-slot__icon-btn-mark {
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-top: -1px;
+}
+
+.combo-slot__icon-btn-mark--undo {
+  font-size: 1rem;
+  margin-top: 0;
 }
 
 .combo-slot__img {
-  width: 100px;
-  height: 100px;
+  /* スロット高さに収まる範囲で拡大（100→105） */
+  width: calc(105px * var(--combo-slot-scale));
+  height: calc(105px * var(--combo-slot-scale));
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -1159,10 +1261,15 @@ body {
 .combo-slot__info {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  width: 130px;
+  gap: 0.22rem;
+  width: calc(124px * var(--combo-slot-scale));
   flex-shrink: 0;
   min-width: 0;
+}
+
+/* 削除ボタン分、ギア名・スキル行を少し下げる */
+.combo-slot--filled .combo-slot__info {
+  padding-top: calc(6px * var(--combo-slot-scale));
 }
 
 /* 上段: ブランドロゴ + ギア名 */
@@ -1174,8 +1281,8 @@ body {
 }
 
 .combo-slot__brand-logo {
-  width: 26px;
-  height: 26px;
+  width: calc(26px * var(--combo-slot-scale));
+  height: calc(26px * var(--combo-slot-scale));
   object-fit: contain;
   flex-shrink: 0;
   border-radius: 6px;
@@ -1184,6 +1291,7 @@ body {
 }
 
 .combo-slot__name {
+  /* リスト .gear-card__name と同じ */
   font-size: 0.85rem;
   font-weight: 700;
   color: var(--text);
@@ -1193,10 +1301,10 @@ body {
   line-height: 1.2;
 }
 
-/* 下段: スキルアイコン */
+/* 下段: スキルアイコン（メイン・サブでサイズ差があるため下揃え） */
 .combo-slot__skills {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: flex-start;
   gap: 3px;
 }
@@ -1209,13 +1317,13 @@ body {
 }
 
 .combo-slot__skill--main {
-  width: 38px;
-  height: 38px;
+  width: calc(38px * var(--combo-slot-scale));
+  height: calc(38px * var(--combo-slot-scale));
 }
 
 .combo-slot__skill--sub {
-  width: 25px;
-  height: 25px;
+  width: calc(25px * var(--combo-slot-scale));
+  height: calc(25px * var(--combo-slot-scale));
 }
 
 .combo-slot__skill img {
@@ -1229,13 +1337,34 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.2rem;
+  gap: 0.12rem;
 }
 
 .combo-slot__empty-icon {
-  font-size: 3rem;
+  font-size: calc(3rem * var(--combo-slot-scale));
   opacity: 0.7;
   line-height: 1;
+}
+
+.combo-slot--empty.combo-slot--undo-flash {
+  border-color: rgba(200, 240, 48, 0.4);
+}
+
+.combo-slot--empty.combo-slot--undoable {
+  cursor: pointer;
+  border-color: rgba(200, 240, 48, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(200, 240, 48, 0.12);
+}
+
+.combo-slot--empty.combo-slot--undoable:hover {
+  border-color: rgba(200, 240, 48, 0.55);
+}
+
+.combo-slot__undo-hint {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--accent-dim);
+  letter-spacing: 0.02em;
 }
 
 .combo-slot__hint {
@@ -1287,11 +1416,24 @@ body {
   padding: 0.15rem 0.5rem 0.15rem 0.25rem;
 }
 
+/* 発動型は pt 表示なしのため、ピル型だと枠だけ横長に見える → 正円にする */
+.combo-ap-chip--main-only {
+  padding: 2px;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 .combo-ap-chip__icon {
   width: 26px;
   height: 26px;
   border-radius: 50%;
   background: #000;
+  object-fit: contain;
+  flex-shrink: 0;
+  display: block;
 }
 
 .combo-ap-chip__val {
@@ -1586,6 +1728,7 @@ body {
 .combo-result-row__ap {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-end;
   gap: 0.3rem;
   flex: 1;
 }
@@ -1604,6 +1747,25 @@ body {
   height: 16px;
   border-radius: 50%;
   background: #000;
+  object-fit: contain;
+}
+
+.combo-result-ap-chip--unknown {
+  opacity: 0.85;
+}
+
+.combo-result-ap-chip__id {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 2px;
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
 }
 
 /* ── Status messages ── */

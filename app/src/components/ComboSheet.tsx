@@ -12,6 +12,9 @@ export type ComboSlots = {
 
 export const emptySlots = (): ComboSlots => ({ head: null, clothing: null, shoes: null })
 
+/** 削除直後に表示する UNDO ボタンの表示時間（ms） */
+const UNDO_BTN_MS = 4500
+
 // 3ギア合計の意味あるスナップ値 (max 57pt)
 // メイン=10pt, サブ=3pt, 1ギア最大=19pt, 3ギア合計最大=57pt
 // 10a + 3b (0≤a≤3, 0≤b≤9) で作れる値すべて（重複なし・昇順）
@@ -62,20 +65,75 @@ interface Props {
   data:             GearDB
   slots:            ComboSlots
   onClearSlot:      (cat: GearCategory) => void
+  onRestoreSlot:    (cat: GearCategory, gear: GearItem) => void
   onClearAll:       () => void
   onApplyCombo:     (combo: ComboResult) => void
   /** シートが開いた/閉じたときに通知（peekは閉じた扱い） */
   onIsOpenChange?:  (open: boolean) => void
 }
 
-export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo, onIsOpenChange }: Props) {
+export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange }: Props) {
   const [isOpen, setIsOpen]             = useState(false)
   const [snapExpanded, setSnapExpanded] = useState(false)
   const [skillPoints, setSkillPoints]   = useState<Map<number, number>>(new Map())
+  /** スロット解除直後のみ: 同スロットを再タップで戻すためのスナップショット */
+  const [slotUndo, setSlotUndo] = useState<ComboSlots>(emptySlots())
+  /** 削除直後のみ true: 丸い UNDO ボタンを表示 */
+  const [undoBtnFlash, setUndoBtnFlash] = useState<Record<GearCategory, boolean>>({
+    head: false,
+    clothing: false,
+    shoes: false,
+  })
   const sheetRef = useRef<HTMLDivElement>(null)
-  const drag     = useRef<{ startY: number; startH: number; moved: boolean } | null>(null)
+  const drag = useRef<{ startY: number; startH: number; moved: boolean } | null>(null)
+  /** 削除直後に表示する UNDO ボタンを消すタイマー（カテゴリ別） */
+  const undoBtnTimers = useRef<Partial<Record<GearCategory, ReturnType<typeof setTimeout>>>>({})
 
   useEffect(() => { onIsOpenChange?.(isOpen) }, [isOpen])
+
+  // リストから別ギアが入ったら UNDO スナップショットを破棄。埋まったら UNDO ボタン表示も止める
+  useEffect(() => {
+    setSlotUndo(prev => {
+      const next = { ...prev }
+      let dirty = false
+      for (const cat of ['head', 'clothing', 'shoes'] as GearCategory[]) {
+        const g = slots[cat]
+        const u = prev[cat]
+        if (g && u && g.id !== u.id) {
+          next[cat] = null
+          dirty = true
+        }
+      }
+      return dirty ? next : prev
+    })
+    setUndoBtnFlash(prev => {
+      const next = { ...prev }
+      let dirty = false
+      for (const cat of ['head', 'clothing', 'shoes'] as GearCategory[]) {
+        if (slots[cat] && prev[cat]) {
+          const t = undoBtnTimers.current[cat]
+          if (t != null) {
+            clearTimeout(t)
+            delete undoBtnTimers.current[cat]
+          }
+          next[cat] = false
+          dirty = true
+        }
+      }
+      return dirty ? next : prev
+    })
+  }, [slots])
+
+  useEffect(() => {
+    return () => {
+      for (const cat of ['head', 'clothing', 'shoes'] as GearCategory[]) {
+        const t = undoBtnTimers.current[cat]
+        if (t != null) clearTimeout(t)
+      }
+      undoBtnTimers.current = {}
+    }
+  }, [])
+
   // 発動型: カテゴリごとに選択中のスキルID (null = 未選択)
   const [mainOnlySel, setMainOnlySel] = useState<Record<GearCategory, number | null>>({
     head: null, clothing: null, shoes: null,
@@ -130,6 +188,19 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
       })
     }
     return result
+  }, [data])
+
+  /** 候補行の全スキル表示用（DB上の id → 名称・アイコン） */
+  const skillInfoById = useMemo(() => {
+    const map = new Map<number, { name: string; image: string }>()
+    for (const cat of ['head', 'clothing', 'shoes'] as GearCategory[]) {
+      for (const gear of data[cat]) {
+        for (const s of [gear.primary_skill, ...gear.additional_skills]) {
+          if (s.id !== -1) map.set(s.id, { name: s.name, image: s.image })
+        }
+      }
+    }
+    return map
   }, [data])
 
   const activeRequirements =
@@ -227,10 +298,6 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
     }, 0)
   }
 
-  const handleApplyCombo = (combo: ComboResult) => {
-    onApplyCombo(combo)
-  }
-
   const handleClearRequirements = () => {
     setSkillPoints(new Map())
     setMainOnlySel({ head: null, clothing: null, shoes: null })
@@ -243,6 +310,43 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
       [cat]: prev[cat] === id ? null : id,
     }))
     setComboResults(null)
+  }
+
+  const clearUndoFlashTimer = (cat: GearCategory) => {
+    const t = undoBtnTimers.current[cat]
+    if (t != null) {
+      clearTimeout(t)
+      delete undoBtnTimers.current[cat]
+    }
+  }
+
+  /** 埋まっているスロットの削除ボタン用 */
+  const handleRemoveSlot = (cat: GearCategory) => {
+    const g = slots[cat]
+    if (!g) return
+    setSlotUndo(prev => ({ ...prev, [cat]: g }))
+    onClearSlot(cat)
+    clearUndoFlashTimer(cat)
+    setUndoBtnFlash(prev => ({ ...prev, [cat]: true }))
+    undoBtnTimers.current[cat] = setTimeout(() => {
+      setUndoBtnFlash(prev => ({ ...prev, [cat]: false }))
+      delete undoBtnTimers.current[cat]
+    }, UNDO_BTN_MS)
+  }
+
+  /** 削除直後の UNDO ボタン、または空スロットタップで復元 */
+  const handleRestoreFromUndo = (cat: GearCategory) => {
+    const snap = slotUndo[cat]
+    if (!snap) return
+    clearUndoFlashTimer(cat)
+    setUndoBtnFlash(prev => ({ ...prev, [cat]: false }))
+    onRestoreSlot(cat, snap)
+    setSlotUndo(prev => ({ ...prev, [cat]: null }))
+  }
+
+  /** 空スロット: スナップショットがあればタップで戻す（UNDO ボタン非表示時も可） */
+  const handleEmptySlotActivate = (cat: GearCategory) => {
+    if (!slots[cat] && slotUndo[cat]) handleRestoreFromUndo(cat)
   }
 
   const renderStackableRow = (s: { id: number; name: string; image: string }) => {
@@ -300,7 +404,17 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
         <div className="combo-sheet__header">
           <span className="combo-sheet__title">🎮 コーデ</span>
           {anyFilled && (
-            <button className="combo-sheet__clear-btn" onClick={() => { onClearAll(); setComboResults(null) }}>
+            <button
+              type="button"
+              className="combo-sheet__clear-btn"
+              onClick={() => {
+                for (const c of ['head', 'clothing', 'shoes'] as GearCategory[]) clearUndoFlashTimer(c)
+                setUndoBtnFlash({ head: false, clothing: false, shoes: false })
+                onClearAll()
+                setComboResults(null)
+                setSlotUndo(emptySlots())
+              }}
+            >
               クリア
             </button>
           )}
@@ -308,43 +422,85 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
 
         <div className="combo-sheet__body">
 
+        <div className="combo-sheet__sticky-top">
         {/* ── 3スロット（横並び） ── */}
         <div className="combo-slots">
           {(['head', 'clothing', 'shoes'] as GearCategory[]).map(cat => {
             const gear = slots[cat]
+            const undoGear = slotUndo[cat]
+            const canUndo = !gear && undoGear !== null
+            const showUndoBtn = canUndo && undoBtnFlash[cat]
+            const emptyInteractive = canUndo
+
+            if (gear) {
+              return (
+                <div key={cat} className="combo-slot combo-slot--filled" title={gear.name}>
+                  <button
+                    type="button"
+                    className="combo-slot__icon-btn combo-slot__icon-btn--remove"
+                    aria-label={`${CAT_LABEL[cat]}スロットから「${gear.name}」を外す`}
+                    title="スロットから外す"
+                    onClick={e => { e.stopPropagation(); handleRemoveSlot(cat) }}
+                  >
+                    <span className="combo-slot__icon-btn-mark" aria-hidden>×</span>
+                  </button>
+                  <img className="combo-slot__img" src={`/data/${gear.image}`} alt={gear.name} />
+                  <div className="combo-slot__info">
+                    <div className="combo-slot__brand-row">
+                      <img className="combo-slot__brand-logo" src={`/data/${gear.brand_image}`} alt={gear.brand} />
+                      <span className="combo-slot__name">{gear.name}</span>
+                    </div>
+                    <div className="combo-slot__skills">
+                      <div className="combo-slot__skill combo-slot__skill--main" title={gear.primary_skill.name}>
+                        <img src={`/data/${gear.primary_skill.image}`} alt={gear.primary_skill.name} />
+                      </div>
+                      {gear.additional_skills.map((s, i) => (
+                        <div key={i} className="combo-slot__skill combo-slot__skill--sub" title={s.name}>
+                          <img src={`/data/${s.image}`} alt={s.name} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )
+            }
+
             return (
               <div
                 key={cat}
-                className={`combo-slot ${gear ? 'combo-slot--filled' : 'combo-slot--empty'}`}
-                onClick={() => gear && onClearSlot(cat)}
-                role={gear ? 'button' : undefined}
-                title={gear ? `${gear.name}（クリックで解除）` : `リストから${CAT_LABEL[cat]}ギアを選択`}
+                className={`combo-slot combo-slot--empty${canUndo ? ' combo-slot--undoable' : ''}${showUndoBtn ? ' combo-slot--undo-flash' : ''}`}
+                onClick={() => { if (emptyInteractive) handleEmptySlotActivate(cat) }}
+                onKeyDown={e => {
+                  if (!emptyInteractive) return
+                  if (e.key !== 'Enter' && e.key !== ' ') return
+                  e.preventDefault()
+                  handleEmptySlotActivate(cat)
+                }}
+                role={emptyInteractive ? 'button' : undefined}
+                tabIndex={emptyInteractive ? 0 : undefined}
+                title={canUndo && undoGear
+                  ? showUndoBtn
+                    ? `「${undoGear.name}」を戻す（↩ またはこの枠をタップ）`
+                    : `「${undoGear.name}」を戻す（この枠をタップ）`
+                  : `リストから${CAT_LABEL[cat]}ギアを選択`}
               >
-                {gear ? (
-                  <>
-                    <img className="combo-slot__img" src={`/data/${gear.image}`} alt={gear.name} />
-                    <div className="combo-slot__info">
-                      <div className="combo-slot__brand-row">
-                        <img className="combo-slot__brand-logo" src={`/data/${gear.brand_image}`} alt={gear.brand} />
-                        <span className="combo-slot__name">{gear.name}</span>
-                      </div>
-                      <div className="combo-slot__skills">
-                        <div className="combo-slot__skill combo-slot__skill--main" title={gear.primary_skill.name}>
-                          <img src={`/data/${gear.primary_skill.image}`} alt={gear.primary_skill.name} />
-                        </div>
-                        {gear.additional_skills.map((s, i) => (
-                          <div key={i} className="combo-slot__skill combo-slot__skill--sub" title={s.name}>
-                            <img src={`/data/${s.image}`} alt={s.name} />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="combo-slot__empty-inner">
-                    <span className="combo-slot__empty-icon">{CAT_ICON[cat]}</span>
-                  </div>
+                {showUndoBtn && undoGear && (
+                  <button
+                    type="button"
+                    className="combo-slot__icon-btn combo-slot__icon-btn--undo"
+                    aria-label={`「${undoGear.name}」を戻す`}
+                    title="元に戻す"
+                    onClick={e => { e.stopPropagation(); handleRestoreFromUndo(cat) }}
+                  >
+                    <span className="combo-slot__icon-btn-mark combo-slot__icon-btn-mark--undo" aria-hidden>↩</span>
+                  </button>
                 )}
+                <div className="combo-slot__empty-inner">
+                  <span className="combo-slot__empty-icon">{CAT_ICON[cat]}</span>
+                  {canUndo && undoGear && !showUndoBtn && (
+                    <span className="combo-slot__undo-hint">タップで戻す</span>
+                  )}
+                </div>
               </div>
             )
           })}
@@ -365,7 +521,11 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
                     return b.ap - a.ap
                   })
                   .map(([id, { name, ap, image }]) => (
-                    <div key={id} className="combo-ap-chip" title={isMainOnly(id) ? name : `${name}: ${ap}pt`}>
+                    <div
+                      key={id}
+                      className={`combo-ap-chip${isMainOnly(id) ? ' combo-ap-chip--main-only' : ''}`}
+                      title={isMainOnly(id) ? name : `${name}: ${ap}pt`}
+                    >
                       <img className="combo-ap-chip__icon" src={`/data/${image}`} alt={name} />
                       {!isMainOnly(id) && <span className="combo-ap-chip__val">{ap}pt</span>}
                     </div>
@@ -376,10 +536,15 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
             <span className="combo-ap-bar__empty">ギアを選ぶと合計 AP が表示されます</span>
           )}
         </div>
+        </div>
 
-        {/* ── 展開時のみ：スキル指定 + 生成 + 結果 ── */}
-        {snapExpanded && (
-          <>
+        {/* ── スキル指定 + 生成 + 結果（オープン中は常に DOM に置き、ピーク時は折りたたんで intrinsic 幅だけ確保） ── */}
+        {isOpen && (
+          <div
+            className={`combo-sheet__expand-block${snapExpanded ? '' : ' combo-sheet__expand-block--peek-hidden'}`}
+            inert={!snapExpanded}
+            aria-hidden={!snapExpanded ? true : undefined}
+          >
             <div className="combo-skill-section">
               <div className="combo-skill-section__label">
                 目標スキル
@@ -454,7 +619,12 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
                     <button
                       key={i}
                       className={`combo-result-row ${i === 0 ? 'combo-result-row--best' : ''}`}
-                      onClick={() => handleApplyCombo(combo)}
+                      onClick={() => {
+                        for (const c of ['head', 'clothing', 'shoes'] as GearCategory[]) clearUndoFlashTimer(c)
+                        setUndoBtnFlash({ head: false, clothing: false, shoes: false })
+                        setSlotUndo(emptySlots())
+                        onApplyCombo(combo)
+                      }}
                     >
                       {i === 0 && <span className="combo-result-row__badge">ベスト</span>}
                       <div className="combo-result-row__gears">
@@ -465,7 +635,7 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
                         <img src={`/data/${combo.shoes.image}`}    alt={combo.shoes.name}    title={combo.shoes.name} />
                       </div>
                       <div className="combo-result-row__ap">
-                        {Object.entries(combo.totalAp)
+                        {Object.entries(combo.allApBySkill)
                           .sort(([aId, aAp], [bId, bAp]) => {
                             const aMain = isMainOnly(Number(aId))
                             const bMain = isMainOnly(Number(bId))
@@ -476,14 +646,18 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
                           .map(([skillIdStr, ap]) => {
                             const sid = Number(skillIdStr)
                             const mainOnly = isMainOnly(sid)
-                            const info = stackableSkills.find(s => s.id === sid)
-                              ?? Object.values(mainOnlyByCategory).flat().find(s => s.id === sid)
+                            const info = skillInfoById.get(sid)
                             return info ? (
                               <div key={skillIdStr} className="combo-result-ap-chip">
                                 <img src={`/data/${info.image}`} alt={info.name} title={info.name} />
                                 {!mainOnly && <span>{ap}pt</span>}
                               </div>
-                            ) : null
+                            ) : (
+                              <div key={skillIdStr} className="combo-result-ap-chip combo-result-ap-chip--unknown" title={`id=${sid}`}>
+                                <span className="combo-result-ap-chip__id">{sid}</span>
+                                {!mainOnly && <span>{ap}pt</span>}
+                              </div>
+                            )
                           })}
                       </div>
                     </button>
@@ -491,7 +665,7 @@ export function ComboSheet({ data, slots, onClearSlot, onClearAll, onApplyCombo,
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
 
         </div>

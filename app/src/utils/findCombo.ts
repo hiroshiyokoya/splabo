@@ -14,8 +14,10 @@ export interface ComboResult {
   head:     GearItem
   clothing: GearItem
   shoes:    GearItem
-  /** skillId → 合計AP */
+  /** 目標として指定したスキルの skillId → 合計AP */
   totalAp: Record<number, number>
+  /** 装備に載っている全スキルの skillId → 合計AP（メイン10・サブ3） */
+  allApBySkill: Record<number, number>
 }
 
 /** 1ギアについて、各スキルIDの AP を計算 */
@@ -32,10 +34,51 @@ function gearAp(gear: GearItem, skillIds: number[]): Record<number, number> {
   return ap
 }
 
+/** 3着について、スキルIDごとの装備内AP（メイン10・サブ3、id=-1 は除く） */
+function outfitApBySkill(head: GearItem, clothing: GearItem, shoes: GearItem): Map<number, number> {
+  const map = new Map<number, number>()
+  const add = (skill: { id: number }, pts: number) => {
+    if (skill.id === -1) return
+    map.set(skill.id, (map.get(skill.id) ?? 0) + pts)
+  }
+  for (const gear of [head, clothing, shoes]) {
+    add(gear.primary_skill, MAIN_AP)
+    for (const sub of gear.additional_skills) add(sub, SUB_AP)
+  }
+  return map
+}
+
+/** 同一ソートキー時の安定順序（頭・服・靴の id 昇順） */
+function compareComboIds(a: ComboResult, b: ComboResult): number {
+  const d0 = a.head.id - b.head.id
+  if (d0 !== 0) return d0
+  const d1 = a.clothing.id - b.clothing.id
+  if (d1 !== 0) return d1
+  return a.shoes.id - b.shoes.id
+}
+
+/**
+ * ソート用キー（いずれも降順で先頭ほど「ベスト」寄り＝数値が大きいほど上）
+ * 1. 今回の目標スキルについての装備内実APの合計（`totalAp` の値の和）
+ * 2. 全身の装備内AP合計（57点法の実スロット分）
+ * 3. 単一スキルIDあたりの装備内APの最大値（発動型はメインのみ10）
+ */
+function sortKeys(combo: ComboResult): [number, number, number] {
+  const bySkill = outfitApBySkill(combo.head, combo.clothing, combo.shoes)
+  const targetSum = Object.values(combo.totalAp).reduce((s, v) => s + v, 0)
+  let allSum = 0
+  let maxSingle = 0
+  for (const v of bySkill.values()) {
+    allSum += v
+    if (v > maxSingle) maxSingle = v
+  }
+  return [targetSum, allSum, maxSingle]
+}
+
 /**
  * find_combo.py の探索ロジック（枝刈り全探索）を TS に移植。
  * requirements に指定したスキル・最低AP をすべて満たす 3ギア組み合わせを返す。
- * 結果は合計AP 昇順（ムダが少ない順）にソートして limit 件まで返す。
+ * 結果は sortKeys のマルチキー降順でソートし、limit 件まで返す。
  */
 export function findCombo(
   data:         GearDB,
@@ -74,17 +117,22 @@ export function findCombo(
           for (const id of skillIds) {
             totalAp[id] = h.ap[id] + c.ap[id] + sh.ap[id]
           }
-          valid.push({ head: h.gear, clothing: c.gear, shoes: sh.gear, totalAp })
+          const bySkill = outfitApBySkill(h.gear, c.gear, sh.gear)
+          const allApBySkill: Record<number, number> = {}
+          for (const [id, v] of bySkill) allApBySkill[id] = v
+          valid.push({ head: h.gear, clothing: c.gear, shoes: sh.gear, totalAp, allApBySkill })
         }
       }
     }
   }
 
-  // 合計AP 昇順（ムダが少ない順）
   valid.sort((a, b) => {
-    const sa = Object.values(a.totalAp).reduce((s, v) => s + v, 0)
-    const sb = Object.values(b.totalAp).reduce((s, v) => s + v, 0)
-    return sa - sb
+    const ka = sortKeys(a)
+    const kb = sortKeys(b)
+    for (let i = 0; i < 3; i++) {
+      if (ka[i] !== kb[i]) return kb[i] - ka[i]
+    }
+    return compareComboIds(a, b)
   })
 
   return valid.slice(0, limit)

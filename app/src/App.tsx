@@ -221,6 +221,10 @@ function App() {
     setComboSlots(prev => ({ ...prev, [activeTab]: gear }))
   }, [activeTab])
 
+  const handleRestoreComboSlot = useCallback((cat: GearCategory, gear: GearItem) => {
+    setComboSlots(prev => ({ ...prev, [cat]: gear }))
+  }, [])
+
   /** スロット解除 → そのカテゴリのタブに戻して再選択しやすくする */
   const handleClearComboSlot = useCallback((cat: GearCategory) => {
     setComboSlots(prev => ({ ...prev, [cat]: null }))
@@ -437,6 +441,7 @@ function App() {
         data={data}
         slots={comboSlots}
         onClearSlot={handleClearComboSlot}
+        onRestoreSlot={handleRestoreComboSlot}
         onClearAll={handleClearAllComboSlots}
         onApplyCombo={handleApplyCombo}
         onIsOpenChange={setComboOpen}
