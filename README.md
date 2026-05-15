@@ -5,7 +5,7 @@ Splatoon 3 の所持ギアを閲覧・検索するデスクトップアプリで
 ```
 geartoon/
 ├── tools/   # データ取得パイプライン（Docker + Python）
-└── app/     # ギア管理 UI（Vite + React → Tauri）
+└── app/     # ギア表示 UI（Vite + React → Tauri）
 ```
 
 ## 関連リポジトリ
