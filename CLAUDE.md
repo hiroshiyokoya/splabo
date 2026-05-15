@@ -20,6 +20,31 @@
 
 ファイルの中身を見たいときは、bashを使わず必ず `Read` ツールを使う。
 
+## ブランチ・PRのルール
+
+**イシューに対する作業は、必ずブランチを切ってからPRでマージすること。`develop` への直接コミットは禁止。**
+
+### フロー
+
+1. イシュー番号に対応するブランチを作成: `feature/<番号>-<簡潔な名前>`
+2. ブランチ上で作業・コミット
+3. `gh pr create` でPRを作成し、`develop` へマージ
+4. イシューをクローズ
+
+```
+git checkout -b feature/11-tauri-setup
+# ... 作業 ...
+git push origin feature/11-tauri-setup
+gh pr create --base develop --title "..." --body "..."
+```
+
+### 注意
+
+- 小さな作業でもブランチを切る
+- PRのタイトルにイシュー番号を含める（例: `feat: Tauriセットアップ (#11)`）
+
+---
+
 ## git操作
 
 git操作のルールは、作業環境によって異なる。
