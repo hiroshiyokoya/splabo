@@ -14,21 +14,23 @@ geartoon/
 
 ## 必要なもの
 
-| ツール | 用途 |
-|---|---|
-| Docker Desktop | SplatNet 3 API アクセス（nxapi） |
-| Python 3.10+ | データ処理スクリプト |
-| Node.js 18+ | Web UI の開発・ビルド |
-| Rust + Cargo | Tauri デスクトップアプリ化（後で追加） |
+
+| ツール            | 用途                           |
+| -------------- | ---------------------------- |
+| Docker Desktop | nxapi 実行環境（認証・SplatNet 系の通信） |
+| Python 3.10+   | データ処理スクリプト                   |
+| Node.js 18+    | Web UI の開発・ビルド               |
+| Rust + Cargo   | Tauri デスクトップアプリ化（後で追加）       |
+
 
 Windows / macOS / Linux 対応（WSL 不要）。
-現状の動作確認は Windows のみで、macOS と Linux は未検証。
+動作確認済みは Windows と macOS。Linux は未検証。
 
 ---
 
 ## tools/ — データパイプライン
 
-SplatNet 3 から所持ギア情報を取得し、ローカルに JSON DB と画像を揃えます。
+Samuel Thomas 氏が開発する OSS である [nxapi](https://github.com/samuelthomas2774/nxapi)（任天堂非公式）を用いて、SplatNet 3 から所持ギア情報を取得し、ローカルに JSON DB と画像を揃えます。
 
 ### セットアップ
 
@@ -45,6 +47,7 @@ python3 scripts/nxapi.py nso auth
 ### ギア DB を更新する（1コマンド）
 
 ```bash
+cd tools
 python3 scripts/update.py
 ```
 
@@ -57,21 +60,31 @@ python3 scripts/update.py
 ### CLI ツール
 
 ```bash
+cd tools
+
 # ギア検索（スキル・ブランド・カテゴリ・レアリティで絞り込み）
-python3 scripts/find_gear.py --skill カムバック
-python3 scripts/find_gear.py --skill カムバック --main
+# スタック型スキルは「スキル名:最低AP」形式で AP 閾値を指定可能（AP 高い順に表示）
+python3 scripts/find_gear.py --skill インク回復力アップ
+python3 scripts/find_gear.py --skill "インク回復力アップ:13"
+python3 scripts/find_gear.py --skill "インク回復力アップ:10" --category clothing
+python3 scripts/find_gear.py --skill インク回復力アップ --main
 python3 scripts/find_gear.py --brand アナアキ --category clothing
 python3 scripts/find_gear.py --category head --list
 
 # スキル構成の自動生成（目標 AP を満たす頭・服・靴の組み合わせを探索）
+# スタック型は「スキル名:目標AP」。発動型（メイン専用・カムバック等）は名前のみ（10AP 固定として解釈）
 python3 scripts/find_combo.py --list-skills
-python3 scripts/find_combo.py "カムバック:10" "スペシャル増加量アップ:6"
+python3 scripts/find_combo.py "カムバック" "スペシャル増加量アップ:6"
 python3 scripts/find_combo.py "インク回復力アップ:20" --limit 5
 
 # nxapi コマンドのラッパ
 python3 scripts/nxapi.py nso user
 python3 scripts/nxapi.py splatnet3 dump-records data/splatnet3
 ```
+
+### ギアパワー（AP）
+
+ギアパワーは **57 点法**で数えます（1 着あたりメイン 10 + サブ 3×3 = 19AP、頭・服・靴で最大 57AP）。`find_combo` やアプリの絞り込みはこの前提に合わせています。
 
 ### gear_db.json のフォーマット
 
@@ -87,7 +100,7 @@ python3 scripts/nxapi.py splatnet3 dump-records data/splatnet3
 
 ## app/ — Web UI
 
-所持ギアの一覧・絞り込み・コーデ探索を GUI で操作できるアプリです。
+所持ギアの一覧・絞り込み・スキル構成生成を GUI で操作できるアプリです。表示用データは `tools/data/` に置かれた `gear_db.json` と画像を参照します（未生成なら先に tools を実行）。
 
 ### 機能
 
@@ -95,7 +108,7 @@ python3 scripts/nxapi.py splatnet3 dump-records data/splatnet3
 - 並び替え（ブランド / メインパワー / 名前 / レアリティ / EXP）
 - 絞り込みドロワー（右スライド、すりガラス風半透明UI）
   - **発動型**: タブ対応スキルをシングルセレクト（カムバック・ステルスジャンプ等）
-  - **スタック型**: 最低 pt をステッパーで指定（メイン 10pt / サブ 3pt）
+  - **スタック型**: 最低 pt をステッパーで指定
   - **ブランド**: マルチセレクト
 - **コーデ機能**（画面下部ボトムシート、ドラッグで開閉）
   - 頭 / 服 / 靴ギアをそれぞれ選択してスロットにセット
@@ -138,6 +151,7 @@ Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して
 - SplatNet 3 からダウンロードされるギア・スキル画像の著作権は任天堂株式会社に帰属します。これらの画像は個人利用の範囲内でのみ使用し、再配布・商用利用・二次創作物への無断使用は行わないでください。
 - `tools/data/persist/` 配下の認証情報ファイルにはトークン類が含まれるため、コミットしないでください（`.gitignore` で除外済み）。
 - 認証に使用する Nintendo アカウントの情報はローカルにのみ保存されます。外部サーバーへの送信は nxapi・imink の仕様に準じます。
+- アプリのUIは、現状日本語のみです。
 
 ## 免責事項
 
