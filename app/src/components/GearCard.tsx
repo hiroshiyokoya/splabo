@@ -24,7 +24,7 @@ function SkillIcon({ image, name, size }: { image: string; name: string; size: '
   const isUnknown = name === 'はてな'
   return (
     <div className={`skill-icon skill-icon--${size} ${isUnknown ? 'skill-icon--unknown' : ''}`} title={name}>
-      <img src={`/data/${image}`} alt={name} />
+      <img src={image} alt={name} />
     </div>
   )
 }
@@ -45,7 +45,7 @@ export function GearCard({ gear, selected, onSelect }: Props) {
       <div className="gear-card__header">
         <img
           className="gear-card__brand-logo"
-          src={`/data/${gear.brand_image}`}
+          src={gear.brand_image}
           alt={gear.brand}
           title={gear.brand}
         />
@@ -56,7 +56,7 @@ export function GearCard({ gear, selected, onSelect }: Props) {
       <div className="gear-card__image-wrap">
         <img
           className="gear-card__image"
-          src={`/data/${gear.image}`}
+          src={gear.image}
           alt={gear.name}
           loading="lazy"
         />

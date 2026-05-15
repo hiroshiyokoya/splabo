@@ -3,6 +3,7 @@ import type { GearCategory, GearItem, GearDB } from '../types'
 import { findCombo, MAIN_AP, SUB_AP, getComboSortKey, comboBestBadgeKeysEqual } from '../utils/findCombo'
 import type { ComboResult, ComboSortKey } from '../utils/findCombo'
 import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from '../constants/gearPowerMeta'
+import { dataPath } from '../utils/dataPath'
 
 export type ComboSlots = {
   head:     GearItem | null
@@ -469,7 +470,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
 
     return (
       <div key={s.id} className={`combo-skill-row ${isActive ? 'combo-skill-row--active' : ''}`}>
-        <img className="combo-skill-row__icon" src={`/data/${s.image}`} alt={s.name} />
+        <img className="combo-skill-row__icon" src={s.image} alt={s.name} />
         <span className="combo-skill-row__name">{s.name}</span>
         <div className="stepper">
           <button
@@ -569,19 +570,19 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                   >
                     <span className="combo-slot__icon-btn-mark" aria-hidden>×</span>
                   </button>
-                  <img className="combo-slot__img" src={`/data/${gear.image}`} alt={gear.name} />
+                  <img className="combo-slot__img" src={gear.image} alt={gear.name} />
                   <div className="combo-slot__info">
                     <div className="combo-slot__brand-row">
-                      <img className="combo-slot__brand-logo" src={`/data/${gear.brand_image}`} alt={gear.brand} />
+                      <img className="combo-slot__brand-logo" src={gear.brand_image} alt={gear.brand} />
                       <span className="combo-slot__name">{gear.name}</span>
                     </div>
                     <div className="combo-slot__skills">
                       <div className="combo-slot__skill combo-slot__skill--main" title={gear.primary_skill.name}>
-                        <img src={`/data/${gear.primary_skill.image}`} alt={gear.primary_skill.name} />
+                        <img src={gear.primary_skill.image} alt={gear.primary_skill.name} />
                       </div>
                       {gear.additional_skills.map((s, i) => (
                         <div key={i} className="combo-slot__skill combo-slot__skill--sub" title={s.name}>
-                          <img src={`/data/${s.image}`} alt={s.name} />
+                          <img src={s.image} alt={s.name} />
                         </div>
                       ))}
                     </div>
@@ -651,7 +652,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                       className={`combo-ap-chip${isMainOnly(id) ? ' combo-ap-chip--main-only' : ''}`}
                       title={isMainOnly(id) ? name : `${name}: ${ap}pt`}
                     >
-                      <img className="combo-ap-chip__icon" src={`/data/${image}`} alt={name} />
+                      <img className="combo-ap-chip__icon" src={image} alt={name} />
                       {!isMainOnly(id) && <span className="combo-ap-chip__val">{ap}pt</span>}
                     </div>
                   ))}
@@ -701,7 +702,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                             disabled={isDisabled}
                             title={isDisabled ? `残りAP不足（あと${10 - remainingPool}pt必要）` : s.name}
                           >
-                            <img src={`/data/${s.image}`} alt={s.name} />
+                            <img src={s.image} alt={s.name} />
                             <span>{s.name}</span>
                           </button>
                         )
@@ -715,7 +716,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
               <div className="combo-stackable-grid">
                 {stackableSkills.map(s => renderStackableRow(s))}
                 <div className={`combo-skill-row ${akiTarget > 0 ? 'combo-skill-row--active' : ''}`}>
-                  <img className="combo-skill-row__icon" src="/data/images/skill/dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91_0.png" alt="アキ枠" />
+                  <img className="combo-skill-row__icon" src={dataPath('images/skill/dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91_0.png')} alt="アキ枠" />
                   <span className="combo-skill-row__name">アキ</span>
                   <div className="stepper">
                     <button
@@ -788,11 +789,11 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                       {isBest && <span className="combo-result-row__badge">ベスト</span>}
                       {isNear && <span className="combo-result-row__badge combo-result-row__badge--near">惜しい</span>}
                       <div className="combo-result-row__gears">
-                        <img src={`/data/${combo.head.image}`}     alt={combo.head.name}     title={combo.head.name} />
+                        <img src={combo.head.image}     alt={combo.head.name}     title={combo.head.name} />
                         <span className="combo-result-row__plus">+</span>
-                        <img src={`/data/${combo.clothing.image}`} alt={combo.clothing.name} title={combo.clothing.name} />
+                        <img src={combo.clothing.image} alt={combo.clothing.name} title={combo.clothing.name} />
                         <span className="combo-result-row__plus">+</span>
-                        <img src={`/data/${combo.shoes.image}`}    alt={combo.shoes.name}    title={combo.shoes.name} />
+                        <img src={combo.shoes.image}    alt={combo.shoes.name}    title={combo.shoes.name} />
                       </div>
                       <div className="combo-result-row__ap">
                         {Object.entries(combo.allApBySkill)
@@ -809,7 +810,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                             const info = skillInfoById.get(sid)
                             return info ? (
                               <div key={skillIdStr} className="combo-result-ap-chip">
-                                <img src={`/data/${info.image}`} alt={info.name} title={info.name} />
+                                <img src={info.image} alt={info.name} title={info.name} />
                                 {!mainOnly && <span>{ap}pt</span>}
                               </div>
                             ) : (
