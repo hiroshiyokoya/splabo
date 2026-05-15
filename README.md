@@ -2,7 +2,8 @@
 
 Splatoon 3 の所持ギアを閲覧・検索するデスクトップアプリです。
 
-> **本ツールは任天堂株式会社の非公式ツールです。Nintendo・Splatoon とは無関係です。**
+> **本ツールは任天堂株式会社・Splatoon の非公式ファンツールです。任天堂株式会社とは無関係です。**
+> データ取得に [nxapi](https://github.com/samuelthomas2774/nxapi) および [imink API](https://github.com/imink-app/f-API) を使用しています。
 
 ```
 geartoon/
