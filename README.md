@@ -1,6 +1,6 @@
 <img src="app/public/geartoon-logo.png" alt="geartoon" height="300">
 
-Splatoon 3 の所持ギアを閲覧・検索するデスクトップアプリです。
+これは、Splatoon 3 の所持ギアを閲覧・検索する非公式ファンツールです。任天堂株式会社とは無関係で、データ取得に [nxapi](https://github.com/samuelthomas2774/nxapi) および [imink API](https://github.com/imink-app/f-API) を使用しています。
 
 ```
 geartoon/
@@ -152,6 +152,25 @@ Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して
 - `tools/data/persist/` 配下の認証情報ファイルにはトークン類が含まれるため、コミットしないでください（`.gitignore` で除外済み）。
 - 認証に使用する Nintendo アカウントの情報はローカルにのみ保存されます。外部サーバーへの送信は nxapi・imink の仕様に準じます。
 - アプリのUIは、現状日本語のみです。
+
+## プライバシーポリシー
+
+本ツールが収集・使用する情報は以下の通りです。
+
+### 収集する情報
+
+- **Nintendo アカウントのセッショントークン（session_token）および各種アクセストークン**
+  - ローカルの `tools/data/persist/` ディレクトリにのみ保存されます。
+  - 外部サーバーへ送信・アップロードすることはありません。
+
+### 外部サービスへの送信
+
+- **imink（`imink.app`）**：Nintendo 認証フローで必要な f-token を生成するため、nxapi の内部処理として `id_token` が imink API へ送信されます。これは nxapi の仕様に基づくものであり、geartoon 独自の送信ではありません。詳細は [imink-app/f-API](https://github.com/imink-app/f-API) を参照してください。
+- 上記以外に、本ツールが独自に情報を外部送信することはありません。
+
+### 個人情報の収集について
+
+本ツールは、氏名・メールアドレス・位置情報などの個人情報を収集・記録・送信しません。
 
 ## 免責事項
 
