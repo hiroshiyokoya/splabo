@@ -170,14 +170,18 @@ function App() {
     return [...map.values()].sort((a, b) => a.id - b.id)
   }, [data])
 
-  // 全ブランド一覧（五十音順・重複なし）
-  const allBrands = useMemo<string[]>(() => {
-    if (!data) return []
-    const set = new Set<string>()
+  /** 全ブランド（五十音順・重複なし、ロゴは代表ギアの brand_image） */
+  const allBrands = useMemo(() => {
+    if (!data) return [] as { name: string; image: string }[]
+    const imageByBrand = new Map<string, string>()
     for (const cat of ['head', 'clothing', 'shoes'] as GearCategory[]) {
-      for (const gear of data[cat]) set.add(gear.brand)
+      for (const gear of data[cat]) {
+        if (!imageByBrand.has(gear.brand)) imageByBrand.set(gear.brand, gear.brand_image)
+      }
     }
-    return [...set].sort((a, b) => a.localeCompare(b, 'ja'))
+    return [...imageByBrand.entries()]
+      .map(([name, image]) => ({ name, image }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ja'))
   }, [data])
 
   const items = useMemo(() => {
