@@ -201,33 +201,42 @@ class NearDeficitMaxHeap {
   }
 }
 
+const NEAR_LIMIT = 10
+
+/** (targetSum, allSum, perSkillDesc) の厳密な一致チェック（ID タイブレーカーは含まない） */
+function comboSortKeyStrictEqual(a: ComboResult, b: ComboResult): boolean {
+  const ka = getComboSortKey(a)
+  const kb = getComboSortKey(b)
+  if (ka.targetSum !== kb.targetSum || ka.allSum !== kb.allSum) return false
+  if (ka.perSkillDesc.length !== kb.perSkillDesc.length) return false
+  return ka.perSkillDesc.every((v, i) => v === kb.perSkillDesc[i])
+}
+
 /**
- * targetSum・allSum が同じ惜しい候補は 1 件にまとめる。
- * 不足AP合計がより小さいものを残し、同不足なら compareComboResultsSort で良い方を残す。
+ * (targetSum, allSum, perSkillDesc) でグループ化し、
+ * 累計が NEAR_LIMIT を超えないグループまでを返す。
+ * 超えるグループは丸ごと出さない。
  */
-function dedupeNearBySortKey12Best(
-  nearSorted: { deficit: number; combo: ComboResult }[],
+function pickNearGroups(
+  nearEntries: { deficit: number; combo: ComboResult }[],
+  nearLimit: number,
 ): { deficit: number; combo: ComboResult }[] {
-  const bestByKey = new Map<string, { deficit: number; combo: ComboResult }>()
-  for (const e of nearSorted) {
-    const k = getComboSortKey(e.combo)
-    const key = `${k.targetSum},${k.allSum}`
-    const prev = bestByKey.get(key)
-    if (!prev) {
-      bestByKey.set(key, e)
-      continue
-    }
-    if (e.deficit < prev.deficit) {
-      bestByKey.set(key, e)
-    }
-    else if (e.deficit === prev.deficit && compareComboResultsSort(e.combo, prev.combo) < 0) {
-      bestByKey.set(key, e)
-    }
+  if (nearLimit <= 0 || nearEntries.length === 0) return []
+
+  const sorted = [...nearEntries].sort((a, b) => compareComboResultsSort(a.combo, b.combo))
+  const result: { deficit: number; combo: ComboResult }[] = []
+  let i = 0
+
+  while (i < sorted.length) {
+    let j = i + 1
+    while (j < sorted.length && comboSortKeyStrictEqual(sorted[i].combo, sorted[j].combo)) j++
+    const groupSize = j - i
+    if (result.length + groupSize > nearLimit) break
+    result.push(...sorted.slice(i, j))
+    i = j
   }
-  return [...bestByKey.values()].sort((a, b) => {
-    if (a.deficit !== b.deficit) return a.deficit - b.deficit
-    return compareNearTie(a.combo, b.combo)
-  })
+
+  return result
 }
 
 /**
@@ -254,7 +263,8 @@ export function findCombo(
   const shoesAll  = data.shoes.map(g    => ({ gear: g, ap: gearAp(g, skillIds) }))
 
   const valid: ComboResult[] = []
-  const heapCap = Math.min(2000, Math.max(limit * 24, 400))
+  const nearLimit = Math.min(NEAR_LIMIT, limit)
+  const heapCap = Math.min(500, Math.max(nearLimit * 20, 100))
   const nearHeap = new NearDeficitMaxHeap(heapCap)
 
   for (const h of heads) {
@@ -295,13 +305,12 @@ export function findCombo(
     .slice(0, limit)
     .map(c => ({ ...c, matchKind: 'perfect' as const }))
 
-  const nearSlots = Math.max(0, limit - perfectTagged.length)
-  const nearPicks = dedupeNearBySortKey12Best(nearHeap.sorted()).slice(0, nearSlots)
+  const nearPicks = pickNearGroups(nearHeap.sorted(), nearLimit)
   const nearTagged: ComboResult[] = nearPicks.map(({ combo, deficit }) => ({
     ...combo,
     matchKind: 'near' as const,
     deficitSum: deficit,
   }))
 
-  return [...perfectTagged, ...nearTagged].slice(0, limit)
+  return [...perfectTagged, ...nearTagged]
 }
