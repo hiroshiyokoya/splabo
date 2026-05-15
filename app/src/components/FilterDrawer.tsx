@@ -215,7 +215,6 @@ export function FilterDrawer({
                   </div>
                 )
               })}
-            </div>
               {/* アキ枠（スタック型と同列） */}
               <div className={`skill-chip skill-chip--stepper ${filter.akiMin > 0 ? 'skill-chip--active' : ''}`}>
                 <img src="/data/images/skill/dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91_0.png" alt="" aria-hidden="true" />

@@ -316,6 +316,8 @@ export function findCombo(
     .slice(0, limit)
     .map(c => ({ ...c, matchKind: 'perfect' as const }))
 
+  if (valid.length >= 10) return perfectTagged
+
   const nearPicks = pickNearGroups(nearHeap.sorted(), nearLimit)
   const nearTagged: ComboResult[] = nearPicks.map(({ combo, deficit }) => ({
     ...combo,
