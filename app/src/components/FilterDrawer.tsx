@@ -12,6 +12,8 @@ export interface FilterState {
   skillMinPoints: Map<number, number>
   /** ブランド絞り込み */
   brands: Set<string>
+  /** アキ枠の最低個数（0 = フィルターなし） */
+  akiMin: number
 }
 
 export function emptyFilter(): FilterState {
@@ -19,13 +21,14 @@ export function emptyFilter(): FilterState {
     mainOnlyIds: new Set(),
     skillMinPoints: new Map(),
     brands: new Set(),
+    akiMin: 0,
   }
 }
 
 /** アクティブなフィルター数（バッジ用） */
 export function countActiveFilters(f: FilterState): number {
   const activePoints = [...f.skillMinPoints.values()].filter(v => v > 0).length
-  return f.mainOnlyIds.size + activePoints + f.brands.size
+  return f.mainOnlyIds.size + activePoints + f.brands.size + (f.akiMin > 0 ? 1 : 0)
 }
 
 export interface BrandFilterOption {
@@ -42,6 +45,7 @@ interface Props {
   filter: FilterState
   onToggleMainOnly: (id: number) => void
   onSetSkillPoints: (id: number, points: number) => void
+  onSetAkiMin: (n: number) => void
   onToggleBrand: (brand: string) => void
   onClearBrands: () => void
   onReset: () => void
@@ -70,6 +74,7 @@ export function FilterDrawer({
   filter,
   onToggleMainOnly,
   onSetSkillPoints,
+  onSetAkiMin,
   onToggleBrand,
   onClearBrands,
   onReset,
@@ -102,7 +107,8 @@ export function FilterDrawer({
   // 発動型 = 10pt 固定。スタック型との合計が 19pt を超えないよう制限
   const mainOnlyPts = filter.mainOnlyIds.size > 0 ? 10 : 0
   const stackTotalPts = [...filter.skillMinPoints.values()].reduce((sum, v) => sum + v, 0)
-  const ptsBudget = 19 - mainOnlyPts  // スタック型に使える残り pt
+  // アキ枠はサブスロット相当（×3pt）としてバジェットから差し引く
+  const ptsBudget = 19 - mainOnlyPts - filter.akiMin * 3
   // スタック型で10pt以上使っている = メインスロット使用中 → 発動型は選べない
   const mainSlotUsedByStack = stackTotalPts >= 10
 
@@ -209,6 +215,26 @@ export function FilterDrawer({
                   </div>
                 )
               })}
+              {/* アキ枠（スタック型と同列） */}
+              <div className={`skill-chip skill-chip--stepper ${filter.akiMin > 0 ? 'skill-chip--active' : ''}`}>
+                <img src="/data/images/skill/dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91_0.png" alt="" aria-hidden="true" />
+                <span className="skill-chip__name">アキ</span>
+                <div className="stepper">
+                  <button
+                    className="stepper__btn"
+                    onClick={e => onSetAkiMin(e.shiftKey ? 0 : Math.max(0, filter.akiMin - 1))}
+                    disabled={filter.akiMin === 0}
+                    aria-label="アキ枠を減らす"
+                  >−</button>
+                  <span className="stepper__value">{filter.akiMin === 0 ? '−' : filter.akiMin}</span>
+                  <button
+                    className="stepper__btn"
+                    onClick={e => onSetAkiMin(e.shiftKey ? 3 : Math.min(3, filter.akiMin + 1))}
+                    disabled={filter.akiMin >= 3 || ptsBudget - 3 < 0}
+                    aria-label="アキ枠を増やす"
+                  >＋</button>
+                </div>
+              </div>
             </div>
           </section>
 

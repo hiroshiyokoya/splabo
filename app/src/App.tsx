@@ -100,6 +100,13 @@ function applyFilter(items: GearItem[], filter: FilterState): GearItem[] {
     result = result.filter(gear => filter.brands.has(gear.brand))
   }
 
+  // アキ枠: N個以上
+  if (filter.akiMin > 0) {
+    result = result.filter(gear =>
+      gear.additional_skills.filter(s => s.id === -1).length >= filter.akiMin
+    )
+  }
+
   return result
 }
 
@@ -233,6 +240,9 @@ function App() {
 
   const handleClearBrands = useCallback(() =>
     setFilter(prev => ({ ...prev, brands: new Set() })), [])
+
+  const handleSetAkiMin = useCallback((n: number) =>
+    setFilter(prev => ({ ...prev, akiMin: n })), [])
 
   const handleReset = useCallback(() => setFilter(emptyFilter()), [])
 
@@ -478,6 +488,7 @@ function App() {
         filter={filter}
         onToggleMainOnly={handleToggleMainOnly}
         onSetSkillPoints={handleSetSkillPoints}
+        onSetAkiMin={handleSetAkiMin}
         onToggleBrand={handleToggleBrand}
         onClearBrands={handleClearBrands}
         onReset={handleReset}
