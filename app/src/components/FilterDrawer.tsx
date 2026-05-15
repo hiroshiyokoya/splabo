@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { GearCategory, Skill } from '../types'
 import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from '../constants/gearPowerMeta'
+import { dataPath } from '../utils/dataPath'
 
 // スタック型のスナップ値（スプラ仕様: サブ3pt × 最大3 + メイン10pt）
 const STEP_VALUES = [0, 3, 6, 9, 10, 13, 16, 19] as const
@@ -164,7 +165,7 @@ export function FilterDrawer({
                     disabled={isDisabled}
                     title={s.name}
                   >
-                    <img src={`/data/${s.image}`} alt="" aria-hidden="true" />
+                    <img src={s.image} alt="" aria-hidden="true" />
                     <span>{s.name}</span>
                   </button>
                 )
@@ -189,7 +190,7 @@ export function FilterDrawer({
                     key={s.id}
                     className={`skill-chip skill-chip--stepper ${isActive ? 'skill-chip--active' : ''}`}
                   >
-                    <img src={`/data/${s.image}`} alt="" aria-hidden="true" />
+                    <img src={s.image} alt="" aria-hidden="true" />
                     <span className="skill-chip__name">{s.name}</span>
                     <div className="stepper">
                       <button
@@ -217,7 +218,7 @@ export function FilterDrawer({
               })}
               {/* アキ枠（スタック型と同列） */}
               <div className={`skill-chip skill-chip--stepper ${filter.akiMin > 0 ? 'skill-chip--active' : ''}`}>
-                <img src="/data/images/skill/dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91_0.png" alt="" aria-hidden="true" />
+                <img src={dataPath('images/skill/dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91_0.png')} alt="" aria-hidden="true" />
                 <span className="skill-chip__name">アキ</span>
                 <div className="stepper">
                   <button
@@ -260,7 +261,7 @@ export function FilterDrawer({
                   onClick={() => onToggleBrand(name)}
                   title={name}
                 >
-                  <img className="brand-chip__logo" src={`/data/${image}`} alt="" aria-hidden="true" />
+                  <img className="brand-chip__logo" src={image} alt="" aria-hidden="true" />
                   <span className="brand-chip__label">{name}</span>
                 </button>
               ))}
