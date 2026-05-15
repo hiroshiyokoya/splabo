@@ -63,7 +63,10 @@ python3 scripts/update.py
 cd tools
 
 # ギア検索（スキル・ブランド・カテゴリ・レアリティで絞り込み）
+# スタック型スキルは「スキル名:最低AP」形式で AP 閾値を指定可能（AP 高い順に表示）
 python3 scripts/find_gear.py --skill インク回復力アップ
+python3 scripts/find_gear.py --skill "インク回復力アップ:13"
+python3 scripts/find_gear.py --skill "インク回復力アップ:10" --category clothing
 python3 scripts/find_gear.py --skill インク回復力アップ --main
 python3 scripts/find_gear.py --brand アナアキ --category clothing
 python3 scripts/find_gear.py --category head --list
