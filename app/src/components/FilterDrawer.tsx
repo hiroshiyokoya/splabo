@@ -28,12 +28,17 @@ export function countActiveFilters(f: FilterState): number {
   return f.mainOnlyIds.size + activePoints + f.brands.size
 }
 
+export interface BrandFilterOption {
+  name: string
+  image: string
+}
+
 interface Props {
   open: boolean
   onClose: () => void
   activeTab: GearCategory
   allSkills: Skill[]
-  allBrands: string[]
+  allBrands: BrandFilterOption[]
   filter: FilterState
   onToggleMainOnly: (id: number) => void
   onSetSkillPoints: (id: number, points: number) => void
@@ -217,13 +222,16 @@ export function FilterDrawer({
               )}
             </div>
             <div className="brand-chips">
-              {allBrands.map(brand => (
+              {allBrands.map(({ name, image }) => (
                 <button
-                  key={brand}
-                  className={`brand-chip ${filter.brands.has(brand) ? 'brand-chip--active' : ''}`}
-                  onClick={() => onToggleBrand(brand)}
+                  key={name}
+                  type="button"
+                  className={`brand-chip ${filter.brands.has(name) ? 'brand-chip--active' : ''}`}
+                  onClick={() => onToggleBrand(name)}
+                  title={name}
                 >
-                  {brand}
+                  <img className="brand-chip__logo" src={`/data/${image}`} alt="" aria-hidden="true" />
+                  <span className="brand-chip__label">{name}</span>
                 </button>
               ))}
             </div>

@@ -1,7 +1,11 @@
 import type { GearItem } from '../types'
 
 interface Props {
-  gear: GearItem
+  gear:      GearItem
+  /** コーデモードで選択済みの場合 true */
+  selected?: boolean
+  /** コーデモードでタップ時のコールバック */
+  onSelect?: () => void
 }
 
 const MAX_RARITY = 5
@@ -25,11 +29,17 @@ function SkillIcon({ image, name, size }: { image: string; name: string; size: '
   )
 }
 
-export function GearCard({ gear }: Props) {
+export function GearCard({ gear, selected, onSelect }: Props) {
   const subSlots = Array.from({ length: 3 }, (_, i) => gear.additional_skills[i] ?? null)
 
   return (
-    <div className="gear-card">
+    <div
+      className={`gear-card${selected ? ' gear-card--selected' : ''}${onSelect ? ' gear-card--selectable' : ''}`}
+      onClick={onSelect}
+      role={onSelect ? 'button' : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+      onKeyDown={onSelect ? (e) => { if (e.key === 'Enter' || e.key === ' ') onSelect() } : undefined}
+    >
 
       {/* 上段: ブランドロゴ（左）・レアリティ（右） */}
       <div className="gear-card__header">
