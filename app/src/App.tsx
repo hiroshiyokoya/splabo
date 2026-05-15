@@ -22,7 +22,7 @@ type SortKey = 'name' | 'rarity' | 'exp' | 'brand' | 'skill'
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'brand',  label: 'ブランド' },
-  { key: 'skill',  label: 'メインパワー' },
+  { key: 'skill',  label: 'パワー' },
   { key: 'name',   label: '名前' },
   { key: 'rarity', label: 'レアリティ' },
   { key: 'exp',    label: 'EXP' },
@@ -55,7 +55,25 @@ function sortItems(items: GearItem[], key: SortKey, category: GearCategory): Gea
         }
 
         if (aId !== bId) return aId - bId
-        return a.primary_skill.name.localeCompare(b.primary_skill.name, 'ja')
+
+        // サブキー1: サブパワーの数（多い順）
+        const aSubCount = a.additional_skills.filter(s => s.id !== -1).length
+        const bSubCount = b.additional_skills.filter(s => s.id !== -1).length
+        if (aSubCount !== bSubCount) return bSubCount - aSubCount
+
+        // サブキー2: サブパワーのスキルID順（左から、スタック型表示順）
+        for (let i = 0; i < 3; i++) {
+          const aSubId = a.additional_skills[i]?.id ?? -1
+          const bSubId = b.additional_skills[i]?.id ?? -1
+          if (aSubId === bSubId) continue
+          if (aSubId === -1) return 1
+          if (bSubId === -1) return -1
+          const ra = getStackableSkillSortRank(aSubId)
+          const rb = getStackableSkillSortRank(bSubId)
+          if (ra !== rb) return ra - rb
+          if (aSubId !== bSubId) return aSubId - bSubId
+        }
+        return 0
       }
     }
   })
