@@ -44,7 +44,7 @@ struct SidecarResponse {
 /// data ディレクトリのパスを文字列で返す（nxapi ストレージのルート）。
 /// 本番は AppData、開発時は tools/data。
 fn resolve_nxapi_data_dir(app: &AppHandle) -> Result<String, String> {
-    // 本番: AppData/com.hiroshiyokoya.geartoon/
+    // 本番: AppData/com.geartoon.app/
     if let Ok(data_dir) = app.path().app_data_dir() {
         let p = data_dir.join("nxapi");
         if !p.exists() {
@@ -57,7 +57,7 @@ fn resolve_nxapi_data_dir(app: &AppHandle) -> Result<String, String> {
 
 /// out_dir: gear_db.json と images/ の出力先（tools/data/ 相当）。
 fn resolve_gear_out_dir(app: &AppHandle) -> Result<String, String> {
-    // 本番: AppData/com.hiroshiyokoya.geartoon/data/
+    // 本番: AppData/com.geartoon.app/data/
     if let Ok(data_dir) = app.path().app_data_dir() {
         let p = data_dir.join("data");
         if !p.exists() {
