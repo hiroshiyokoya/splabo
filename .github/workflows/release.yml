@@ -12,38 +12,33 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     outputs:
-      release_id: ${{ steps.create-release.outputs.releaseId }}
+      release_id: ${{ steps.create-release.outputs.release_id }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: Create draft release
         id: create-release
-        uses: tauri-apps/tauri-action@v0
+        run: |
+          release_id=$(gh api repos/${{ github.repository }}/releases \
+            -X POST \
+            -f tag_name="${{ github.ref_name }}" \
+            -f name="geartoon ${{ github.ref_name }}" \
+            -f body="## ダウンロード
+
+          | OS | ファイル |
+          |---|---|
+          | Windows | \`geartoon_x.x.x_x64-setup.exe\` |
+          | macOS (Apple Silicon) | \`geartoon_x.x.x_aarch64.dmg\` |
+          | macOS (Intel) | \`geartoon_x.x.x_x64.dmg\` |
+          | Linux | \`geartoon_x.x.x_amd64.AppImage\` |
+
+          ## 変更内容
+
+          詳細は [CHANGELOG](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) を参照してください。" \
+            -F draft=true \
+            -F prerelease=false \
+            --jq '.id')
+          echo "release_id=$release_id" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: './app'
-          tagName: ${{ github.ref_name }}
-          releaseName: 'geartoon ${{ github.ref_name }}'
-          releaseBody: |
-            ## ダウンロード
-
-            | OS | ファイル |
-            |---|---|
-            | Windows | `geartoon_x.x.x_x64-setup.exe` |
-            | macOS (Apple Silicon) | `geartoon_x.x.x_aarch64.dmg` |
-            | macOS (Intel) | `geartoon_x.x.x_x64.dmg` |
-            | Linux | `geartoon_x.x.x_amd64.AppImage` |
-
-            ## 変更内容
-
-            詳細は [CHANGELOG](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) を参照してください。
-          releaseDraft: true
-          prerelease: false
 
   # ── Step 2: 各プラットフォームでビルド & アップロード ────────────
   build:
