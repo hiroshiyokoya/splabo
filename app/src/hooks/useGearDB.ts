@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import type { GearDB, GearItem, Skill } from '../types'
 import { initTauriDataPath } from '../utils/dataPath'
 
@@ -66,9 +66,11 @@ export function useGearDB() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
+    setLoading(true)
 
     const load = isTauri() ? loadFromTauri() : loadFromBrowser()
 
@@ -89,7 +91,12 @@ export function useGearDB() {
       })
 
     return () => { cancelled = true }
+  }, [reloadKey])
+
+  /** nxapi_fetch_gear 完了後に呼ぶとギアDBを再読み込みする */
+  const reload = useCallback(() => {
+    setReloadKey(k => k + 1)
   }, [])
 
-  return { data, loading, error, lastFetchedAt }
+  return { data, loading, error, lastFetchedAt, reload }
 }

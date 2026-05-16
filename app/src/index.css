@@ -183,6 +183,61 @@ body {
   cursor: not-allowed;
 }
 
+/* busy 状態: アニメーションで点滅 */
+.app-db-refresh--busy {
+  animation: db-refresh-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes db-refresh-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%       { opacity: 0.85; }
+}
+
+/* empty-state 上のCTAボタン */
+.app-db-refresh--empty-cta {
+  margin-top: 1.25rem;
+  padding: 0 2rem;
+  height: 2.4rem;
+  font-size: 0.9rem;
+}
+
+/* エラーバナー */
+.app-update-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.35rem 0 0;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(255, 80, 80, 0.12);
+  border: 1px solid rgba(255, 80, 80, 0.35);
+  color: #ff9090;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  max-width: 420px;
+}
+
+.app-update-error__icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+.app-update-error__dismiss {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 0 0.25rem;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
+.app-update-error__dismiss:hover {
+  opacity: 1;
+}
+
 .about-corner-btn {
   position: fixed;
   top: 10px;

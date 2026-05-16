@@ -501,12 +501,13 @@ pub fn start_login(app: AppHandle, state: State<'_, AuthState>) -> Result<String
 
 /// ステップ 2-3: deep link URL から `session_token_code` を抽出し、
 /// Nintendo API で `session_token` を取得して store に保存する。
+/// 取得した `session_token` を返す（フロントエンドが nxapi_setup に渡すために使用）。
 #[tauri::command]
 pub async fn handle_auth_redirect(
     app: AppHandle,
     state: State<'_, AuthState>,
     url: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let (code, returned_state) = parse_auth_fragment(&url)?;
 
     // 保存しておいた PKCE パラメータを取り出し、state を照合する。
@@ -532,13 +533,13 @@ pub async fn handle_auth_redirect(
         .map_err(|e| format!("store オープン失敗: {e}"))?;
     store.set(
         STORE_KEY_SESSION_TOKEN,
-        serde_json::Value::String(session_token),
+        serde_json::Value::String(session_token.clone()),
     );
     store
         .save()
         .map_err(|e| format!("store 保存失敗: {e}"))?;
 
-    Ok(())
+    Ok(session_token)
 }
 
 /// ステップ 4-7: 保存済み `session_token` から
