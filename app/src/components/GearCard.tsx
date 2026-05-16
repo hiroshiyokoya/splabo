@@ -65,8 +65,8 @@ export function GearCard({ gear, selected, onSelect }: Props) {
       {/* ギア名（中央） */}
       <div className="gear-card__name" title={gear.name}>{gear.name}</div>
 
-      {/* EXP（右寄り） */}
-      <div className="gear-card__exp">EXP {gear.exp.toLocaleString()}</div>
+      {/* ケイケン値（右寄り） */}
+      <div className="gear-card__exp">ケイケン値 {gear.exp.toLocaleString()}</div>
 
       {/* スキル: メイン + サブ3つ（横幅いっぱい） */}
       <div className="gear-card__skills">
