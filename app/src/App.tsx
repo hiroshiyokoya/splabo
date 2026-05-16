@@ -58,6 +58,9 @@ async function doLoginFlow(
   })
 }
 
+/** データ更新のクールダウン時間（ミリ秒） */
+const UPDATE_COOLDOWN_MS = 5 * 60 * 1000
+
 const SCROLL_TOP_THRESHOLD = 600
 const SCROLL_TOP_HIDE_AFTER_MS = 1000
 
@@ -167,9 +170,26 @@ function App() {
   const [updatePhase, setUpdatePhase] = useState<UpdatePhase>('idle')
   const [updateError, setUpdateError] = useState<string | null>(null)
 
+  // クールダウン: lastFetchedAt から UPDATE_COOLDOWN_MS 経過するまで更新不可
+  // now を state として持ち、クールダウン終了時に setTimeout で再レンダリングする
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!lastFetchedAt) return
+    const remaining = lastFetchedAt.getTime() + UPDATE_COOLDOWN_MS - Date.now()
+    if (remaining <= 0) return
+    const id = setTimeout(() => setNow(Date.now()), remaining + 100)
+    return () => clearTimeout(id)
+  }, [lastFetchedAt])
+
+  const cooldownRemainingMs = lastFetchedAt
+    ? Math.max(0, lastFetchedAt.getTime() + UPDATE_COOLDOWN_MS - now)
+    : 0
+  const isCoolingDown = cooldownRemainingMs > 0
+
   const handleDataUpdate = useCallback(async () => {
     if (!isTauri()) return
     if (updatePhase !== 'idle' && updatePhase !== 'error') return
+    if (isCoolingDown) return
 
     setUpdatePhase('checking')
     setUpdateError(null)
@@ -383,7 +403,7 @@ function App() {
             type="button"
             className={`app-db-refresh app-db-refresh--empty-cta${updatePhase !== 'idle' && updatePhase !== 'error' ? ' app-db-refresh--busy' : ''}`}
             onClick={handleDataUpdate}
-            disabled={updatePhase !== 'idle' && updatePhase !== 'error'}
+            disabled={(updatePhase !== 'idle' && updatePhase !== 'error') || isCoolingDown}
           >
             {updatePhase === 'checking' ? '確認中...' :
              updatePhase === 'waiting-login' ? 'ログイン待機中...' :
@@ -429,9 +449,10 @@ function App() {
                 type="button"
                 className={`app-db-refresh${updatePhase !== 'idle' && updatePhase !== 'error' ? ' app-db-refresh--busy' : ''}`}
                 onClick={handleDataUpdate}
-                disabled={updatePhase !== 'idle' && updatePhase !== 'error'}
+                disabled={(updatePhase !== 'idle' && updatePhase !== 'error') || isCoolingDown}
                 title={
                   !isTauri() ? 'Tauri アプリ上でのみ利用できます' :
+                  isCoolingDown ? '前回の更新から5分以内は再更新できません' :
                   updatePhase === 'waiting-login' ? 'ブラウザでログイン中... 完了後に自動的に続行します' :
                   updatePhase === 'fetching' ? 'SplatNet3 からデータを取得中...' :
                   updatePhase === 'checking' ? 'ログイン状態を確認中...' :
