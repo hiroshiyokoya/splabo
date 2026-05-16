@@ -98,6 +98,10 @@ pub fn run() {
                 let _ = app.emit("deep-link-received", arg.clone());
             }
         }
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+        }
     }))
     .plugin(tauri_plugin_shell::init())
     .plugin(tauri_plugin_opener::init())
@@ -132,10 +136,15 @@ pub fn run() {
       // フロントへ "deep-link-received" イベントを発火する。
       {
         use tauri_plugin_deep_link::DeepLinkExt;
+
         let handle = app.handle().clone();
         app.deep_link().on_open_url(move |event| {
           for url in event.urls() {
             let _ = handle.emit("deep-link-received", url.to_string());
+          }
+          if let Some(w) = handle.get_webview_window("main") {
+            let _ = w.unminimize();
+            let _ = w.set_focus();
           }
         });
       }
