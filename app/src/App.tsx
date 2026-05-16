@@ -74,10 +74,10 @@ type SortKey = 'name' | 'rarity' | 'exp' | 'brand' | 'skill'
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'brand',  label: 'ブランド' },
-  { key: 'skill',  label: 'パワー' },
+  { key: 'skill',  label: 'ギアパワー' },
   { key: 'name',   label: '名前' },
-  { key: 'rarity', label: 'レアリティ' },
-  { key: 'exp',    label: 'EXP' },
+  { key: 'rarity', label: 'レア度' },
+  { key: 'exp',    label: 'ケイケン値' },
 ]
 
 function sortItems(items: GearItem[], key: SortKey, category: GearCategory): GearItem[] {
@@ -479,7 +479,7 @@ function App() {
             )}
             <p className="app-db-meta">
               <span className="app-db-meta__inner">
-                <span className="app-db-meta__label">Last updated:</span>
+                <span className="app-db-meta__label">最終更新:</span>
                 <span className="app-db-meta__value">
                   {lastFetchedAt
                     ? lastFetchedAt.toLocaleString('ja-JP', {
