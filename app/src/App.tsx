@@ -1,14 +1,65 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import { useGearDB } from './hooks/useGearDB'
 import { GearCard } from './components/GearCard'
 import { FilterDrawer, emptyFilter, countActiveFilters } from './components/FilterDrawer'
 import { ComboSheet, emptySlots } from './components/ComboSheet'
 import { AboutDialog } from './components/AboutDialog'
+import { useGearDB, saveLastFetchedAt } from './hooks/useGearDB'
+import { isTauri } from './utils/tauri'
 import type { FilterState } from './components/FilterDrawer'
 import type { ComboSlots } from './components/ComboSheet'
 import type { ComboResult } from './utils/findCombo'
 import type { GearCategory, GearItem, Skill } from './types'
 import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from './constants/gearPowerMeta'
+
+// ── データ更新ステート ─────────────────────────────────────────
+type UpdatePhase = 'idle' | 'checking' | 'waiting-login' | 'fetching' | 'error'
+
+/**
+ * ログインフロー: deep-link を待ち、session_token → nxapi_setup まで完了させる。
+ * 成功・失敗・タイムアウトいずれの場合も unlisten を確実に呼ぶ。
+ */
+async function doLoginFlow(
+  invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>,
+  listen: <T>(event: string, handler: (e: { payload: T }) => void) => Promise<() => void>,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let unlisten: (() => void) | null = null
+    let timeoutId: ReturnType<typeof setTimeout>
+
+    const cleanup = () => {
+      clearTimeout(timeoutId)
+      unlisten?.()
+    }
+
+    // まず deep-link リスナーを登録してからブラウザを開く
+    listen<string>('deep-link-received', async ({ payload: url }) => {
+      cleanup()
+      try {
+        const sessionToken = await invoke<string>('handle_auth_redirect', { url })
+        await invoke<string>('nxapi_setup', { sessionToken })
+        resolve()
+      } catch (e) {
+        reject(new Error(String(e)))
+      }
+    }).then(async (fn) => {
+      unlisten = fn
+      timeoutId = setTimeout(() => {
+        cleanup()
+        reject(new Error('ログインがタイムアウトしました（5分）'))
+      }, 5 * 60 * 1000)
+
+      try {
+        await invoke<string>('start_login')
+      } catch (e) {
+        cleanup()
+        reject(new Error(String(e)))
+      }
+    }).catch(reject)
+  })
+}
+
+/** データ更新のクールダウン時間（ミリ秒） */
+const UPDATE_COOLDOWN_MS = 5 * 60 * 1000
 
 const SCROLL_TOP_THRESHOLD = 600
 const SCROLL_TOP_HIDE_AFTER_MS = 1000
@@ -112,8 +163,66 @@ function applyFilter(items: GearItem[], filter: FilterState): GearItem[] {
 }
 
 function App() {
-  const { data, loading, error, lastFetchedAt } = useGearDB()
+  const { data, loading, error, lastFetchedAt, reload } = useGearDB()
   const [activeTab, setActiveTab]   = useState<GearCategory>('head')
+
+  // ── データ更新フロー ──────────────────────────────────────
+  const [updatePhase, setUpdatePhase] = useState<UpdatePhase>('idle')
+  const [updateError, setUpdateError] = useState<string | null>(null)
+
+  // クールダウン: lastFetchedAt から UPDATE_COOLDOWN_MS 経過するまで更新不可
+  // now を state として持ち、クールダウン終了時に setTimeout で再レンダリングする
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!lastFetchedAt) return
+    const remaining = lastFetchedAt.getTime() + UPDATE_COOLDOWN_MS - Date.now()
+    if (remaining <= 0) return
+    const id = setTimeout(() => setNow(Date.now()), remaining + 100)
+    return () => clearTimeout(id)
+  }, [lastFetchedAt])
+
+  const cooldownRemainingMs = lastFetchedAt
+    ? Math.max(0, lastFetchedAt.getTime() + UPDATE_COOLDOWN_MS - now)
+    : 0
+  const isCoolingDown = cooldownRemainingMs > 0
+
+  const handleDataUpdate = useCallback(async () => {
+    if (!isTauri()) return
+    if (updatePhase !== 'idle' && updatePhase !== 'error') return
+    if (isCoolingDown) return
+
+    setUpdatePhase('checking')
+    setUpdateError(null)
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const { listen }  = await import('@tauri-apps/api/event')
+
+      // 1. nxapi ストレージにログイン済みか確認
+      const loggedIn = await invoke<boolean>('nxapi_check_login')
+
+      if (!loggedIn) {
+        // 2. ログインフロー（ブラウザ → deep-link → session_token → nxapi_setup）
+        setUpdatePhase('waiting-login')
+        await doLoginFlow(
+          invoke as <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>,
+          listen as <T>(event: string, handler: (e: { payload: T }) => void) => Promise<() => void>,
+        )
+      }
+
+      // 3. SplatNet3 からギアデータを取得
+      setUpdatePhase('fetching')
+      await invoke('nxapi_fetch_gear')
+
+      // 4. 取得日時を保存してから UI を再読み込み
+      saveLastFetchedAt(new Date())
+      reload()
+      setUpdatePhase('idle')
+    } catch (e) {
+      setUpdateError(String(e))
+      setUpdatePhase('error')
+    }
+  }, [updatePhase, reload])
   const [sortKey, setSortKey]       = useState<SortKey>('name')
   const [drawerOpen, setDrawerOpen]       = useState(false)
   const [aboutOpen, setAboutOpen]         = useState(false)
@@ -286,9 +395,34 @@ function App() {
           {error ? 'データの読み込みに失敗しました' : 'ギアデータがありません'}
         </p>
         <p className="empty-state__body">
-          右上の「データ更新」ボタンからギアデータを取得してください。
-          {error && <><br /><span className="empty-state__detail">{error}</span></>}
+          {error && <><span className="empty-state__detail">{error}</span><br /></>}
+          「データ更新」ボタンから SplatNet3 のギアデータを取得してください。
         </p>
+        {isTauri() && (
+          <button
+            type="button"
+            className={`app-db-refresh app-db-refresh--empty-cta${updatePhase !== 'idle' && updatePhase !== 'error' ? ' app-db-refresh--busy' : ''}`}
+            onClick={handleDataUpdate}
+            disabled={(updatePhase !== 'idle' && updatePhase !== 'error') || isCoolingDown}
+          >
+            {updatePhase === 'checking' ? '確認中...' :
+             updatePhase === 'waiting-login' ? 'ログイン待機中...' :
+             updatePhase === 'fetching' ? 'データ取得中...' :
+             'データ更新'}
+          </button>
+        )}
+        {updateError && (
+          <p className="app-update-error" role="alert">
+            <span className="app-update-error__icon">⚠️</span>
+            {updateError}
+            <button
+              type="button"
+              className="app-update-error__dismiss"
+              onClick={() => { setUpdateError(null); setUpdatePhase('idle') }}
+              aria-label="エラーを閉じる"
+            >✕</button>
+          </p>
+        )}
       </div>
     )
   }
@@ -313,12 +447,36 @@ function App() {
               </span>
               <button
                 type="button"
-                className="app-db-refresh"
-                title="開発用プレースホルダー。本番では update パイプラインと接続予定。"
+                className={`app-db-refresh${updatePhase !== 'idle' && updatePhase !== 'error' ? ' app-db-refresh--busy' : ''}`}
+                onClick={handleDataUpdate}
+                disabled={(updatePhase !== 'idle' && updatePhase !== 'error') || isCoolingDown}
+                title={
+                  !isTauri() ? 'Tauri アプリ上でのみ利用できます' :
+                  isCoolingDown ? '前回の更新から5分以内は再更新できません' :
+                  updatePhase === 'waiting-login' ? 'ブラウザでログイン中... 完了後に自動的に続行します' :
+                  updatePhase === 'fetching' ? 'SplatNet3 からデータを取得中...' :
+                  updatePhase === 'checking' ? 'ログイン状態を確認中...' :
+                  'SplatNet3 からギアデータを取得する'
+                }
               >
-                データ更新
+                {updatePhase === 'checking' ? '確認中...' :
+                 updatePhase === 'waiting-login' ? 'ログイン待機中...' :
+                 updatePhase === 'fetching' ? 'データ取得中...' :
+                 'データ更新'}
               </button>
             </div>
+            {updateError && (
+              <p className="app-update-error" role="alert">
+                <span className="app-update-error__icon">⚠️</span>
+                {updateError}
+                <button
+                  type="button"
+                  className="app-update-error__dismiss"
+                  onClick={() => { setUpdateError(null); setUpdatePhase('idle') }}
+                  aria-label="エラーを閉じる"
+                >✕</button>
+              </p>
+            )}
             <p className="app-db-meta">
               <span className="app-db-meta__inner">
                 <span className="app-db-meta__label">Last updated:</span>
