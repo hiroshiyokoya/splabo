@@ -28,27 +28,49 @@ function makePathFixer(toUrl: (rel: string) => string) {
   return fixDB
 }
 
+// ── .gpng パス収集ヘルパー ────────────────────────────────────
+
+/** DB 内の全 .gpng 相対パスをユニークに収集する */
+function collectGpngRels(db: GearDB): Set<string> {
+  const paths = new Set<string>()
+  const addSkill = (s: Skill) => { if (s.image?.endsWith('.gpng')) paths.add(s.image) }
+  const addGear = (g: GearItem) => {
+    if (g.image?.endsWith('.gpng')) paths.add(g.image)
+    if (g.brand_image?.endsWith('.gpng')) paths.add(g.brand_image)
+    addSkill(g.primary_skill)
+    g.additional_skills.forEach(addSkill)
+  }
+  ;[...db.head, ...db.clothing, ...db.shoes].forEach(addGear)
+  return paths
+}
+
 // ── Tauri モード ──────────────────────────────────────────────
 async function loadFromTauri(): Promise<GearDB> {
   const { invoke, convertFileSrc } = await import('@tauri-apps/api/core')
-
-  /** 絶対パスを画像 URL に変換する。.gpng は gpng:// プロトコル、それ以外は asset:// */
-  const toImageUrl = (abs: string): string =>
-    abs.endsWith('.gpng')
-      ? `gpng://localhost/${encodeURIComponent(abs)}`
-      : convertFileSrc(abs)
 
   const [jsonStr, dataDir] = await Promise.all([
     invoke<string>('read_gear_db'),
     invoke<string>('get_data_dir'),
   ])
 
+  const db: GearDB = JSON.parse(jsonStr)
+
+  // .gpng ファイルを一括で Tauri invoke 経由で読み込み、data URL に変換する。
+  // WebView2（Windows）は <img src> でカスタム URI スキームを使えないため、
+  // data:image/png;base64,... 形式に変換することで Windows/macOS 両対応とする。
+  const gpngRels = collectGpngRels(db)
+  const absPaths = [...gpngRels].map(rel => `${dataDir}/${rel}`)
+  const gpngMap: Record<string, string> = absPaths.length > 0
+    ? await invoke<Record<string, string>>('read_all_gpng', { paths: absPaths })
+    : {}
+
+  /** 絶対パスを画像 URL に変換する。.gpng は data URL、それ以外は asset:// */
+  const toImageUrl = (abs: string): string =>
+    abs.endsWith('.gpng') ? (gpngMap[abs] ?? '') : convertFileSrc(abs)
+
   // dataPath() ユーティリティを Tauri モード用に初期化
   initTauriDataPath(dataDir, toImageUrl)
 
-  const db: GearDB = JSON.parse(jsonStr)
-
-  // .gpng は gpng:// カスタムプロトコル経由で XOR 復元して配信、.png は asset:// そのまま
   const fixDB = makePathFixer((rel) => toImageUrl(`${dataDir}/${rel}`))
   return fixDB(db)
 }
