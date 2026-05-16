@@ -137,11 +137,6 @@ pub fn run() {
       {
         use tauri_plugin_deep_link::DeepLinkExt;
 
-        // macOS dev モードではバンドルなしでスキームを OS に登録する必要がある。
-        // 本番ビルドでは Info.plist で登録済みのため重複登録になるが無害。
-        #[cfg(target_os = "macos")]
-        app.deep_link().register("npf71b963c1b7b6d119")?;
-
         let handle = app.handle().clone();
         app.deep_link().on_open_url(move |event| {
           for url in event.urls() {
