@@ -159,22 +159,30 @@ fn encrypt_gear_data(db_json_path: &str) -> Result<(), String> {
     std::fs::write(&bin_path, encrypted).map_err(|e| e.to_string())?;
     std::fs::remove_file(db_path).map_err(|e| e.to_string())?;
 
-    // images/ 配下の .png を .gpng にスクランブル変換
+    // images/ 配下の .png を再帰的に .gpng へスクランブル変換
     let images_dir = out_dir.join("images");
     if images_dir.is_dir() {
-        for entry in std::fs::read_dir(&images_dir).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("png") {
-                let data = std::fs::read(&path).map_err(|e| e.to_string())?;
-                let scrambled = crypto::scramble_image(&data);
-                let gpng_path = path.with_extension("gpng");
-                std::fs::write(&gpng_path, scrambled).map_err(|e| e.to_string())?;
-                std::fs::remove_file(&path).map_err(|e| e.to_string())?;
-            }
-        }
+        scramble_images_recursive(&images_dir)?;
     }
 
+    Ok(())
+}
+
+/// ディレクトリを再帰的に走査し、すべての .png を XOR スクランブルして .gpng に変換する。
+fn scramble_images_recursive(dir: &std::path::Path) -> Result<(), String> {
+    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_dir() {
+            scramble_images_recursive(&path)?;
+        } else if path.extension().and_then(|s| s.to_str()) == Some("png") {
+            let data = std::fs::read(&path).map_err(|e| e.to_string())?;
+            let scrambled = crypto::scramble_image(&data);
+            let gpng_path = path.with_extension("gpng");
+            std::fs::write(&gpng_path, scrambled).map_err(|e| e.to_string())?;
+            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        }
+    }
     Ok(())
 }
 
