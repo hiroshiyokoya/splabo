@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  # ── Step 1: ドラフトリリースを作成 ─────────────────────────────
+  create-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create-release.outputs.releaseId }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Create draft release
+        id: create-release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: './app'
+          tagName: ${{ github.ref_name }}
+          releaseName: 'geartoon ${{ github.ref_name }}'
+          releaseBody: |
+            ## ダウンロード
+
+            | OS | ファイル |
+            |---|---|
+            | Windows | `geartoon_x.x.x_x64-setup.exe` |
+            | macOS (Apple Silicon) | `geartoon_x.x.x_aarch64.dmg` |
+            | macOS (Intel) | `geartoon_x.x.x_x64.dmg` |
+            | Linux | `geartoon_x.x.x_amd64.AppImage` |
+
+            ## 変更内容
+
+            詳細は [CHANGELOG](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) を参照してください。
+          releaseDraft: true
+          prerelease: false
+
+  # ── Step 2: 各プラットフォームでビルド & アップロード ────────────
+  build:
+    needs: create-release
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            sidecar-build: build:win
+
+          - platform: macos-latest
+            sidecar-build: build:mac-arm
+            rust-target: aarch64-apple-darwin
+            tauri-args: --target aarch64-apple-darwin
+
+          - platform: macos-13
+            sidecar-build: build:mac-x64
+            rust-target: x86_64-apple-darwin
+            tauri-args: --target x86_64-apple-darwin
+
+          - platform: ubuntu-22.04
+            sidecar-build: build:linux
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Linux: Tauri が必要とするシステムライブラリ
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      # nxapi-wrapper サイドカーをビルド
+      - name: Build nxapi-wrapper sidecar
+        working-directory: tools/nxapi-wrapper
+        run: |
+          npm ci
+          npm run ${{ matrix.sidecar-build }}
+
+      # macOS: クロスコンパイル用 Rust ターゲットを追加
+      - name: Add Rust target
+        if: matrix.rust-target != ''
+        run: rustup target add ${{ matrix.rust-target }}
+
+      # フロントエンド依存関係をインストール
+      - name: Install app dependencies
+        working-directory: app
+        run: npm ci
+
+      # Tauri ビルド & リリースへアップロード
+      - name: Build and upload
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: './app'
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          args: ${{ matrix.tauri-args }}
