@@ -1,5 +1,7 @@
 use tauri::{AppHandle, Manager};
 
+pub mod nxapi;
+
 /// PathBuf を Windows の \\?\ プレフィックスなし・スラッシュ区切りの文字列に変換
 fn path_to_slash(p: &std::path::Path) -> String {
   let s = p.to_string_lossy();
@@ -52,7 +54,14 @@ fn get_data_dir(app: AppHandle) -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![read_gear_db, get_data_dir])
+    .plugin(tauri_plugin_shell::init())
+    .invoke_handler(tauri::generate_handler![
+      read_gear_db,
+      get_data_dir,
+      nxapi::nxapi_setup,
+      nxapi::nxapi_fetch_gear,
+      nxapi::nxapi_check_login,
+    ])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

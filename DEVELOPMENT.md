@@ -86,19 +86,44 @@ geartoon/
 │   │   ├── src/
 │   │   │   ├── main.rs
 │   │   │   ├── lib.rs
-│   │   │   └── auth.rs   # Nintendo OAuth 認証ロジック（純粋関数 + Tauriコマンド）
+│   │   │   ├── auth.rs   # Nintendo OAuth 認証ロジック（純粋関数 + Tauriコマンド）
+│   │   │   └── nxapi.rs  # nxapi サイドカー呼び出し（Tauriコマンド群）
 │   │   ├── examples/
 │   │   │   └── auth_cli.rs  # 認証フローをCLIで対話テストするツール
+│   │   ├── binaries/     # サイドカーバイナリ（git管理外・要ビルド）
 │   │   ├── Cargo.toml
 │   │   └── tauri.conf.json
 │   ├── package.json
 │   └── vite.config.ts
-└── tools/                # データパイプライン（Docker + Python）
+└── tools/                # データパイプライン
+    ├── nxapi-wrapper/    # nxapi サイドカーのソース（Node.js）
+    │   ├── wrapper.mjs   # IPC ラッパー本体
+    │   ├── build.bat     # Windows 向けビルドスクリプト
+    │   └── build.sh      # macOS/Linux 向けビルドスクリプト
     ├── data/
     │   ├── gear_db.json  # ギアデータ（git管理外）
     │   └── images/       # ギア画像（git管理外）
-    └── scripts/          # Pythonスクリプト
+    └── scripts/          # Pythonスクリプト（既存 Docker フロー）
 ```
+
+## nxapi サイドカーのビルド（必須）
+
+`npm run tauri dev` / `npm run tauri build` の前に、nxapi サイドカーをビルドする必要があります。
+
+```powershell
+# Windows
+cd tools/nxapi-wrapper
+build.bat
+```
+
+```bash
+# macOS (Apple Silicon)
+cd tools/nxapi-wrapper
+./build.sh mac-arm
+```
+
+ビルドには数分かかります。出力先: `app/src-tauri/binaries/nxapi-sidecar-<target>`  
+このバイナリは git 管理外（`.gitignore` で除外）。
 
 ## Rust 認証の CLI テスト
 

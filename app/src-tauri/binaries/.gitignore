@@ -1,0 +1,8 @@
+# コンパイル済みサイドカーバイナリは git 管理外
+# ビルド手順: tools/nxapi-wrapper/ で npm install && npm run build:win
+*.exe
+nxapi-sidecar-*
+
+# .gitkeep と .gitignore は残す
+!.gitkeep
+!.gitignore
