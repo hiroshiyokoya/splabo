@@ -1,6 +1,7 @@
 use tauri::{AppHandle, Emitter, Manager};
 
 pub mod auth;
+pub mod crypto;
 pub mod nxapi;
 
 /// PathBuf を Windows の \\?\ プレフィックスなし・スラッシュ区切りの文字列に変換
@@ -11,21 +12,18 @@ fn path_to_slash(p: &std::path::Path) -> String {
   s.replace('\\', "/")
 }
 
-/// tools/data/ ディレクトリの絶対パスを解決する。
-/// 1. 本番: AppData/com.hiroshiyokoya.geartoon/data/
-/// 2. 開発: CWD相対で ../../tools/data/ (src-tauri/ から実行されるため)
+/// データディレクトリのパスを解決する。
+/// gear_db.bin（暗号化済み）または gear_db.json（開発用平文）が存在するディレクトリを返す。
 fn resolve_data_dir(app: &AppHandle) -> Option<std::path::PathBuf> {
-  // 本番: app data dir 配下
   if let Ok(data_dir) = app.path().app_data_dir() {
     let p = data_dir.join("data");
-    if p.join("gear_db.json").exists() {
+    if p.join("gear_db.bin").exists() || p.join("gear_db.json").exists() {
       return Some(p);
     }
   }
-  // 開発: CWD相対
   for rel in ["../../tools/data", "../tools/data"] {
     let p = std::path::PathBuf::from(rel);
-    if p.join("gear_db.json").exists() {
+    if p.join("gear_db.bin").exists() || p.join("gear_db.json").exists() {
       if let Ok(canonical) = p.canonicalize() {
         return Some(canonical);
       }
@@ -34,13 +32,21 @@ fn resolve_data_dir(app: &AppHandle) -> Option<std::path::PathBuf> {
   None
 }
 
-/// gear_db.json の内容を文字列で返す
+/// gear_db を読み込んで JSON 文字列で返す。
+/// gear_db.bin（暗号化済み）があれば復号し、なければ gear_db.json をそのまま返す（開発用）。
 #[tauri::command]
 fn read_gear_db(app: AppHandle) -> Result<String, String> {
   let dir = resolve_data_dir(&app)
-    .ok_or_else(|| "ギアデータが見つかりません（tools/data/gear_db.json）".to_string())?;
-  std::fs::read_to_string(dir.join("gear_db.json"))
-    .map_err(|e| e.to_string())
+    .ok_or_else(|| "ギアデータが見つかりません".to_string())?;
+
+  let bin_path = dir.join("gear_db.bin");
+  if bin_path.exists() {
+    let encrypted = std::fs::read(&bin_path).map_err(|e| e.to_string())?;
+    let plain = crypto::decrypt_db(&encrypted)?;
+    String::from_utf8(plain).map_err(|e| e.to_string())
+  } else {
+    std::fs::read_to_string(dir.join("gear_db.json")).map_err(|e| e.to_string())
+  }
 }
 
 /// tools/data/ の絶対パスを返す（フロントエンドが画像パスを解決するために使用）
@@ -55,6 +61,33 @@ fn get_data_dir(app: AppHandle) -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    // gpng:// カスタムプロトコル: .gpng ファイルを XOR 復元して image/png として配信する。
+    // URL 形式: gpng://localhost/<URL エンコードされた絶対パス>
+    .register_uri_scheme_protocol("gpng", |_app, request| {
+      let uri = request.uri().to_string();
+      // "gpng://localhost/" を除いた部分がファイルパス（URL エンコード済み）
+      let encoded = uri
+        .strip_prefix("gpng://localhost/")
+        .unwrap_or("")
+        .trim_start_matches('/');
+      let path = urlencoding::decode(encoded)
+        .unwrap_or_else(|_| encoded.into());
+
+      match std::fs::read(path.as_ref()) {
+        Ok(scrambled) => {
+          let png = crypto::scramble_image(&scrambled);
+          tauri::http::Response::builder()
+            .header("Content-Type", "image/png")
+            .header("Access-Control-Allow-Origin", "*")
+            .body(png)
+            .unwrap()
+        }
+        Err(e) => tauri::http::Response::builder()
+          .status(404)
+          .body(format!("not found: {e}").into_bytes())
+          .unwrap(),
+      }
+    })
     // プラグイン
     // single-instance は deep-link より先に登録する必要がある。
     // 2つ目のインスタンスが起動した時（= deep-link コールバック）、

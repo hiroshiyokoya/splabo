@@ -32,18 +32,24 @@ function makePathFixer(toUrl: (rel: string) => string) {
 async function loadFromTauri(): Promise<GearDB> {
   const { invoke, convertFileSrc } = await import('@tauri-apps/api/core')
 
+  /** 絶対パスを画像 URL に変換する。.gpng は gpng:// プロトコル、それ以外は asset:// */
+  const toImageUrl = (abs: string): string =>
+    abs.endsWith('.gpng')
+      ? `gpng://localhost/${encodeURIComponent(abs)}`
+      : convertFileSrc(abs)
+
   const [jsonStr, dataDir] = await Promise.all([
     invoke<string>('read_gear_db'),
     invoke<string>('get_data_dir'),
   ])
 
   // dataPath() ユーティリティを Tauri モード用に初期化
-  initTauriDataPath(dataDir, (abs) => convertFileSrc(abs))
+  initTauriDataPath(dataDir, toImageUrl)
 
   const db: GearDB = JSON.parse(jsonStr)
 
-  // JSON の相対パス（例: "images/xxx.png"）→ asset URL
-  const fixDB = makePathFixer((rel) => convertFileSrc(`${dataDir}/${rel}`))
+  // .gpng は gpng:// カスタムプロトコル経由で XOR 復元して配信、.png は asset:// そのまま
+  const fixDB = makePathFixer((rel) => toImageUrl(`${dataDir}/${rel}`))
   return fixDB(db)
 }
 
