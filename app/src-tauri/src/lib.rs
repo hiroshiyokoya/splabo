@@ -58,7 +58,7 @@ fn get_data_dir(app: AppHandle) -> Result<String, String> {
     .ok_or_else(|| "ギアデータディレクトリが見つかりません".to_string())
 }
 
-/// .gpng ファイルを一括で読み込み、XOR 解除して base64 data URL に変換して返す。
+/// .gti ファイルを一括で読み込み、XOR 解除して base64 data URL に変換して返す。
 /// WebView2（Windows）は <img src> でカスタム URI スキームを使えないため、
 /// data URL 形式に変換することで Windows/macOS 両対応とする。
 ///
@@ -66,7 +66,7 @@ fn get_data_dir(app: AppHandle) -> Result<String, String> {
 /// 戻値: { "絶対パス" → "data:image/png;base64,..." } のマップ
 /// 存在しないパスはマップから除外してログに警告を出す（エラーにはしない）。
 #[tauri::command]
-fn read_all_gpng(paths: Vec<String>) -> Result<std::collections::HashMap<String, String>, String> {
+fn read_all_gti(paths: Vec<String>) -> Result<std::collections::HashMap<String, String>, String> {
   use base64::{Engine, engine::general_purpose::STANDARD};
   let mut map = std::collections::HashMap::new();
   for path in paths {
@@ -77,7 +77,7 @@ fn read_all_gpng(paths: Vec<String>) -> Result<std::collections::HashMap<String,
         map.insert(path, data_url);
       }
       Err(e) => {
-        log::warn!("read_all_gpng: {} をスキップ: {}", path, e);
+        log::warn!("read_all_gti: {} をスキップ: {}", path, e);
       }
     }
   }
@@ -111,7 +111,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       read_gear_db,
       get_data_dir,
-      read_all_gpng,
+      read_all_gti,
       // 認証コマンド（auth.rs）
       auth::start_login,
       auth::handle_auth_redirect,

@@ -28,15 +28,15 @@ function makePathFixer(toUrl: (rel: string) => string) {
   return fixDB
 }
 
-// ── .gpng パス収集ヘルパー ────────────────────────────────────
+// ── .gti パス収集ヘルパー ────────────────────────────────────
 
-/** DB 内の全 .gpng 相対パスをユニークに収集する */
-function collectGpngRels(db: GearDB): Set<string> {
+/** DB 内の全 .gti（スクランブル済み画像）相対パスをユニークに収集する */
+function collectGtiRels(db: GearDB): Set<string> {
   const paths = new Set<string>()
-  const addSkill = (s: Skill) => { if (s.image?.endsWith('.gpng')) paths.add(s.image) }
+  const addSkill = (s: Skill) => { if (s.image?.endsWith('.gti')) paths.add(s.image) }
   const addGear = (g: GearItem) => {
-    if (g.image?.endsWith('.gpng')) paths.add(g.image)
-    if (g.brand_image?.endsWith('.gpng')) paths.add(g.brand_image)
+    if (g.image?.endsWith('.gti')) paths.add(g.image)
+    if (g.brand_image?.endsWith('.gti')) paths.add(g.brand_image)
     addSkill(g.primary_skill)
     g.additional_skills.forEach(addSkill)
   }
@@ -55,18 +55,18 @@ async function loadFromTauri(): Promise<GearDB> {
 
   const db: GearDB = JSON.parse(jsonStr)
 
-  // .gpng ファイルを一括で Tauri invoke 経由で読み込み、data URL に変換する。
+  // .gti ファイルを一括で Tauri invoke 経由で読み込み、data URL に変換する。
   // WebView2（Windows）は <img src> でカスタム URI スキームを使えないため、
   // data:image/png;base64,... 形式に変換することで Windows/macOS 両対応とする。
-  const gpngRels = collectGpngRels(db)
-  const absPaths = [...gpngRels].map(rel => `${dataDir}/${rel}`)
+  const gpngRels = collectGtiRels(db)
+  const absPaths = [...gtiRels].map(rel => `${dataDir}/${rel}`)
   const gpngMap: Record<string, string> = absPaths.length > 0
     ? await invoke<Record<string, string>>('read_all_gpng', { paths: absPaths })
     : {}
 
-  /** 絶対パスを画像 URL に変換する。.gpng は data URL、それ以外は asset:// */
+  /** 絶対パスを画像 URL に変換する。.gti は data URL、それ以外は asset:// */
   const toImageUrl = (abs: string): string =>
-    abs.endsWith('.gpng') ? (gpngMap[abs] ?? '') : convertFileSrc(abs)
+    abs.endsWith('.gti') ? (gpngMap[abs] ?? '') : convertFileSrc(abs)
 
   // dataPath() ユーティリティを Tauri モード用に初期化
   initTauriDataPath(dataDir, toImageUrl)
