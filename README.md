@@ -4,7 +4,7 @@
 
 ```
 geartoon/
-├── tools/   # データ取得パイプライン（Python）
+├── tools/   # nxapi サイドカーのビルド環境（Node.js）
 └── app/     # ギア表示 UI（Vite + React + Tauri）
 ```
 
@@ -35,34 +35,9 @@ Windows / macOS / Linux 対応（WSL 不要）。
 
 Samuel Thomas 氏が開発する OSS である [nxapi](https://github.com/samuelthomas2774/nxapi)（任天堂非公式）を用いて、SplatNet 3 から所持ギア情報を取得します。
 
-nxapi は Tauri サイドカーとしてアプリに同梱されており、**アプリ内の「データ更新」ボタンから直接データを取得できます**（Docker 不要）。`tools/` 配下のスクリプトは開発・デバッグ用です。
+nxapi は Tauri サイドカーとしてアプリに同梱されており、**アプリ内の「データ更新」ボタンから直接データを取得できます**（Docker 不要）。`tools/` 配下のスクリプトは開発・デバッグ用のレガシーです。
 
-### セットアップ
-
-```bash
-cd tools
-
-# Docker イメージをビルド
-docker compose build
-
-# Nintendo Account 認証（初回のみ）
-python3 scripts/nxapi.py nso auth
-```
-
-### ギア DB を更新する（1コマンド）
-
-```bash
-cd tools
-python3 scripts/update.py
-```
-
-内部で以下の 3 ステップを順番に実行します：
-
-1. SplatNet 3 API から所持ギアデータを取得 → `data/data/splatnet3/splatnet3-equipment.json`
-2. ギア・スキル画像をダウンロード → `data/images/`
-3. 構造化 DB JSON を生成 → `data/gear_db.json`
-
-### CLI ツール
+### CLI ツール（開発・デバッグ用）
 
 ```bash
 cd tools
@@ -91,7 +66,9 @@ python3 scripts/nxapi.py splatnet3 dump-records data/splatnet3
 
 ギアパワーは **57 点法**で数えます（1 着あたりメイン 10 + サブ 3×3 = 19AP、頭・服・靴で最大 57AP）。`find_combo` やアプリの絞り込みはこの前提に合わせています。
 
-### gear_db.json のフォーマット
+### gear_db のフォーマット
+
+アプリが取得したデータは AES-256-GCM で暗号化され `gear_db.bin` として保存されます（`gear_db.json` はそのまま残りません）。スキーマは以下の通りです：
 
 ```json
 {
@@ -101,11 +78,13 @@ python3 scripts/nxapi.py splatnet3 dump-records data/splatnet3
 }
 ```
 
+画像ファイルは XOR スクランブルされ `.gpng` 形式で保存されます。ビューワーアプリ（Android）はデスクトップアプリと同じキーで復号できます。
+
 ---
 
 ## app/ — Web UI
 
-所持ギアの一覧・絞り込み・スキル構成生成を GUI で操作できるアプリです。表示用データは `tools/data/` に置かれた `gear_db.json` と画像を参照します（未生成なら先に tools を実行）。
+所持ギアの一覧・絞り込み・スキル構成生成を GUI で操作できるアプリです。表示用データはアプリ内の「データ更新」で取得・生成されます（AppData に `gear_db.bin` と画像が保存されます）。
 
 ### 機能
 
@@ -154,7 +133,7 @@ Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して
 ## 技術メモ
 
 - **nxapi バージョン**: `1.6.1-next.254`（プレリリース）を使用。安定版では f-token 生成エンドポイント（nxapi-znca-api）への認証ができないため。
-- **`nxapi-remote-config.json`**: Nintendo が Coral 3.3.0 に更新したことで、公式の live remote-config が `coral: null` となり認証をブロックするようになった。そのためパッチ済み設定を Docker イメージに同梱している。
+- **`nxapi-remote-config.json`**: Nintendo が Coral 3.3.0 に更新したことで、公式の live remote-config が `coral: null` となり認証をブロックするようになった。そのためパッチ済み設定を nxapi サイドカーに同梱している。
 - **f-token 生成**: nxapi が内部で使用する `nxapi-znca-api.fancy.org.uk` エンドポイントで生成。かつて使用されていた imink API（`api.imink.app`）は現在サービスが停止している。
 - **所有ギア取得**: nxapi CLI に直接のコマンドはないため、`MyOutfitCommonDataEquipmentsQuery` を Node.js スクリプトから直接呼び出している。
 - **Tauri 認証実装**: Nintendo OAuth (PKCE) は Rust で実装（`app/src-tauri/src/auth.rs`）。f-token 生成は nxapi サイドカー経由で行う（Issue [#39](https://github.com/hiroshiyokoya/geartoon/issues/39) 実装済み）。
@@ -164,7 +143,7 @@ Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して
 - 本ツールは個人の利用を目的としています。
 - SplatNet 3 は任天堂が公式に公開している API ではありません。任天堂側の仕様変更により、予告なく動作しなくなる可能性があります。
 - SplatNet 3 からダウンロードされるギア・スキル画像の著作権は任天堂株式会社に帰属します。これらの画像は個人利用の範囲内でのみ使用し、再配布・商用利用・二次創作物への無断使用は行わないでください。
-- `tools/data/persist/` 配下の認証情報ファイルにはトークン類が含まれるため、コミットしないでください（`.gitignore` で除外済み）。
+- 認証情報ファイルはアプリの AppData ディレクトリ（Windows: `%APPDATA%\com.hiroshiyokoya.geartoon\`、macOS: `~/Library/Application Support/com.hiroshiyokoya.geartoon/`）にのみ保存されます。コミットしないでください。
 - 認証に使用する Nintendo アカウントの情報はローカルにのみ保存されます。外部サーバーへの送信は nxapi の仕様に準じます。
 - アプリのUIは、現状日本語のみです。
 
@@ -175,7 +154,7 @@ Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して
 ### 収集する情報
 
 - **Nintendo アカウントのセッショントークン（session_token）および各種アクセストークン**
-  - ローカルの `tools/data/persist/` ディレクトリにのみ保存されます。
+  - ローカルの AppData ディレクトリ（`com.hiroshiyokoya.geartoon/nxapi/`）にのみ保存されます。
   - 外部サーバーへ送信・アップロードすることはありません。
 
 ### 外部サービスへの送信
