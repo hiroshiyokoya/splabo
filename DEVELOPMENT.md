@@ -85,13 +85,29 @@ geartoon/
 │   ├── src-tauri/        # Tauriバックエンド（Rust）
 │   │   ├── src/
 │   │   │   ├── main.rs
-│   │   │   └── lib.rs
+│   │   │   ├── lib.rs
+│   │   │   └── auth.rs   # Nintendo OAuth 認証ロジック（純粋関数 + Tauriコマンド）
+│   │   ├── examples/
+│   │   │   └── auth_cli.rs  # 認証フローをCLIで対話テストするツール
 │   │   ├── Cargo.toml
 │   │   └── tauri.conf.json
 │   ├── package.json
 │   └── vite.config.ts
-└── tools/                # データパイプライン（Python）
-    └── data/
-        ├── gear_db.json  # ギアデータ（git管理外）
-        └── images/       # ギア画像（git管理外）
+└── tools/                # データパイプライン（Docker + Python）
+    ├── data/
+    │   ├── gear_db.json  # ギアデータ（git管理外）
+    │   └── images/       # ギア画像（git管理外）
+    └── scripts/          # Pythonスクリプト
 ```
+
+## Rust 認証の CLI テスト
+
+認証フローを Tauri アプリなしで対話的にテストできます：
+
+```powershell
+cd app
+cargo run --example auth_cli
+```
+
+ブラウザでログイン URL を開き、リダイレクト URL を貼り付けると session_token まで取得できます。  
+f-token 生成（bulletToken 取得）は nxapi サイドカー経由で行う予定のため、現状は最終ステップでエラーになります（Issue [#39](https://github.com/hiroshiyokoya/geartoon/issues/39)）。

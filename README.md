@@ -1,6 +1,6 @@
 <img src="app/public/geartoon-logo.png" alt="geartoon" height="300">
 
-これは、Splatoon 3 の所持ギアを閲覧・検索する非公式ファンツールです。任天堂株式会社とは無関係で、データ取得に [nxapi](https://github.com/samuelthomas2774/nxapi) および [imink API](https://github.com/imink-app/f-API) を使用しています。
+これは、Splatoon 3 の所持ギアを閲覧・検索する非公式ファンツールです。任天堂株式会社とは無関係で、データ取得に [nxapi](https://github.com/samuelthomas2774/nxapi) を使用しています。
 
 ```
 geartoon/
@@ -15,12 +15,12 @@ geartoon/
 ## 必要なもの
 
 
-| ツール            | 用途                           |
-| -------------- | ---------------------------- |
-| Docker Desktop | nxapi 実行環境（認証・SplatNet 系の通信） |
-| Python 3.10+   | データ処理スクリプト                   |
-| Node.js 18+    | Web UI の開発・ビルド               |
-| Rust + Cargo   | Tauri デスクトップアプリ化（後で追加）       |
+| ツール            | 用途                                     |
+| -------------- | ---------------------------------------- |
+| Docker Desktop | nxapi 実行環境（データ取得パイプライン用）              |
+| Python 3.10+   | データ処理スクリプト                              |
+| Node.js 20+    | Web UI の開発・ビルド                          |
+| Rust + Cargo   | Tauri デスクトップアプリ（実装済み）                  |
 
 
 Windows / macOS / Linux 対応（WSL 不要）。
@@ -31,6 +31,9 @@ Windows / macOS / Linux 対応（WSL 不要）。
 ## tools/ — データパイプライン
 
 Samuel Thomas 氏が開発する OSS である [nxapi](https://github.com/samuelthomas2774/nxapi)（任天堂非公式）を用いて、SplatNet 3 から所持ギア情報を取得し、ローカルに JSON DB と画像を揃えます。
+
+> **現状**: データ取得は Docker + Python スクリプトで行います（`tools/`）。  
+> 将来的には nxapi を Tauri サイドカーとしてアプリに同梱し、アプリ内から直接データを更新できるようにする予定です（Issue [#39](https://github.com/hiroshiyokoya/geartoon/issues/39)）。
 
 ### セットアップ
 
@@ -136,13 +139,15 @@ Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して
 
 - [samuelthomas2774/nxapi](https://github.com/samuelthomas2774/nxapi) — Nintendo Switch Online の認証・API アクセスライブラリ。本プロジェクトの認証基盤として使用。
 - [misenhower/splatoon3.ink](https://github.com/misenhower/splatoon3.ink) — nxapi + Docker による SplatNet 3 データ取得の実装例として参照。
-- [imink-app/f-API](https://github.com/imink-app/f-API) — Nintendo 認証に必要な f-token 生成 API（nxapi が内部で利用）。
+- [imink-app/f-API](https://github.com/imink-app/f-API) — Nintendo 認証に必要な f-token 生成 API。nxapi はかつてこの API を使用していたが、現在は独自エンドポイント（nxapi-znca-api）へ移行済み。
 
 ## 技術メモ
 
-- **nxapi バージョン**: `1.6.1-next.254`（プレリリース）を使用。安定版では `nxapi-znca-api` への認証ができないため。
-- **`nxapi-remote-config.json`**: Nintendo が Coral 3.3.0 に更新したことで、公式の live remote-config が `coral: null` となり認証をブロックするようになった。そのためパッチ済み設定を Docker イメージに同梱し、`NXAPI_ENABLE_REMOTE_CONFIG=0` で使用している。
+- **nxapi バージョン**: `1.6.1-next.254`（プレリリース）を使用。安定版では f-token 生成エンドポイント（nxapi-znca-api）への認証ができないため。
+- **`nxapi-remote-config.json`**: Nintendo が Coral 3.3.0 に更新したことで、公式の live remote-config が `coral: null` となり認証をブロックするようになった。そのためパッチ済み設定を Docker イメージに同梱している。
+- **f-token 生成**: nxapi が内部で使用する `nxapi-znca-api.fancy.org.uk` エンドポイントで生成。かつて使用されていた imink API（`api.imink.app`）は現在サービスが停止している。
 - **所有ギア取得**: nxapi CLI に直接のコマンドはないため、`MyOutfitCommonDataEquipmentsQuery` を Node.js スクリプトから直接呼び出している。
+- **Tauri 認証実装**: Nintendo OAuth (PKCE) の純粋関数部分は Rust で実装済み（`app/src-tauri/src/auth.rs`）。f-token 生成は nxapi サイドカー経由で行う予定（Issue [#39](https://github.com/hiroshiyokoya/geartoon/issues/39)）。
 
 ## 注意事項
 
@@ -150,7 +155,7 @@ Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して
 - SplatNet 3 は任天堂が公式に公開している API ではありません。任天堂側の仕様変更により、予告なく動作しなくなる可能性があります。
 - SplatNet 3 からダウンロードされるギア・スキル画像の著作権は任天堂株式会社に帰属します。これらの画像は個人利用の範囲内でのみ使用し、再配布・商用利用・二次創作物への無断使用は行わないでください。
 - `tools/data/persist/` 配下の認証情報ファイルにはトークン類が含まれるため、コミットしないでください（`.gitignore` で除外済み）。
-- 認証に使用する Nintendo アカウントの情報はローカルにのみ保存されます。外部サーバーへの送信は nxapi・imink の仕様に準じます。
+- 認証に使用する Nintendo アカウントの情報はローカルにのみ保存されます。外部サーバーへの送信は nxapi の仕様に準じます。
 - アプリのUIは、現状日本語のみです。
 
 ## プライバシーポリシー
@@ -165,7 +170,7 @@ Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して
 
 ### 外部サービスへの送信
 
-- **imink（`imink.app`）**：Nintendo 認証フローで必要な f-token を生成するため、nxapi の内部処理として `id_token` が imink API へ送信されます。これは nxapi の仕様に基づくものであり、geartoon 独自の送信ではありません。詳細は [imink-app/f-API](https://github.com/imink-app/f-API) を参照してください。
+- **nxapi-znca-api（`nxapi-znca-api.fancy.org.uk`）**：Nintendo 認証フローで必要な f-token を生成するため、nxapi の内部処理として `id_token` がこのエンドポイントへ送信されます。これは nxapi の仕様に基づくものであり、geartoon 独自の送信ではありません。詳細は [nxapi](https://github.com/samuelthomas2774/nxapi) を参照してください。
 - 上記以外に、本ツールが独自に情報を外部送信することはありません。
 
 ### 個人情報の収集について
