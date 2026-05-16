@@ -1,5 +1,6 @@
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
+pub mod auth;
 pub mod nxapi;
 
 /// PathBuf を Windows の \\?\ プレフィックスなし・スラッシュ区切りの文字列に変換
@@ -54,10 +55,22 @@ fn get_data_dir(app: AppHandle) -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    // プラグイン
     .plugin(tauri_plugin_shell::init())
+    .plugin(tauri_plugin_store::Builder::default().build())
+    .plugin(tauri_plugin_deep_link::init())
+    // PKCE パラメータ保持用のアプリ状態
+    .manage(auth::AuthState::default())
     .invoke_handler(tauri::generate_handler![
       read_gear_db,
       get_data_dir,
+      // 認証コマンド（auth.rs）
+      auth::start_login,
+      auth::handle_auth_redirect,
+      auth::get_bullet_token,
+      auth::check_auth_status,
+      auth::logout,
+      // nxapi サイドカーコマンド（nxapi.rs）
       nxapi::nxapi_setup,
       nxapi::nxapi_fetch_gear,
       nxapi::nxapi_check_login,
@@ -70,6 +83,19 @@ pub fn run() {
             .build(),
         )?;
       }
+
+      // deep-link: npf71b963c1b7b6d119://auth#... を受信したら
+      // フロントへ "deep-link-received" イベントを発火する。
+      {
+        use tauri_plugin_deep_link::DeepLinkExt;
+        let handle = app.handle().clone();
+        app.deep_link().on_open_url(move |event| {
+          for url in event.urls() {
+            let _ = handle.emit("deep-link-received", url.to_string());
+          }
+        });
+      }
+
       Ok(())
     })
     .run(tauri::generate_context!())
