@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { GearDB, GearItem, Skill } from '../types'
 import { initTauriDataPath } from '../utils/dataPath'
-
-const isTauri = (): boolean =>
-  '__TAURI_INTERNALS__' in window
+import { isTauri } from '../utils/tauri'
 
 // ── 画像パスの変換ヘルパー ────────────────────────────────────
 
@@ -60,12 +58,24 @@ async function loadFromBrowser(): Promise<GearDB> {
   return fixDB(db)
 }
 
+/** localStorage キー: ニンテンドーからデータを取得した日時 */
+const LS_LAST_FETCHED_KEY = 'geartoon:lastFetchedAt'
+
+/** データ取得日時を localStorage に保存する（App.tsx から呼ぶ） */
+export function saveLastFetchedAt(date: Date): void {
+  localStorage.setItem(LS_LAST_FETCHED_KEY, date.toISOString())
+}
+
 // ── フック ────────────────────────────────────────────────────
 export function useGearDB() {
   const [data, setData] = useState<GearDB | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null)
+  // localStorage から初期値を読む（アプリ起動時も前回取得日時を維持）
+  const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(() => {
+    const stored = localStorage.getItem(LS_LAST_FETCHED_KEY)
+    return stored ? new Date(stored) : null
+  })
   const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
@@ -78,7 +88,6 @@ export function useGearDB() {
       .then((db) => {
         if (cancelled) return
         setData(db)
-        setLastFetchedAt(new Date())
         setError(null)
       })
       .catch((err: Error) => {
@@ -93,9 +102,12 @@ export function useGearDB() {
     return () => { cancelled = true }
   }, [reloadKey])
 
-  /** nxapi_fetch_gear 完了後に呼ぶとギアDBを再読み込みする */
+  /** nxapi_fetch_gear 完了後に呼ぶとギアDBを再読み込みし、取得日時も更新する */
   const reload = useCallback(() => {
     setReloadKey(k => k + 1)
+    // localStorage の最新値を反映（saveLastFetchedAt が先に呼ばれている前提）
+    const stored = localStorage.getItem(LS_LAST_FETCHED_KEY)
+    if (stored) setLastFetchedAt(new Date(stored))
   }, [])
 
   return { data, loading, error, lastFetchedAt, reload }

@@ -56,7 +56,18 @@ fn get_data_dir(app: AppHandle) -> Result<String, String> {
 pub fn run() {
   tauri::Builder::default()
     // プラグイン
+    // single-instance は deep-link より先に登録する必要がある。
+    // 2つ目のインスタンスが起動した時（= deep-link コールバック）、
+    // 引数に deep-link URL が含まれていればフロントへ転送する。
+    .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+        for arg in &args {
+            if arg.starts_with("npf71b963c1b7b6d119://") {
+                let _ = app.emit("deep-link-received", arg.clone());
+            }
+        }
+    }))
     .plugin(tauri_plugin_shell::init())
+    .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_store::Builder::default().build())
     .plugin(tauri_plugin_deep_link::init())
     // PKCE パラメータ保持用のアプリ状態

@@ -490,11 +490,26 @@ pub fn start_login(app: AppHandle, state: State<'_, AuthState>) -> Result<String
         });
     }
 
-    // 既定ブラウザで開く（tauri-plugin-shell の opener を利用）。
-    use tauri_plugin_shell::ShellExt;
-    app.shell()
-        .open(&url, None)
-        .map_err(|e| format!("ブラウザ起動失敗: {e}"))?;
+    // Chromium 系ブラウザを直接起動する（カスタムスキームのリダイレクトを確実に処理するため）。
+    // Brave など一部ブラウザはカスタムスキームをブロックするため、
+    // Chrome → Edge の順で探し、どちらもなければ tauri-plugin-opener にフォールバック。
+    let chromium_paths: &[&str] = &[
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    ];
+    if let Some(browser) = chromium_paths.iter().find(|p| std::path::Path::new(p).exists()) {
+        std::process::Command::new(browser)
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("ブラウザ起動失敗: {e}"))?;
+    } else {
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .open_url(&url, None::<&str>)
+            .map_err(|e| format!("ブラウザ起動失敗: {e}"))?;
+    }
 
     Ok(url)
 }

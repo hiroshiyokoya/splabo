@@ -1,23 +1,39 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import { useGearDB } from './hooks/useGearDB'
-
-// ── Tauri 判定 ────────────────────────────────────────────────
-const isTauri = (): boolean => '__TAURI_INTERNALS__' in window
+import { GearCard } from './components/GearCard'
+import { FilterDrawer, emptyFilter, countActiveFilters } from './components/FilterDrawer'
+import { ComboSheet, emptySlots } from './components/ComboSheet'
+import { AboutDialog } from './components/AboutDialog'
+import { useGearDB, saveLastFetchedAt } from './hooks/useGearDB'
+import { isTauri } from './utils/tauri'
+import type { FilterState } from './components/FilterDrawer'
+import type { ComboSlots } from './components/ComboSheet'
+import type { ComboResult } from './utils/findCombo'
+import type { GearCategory, GearItem, Skill } from './types'
+import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from './constants/gearPowerMeta'
 
 // ── データ更新ステート ─────────────────────────────────────────
 type UpdatePhase = 'idle' | 'checking' | 'waiting-login' | 'fetching' | 'error'
 
-/** ログインフロー: deep-link を待ち、session_token → nxapi_setup まで完了させる */
+/**
+ * ログインフロー: deep-link を待ち、session_token → nxapi_setup まで完了させる。
+ * 成功・失敗・タイムアウトいずれの場合も unlisten を確実に呼ぶ。
+ */
 async function doLoginFlow(
   invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>,
   listen: <T>(event: string, handler: (e: { payload: T }) => void) => Promise<() => void>,
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
+    let unlisten: (() => void) | null = null
     let timeoutId: ReturnType<typeof setTimeout>
+
+    const cleanup = () => {
+      clearTimeout(timeoutId)
+      unlisten?.()
+    }
 
     // まず deep-link リスナーを登録してからブラウザを開く
     listen<string>('deep-link-received', async ({ payload: url }) => {
-      clearTimeout(timeoutId)
+      cleanup()
       try {
         const sessionToken = await invoke<string>('handle_auth_redirect', { url })
         await invoke<string>('nxapi_setup', { sessionToken })
@@ -25,31 +41,22 @@ async function doLoginFlow(
       } catch (e) {
         reject(new Error(String(e)))
       }
-    }).then(async (unlisten) => {
+    }).then(async (fn) => {
+      unlisten = fn
       timeoutId = setTimeout(() => {
-        unlisten()
+        cleanup()
         reject(new Error('ログインがタイムアウトしました（5分）'))
       }, 5 * 60 * 1000)
 
       try {
         await invoke<string>('start_login')
       } catch (e) {
-        clearTimeout(timeoutId)
-        unlisten()
+        cleanup()
         reject(new Error(String(e)))
       }
     }).catch(reject)
   })
 }
-import { GearCard } from './components/GearCard'
-import { FilterDrawer, emptyFilter, countActiveFilters } from './components/FilterDrawer'
-import { ComboSheet, emptySlots } from './components/ComboSheet'
-import { AboutDialog } from './components/AboutDialog'
-import type { FilterState } from './components/FilterDrawer'
-import type { ComboSlots } from './components/ComboSheet'
-import type { ComboResult } from './utils/findCombo'
-import type { GearCategory, GearItem, Skill } from './types'
-import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from './constants/gearPowerMeta'
 
 const SCROLL_TOP_THRESHOLD = 600
 const SCROLL_TOP_HIDE_AFTER_MS = 1000
@@ -187,7 +194,8 @@ function App() {
       setUpdatePhase('fetching')
       await invoke('nxapi_fetch_gear')
 
-      // 4. UI を再読み込み
+      // 4. 取得日時を保存してから UI を再読み込み
+      saveLastFetchedAt(new Date())
       reload()
       setUpdatePhase('idle')
     } catch (e) {
