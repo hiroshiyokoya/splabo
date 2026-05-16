@@ -67,6 +67,18 @@ jobs:
         with:
           node-version: '20'
 
+      # git タグ（例: v0.5.2）からバージョンを取り出して tauri.conf.json に書き込む
+      - name: Sync version with git tag
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = 'app/src-tauri/tauri.conf.json';
+            const conf = JSON.parse(fs.readFileSync(path, 'utf8'));
+            conf.version = process.env.GITHUB_REF_NAME.replace(/^v/, '');
+            fs.writeFileSync(path, JSON.stringify(conf, null, 2) + '\n');
+            console.log('version:', conf.version);
+          "
+
       # Linux: Tauri が必要とするシステムライブラリ
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
