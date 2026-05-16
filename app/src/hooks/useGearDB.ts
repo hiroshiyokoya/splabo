@@ -58,15 +58,15 @@ async function loadFromTauri(): Promise<GearDB> {
   // .gti ファイルを一括で Tauri invoke 経由で読み込み、data URL に変換する。
   // WebView2（Windows）は <img src> でカスタム URI スキームを使えないため、
   // data:image/png;base64,... 形式に変換することで Windows/macOS 両対応とする。
-  const gpngRels = collectGtiRels(db)
+  const gtiRels = collectGtiRels(db)
   const absPaths = [...gtiRels].map(rel => `${dataDir}/${rel}`)
-  const gpngMap: Record<string, string> = absPaths.length > 0
-    ? await invoke<Record<string, string>>('read_all_gpng', { paths: absPaths })
+  const gtiMap: Record<string, string> = absPaths.length > 0
+    ? await invoke<Record<string, string>>('read_all_gti', { paths: absPaths })
     : {}
 
   /** 絶対パスを画像 URL に変換する。.gti は data URL、それ以外は asset:// */
   const toImageUrl = (abs: string): string =>
-    abs.endsWith('.gti') ? (gpngMap[abs] ?? '') : convertFileSrc(abs)
+    abs.endsWith('.gti') ? (gtiMap[abs] ?? '') : convertFileSrc(abs)
 
   // dataPath() ユーティリティを Tauri モード用に初期化
   initTauriDataPath(dataDir, toImageUrl)
