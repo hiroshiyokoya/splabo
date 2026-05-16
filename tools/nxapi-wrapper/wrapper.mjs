@@ -9,23 +9,44 @@
  *
  * 結果は stdout に 1行の JSON で出力する。
  * エラー時は {"ok": false, "error": "<message>"} を stdout に出力し、exit code 1 で終了。
+ *
+ * ## nxapi のインポートについて
+ * nxapi の package.json の exports フィールドは公開 API のみを制限しているため、
+ * 内部モジュールは相対パス（./node_modules/nxapi/dist/...）で直接インポートする。
+ * pkg でコンパイル時は binaries/ 以下に node_modules を含むため動作する。
  */
 
 import { createWriteStream, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { pipeline } from 'stream/promises';
 import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
+
+// ── nxapi 内部モジュールを file:// URL でインポート（exports制限を回避）
+// Windows では絶対パスを file:// URL に変換しないと ESM import が失敗する
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const nxapiBase = path.join(__dirname, 'node_modules', 'nxapi', 'dist');
+
+/** Windows パスを file:// URL 文字列に変換して dynamic import する */
+function nxapiUrl(subpath) {
+  return pathToFileURL(path.join(nxapiBase, subpath)).href;
+}
+
+const { init: initGlobals } =
+  await import(nxapiUrl('common/globals.js'));
+const { getBulletToken } =
+  await import(nxapiUrl('common/auth/splatnet3.js'));
+const { embedded_nxapi_auth_cli_client_id, pkg } =
+  await import(nxapiUrl('util/product.js'));
+const { initStorage } =
+  await import(nxapiUrl('util/storage.js'));
+const { NxapiClientAssertionProvider, setClientAssertionProvider } =
+  await import(nxapiUrl('util/nxapi-auth.js'));
+const { addUserAgent } =
+  await import(nxapiUrl('util/useragent.js'));
 
 // ── nxapi 初期化 ────────────────────────────────────────────
-import { init as initGlobals } from 'nxapi/dist/common/globals.js';
-import { getBulletToken } from 'nxapi/dist/common/auth/splatnet3.js';
-import { embedded_nxapi_auth_cli_client_id, pkg } from 'nxapi/dist/util/product.js';
-import { initStorage } from 'nxapi/dist/util/storage.js';
-import {
-  NxapiClientAssertionProvider,
-  setClientAssertionProvider,
-} from 'nxapi/dist/util/nxapi-auth.js';
-import { addUserAgent } from 'nxapi/dist/util/useragent.js';
-
 initGlobals();
 addUserAgent('geartoon-sidecar/1.0');
 
@@ -74,7 +95,7 @@ try {
       await cmdCheckLogin(args);
       break;
     default:
-      respond({ ok: false, error: `不明なコマンド: ${cmd}` });
+      respond({ ok: false, error: `不明なコマンド: ${cmd ?? '(なし)'}` });
       process.exit(1);
   }
 } catch (e) {
@@ -87,6 +108,7 @@ try {
 /**
  * setup <session_token> <data_dir>
  * session_token を nxapi のストレージ形式で保存する。
+ * nxapi の旧ストレージ（flat key-value + persist/）に保存する。
  */
 async function cmdSetup([sessionToken, dataDir]) {
   if (!sessionToken || !dataDir) {
@@ -96,6 +118,7 @@ async function cmdSetup([sessionToken, dataDir]) {
   // session_token の JWT payload から sub (nsid) を取得
   const nsid = parseJwtSub(sessionToken);
 
+  // nxapi の旧ストレージ API で保存
   const storage = await initStorage(dataDir);
   await storage.setItem('SelectedUser', nsid);
   await storage.setItem('NintendoAccountToken.' + nsid, sessionToken);
@@ -214,6 +237,7 @@ async function downloadGearImages(equipment, imgDir) {
 
   let downloaded = 0;
   let skipped = 0;
+  const seenSkillUrls = new Set();
 
   for (const [section, label] of Object.entries(sections)) {
     const nodes = equipment?.data?.[section]?.nodes ?? [];
@@ -221,27 +245,25 @@ async function downloadGearImages(equipment, imgDir) {
       // ギア画像
       if (node.image?.url) {
         const dest = path.join(imgDir, 'gear', label, filenameFromUrl(node.image.url));
-        if (await downloadFile(node.image.url, dest)) downloaded++;
-        else skipped++;
+        (await downloadFile(node.image.url, dest)) ? downloaded++ : skipped++;
       }
       // ブランド画像
       if (node.brand?.image?.url) {
         const dest = path.join(imgDir, 'brand', filenameFromUrl(node.brand.image.url));
-        if (await downloadFile(node.brand.image.url, dest)) downloaded++;
-        else skipped++;
+        (await downloadFile(node.brand.image.url, dest)) ? downloaded++ : skipped++;
       }
       // スキル画像（メイン）
-      if (node.primaryGearPower?.image?.url) {
+      if (node.primaryGearPower?.image?.url && !seenSkillUrls.has(node.primaryGearPower.image.url)) {
+        seenSkillUrls.add(node.primaryGearPower.image.url);
         const dest = path.join(imgDir, 'skill', filenameFromUrl(node.primaryGearPower.image.url));
-        if (await downloadFile(node.primaryGearPower.image.url, dest)) downloaded++;
-        else skipped++;
+        (await downloadFile(node.primaryGearPower.image.url, dest)) ? downloaded++ : skipped++;
       }
       // スキル画像（サブ）
       for (const sub of node.additionalGearPowers ?? []) {
-        if (sub.image?.url) {
+        if (sub.image?.url && !seenSkillUrls.has(sub.image.url)) {
+          seenSkillUrls.add(sub.image.url);
           const dest = path.join(imgDir, 'skill', filenameFromUrl(sub.image.url));
-          if (await downloadFile(sub.image.url, dest)) downloaded++;
-          else skipped++;
+          (await downloadFile(sub.image.url, dest)) ? downloaded++ : skipped++;
         }
       }
     }
