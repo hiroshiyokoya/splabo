@@ -1,0 +1,29 @@
+{
+  "name": "nxapi-wrapper",
+  "version": "1.0.0",
+  "description": "nxapi sidecar wrapper for geartoon Tauri app",
+  "type": "module",
+  "scripts": {
+    "patch-config": "node -e \"const {copyFileSync}=require('fs');copyFileSync('../nxapi-remote-config.json','node_modules/nxapi/resources/common/remote-config.json');console.log('patched');\"",
+    "build:win": "npm run patch-config && npx @yao-pkg/pkg wrapper.mjs --target node20-win-x64 --output ../../app/src-tauri/binaries/nxapi-sidecar-x86_64-pc-windows-msvc.exe",
+    "build:mac-arm": "npm run patch-config && npx @yao-pkg/pkg wrapper.mjs --target node20-macos-arm64 --output ../../app/src-tauri/binaries/nxapi-sidecar-aarch64-apple-darwin",
+    "build:mac-x64": "npm run patch-config && npx @yao-pkg/pkg wrapper.mjs --target node20-macos-x64 --output ../../app/src-tauri/binaries/nxapi-sidecar-x86_64-apple-darwin",
+    "build:linux": "npm run patch-config && npx @yao-pkg/pkg wrapper.mjs --target node20-linux-x64 --output ../../app/src-tauri/binaries/nxapi-sidecar-x86_64-unknown-linux-gnu",
+    "test": "node wrapper.mjs check_login /tmp/test-data"
+  },
+  "dependencies": {
+    "nxapi": "1.6.1-next.254"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^5.12.0"
+  },
+  "pkg": {
+    "assets": [
+      "node_modules/nxapi/resources/**/*",
+      "node_modules/nxapi/dist/**/*"
+    ],
+    "scripts": [
+      "node_modules/nxapi/dist/**/*.js"
+    ]
+  }
+}
