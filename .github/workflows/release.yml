@@ -27,7 +27,6 @@ jobs:
           |---|---|
           | Windows | \`geartoon_x.x.x_x64-setup.exe\` |
           | macOS (Apple Silicon) | \`geartoon_x.x.x_aarch64.dmg\` |
-          | macOS (Intel) | \`geartoon_x.x.x_x64.dmg\` |
           | Linux | \`geartoon_x.x.x_amd64.AppImage\` |
 
           ## 変更内容
