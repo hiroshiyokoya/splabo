@@ -67,6 +67,10 @@ npm install
 - **`npm run dev`**: ブラウザで動作確認。UIの開発はこちらで行う。`/data/*` → `tools/data/` のファイル配信がviteミドルウェアで動く。
 - **`npm run tauri dev`**: デスクトップアプリとして起動。Tauriネイティブ機能（認証・ファイルアクセス等）の開発はこちら。
 
+### macOS での認証テストについて
+
+macOS の `tauri dev` では、Nintendo 認証の deep-link（`npf71b963c1b7b6d119://`）が OS に登録されないため、認証フローが完了しない。認証・データ更新のテストは `npm run tauri build` でビルドした本番アプリで行うこと。
+
 ## ビルド成果物
 
 `npm run tauri build` を実行すると `app/src-tauri/target/release/bundle/` に生成される：
