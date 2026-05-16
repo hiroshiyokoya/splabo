@@ -86,8 +86,9 @@ geartoon/
 │   │   ├── src/
 │   │   │   ├── main.rs
 │   │   │   ├── lib.rs
-│   │   │   ├── auth.rs   # Nintendo OAuth 認証ロジック（純粋関数 + Tauriコマンド）
-│   │   │   └── nxapi.rs  # nxapi サイドカー呼び出し（Tauriコマンド群）
+│   │   │   ├── auth.rs    # Nintendo OAuth 認証ロジック（純粋関数 + Tauriコマンド）
+│   │   │   ├── nxapi.rs   # nxapi サイドカー呼び出し（Tauriコマンド群）
+│   │   │   └── crypto.rs  # gear_db 暗号化・画像スクランブル（AES-256-GCM / XOR）
 │   │   ├── examples/
 │   │   │   └── auth_cli.rs  # 認証フローをCLIで対話テストするツール
 │   │   ├── binaries/     # サイドカーバイナリ（git管理外・要ビルド）
@@ -97,13 +98,14 @@ geartoon/
 │   └── vite.config.ts
 └── tools/                # データパイプライン
     ├── nxapi-wrapper/    # nxapi サイドカーのソース（Node.js）
-    │   ├── wrapper.mjs   # IPC ラッパー本体
+    │   ├── wrapper.js    # IPC ラッパー本体
+    │   ├── package.json  # npm スクリプト（build:win / build:mac-arm / build:linux）
     │   ├── build.bat     # Windows 向けビルドスクリプト
     │   └── build.sh      # macOS/Linux 向けビルドスクリプト
     ├── data/
-    │   ├── gear_db.json  # ギアデータ（git管理外）
-    │   └── images/       # ギア画像（git管理外）
-    └── scripts/          # Pythonスクリプト（既存 Docker フロー）
+    │   ├── gear_db.bin   # 暗号化済みギアデータ（git管理外・fetch後に生成）
+    │   └── images/       # スクランブル済み画像 .gpng（git管理外）
+    └── scripts/          # Python スクリプト（開発・デバッグ用レガシー）
 ```
 
 ## nxapi サイドカーのビルド（必須）
@@ -119,7 +121,8 @@ build.bat
 ```bash
 # macOS (Apple Silicon)
 cd tools/nxapi-wrapper
-./build.sh mac-arm
+npm ci
+npm run build:mac-arm
 ```
 
 ビルドには数分かかります。出力先: `app/src-tauri/binaries/nxapi-sidecar-<target>`  
