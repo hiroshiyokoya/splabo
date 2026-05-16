@@ -4,9 +4,16 @@
 
 ```
 geartoon/
-├── tools/   # データ取得パイプライン（Docker + Python）
-└── app/     # ギア表示 UI（Vite + React → Tauri）
+├── tools/   # データ取得パイプライン（Python）
+└── app/     # ギア表示 UI（Vite + React + Tauri）
 ```
+
+## スクリーンショット
+
+| ギア一覧 | 絞り込み | コーデ生成 |
+|---|---|---|
+| ![ギア一覧](docs/screenshots/main.png) | ![絞り込み](docs/screenshots/filter.png) | ![コーデ生成](docs/screenshots/combo.png) |
+| 所有ギアを頭・服・靴ごとに一覧表示 | スキル、ブランドで、ギアを絞り込み | 目標スキルからコーデ候補を自動生成 |
 
 ## 関連リポジトリ
 
@@ -14,14 +21,10 @@ geartoon/
 
 ## 必要なもの
 
-
-| ツール            | 用途                                     |
-| -------------- | ---------------------------------------- |
-| Docker Desktop | nxapi 実行環境（データ取得パイプライン用）              |
-| Python 3.10+   | データ処理スクリプト                              |
-| Node.js 20+    | Web UI の開発・ビルド                          |
-| Rust + Cargo   | Tauri デスクトップアプリ（実装済み）                  |
-
+| ツール          | 用途                       |
+| ------------ | -------------------------- |
+| Node.js 20+  | アプリ開発・ビルド               |
+| Rust + Cargo | Tauri デスクトップアプリのビルド     |
 
 Windows / macOS / Linux 対応（WSL 不要）。
 動作確認済みは Windows と macOS。Linux は未検証。
@@ -30,10 +33,9 @@ Windows / macOS / Linux 対応（WSL 不要）。
 
 ## tools/ — データパイプライン
 
-Samuel Thomas 氏が開発する OSS である [nxapi](https://github.com/samuelthomas2774/nxapi)（任天堂非公式）を用いて、SplatNet 3 から所持ギア情報を取得し、ローカルに JSON DB と画像を揃えます。
+Samuel Thomas 氏が開発する OSS である [nxapi](https://github.com/samuelthomas2774/nxapi)（任天堂非公式）を用いて、SplatNet 3 から所持ギア情報を取得します。
 
-> **現状**: データ取得は Docker + Python スクリプトで行います（`tools/`）。  
-> 将来的には nxapi を Tauri サイドカーとしてアプリに同梱し、アプリ内から直接データを更新できるようにする予定です（Issue [#39](https://github.com/hiroshiyokoya/geartoon/issues/39)）。
+nxapi は Tauri サイドカーとしてアプリに同梱されており、**アプリ内の「データ更新」ボタンから直接データを取得できます**（Docker 不要）。`tools/` 配下のスクリプトは開発・デバッグ用です。
 
 ### セットアップ
 
@@ -123,7 +125,15 @@ python3 scripts/nxapi.py splatnet3 dump-records data/splatnet3
 - デザイントークン管理（`index.css` の `:root` にぼかし・透明度・レイアウト値を集約）
   - ボトムシートのカラーテーマを変数で切り替え可能（A=パープル / B=ネイビー+オレンジ / C=グリーン / D=ダークオレンジ）
 
-### 開発サーバー起動
+### アプリ起動（Tauri）
+
+```bash
+cd app
+npm install        # 初回のみ
+npx tauri dev      # アプリ起動（初回はRustのコンパイルで数分かかります）
+```
+
+### Web のみで起動（Tauri なし・データ更新不可）
 
 ```bash
 cd app
@@ -147,7 +157,7 @@ Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して
 - **`nxapi-remote-config.json`**: Nintendo が Coral 3.3.0 に更新したことで、公式の live remote-config が `coral: null` となり認証をブロックするようになった。そのためパッチ済み設定を Docker イメージに同梱している。
 - **f-token 生成**: nxapi が内部で使用する `nxapi-znca-api.fancy.org.uk` エンドポイントで生成。かつて使用されていた imink API（`api.imink.app`）は現在サービスが停止している。
 - **所有ギア取得**: nxapi CLI に直接のコマンドはないため、`MyOutfitCommonDataEquipmentsQuery` を Node.js スクリプトから直接呼び出している。
-- **Tauri 認証実装**: Nintendo OAuth (PKCE) の純粋関数部分は Rust で実装済み（`app/src-tauri/src/auth.rs`）。f-token 生成は nxapi サイドカー経由で行う予定（Issue [#39](https://github.com/hiroshiyokoya/geartoon/issues/39)）。
+- **Tauri 認証実装**: Nintendo OAuth (PKCE) は Rust で実装（`app/src-tauri/src/auth.rs`）。f-token 生成は nxapi サイドカー経由で行う（Issue [#39](https://github.com/hiroshiyokoya/geartoon/issues/39) 実装済み）。
 
 ## 注意事項
 
