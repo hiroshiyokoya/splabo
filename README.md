@@ -125,7 +125,15 @@ python3 scripts/nxapi.py splatnet3 dump-records data/splatnet3
 - デザイントークン管理（`index.css` の `:root` にぼかし・透明度・レイアウト値を集約）
   - ボトムシートのカラーテーマを変数で切り替え可能（A=パープル / B=ネイビー+オレンジ / C=グリーン / D=ダークオレンジ）
 
-### 開発サーバー起動
+### アプリ起動（Tauri）
+
+```bash
+cd app
+npm install        # 初回のみ
+npx tauri dev      # アプリ起動（初回はRustのコンパイルで数分かかります）
+```
+
+### Web のみで起動（Tauri なし・データ更新不可）
 
 ```bash
 cd app
