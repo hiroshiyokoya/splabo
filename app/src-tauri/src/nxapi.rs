@@ -19,6 +19,7 @@
 use serde::Deserialize;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
+use crate::crypto;
 
 // ── サイドカー応答の型 ──────────────────────────────────────
 
@@ -121,7 +122,7 @@ pub async fn nxapi_setup(session_token: String, app: AppHandle) -> Result<String
 }
 
 /// SplatNet3 からギアデータを取得し、画像DL + gear_db.json を生成する。
-/// 完了時に gear_db.json の絶対パスを返す。
+/// 完了後に暗号化ポスト処理を行い、gear_db.bin のパスを返す。
 #[tauri::command]
 pub async fn nxapi_fetch_gear(app: AppHandle) -> Result<String, String> {
     let data_dir = resolve_nxapi_data_dir(&app)?;
@@ -131,8 +132,58 @@ pub async fn nxapi_fetch_gear(app: AppHandle) -> Result<String, String> {
         vec!["fetch_gear".to_string(), data_dir, out_dir],
     )
     .await?;
-    resp.db_path
-        .ok_or_else(|| "db_path が返されませんでした".to_string())
+    let db_path = resp.db_path.ok_or_else(|| "db_path が返されませんでした".to_string())?;
+
+    // サイドカーが生成した gear_db.json + images/*.png を暗号化・スクランブルする
+    encrypt_gear_data(&db_path)?;
+
+    // 呼び出し元は bin のパスを受け取る（フロントは read_gear_db コマンドで読むため参考値）
+    let bin_path = std::path::Path::new(&db_path)
+        .with_file_name("gear_db.bin")
+        .to_string_lossy()
+        .to_string();
+    Ok(bin_path)
+}
+
+/// gear_db.json を暗号化して gear_db.bin へ変換し、
+/// images/*.png を XOR スクランブルして .gpng にリネームする。
+fn encrypt_gear_data(db_json_path: &str) -> Result<(), String> {
+    let db_path = std::path::Path::new(db_json_path);
+    let out_dir = db_path.parent().ok_or("db_path の親ディレクトリが不明")?;
+
+    // gear_db.json を読み、画像パスを .gpng に書き換えてから暗号化
+    let json_str = std::fs::read_to_string(db_path).map_err(|e| e.to_string())?;
+    let patched = json_str.replace(".png\"", ".gpng\"");
+    let encrypted = crypto::encrypt_db(patched.as_bytes())?;
+    let bin_path = out_dir.join("gear_db.bin");
+    std::fs::write(&bin_path, encrypted).map_err(|e| e.to_string())?;
+    std::fs::remove_file(db_path).map_err(|e| e.to_string())?;
+
+    // images/ 配下の .png を再帰的に .gpng へスクランブル変換
+    let images_dir = out_dir.join("images");
+    if images_dir.is_dir() {
+        scramble_images_recursive(&images_dir)?;
+    }
+
+    Ok(())
+}
+
+/// ディレクトリを再帰的に走査し、すべての .png を XOR スクランブルして .gpng に変換する。
+fn scramble_images_recursive(dir: &std::path::Path) -> Result<(), String> {
+    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_dir() {
+            scramble_images_recursive(&path)?;
+        } else if path.extension().and_then(|s| s.to_str()) == Some("png") {
+            let data = std::fs::read(&path).map_err(|e| e.to_string())?;
+            let scrambled = crypto::scramble_image(&data);
+            let gpng_path = path.with_extension("gpng");
+            std::fs::write(&gpng_path, scrambled).map_err(|e| e.to_string())?;
+            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 /// nxapi ストレージにログイン情報があるか確認する。

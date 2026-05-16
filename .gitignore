@@ -17,6 +17,10 @@ __pycache__/
 *.pyo
 .venv/
 
+# === tools/nxapi-wrapper ===
+tools/nxapi-wrapper/node_modules/
+tools/nxapi-wrapper/dist/
+
 # === app ===
 app/node_modules/
 app/dist/
