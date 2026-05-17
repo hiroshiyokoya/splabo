@@ -26,39 +26,13 @@ jobs:
             BODY="詳細は [CHANGELOG](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md) を参照してください。"
           fi
           # イシュー番号 (#xx) をリリースノートから除去
-          BODY=$(echo "$BODY" | sed 's/ (#[0-9]\+)//g')
-
-          INSTALL_NOTES=$(cat <<TEMPLATE
-
----
-
-## ダウンロード
-
-| OS | ファイル |
-|---|---|
-| Windows | \`geartoon_${VERSION_NUM}_x64-setup.exe\`（推奨）または \`.msi\` |
-| macOS (Apple Silicon) | \`geartoon_${VERSION_NUM}_aarch64.dmg\` |
-
-## ⚠️ インストール時の警告について
-
-本アプリは現在コード署名されていないため、OS の警告が表示される場合があります。
-
-### Windows — SmartScreen 警告
-「Windows によって PC が保護されました」と表示された場合：
-**「詳細情報」→「実行」** をクリックしてください。
-
-### macOS — Gatekeeper ブロック
-「壊れているため開けません」と表示された場合：
-ターミナルで以下を実行してください。
-\`\`\`
-xattr -cr /Applications/geartoon.app
-\`\`\`
-TEMPLATE
-)
+          BODY=$(echo "$BODY" | sed 's/ (#[0-9]*[0-9])//g')
+          # インストール手順フッターを追加（VERSION をバージョン番号で置換）
+          FOOTER=$(sed "s/VERSION/${VERSION_NUM}/g" .github/release-footer.md)
 
           echo "body<<ENDOFBODY" >> $GITHUB_OUTPUT
           echo "$BODY" >> $GITHUB_OUTPUT
-          echo "$INSTALL_NOTES" >> $GITHUB_OUTPUT
+          echo "$FOOTER" >> $GITHUB_OUTPUT
           echo "ENDOFBODY" >> $GITHUB_OUTPUT
 
       - name: Create draft release
