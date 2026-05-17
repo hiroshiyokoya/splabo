@@ -14,6 +14,21 @@ jobs:
     outputs:
       release_id: ${{ steps.create-release.outputs.release_id }}
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION_NUM="${VERSION#v}"
+          BODY=$(awk "/^## \[${VERSION_NUM}\]/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md)
+          if [ -z "$BODY" ]; then
+            BODY="詳細は [CHANGELOG](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md) を参照してください。"
+          fi
+          echo "body<<ENDOFBODY" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "ENDOFBODY" >> $GITHUB_OUTPUT
+
       - name: Create draft release
         id: create-release
         run: |
@@ -21,17 +36,7 @@ jobs:
             -X POST \
             -f tag_name="${{ github.ref_name }}" \
             -f name="geartoon ${{ github.ref_name }}" \
-            -f body="## ダウンロード
-
-          | OS | ファイル |
-          |---|---|
-          | Windows | \`geartoon_x.x.x_x64-setup.exe\` |
-          | macOS (Apple Silicon) | \`geartoon_x.x.x_aarch64.dmg\` |
-          | Linux | \`geartoon_x.x.x_amd64.AppImage\` |
-
-          ## 変更内容
-
-          詳細は [CHANGELOG](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) を参照してください。" \
+            -f body="${{ steps.changelog.outputs.body }}" \
             -F draft=true \
             -F prerelease=false \
             --jq '.id')
