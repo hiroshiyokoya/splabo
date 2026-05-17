@@ -2140,14 +2140,11 @@ body {
 
 /* ── Settings: danger zone ── */
 
-.settings-section__title--danger {
-  color: #ff7621;
-}
-
 .settings-danger-zone {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  margin-top: 0.75rem;
   margin-bottom: 0.75rem;
 }
 

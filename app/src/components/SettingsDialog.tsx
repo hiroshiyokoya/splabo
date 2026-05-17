@@ -111,8 +111,6 @@ export function SettingsDialog({ open, onClose, onGearDataDeleted }: Props) {
                 </button>
               )}
             </div>
-
-            <h3 className="settings-section__title settings-section__title--danger">データ管理</h3>
             <div className="settings-danger-zone">
               <div className="settings-danger-row">
                 <div className="settings-danger-row__desc">
@@ -145,8 +143,8 @@ export function SettingsDialog({ open, onClose, onGearDataDeleted }: Props) {
           </>
         )}
 
-        {/* 使い方 */}
-        <h3 className="settings-section__title">使い方</h3>
+        {/* Tips */}
+        <h3 className="settings-section__title">Tips</h3>
         <ul className="settings-help-list">
           <li className="settings-help-item">
             <kbd className="settings-kbd">Shift</kbd> + クリック: ステッパーで最大値 / 最小値に一気に移動
