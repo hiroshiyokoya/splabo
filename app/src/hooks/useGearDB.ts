@@ -32,23 +32,24 @@ function makePathFixer(toUrl: (rel: string) => string) {
 async function loadFromTauri(): Promise<GearDB> {
   const { invoke, convertFileSrc } = await import('@tauri-apps/api/core')
 
-  /** 絶対パスを画像 URL に変換する。.gpng は gpng:// プロトコル、それ以外は asset:// */
-  const toImageUrl = (abs: string): string =>
-    abs.endsWith('.gpng')
-      ? `gpng://localhost/${encodeURIComponent(abs)}`
-      : convertFileSrc(abs)
-
-  const [jsonStr, dataDir] = await Promise.all([
+  // images/ 配下の全 .gti を一括スキャン・読み込みして data URL マップを構築する。
+  // DB 参照外の画像（アキ枠など UI にハードコードされたもの）も含めて全カバー。
+  // WebView2（Windows）は <img src> でカスタム URI スキームをブロックするため、
+  // data:image/png;base64,... 形式に変換することで Windows/macOS 両対応とする。
+  const [jsonStr, dataDir, gtiMap] = await Promise.all([
     invoke<string>('read_gear_db'),
     invoke<string>('get_data_dir'),
+    invoke<Record<string, string>>('read_all_gti'),
   ])
+
+  /** 絶対パスを画像 URL に変換する。.gti は data URL、それ以外は asset:// */
+  const toImageUrl = (abs: string): string =>
+    abs.endsWith('.gti') ? (gtiMap[abs] ?? '') : convertFileSrc(abs)
 
   // dataPath() ユーティリティを Tauri モード用に初期化
   initTauriDataPath(dataDir, toImageUrl)
 
   const db: GearDB = JSON.parse(jsonStr)
-
-  // .gpng は gpng:// カスタムプロトコル経由で XOR 復元して配信、.png は asset:// そのまま
   const fixDB = makePathFixer((rel) => toImageUrl(`${dataDir}/${rel}`))
   return fixDB(db)
 }

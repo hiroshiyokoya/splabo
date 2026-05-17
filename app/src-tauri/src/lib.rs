@@ -58,36 +58,52 @@ fn get_data_dir(app: AppHandle) -> Result<String, String> {
     .ok_or_else(|| "ギアデータディレクトリが見つかりません".to_string())
 }
 
+/// data ディレクトリ配下の images/ を再帰スキャンして全 .gti ファイルを収集する。
+fn collect_gti_paths(dir: &std::path::Path, out: &mut Vec<String>) {
+  let Ok(entries) = std::fs::read_dir(dir) else { return };
+  for entry in entries.flatten() {
+    let path = entry.path();
+    if path.is_dir() {
+      collect_gti_paths(&path, out);
+    } else if path.extension().and_then(|s| s.to_str()) == Some("gti") {
+      out.push(path_to_slash(&path));
+    }
+  }
+}
+
+/// data/images/ 配下の全 .gti ファイルを一括スキャンして読み込み、
+/// XOR 解除した PNG を base64 data URL に変換して返す。
+/// DB に含まれない画像（アキ枠など）も含めて全ファイルをカバーする。
+/// 戻値: { "絶対パス（スラッシュ区切り）" → "data:image/png;base64,..." }
+#[tauri::command]
+fn read_all_gti(app: AppHandle) -> Result<std::collections::HashMap<String, String>, String> {
+  use base64::{Engine, engine::general_purpose::STANDARD};
+
+  let data_dir = resolve_data_dir(&app)
+    .ok_or_else(|| "データディレクトリが見つかりません".to_string())?;
+  let images_dir = data_dir.join("images");
+
+  let mut paths = Vec::new();
+  if images_dir.is_dir() {
+    collect_gti_paths(&images_dir, &mut paths);
+  }
+
+  let mut map = std::collections::HashMap::new();
+  for path in paths {
+    match std::fs::read(&path) {
+      Ok(scrambled) => {
+        let png = crypto::scramble_image(&scrambled);
+        map.insert(path, format!("data:image/png;base64,{}", STANDARD.encode(&png)));
+      }
+      Err(e) => log::warn!("read_all_gti: {} をスキップ: {}", path, e),
+    }
+  }
+  Ok(map)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
-    // gpng:// カスタムプロトコル: .gpng ファイルを XOR 復元して image/png として配信する。
-    // URL 形式: gpng://localhost/<URL エンコードされた絶対パス>
-    .register_uri_scheme_protocol("gpng", |_app, request| {
-      let uri = request.uri().to_string();
-      // "gpng://localhost/" を除いた部分がファイルパス（URL エンコード済み）
-      let encoded = uri
-        .strip_prefix("gpng://localhost/")
-        .unwrap_or("")
-        .trim_start_matches('/');
-      let path = urlencoding::decode(encoded)
-        .unwrap_or_else(|_| encoded.into());
-
-      match std::fs::read(path.as_ref()) {
-        Ok(scrambled) => {
-          let png = crypto::scramble_image(&scrambled);
-          tauri::http::Response::builder()
-            .header("Content-Type", "image/png")
-            .header("Access-Control-Allow-Origin", "*")
-            .body(png)
-            .unwrap()
-        }
-        Err(e) => tauri::http::Response::builder()
-          .status(404)
-          .body(format!("not found: {e}").into_bytes())
-          .unwrap(),
-      }
-    })
     // プラグイン
     // single-instance は deep-link より先に登録する必要がある。
     // 2つ目のインスタンスが起動した時（= deep-link コールバック）、
@@ -112,6 +128,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       read_gear_db,
       get_data_dir,
+      read_all_gti,
       // 認証コマンド（auth.rs）
       auth::start_login,
       auth::handle_auth_redirect,

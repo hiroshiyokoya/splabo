@@ -146,20 +146,20 @@ pub async fn nxapi_fetch_gear(app: AppHandle) -> Result<String, String> {
 }
 
 /// gear_db.json を暗号化して gear_db.bin へ変換し、
-/// images/*.png を XOR スクランブルして .gpng にリネームする。
+/// images/*.png を XOR スクランブルして .gti にリネームする。
 fn encrypt_gear_data(db_json_path: &str) -> Result<(), String> {
     let db_path = std::path::Path::new(db_json_path);
     let out_dir = db_path.parent().ok_or("db_path の親ディレクトリが不明")?;
 
-    // gear_db.json を読み、画像パスを .gpng に書き換えてから暗号化
+    // gear_db.json を読み、画像パスを .gti に書き換えてから暗号化
     let json_str = std::fs::read_to_string(db_path).map_err(|e| e.to_string())?;
-    let patched = json_str.replace(".png\"", ".gpng\"");
+    let patched = json_str.replace(".png\"", ".gti\"");
     let encrypted = crypto::encrypt_db(patched.as_bytes())?;
     let bin_path = out_dir.join("gear_db.bin");
     std::fs::write(&bin_path, encrypted).map_err(|e| e.to_string())?;
     std::fs::remove_file(db_path).map_err(|e| e.to_string())?;
 
-    // images/ 配下の .png を再帰的に .gpng へスクランブル変換
+    // images/ 配下の .png を再帰的に .gti へスクランブル変換
     let images_dir = out_dir.join("images");
     if images_dir.is_dir() {
         scramble_images_recursive(&images_dir)?;
@@ -168,7 +168,7 @@ fn encrypt_gear_data(db_json_path: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// ディレクトリを再帰的に走査し、すべての .png を XOR スクランブルして .gpng に変換する。
+/// ディレクトリを再帰的に走査し、すべての .png を XOR スクランブルして .gti に変換する。
 fn scramble_images_recursive(dir: &std::path::Path) -> Result<(), String> {
     for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -178,8 +178,8 @@ fn scramble_images_recursive(dir: &std::path::Path) -> Result<(), String> {
         } else if path.extension().and_then(|s| s.to_str()) == Some("png") {
             let data = std::fs::read(&path).map_err(|e| e.to_string())?;
             let scrambled = crypto::scramble_image(&data);
-            let gpng_path = path.with_extension("gpng");
-            std::fs::write(&gpng_path, scrambled).map_err(|e| e.to_string())?;
+            let gti_path = path.with_extension("gti");
+            std::fs::write(&gti_path, scrambled).map_err(|e| e.to_string())?;
             std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         }
     }
