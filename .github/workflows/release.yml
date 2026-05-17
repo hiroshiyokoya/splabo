@@ -25,6 +25,8 @@ jobs:
           if [ -z "$BODY" ]; then
             BODY="詳細は [CHANGELOG](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md) を参照してください。"
           fi
+          # イシュー番号 (#xx) をリリースノートから除去
+          BODY=$(echo "$BODY" | sed 's/ (#[0-9]\+)//g')
 
           INSTALL_NOTES=$(cat <<TEMPLATE
 
