@@ -19,10 +19,15 @@ function makePathFixer(toUrl: (rel: string) => string) {
     }
   }
   function fixDB(db: GearDB): GearDB {
+    const skills: Record<number, Skill> = {}
+    for (const [k, s] of Object.entries(db.skills ?? {})) {
+      skills[Number(k)] = fixSkill(s as Skill)
+    }
     return {
       head:     db.head.map(fixGear),
       clothing: db.clothing.map(fixGear),
       shoes:    db.shoes.map(fixGear),
+      skills,
     }
   }
   return fixDB

@@ -292,6 +292,9 @@ function App() {
     }
   }, [])
 
+  // アキ枠スキル画像（スキル辞書の id:-1 エントリから取得）
+  const emptySkillImage = data?.skills?.[-1]?.image ?? ''
+
   // 全スキル一覧（id 昇順・重複なし）
   const allSkills = useMemo<Skill[]>(() => {
     if (!data) return []
@@ -650,6 +653,7 @@ function App() {
         onClearAll={handleClearAllComboSlots}
         onApplyCombo={handleApplyCombo}
         onIsOpenChange={setComboOpen}
+        emptySkillImage={emptySkillImage}
       />
 
       <FilterDrawer
@@ -665,6 +669,7 @@ function App() {
         onToggleBrand={handleToggleBrand}
         onClearBrands={handleClearBrands}
         onReset={handleReset}
+        emptySkillImage={emptySkillImage}
       />
 
       <button

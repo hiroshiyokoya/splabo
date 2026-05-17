@@ -250,29 +250,44 @@ function buildGearDb(equipment, dbPath) {
   };
 
   const db = {};
+  // スキル辞書（id → { id, name, image }）。アキ枠を含む全スキルを収集する
+  const skillsMap = {};
+
   for (const [section, { category, idField }] of Object.entries(sections)) {
     const nodes = equipment?.data?.[section]?.nodes ?? [];
-    db[category] = nodes.map((node) => ({
-      id: node[idField],
-      name: node.name,
-      rarity: node.rarity,
-      brand: node.brand.name,
-      brand_image: localImage(node.brand.image.url, 'brand'),
-      image: localImage(node.image.url, `gear/${category}`),
-      primary_skill: {
+    db[category] = nodes.map((node) => {
+      const primarySkill = {
         id: node.primaryGearPower.gearPowerId,
         name: node.primaryGearPower.name,
         image: localImage(node.primaryGearPower.image.url, 'skill'),
-      },
-      additional_skills: node.additionalGearPowers.map((p) => ({
+      };
+      const additionalSkills = node.additionalGearPowers.map((p) => ({
         id: p.gearPowerId,
         name: p.name,
         image: localImage(p.image.url, 'skill'),
-      })),
-      exp: node.stats.exp,
-    }));
+      }));
+
+      // スキル辞書に登録（重複は上書きで問題なし）
+      skillsMap[primarySkill.id] = primarySkill;
+      for (const s of additionalSkills) skillsMap[s.id] = s;
+
+      return {
+        id: node[idField],
+        name: node.name,
+        rarity: node.rarity,
+        brand: node.brand.name,
+        brand_image: localImage(node.brand.image.url, 'brand'),
+        image: localImage(node.image.url, `gear/${category}`),
+        primary_skill: primarySkill,
+        additional_skills: additionalSkills,
+        exp: node.stats.exp,
+      };
+    });
     process.stderr.write(`  ${category}: ${db[category].length} items\n`);
   }
+
+  db.skills = skillsMap;
+  process.stderr.write(`  skills: ${Object.keys(skillsMap).length} entries\n`);
 
   writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf-8');
 }
