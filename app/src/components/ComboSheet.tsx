@@ -75,9 +75,13 @@ interface Props {
   /** シートが開いた/閉じたときに通知（peekは閉じた扱い） */
   onIsOpenChange?:  (open: boolean) => void
   emptySkillImage?: string
+  /** コーデ候補の最大表示件数（デフォルト 50） */
+  comboLimit?:      number
+  /** 惜しい候補の最大件数（デフォルト 10） */
+  nearLimit?:       number
 }
 
-export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '' }: Props) {
+export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '', comboLimit = 50, nearLimit = 10 }: Props) {
   const [isOpen, setIsOpen]             = useState(false)
   const [snapExpanded, setSnapExpanded] = useState(false)
   const [skillPoints, setSkillPoints]   = useState<Map<number, number>>(new Map())
@@ -369,7 +373,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
 
     setSearching(true)
     setTimeout(() => {
-      const results = findCombo(data, requirements, 50, akiTarget)
+      const results = findCombo(data, requirements, comboLimit, akiTarget, nearLimit)
       setComboResults(results)
       setSearching(false)
     }, 0)

@@ -208,7 +208,8 @@ class NearDeficitMaxHeap {
   }
 }
 
-const NEAR_LIMIT = 10
+/** デフォルトの「惜しい」上限件数 */
+const DEFAULT_NEAR_LIMIT = 10
 
 /** (targetSum, allSum, perSkillDesc) の厳密な一致チェック（ID タイブレーカーは含まない） */
 function comboSortKeyStrictEqual(a: ComboResult, b: ComboResult): boolean {
@@ -261,6 +262,7 @@ export function findCombo(
   requirements:    SkillRequirement[],
   limit        = 50,
   minAkiSlots  = 0,
+  nearLimit    = DEFAULT_NEAR_LIMIT,
 ): ComboResult[] {
   if (requirements.length === 0 && minAkiSlots === 0) return []
 
@@ -271,8 +273,8 @@ export function findCombo(
   const shoesAll  = data.shoes.map(g    => ({ gear: g, ap: gearAp(g, skillIds), aki: countEmptySlots(g) }))
 
   const valid: ComboResult[] = []
-  const nearLimit = Math.min(NEAR_LIMIT, limit)
-  const heapCap = Math.min(500, Math.max(nearLimit * 20, 100))
+  const effectiveNearLimit = Math.min(nearLimit, limit)
+  const heapCap = Math.min(500, Math.max(effectiveNearLimit * 20, 100))
   const nearHeap = new NearDeficitMaxHeap(heapCap)
 
   for (const h of heads) {
@@ -318,7 +320,7 @@ export function findCombo(
 
   if (valid.length >= 10) return perfectTagged
 
-  const nearPicks = pickNearGroups(nearHeap.sorted(), nearLimit)
+  const nearPicks = pickNearGroups(nearHeap.sorted(), effectiveNearLimit)
   const nearTagged: ComboResult[] = nearPicks.map(({ combo, deficit }) => ({
     ...combo,
     matchKind: 'near' as const,

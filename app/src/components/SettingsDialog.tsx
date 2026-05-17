@@ -1,11 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { isTauri } from '../utils/tauri'
 import {
-  THEMES, DENSITIES,
+  THEMES, DENSITIES, COMBO_LIMITS, NEAR_LIMITS,
   loadThemeId, loadDensityId,
   applyTheme, applyDensity,
 } from '../utils/appSettings'
-import type { DensityId } from '../utils/appSettings'
+import type { DensityId, ComboLimitValue, NearLimitValue } from '../utils/appSettings'
 
 async function resolveVersion(): Promise<string> {
   try {
@@ -22,9 +22,13 @@ interface Props {
   open: boolean
   onClose: () => void
   onGearDataDeleted?: () => void
+  comboLimit?:          ComboLimitValue
+  nearLimit?:           NearLimitValue
+  onComboLimitChange?:  (v: ComboLimitValue) => void
+  onNearLimitChange?:   (v: NearLimitValue) => void
 }
 
-export function SettingsDialog({ open, onClose, onGearDataDeleted }: Props) {
+export function SettingsDialog({ open, onClose, onGearDataDeleted, comboLimit = 50, nearLimit = 10, onComboLimitChange, onNearLimitChange }: Props) {
   const [tab, setTab]                   = useState<Tab>('account')
   const [version, setVersion]           = useState<string>('')
   const [loggedIn, setLoggedIn]         = useState<boolean | null>(null)
@@ -137,11 +141,11 @@ export function SettingsDialog({ open, onClose, onGearDataDeleted }: Props) {
               <>
                 <div className="settings-account">
                   <span className="settings-account__status">
-                    {loggedIn === null ? '確認中...' : loggedIn ? 'ログイン済み' : '未ログイン'}
+                    {loggedIn === null ? '確認中...' : loggedIn ? '認証済み' : '未認証'}
                   </span>
                   {loggedIn && (
                     <button className="settings-logout-btn" onClick={handleLogout} disabled={logoutLoading}>
-                      {logoutLoading ? '処理中...' : 'ログアウト'}
+                      {logoutLoading ? '処理中...' : '認証解除'}
                     </button>
                   )}
                 </div>
@@ -199,6 +203,32 @@ export function SettingsDialog({ open, onClose, onGearDataDeleted }: Props) {
                     onClick={() => handleDensityChange(d.id)}
                   >
                     {d.label}
+                  </button>
+                ))}
+              </div>
+
+              <h3 className="settings-section__title" style={{ marginTop: '1.25rem' }}>コーデ候補の表示件数</h3>
+              <div className="settings-density-btns">
+                {COMBO_LIMITS.map(v => (
+                  <button
+                    key={v}
+                    className={`settings-density-btn${comboLimit === v ? ' settings-density-btn--active' : ''}`}
+                    onClick={() => onComboLimitChange?.(v)}
+                  >
+                    {v}件
+                  </button>
+                ))}
+              </div>
+
+              <h3 className="settings-section__title" style={{ marginTop: '1.25rem' }}>惜しい候補の上限</h3>
+              <div className="settings-density-btns">
+                {NEAR_LIMITS.map(v => (
+                  <button
+                    key={v}
+                    className={`settings-density-btn${nearLimit === v ? ' settings-density-btn--active' : ''}`}
+                    onClick={() => onNearLimitChange?.(v)}
+                  >
+                    {v}件
                   </button>
                 ))}
               </div>

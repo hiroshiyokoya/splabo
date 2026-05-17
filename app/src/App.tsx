@@ -10,7 +10,8 @@ import type { ComboSlots } from './components/ComboSheet'
 import type { ComboResult } from './utils/findCombo'
 import type { GearCategory, GearItem, Skill } from './types'
 import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from './constants/gearPowerMeta'
-import { initAppSettings } from './utils/appSettings'
+import { initAppSettings, loadComboLimit, saveComboLimit, loadNearLimit, saveNearLimit } from './utils/appSettings'
+import type { ComboLimitValue, NearLimitValue } from './utils/appSettings'
 
 // アプリ起動時に保存済みテーマ・密度を適用
 initAppSettings()
@@ -230,6 +231,8 @@ function App() {
   const [sortKey, setSortKey]       = useState<SortKey>('name')
   const [drawerOpen, setDrawerOpen]       = useState(false)
   const [settingsOpen, setSettingsOpen]   = useState(false)
+  const [comboLimit, setComboLimit] = useState<ComboLimitValue>(loadComboLimit)
+  const [nearLimit, setNearLimit]   = useState<NearLimitValue>(loadNearLimit)
 
   const [filter, setFilter]               = useState<FilterState>(emptyFilter)
   const [comboOpen, setComboOpen]   = useState(false)
@@ -415,7 +418,7 @@ function App() {
             {updatePhase === 'checking' ? '確認中...' :
              updatePhase === 'waiting-login' ? 'ログイン待機中...' :
              updatePhase === 'fetching' ? 'データ取得中...' :
-             'データ更新'}
+             '認証・データ取得'}
           </button>
         )}
         {updateError && (
@@ -658,6 +661,8 @@ function App() {
         onApplyCombo={handleApplyCombo}
         onIsOpenChange={setComboOpen}
         emptySkillImage={emptySkillImage}
+        comboLimit={comboLimit}
+        nearLimit={nearLimit}
       />
 
       <FilterDrawer
@@ -690,6 +695,10 @@ function App() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         onGearDataDeleted={() => { setSettingsOpen(false); reload() }}
+        comboLimit={comboLimit}
+        nearLimit={nearLimit}
+        onComboLimitChange={(v) => { setComboLimit(v); saveComboLimit(v) }}
+        onNearLimitChange={(v) => { setNearLimit(v); saveNearLimit(v) }}
       />
     </div>
   )

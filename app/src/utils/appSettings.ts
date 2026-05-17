@@ -1,17 +1,18 @@
 /**
- * appSettings — テーマ・表示密度の定義と localStorage 永続化
+ * appSettings — テーマ・表示密度・コーデ設定の定義と localStorage 永続化
  */
 
 // ── テーマ ────────────────────────────────────────────────────
 
 export interface Theme {
   id: string
-  /** カラードット表示用の代表色 */
+  /** カラードット表示用の代表色（CSS background 値、グラデーション可） */
   dot: string
   vars: Record<string, string>
 }
 
 export const THEMES: Theme[] = [
+  // 1. Purple (default)
   {
     id: 'purple',
     dot: '#1a1a1e',
@@ -39,33 +40,7 @@ export const THEMES: Theme[] = [
       '--sheet-border-top':    'rgba(200, 240, 48, 0.6)',
     },
   },
-  {
-    id: 'solarized-dark',
-    dot: '#002b36',
-    vars: {
-      '--bg':                  '#002b36',
-      '--surface':             '#073642',
-      '--surface-hover':       '#0d3d4f',
-      '--border':              '#1b4b5a',
-      '--text':                '#839496',
-      '--text-muted':          '#586e75',
-      '--accent':              '#b58900',
-      '--accent-dim':          '#8a6800',
-      '--accent-dark':         '#001e27',
-      '--star-off':            '#1b4b5a',
-      '--accent-hover-border': 'rgba(181, 137, 0, 0.4)',
-      '--accent-hover-bg':     'rgba(181, 137, 0, 0.05)',
-      '--accent-active-bg':    'rgba(181, 137, 0, 0.08)',
-      '--accent-glow':         'rgba(181, 137, 0, 0.3)',
-      '--chip-bg':             'rgba(255, 255, 255, 0.02)',
-      '--chip-border':         'rgba(255, 255, 255, 0.06)',
-      '--chip-text':           'rgba(255, 255, 255, 0.75)',
-      '--drawer-bg':           'rgba(0, 43, 54, 0.15)',
-      '--sheet-bg':            'rgba(7, 54, 66, 0.88)',
-      '--sheet-surface':       'rgba(7, 54, 66, 0.4)',
-      '--sheet-border-top':    'rgba(181, 137, 0, 0.6)',
-    },
-  },
+  // 2. Solarized Light
   {
     id: 'solarized-light',
     dot: '#fdf6e3',
@@ -93,85 +68,32 @@ export const THEMES: Theme[] = [
       '--sheet-border-top':    'rgba(38, 139, 210, 0.6)',
     },
   },
+  // 3. Solarized Dark + Lime
   {
-    id: 'orange',
-    dot: '#1a0e00',
+    id: 'solarized-dark',
+    dot: '#002b36',
     vars: {
-      '--bg':                  '#1a0e00',
-      '--surface':             '#2a1800',
-      '--surface-hover':       '#3a2200',
-      '--border':              '#4a3010',
-      '--text':                '#f0e0c0',
-      '--text-muted':          '#806040',
-      '--accent':              '#ff7621',
-      '--accent-dim':          '#cc5c18',
-      '--accent-dark':         '#0f0800',
-      '--star-off':            '#4a3010',
-      '--accent-hover-border': 'rgba(255, 118, 33, 0.4)',
-      '--accent-hover-bg':     'rgba(255, 118, 33, 0.05)',
-      '--accent-active-bg':    'rgba(255, 118, 33, 0.08)',
-      '--accent-glow':         'rgba(255, 118, 33, 0.3)',
-      '--chip-bg':             'rgba(255, 255, 255, 0.02)',
-      '--chip-border':         'rgba(255, 255, 255, 0.06)',
-      '--chip-text':           'rgba(255, 255, 255, 0.75)',
-      '--drawer-bg':           'rgba(30, 15, 0, 0.15)',
-      '--sheet-bg':            'rgba(60, 30, 0, 0.82)',
-      '--sheet-surface':       'rgba(60, 30, 0, 0.4)',
-      '--sheet-border-top':    'rgba(255, 118, 33, 0.6)',
-    },
-  },
-  {
-    id: 'splat',
-    dot: '#0a0a10',
-    vars: {
-      '--bg':                  '#0a0a10',
-      '--surface':             '#12101e',
-      '--surface-hover':       '#1e1830',
-      '--border':              '#2a1840',
-      '--text':                '#f0e0ff',
-      '--text-muted':          '#804080',
-      '--accent':              '#ff2d78',
-      '--accent-dim':          '#cc1f60',
-      '--accent-dark':         '#05050a',
-      '--star-off':            '#2a1840',
-      '--accent-hover-border': 'rgba(255, 45, 120, 0.4)',
-      '--accent-hover-bg':     'rgba(255, 45, 120, 0.05)',
-      '--accent-active-bg':    'rgba(255, 45, 120, 0.08)',
-      '--accent-glow':         'rgba(255, 45, 120, 0.3)',
-      '--chip-bg':             'rgba(255, 255, 255, 0.02)',
-      '--chip-border':         'rgba(255, 255, 255, 0.06)',
-      '--chip-text':           'rgba(255, 255, 255, 0.75)',
-      '--drawer-bg':           'rgba(15, 5, 25, 0.15)',
-      '--sheet-bg':            'rgba(40, 10, 50, 0.82)',
-      '--sheet-surface':       'rgba(40, 10, 50, 0.4)',
-      '--sheet-border-top':    'rgba(255, 45, 120, 0.6)',
-    },
-  },
-  {
-    id: 'forest',
-    dot: '#0a1a0f',
-    vars: {
-      '--bg':                  '#0a1a0f',
-      '--surface':             '#0f2215',
-      '--surface-hover':       '#16301e',
-      '--border':              '#1e4028',
-      '--text':                '#d0f0e0',
-      '--text-muted':          '#507060',
-      '--accent':              '#00e5ff',
-      '--accent-dim':          '#00b0cc',
-      '--accent-dark':         '#05100a',
-      '--star-off':            '#1e4028',
-      '--accent-hover-border': 'rgba(0, 229, 255, 0.4)',
-      '--accent-hover-bg':     'rgba(0, 229, 255, 0.05)',
-      '--accent-active-bg':    'rgba(0, 229, 255, 0.08)',
-      '--accent-glow':         'rgba(0, 229, 255, 0.3)',
-      '--chip-bg':             'rgba(255, 255, 255, 0.02)',
-      '--chip-border':         'rgba(255, 255, 255, 0.06)',
-      '--chip-text':           'rgba(255, 255, 255, 0.75)',
-      '--drawer-bg':           'rgba(5, 20, 10, 0.15)',
-      '--sheet-bg':            'rgba(10, 40, 20, 0.85)',
-      '--sheet-surface':       'rgba(10, 40, 20, 0.4)',
-      '--sheet-border-top':    'rgba(0, 229, 255, 0.6)',
+      '--bg':                  '#002b36',
+      '--surface':             '#073642',
+      '--surface-hover':       '#0d3d4f',
+      '--border':              '#1b4b5a',
+      '--text':                '#93a1a1',
+      '--text-muted':          '#586e75',
+      '--accent':              '#b58900',
+      '--accent-dim':          '#8a6800',
+      '--accent-dark':         '#001e27',
+      '--star-off':            '#1b4b5a',
+      '--accent-hover-border': 'rgba(181, 137, 0, 0.4)',
+      '--accent-hover-bg':     'rgba(181, 137, 0, 0.05)',
+      '--accent-active-bg':    'rgba(181, 137, 0, 0.08)',
+      '--accent-glow':         'rgba(181, 137, 0, 0.3)',
+      '--chip-bg':             'rgba(255, 255, 255, 0.03)',
+      '--chip-border':         'rgba(255, 255, 255, 0.07)',
+      '--chip-text':           'rgba(255, 255, 255, 0.78)',
+      '--drawer-bg':           'rgba(0, 43, 54, 0.15)',
+      '--sheet-bg':            'rgba(7, 54, 66, 0.88)',
+      '--sheet-surface':       'rgba(7, 54, 66, 0.4)',
+      '--sheet-border-top':    'rgba(181, 137, 0, 0.6)',
     },
   },
 ]
@@ -216,10 +138,20 @@ export const DENSITIES: Density[] = [
   },
 ]
 
+// ── コーデ候補件数 ─────────────────────────────────────────────
+
+export const COMBO_LIMITS = [10, 25, 50, 100] as const
+export type ComboLimitValue = typeof COMBO_LIMITS[number]
+
+export const NEAR_LIMITS = [2, 5, 10, 20] as const
+export type NearLimitValue = typeof NEAR_LIMITS[number]
+
 // ── localStorage ──────────────────────────────────────────────
 
-const LS_THEME_KEY   = 'geartoon:themeId'
-const LS_DENSITY_KEY = 'geartoon:densityId'
+const LS_THEME_KEY       = 'geartoon:themeId'
+const LS_DENSITY_KEY     = 'geartoon:densityId'
+const LS_COMBO_LIMIT_KEY = 'geartoon:comboLimit'
+const LS_NEAR_LIMIT_KEY  = 'geartoon:nearLimit'
 
 export function loadThemeId(): string {
   return localStorage.getItem(LS_THEME_KEY) ?? 'purple'
@@ -227,6 +159,24 @@ export function loadThemeId(): string {
 
 export function loadDensityId(): DensityId {
   return (localStorage.getItem(LS_DENSITY_KEY) as DensityId) ?? 'standard'
+}
+
+export function loadComboLimit(): ComboLimitValue {
+  const v = Number(localStorage.getItem(LS_COMBO_LIMIT_KEY))
+  return (COMBO_LIMITS as readonly number[]).includes(v) ? (v as ComboLimitValue) : 25
+}
+
+export function saveComboLimit(v: ComboLimitValue): void {
+  localStorage.setItem(LS_COMBO_LIMIT_KEY, String(v))
+}
+
+export function loadNearLimit(): NearLimitValue {
+  const v = Number(localStorage.getItem(LS_NEAR_LIMIT_KEY))
+  return (NEAR_LIMITS as readonly number[]).includes(v) ? (v as NearLimitValue) : 5
+}
+
+export function saveNearLimit(v: NearLimitValue): void {
+  localStorage.setItem(LS_NEAR_LIMIT_KEY, String(v))
 }
 
 export function applyTheme(themeId: string): void {
