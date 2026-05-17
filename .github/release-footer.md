@@ -5,8 +5,8 @@
 
 | OS | ファイル |
 |---|---|
-| Windows | `geartoon_VERSION_x64-setup.exe`（推奨）または `.msi` |
-| macOS (Apple Silicon) | `geartoon_VERSION_aarch64.dmg` |
+| Windows | geartoon_VERSION_x64-setup.exe（推奨）または .msi |
+| macOS (Apple Silicon) | geartoon_VERSION_aarch64.dmg |
 
 ## ⚠️ インストール時の警告について
 

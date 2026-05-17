@@ -38,13 +38,15 @@ jobs:
       - name: Create draft release
         id: create-release
         run: |
+          # body を直接 shell 展開すると特殊文字が壊れるため jq でエスケープして渡す
+          PAYLOAD=$(jq -n \
+            --arg tag "${{ github.ref_name }}" \
+            --arg name "geartoon ${{ github.ref_name }}" \
+            --arg body "${{ steps.changelog.outputs.body }}" \
+            '{tag_name: $tag, name: $name, body: $body, draft: true, prerelease: false}')
           release_id=$(gh api repos/${{ github.repository }}/releases \
             -X POST \
-            -f tag_name="${{ github.ref_name }}" \
-            -f name="geartoon ${{ github.ref_name }}" \
-            -f body="${{ steps.changelog.outputs.body }}" \
-            -F draft=true \
-            -F prerelease=false \
+            --input - <<< "$PAYLOAD" \
             --jq '.id')
           echo "release_id=$release_id" >> $GITHUB_OUTPUT
         env:
