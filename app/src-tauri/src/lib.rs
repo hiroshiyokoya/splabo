@@ -58,27 +58,44 @@ fn get_data_dir(app: AppHandle) -> Result<String, String> {
     .ok_or_else(|| "ギアデータディレクトリが見つかりません".to_string())
 }
 
-/// .gti ファイルを一括で読み込み、XOR 解除して base64 data URL に変換して返す。
-/// WebView2（Windows）は <img src> でカスタム URI スキームを使えないため、
-/// data URL 形式に変換することで Windows/macOS 両対応とする。
-///
-/// 引数: 絶対パスのリスト
-/// 戻値: { "絶対パス" → "data:image/png;base64,..." } のマップ
-/// 存在しないパスはマップから除外してログに警告を出す（エラーにはしない）。
+/// data ディレクトリ配下の images/ を再帰スキャンして全 .gti ファイルを収集する。
+fn collect_gti_paths(dir: &std::path::Path, out: &mut Vec<String>) {
+  let Ok(entries) = std::fs::read_dir(dir) else { return };
+  for entry in entries.flatten() {
+    let path = entry.path();
+    if path.is_dir() {
+      collect_gti_paths(&path, out);
+    } else if path.extension().and_then(|s| s.to_str()) == Some("gti") {
+      out.push(path_to_slash(&path));
+    }
+  }
+}
+
+/// data/images/ 配下の全 .gti ファイルを一括スキャンして読み込み、
+/// XOR 解除した PNG を base64 data URL に変換して返す。
+/// DB に含まれない画像（アキ枠など）も含めて全ファイルをカバーする。
+/// 戻値: { "絶対パス（スラッシュ区切り）" → "data:image/png;base64,..." }
 #[tauri::command]
-fn read_all_gti(paths: Vec<String>) -> Result<std::collections::HashMap<String, String>, String> {
+fn read_all_gti(app: AppHandle) -> Result<std::collections::HashMap<String, String>, String> {
   use base64::{Engine, engine::general_purpose::STANDARD};
+
+  let data_dir = resolve_data_dir(&app)
+    .ok_or_else(|| "データディレクトリが見つかりません".to_string())?;
+  let images_dir = data_dir.join("images");
+
+  let mut paths = Vec::new();
+  if images_dir.is_dir() {
+    collect_gti_paths(&images_dir, &mut paths);
+  }
+
   let mut map = std::collections::HashMap::new();
   for path in paths {
     match std::fs::read(&path) {
       Ok(scrambled) => {
         let png = crypto::scramble_image(&scrambled);
-        let data_url = format!("data:image/png;base64,{}", STANDARD.encode(&png));
-        map.insert(path, data_url);
+        map.insert(path, format!("data:image/png;base64,{}", STANDARD.encode(&png)));
       }
-      Err(e) => {
-        log::warn!("read_all_gti: {} をスキップ: {}", path, e);
-      }
+      Err(e) => log::warn!("read_all_gti: {} をスキップ: {}", path, e),
     }
   }
   Ok(map)

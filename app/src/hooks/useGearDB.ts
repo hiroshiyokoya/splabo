@@ -28,41 +28,19 @@ function makePathFixer(toUrl: (rel: string) => string) {
   return fixDB
 }
 
-// ── .gti パス収集ヘルパー ────────────────────────────────────
-
-/** DB 内の全 .gti（スクランブル済み画像）相対パスをユニークに収集する */
-function collectGtiRels(db: GearDB): Set<string> {
-  const paths = new Set<string>()
-  const addSkill = (s: Skill) => { if (s.image?.endsWith('.gti')) paths.add(s.image) }
-  const addGear = (g: GearItem) => {
-    if (g.image?.endsWith('.gti')) paths.add(g.image)
-    if (g.brand_image?.endsWith('.gti')) paths.add(g.brand_image)
-    addSkill(g.primary_skill)
-    g.additional_skills.forEach(addSkill)
-  }
-  ;[...db.head, ...db.clothing, ...db.shoes].forEach(addGear)
-  return paths
-}
-
 // ── Tauri モード ──────────────────────────────────────────────
 async function loadFromTauri(): Promise<GearDB> {
   const { invoke, convertFileSrc } = await import('@tauri-apps/api/core')
 
-  const [jsonStr, dataDir] = await Promise.all([
+  // images/ 配下の全 .gti を一括スキャン・読み込みして data URL マップを構築する。
+  // DB 参照外の画像（アキ枠など UI にハードコードされたもの）も含めて全カバー。
+  // WebView2（Windows）は <img src> でカスタム URI スキームをブロックするため、
+  // data:image/png;base64,... 形式に変換することで Windows/macOS 両対応とする。
+  const [jsonStr, dataDir, gtiMap] = await Promise.all([
     invoke<string>('read_gear_db'),
     invoke<string>('get_data_dir'),
+    invoke<Record<string, string>>('read_all_gti'),
   ])
-
-  const db: GearDB = JSON.parse(jsonStr)
-
-  // .gti ファイルを一括で Tauri invoke 経由で読み込み、data URL に変換する。
-  // WebView2（Windows）は <img src> でカスタム URI スキームを使えないため、
-  // data:image/png;base64,... 形式に変換することで Windows/macOS 両対応とする。
-  const gtiRels = collectGtiRels(db)
-  const absPaths = [...gtiRels].map(rel => `${dataDir}/${rel}`)
-  const gtiMap: Record<string, string> = absPaths.length > 0
-    ? await invoke<Record<string, string>>('read_all_gti', { paths: absPaths })
-    : {}
 
   /** 絶対パスを画像 URL に変換する。.gti は data URL、それ以外は asset:// */
   const toImageUrl = (abs: string): string =>
@@ -71,6 +49,7 @@ async function loadFromTauri(): Promise<GearDB> {
   // dataPath() ユーティリティを Tauri モード用に初期化
   initTauriDataPath(dataDir, toImageUrl)
 
+  const db: GearDB = JSON.parse(jsonStr)
   const fixDB = makePathFixer((rel) => toImageUrl(`${dataDir}/${rel}`))
   return fixDB(db)
 }
