@@ -101,6 +101,19 @@ fn read_all_gti(app: AppHandle) -> Result<std::collections::HashMap<String, Stri
   Ok(map)
 }
 
+/// AppData/data/ 以下（gear_db.bin・images/）を削除する。
+/// 削除後はアプリ再起動またはリロードが必要。
+#[tauri::command]
+fn delete_gear_data(app: AppHandle) -> Result<(), String> {
+  if let Ok(data_dir) = app.path().app_data_dir() {
+    let p = data_dir.join("data");
+    if p.exists() {
+      std::fs::remove_dir_all(&p).map_err(|e| e.to_string())?;
+    }
+  }
+  Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -129,6 +142,7 @@ pub fn run() {
       read_gear_db,
       get_data_dir,
       read_all_gti,
+      delete_gear_data,
       // 認証コマンド（auth.rs）
       auth::start_login,
       auth::handle_auth_redirect,

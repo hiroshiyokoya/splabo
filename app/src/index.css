@@ -2138,6 +2138,81 @@ body {
   line-height: 1.4;
 }
 
+/* ── Settings: danger zone ── */
+
+.settings-section__title--danger {
+  color: #ff7621;
+}
+
+.settings-danger-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.settings-danger-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(255, 60, 40, 0.06);
+  border: 1px solid rgba(255, 60, 40, 0.2);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+}
+
+.settings-danger-row__desc {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.settings-danger-row__label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-danger-row__note {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.settings-danger-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid rgba(255, 60, 40, 0.5);
+  border-radius: 6px;
+  color: #ff6b55;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.settings-danger-btn:hover:not(:disabled) {
+  background: rgba(255, 60, 40, 0.15);
+  border-color: rgba(255, 60, 40, 0.7);
+}
+
+.settings-danger-btn--all {
+  border-color: rgba(255, 60, 40, 0.8);
+  color: #ff4433;
+}
+
+.settings-danger-btn--all:hover:not(:disabled) {
+  background: rgba(255, 60, 40, 0.25);
+}
+
+.settings-danger-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* ── Status messages ── */
 
 .status {

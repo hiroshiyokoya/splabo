@@ -13,12 +13,15 @@ async function resolveVersion(): Promise<string> {
 interface Props {
   open: boolean
   onClose: () => void
+  onGearDataDeleted?: () => void
 }
 
-export function SettingsDialog({ open, onClose }: Props) {
+export function SettingsDialog({ open, onClose, onGearDataDeleted }: Props) {
   const [version, setVersion] = useState<string>('')
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null)
   const [logoutLoading, setLogoutLoading] = useState(false)
+  const [deleteGearLoading, setDeleteGearLoading] = useState(false)
+  const [deleteAllLoading, setDeleteAllLoading] = useState(false)
 
   useEffect(() => {
     resolveVersion().then(setVersion)
@@ -48,6 +51,32 @@ export function SettingsDialog({ open, onClose }: Props) {
       setLogoutLoading(false)
     }
   }, [])
+
+  const handleDeleteGearData = useCallback(async () => {
+    if (!window.confirm('ギアデータ（gear_db・画像キャッシュ）を削除します。\nアプリを再起動するまでギアデータは表示されません。\n続行しますか？')) return
+    setDeleteGearLoading(true)
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('delete_gear_data')
+      onGearDataDeleted?.()
+    } finally {
+      setDeleteGearLoading(false)
+    }
+  }, [onGearDataDeleted])
+
+  const handleDeleteAll = useCallback(async () => {
+    if (!window.confirm('認証情報とギアデータをすべて削除します。\n次回起動時に再ログインが必要になります。\n続行しますか？')) return
+    setDeleteAllLoading(true)
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('logout')
+      await invoke('delete_gear_data')
+      setLoggedIn(false)
+      onGearDataDeleted?.()
+    } finally {
+      setDeleteAllLoading(false)
+    }
+  }, [onGearDataDeleted])
 
   return (
     <>
@@ -81,6 +110,36 @@ export function SettingsDialog({ open, onClose }: Props) {
                   {logoutLoading ? '処理中...' : 'ログアウト'}
                 </button>
               )}
+            </div>
+
+            <h3 className="settings-section__title settings-section__title--danger">データ管理</h3>
+            <div className="settings-danger-zone">
+              <div className="settings-danger-row">
+                <div className="settings-danger-row__desc">
+                  <span className="settings-danger-row__label">ギアデータを削除</span>
+                  <span className="settings-danger-row__note">gear_db・画像キャッシュを削除します。再度「データ更新」で取得できます。</span>
+                </div>
+                <button
+                  className="settings-danger-btn"
+                  onClick={handleDeleteGearData}
+                  disabled={deleteGearLoading || deleteAllLoading}
+                >
+                  {deleteGearLoading ? '削除中...' : '削除'}
+                </button>
+              </div>
+              <div className="settings-danger-row">
+                <div className="settings-danger-row__desc">
+                  <span className="settings-danger-row__label">すべてのデータを削除</span>
+                  <span className="settings-danger-row__note">認証情報・gear_db・画像キャッシュをすべて削除します。再ログインが必要になります。</span>
+                </div>
+                <button
+                  className="settings-danger-btn settings-danger-btn--all"
+                  onClick={handleDeleteAll}
+                  disabled={deleteGearLoading || deleteAllLoading}
+                >
+                  {deleteAllLoading ? '削除中...' : 'すべて削除'}
+                </button>
+              </div>
             </div>
             <div className="about-divider" />
           </>

@@ -677,7 +677,11 @@ function App() {
         ⚙
       </button>
 
-      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onGearDataDeleted={() => { setSettingsOpen(false); reload() }}
+      />
     </div>
   )
 }
