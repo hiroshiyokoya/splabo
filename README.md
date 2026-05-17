@@ -112,6 +112,19 @@ npm install        # 初回のみ
 npx tauri dev      # アプリ起動（初回はRustのコンパイルで数分かかります）
 ```
 
+### サイドカーのビルド（wrapper.js を変更した場合）
+
+`tools/nxapi-wrapper/wrapper.js` を変更したときは、ローカルビルド前に再ビルドが必要です。
+
+```bash
+cd tools/nxapi-wrapper
+npm run build:win      # Windows
+npm run build:mac-arm  # macOS (Apple Silicon)
+npm run build:linux    # Linux
+```
+
+> CI（GitHub Actions）ではリリース時に自動ビルドされます。
+
 ### ローカルビルド（インストーラー生成）
 
 ```bash
