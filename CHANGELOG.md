@@ -1,44 +1,28 @@
 # Changelog
 
-All notable changes to geartoon will be documented in this file.
-
-## [Unreleased] — v1.1
+## [Unreleased] — v0.5.x（初回リリース予定）
 
 ### Added
-- 設定画面を追加（アカウント管理・データ削除・Tips・About を統合）(#56)
+- SplatNet3 からのギアデータ取得・表示
+- Nintendo OAuth (PKCE) 認証フロー
+- フィルター機能（スキル・ブランド・アキ枠）
+- コーデ候補機能（3ギアのスキルポイント最適化）
+- ギアデータ・画像を暗号化して保存（gear_db.bin / .gti 形式）
+- 設定画面（アカウント管理・データ削除・Tips・About）(#56)
 - 設定画面でUI値をカスタマイズできるようにする (#65) ← WIP
 - gear_db にスキル辞書を追加（アキ枠など全スキルの画像パスを動的解決）(#64)
+- データ更新に5分間のクールダウン (#19)
+- GitHub Actions によるマルチプラットフォームリリースワークフロー
 
 ### Fixed
-- Windows で画像が表示されない問題を修正（gpng:// スキームが WebView2 でブロックされる問題を data URL バッチ変換で解決）(#62)
+- Windows で画像が表示されない問題を修正（WebView2 が gpng:// をブロックする問題を data URL で解決）(#62)
 - 認証完了後にウィンドウをフォアグラウンドに戻すよう修正 (#47)
 
 ### Changed
 - ギアカードをウィンドウ幅に応じて列数が増える固定サイズレイアウトに変更 (#56)
 - 用語・表記を統一（「取得」「更新」「ログイン」等）(#53)
 - app identifier を `com.geartoon.app` に変更（ユーザー名を除去）(#58)
-- 開発版のバージョン表記を `0.0.0-dev` に変更 (#56)
 
 ### Infra
+- nxapi を Tauri sidecar として同梱し、Docker 不要で動作するよう変更 (#39)
 - リリース時に git タグから `tauri.conf.json` のバージョンを自動同期 (#59)
-
----
-
-## [0.5.2] — 2026-05-16
-
-### Added
-- ギアデータ・画像を暗号化して保存（gear_db.bin / .gti 形式）(#50)
-- GitHub Actions によるマルチプラットフォームリリースワークフロー (#22)
-- データ更新に5分間のクールダウンを追加 (#19)
-
-### Fixed
-- nxapi をサイドカーとして同梱し、Docker 不要で動作するよう変更 (#39)
-
----
-
-## [0.1.0-test] — 初期テストリリース
-
-- Tauri アプリの骨格
-- Nintendo OAuth (PKCE) 認証
-- SplatNet3 からのギアデータ取得・表示
-- フィルター・コーデ候補機能
