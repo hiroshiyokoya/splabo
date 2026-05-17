@@ -3,7 +3,6 @@ import type { GearCategory, GearItem, GearDB } from '../types'
 import { findCombo, MAIN_AP, SUB_AP, getComboSortKey, comboBestBadgeKeysEqual } from '../utils/findCombo'
 import type { ComboResult, ComboSortKey } from '../utils/findCombo'
 import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from '../constants/gearPowerMeta'
-import { dataPath } from '../utils/dataPath'
 
 export type ComboSlots = {
   head:     GearItem | null
@@ -75,9 +74,10 @@ interface Props {
   onApplyCombo:     (combo: ComboResult) => void
   /** シートが開いた/閉じたときに通知（peekは閉じた扱い） */
   onIsOpenChange?:  (open: boolean) => void
+  emptySkillImage?: string
 }
 
-export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange }: Props) {
+export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '' }: Props) {
   const [isOpen, setIsOpen]             = useState(false)
   const [snapExpanded, setSnapExpanded] = useState(false)
   const [skillPoints, setSkillPoints]   = useState<Map<number, number>>(new Map())
@@ -716,7 +716,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
               <div className="combo-stackable-grid">
                 {stackableSkills.map(s => renderStackableRow(s))}
                 <div className={`combo-skill-row ${akiTarget > 0 ? 'combo-skill-row--active' : ''}`}>
-                  <img className="combo-skill-row__icon" src={dataPath('images/skill/dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91_0.gti')} alt="アキ枠" />
+                  <img className="combo-skill-row__icon" src={emptySkillImage} alt="アキ枠" />
                   <span className="combo-skill-row__name">アキ</span>
                   <div className="stepper">
                     <button

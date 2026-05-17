@@ -22,4 +22,6 @@ export interface GearDB {
   head: GearItem[]
   clothing: GearItem[]
   shoes: GearItem[]
+  /** スキル辞書: gearPowerId → Skill（アキ枠は id: -1 で登録） */
+  skills?: Record<number, Skill>
 }
