@@ -108,8 +108,8 @@ geartoon/
     │   └── build.sh      # macOS/Linux 向けビルドスクリプト
     ├── data/
     │   ├── gear_db.bin   # 暗号化済みギアデータ（git管理外・fetch後に生成）
-    │   └── images/       # スクランブル済み画像 .gpng（git管理外）
-    └── scripts/          # Python スクリプト（開発・デバッグ用レガシー）
+    │   └── images/       # スクランブル済み画像 .gti（git管理外）
+    └── nxapi-remote-config.json  # パッチ済み nxapi 設定
 ```
 
 ## nxapi サイドカーのビルド（必須）
@@ -142,4 +142,4 @@ cargo run --example auth_cli
 ```
 
 ブラウザでログイン URL を開き、リダイレクト URL を貼り付けると session_token まで取得できます。  
-f-token 生成（bulletToken 取得）は nxapi サイドカー経由で行う予定のため、現状は最終ステップでエラーになります（Issue [#39](https://github.com/hiroshiyokoya/geartoon/issues/39)）。
+f-token 生成は nxapi サイドカー経由で実装済みです（[#39](https://github.com/hiroshiyokoya/geartoon/issues/39)）。

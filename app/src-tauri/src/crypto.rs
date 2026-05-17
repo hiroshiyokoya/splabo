@@ -54,7 +54,7 @@ pub fn decrypt_db(data: &[u8]) -> Result<Vec<u8>, String> {
         .map_err(|_| "gear_db.bin の復号に失敗しました（データ破損または鍵不一致）".to_string())
 }
 
-/// PNG バイト列を XOR スクランブルして .gpng 形式で返す。
+/// PNG バイト列を XOR スクランブルして .gti 形式で返す。
 /// 復元も同じ関数で行える（XOR の対称性）。
 pub fn scramble_image(data: &[u8]) -> Vec<u8> {
     data.iter().map(|b| b ^ IMG_XOR).collect()
