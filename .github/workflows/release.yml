@@ -36,7 +36,6 @@ jobs:
 |---|---|
 | Windows | \`geartoon_${VERSION_NUM}_x64-setup.exe\`（推奨）または \`.msi\` |
 | macOS (Apple Silicon) | \`geartoon_${VERSION_NUM}_aarch64.dmg\` |
-| Linux | \`geartoon_${VERSION_NUM}_amd64.AppImage\` |
 
 ## ⚠️ インストール時の警告について
 
@@ -92,8 +91,9 @@ TEMPLATE
             rust-target: aarch64-apple-darwin
             tauri-args: --target aarch64-apple-darwin
 
-          - platform: ubuntu-22.04
-            sidecar-build: build:linux
+          # Linux は動作未検証のため一時的に無効化
+          # - platform: ubuntu-22.04
+          #   sidecar-build: build:linux
 
     runs-on: ${{ matrix.platform }}
     steps:
