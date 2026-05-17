@@ -253,7 +253,7 @@ body {
   text-transform: uppercase;
   color: var(--text-muted);
   cursor: pointer;
-  opacity: 0.5;
+  opacity: 0.75;
   transition: opacity 0.15s, color 0.15s;
 }
 
