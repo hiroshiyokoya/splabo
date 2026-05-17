@@ -37,6 +37,7 @@
   /* ── Layout ── */
   --card-radius:    12px;
   --card-min-width: 180px;
+  --card-width: 200px;
 
   /* ── Background dot grid ── */
   --dot-color: #ffffff08;
@@ -66,8 +67,6 @@ body {
 /* ── App layout ── */
 
 .app {
-  max-width: 1400px;
-  margin: 0 auto;
   padding: 0 1.5rem 3rem;
   padding-bottom: 48px; /* ボトムシートのハンドル分を常時確保 */
   transition: padding-bottom 0.3s;
@@ -421,7 +420,7 @@ body {
 
 .gear-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width), 1fr));
+  grid-template-columns: repeat(auto-fill, var(--card-width));
   gap: 1rem;
 }
 
