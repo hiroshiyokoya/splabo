@@ -76,6 +76,7 @@ gh pr create --base develop --title "..." --body "..."
 
 - 小さな作業でもブランチを切る
 - PRのタイトルにイシュー番号を含める（例: `feat: Tauriセットアップ (#11)`）
+- **PRのマージはユーザーが行う。** Claude は `gh pr merge` を実行しない。
 
 ---
 
