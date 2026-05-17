@@ -10,6 +10,10 @@ import type { ComboSlots } from './components/ComboSheet'
 import type { ComboResult } from './utils/findCombo'
 import type { GearCategory, GearItem, Skill } from './types'
 import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from './constants/gearPowerMeta'
+import { initAppSettings } from './utils/appSettings'
+
+// アプリ起動時に保存済みテーマ・密度を適用
+initAppSettings()
 
 // ── データ更新ステート ─────────────────────────────────────────
 type UpdatePhase = 'idle' | 'checking' | 'waiting-login' | 'fetching' | 'error'
