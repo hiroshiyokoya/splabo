@@ -22,3 +22,7 @@
 ```
 xattr -cr /Applications/geartoon.app
 ```
+
+---
+
+📄 [注意事項・プライバシーポリシー](https://github.com/hiroshiyokoya/geartoon/blob/vVERSION/README.md#注意事項) | [README](https://github.com/hiroshiyokoya/geartoon/blob/vVERSION/README.md)
