@@ -112,6 +112,15 @@ npm install        # 初回のみ
 npx tauri dev      # アプリ起動（初回はRustのコンパイルで数分かかります）
 ```
 
+### ローカルビルド（インストーラー生成）
+
+```bash
+cd app
+npx tauri build    # インストーラーを生成（初回はRustのフルビルドで数分かかります）
+```
+
+生成物は `app/src-tauri/target/release/bundle/` に出力されます（Windows: `.msi` / `.exe`、macOS: `.dmg`）。
+
 ### Web のみで起動（Tauri なし・データ更新不可）
 
 ```bash

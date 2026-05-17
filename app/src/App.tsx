@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { GearCard } from './components/GearCard'
 import { FilterDrawer, emptyFilter, countActiveFilters } from './components/FilterDrawer'
 import { ComboSheet, emptySlots } from './components/ComboSheet'
-import { AboutDialog } from './components/AboutDialog'
+import { SettingsDialog } from './components/SettingsDialog'
 import { useGearDB, saveLastFetchedAt } from './hooks/useGearDB'
 import { isTauri } from './utils/tauri'
 import type { FilterState } from './components/FilterDrawer'
@@ -225,7 +225,7 @@ function App() {
   }, [updatePhase, reload])
   const [sortKey, setSortKey]       = useState<SortKey>('name')
   const [drawerOpen, setDrawerOpen]       = useState(false)
-  const [aboutOpen, setAboutOpen]         = useState(false)
+  const [settingsOpen, setSettingsOpen]   = useState(false)
 
   const [filter, setFilter]               = useState<FilterState>(emptyFilter)
   const [comboOpen, setComboOpen]   = useState(false)
@@ -670,14 +670,18 @@ function App() {
       <button
         type="button"
         className="about-corner-btn"
-        onClick={() => setAboutOpen(true)}
-        aria-label="geartoon について"
-        title="About"
+        onClick={() => setSettingsOpen(true)}
+        aria-label="設定"
+        title="設定"
       >
-        About
+        ⚙
       </button>
 
-      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onGearDataDeleted={() => { setSettingsOpen(false); reload() }}
+      />
     </div>
   )
 }

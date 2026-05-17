@@ -37,6 +37,7 @@
   /* ── Layout ── */
   --card-radius:    12px;
   --card-min-width: 180px;
+  --card-width: 200px;
 
   /* ── Background dot grid ── */
   --dot-color: #ffffff08;
@@ -66,8 +67,6 @@ body {
 /* ── App layout ── */
 
 .app {
-  max-width: 1400px;
-  margin: 0 auto;
   padding: 0 1.5rem 3rem;
   padding-bottom: 48px; /* ボトムシートのハンドル分を常時確保 */
   transition: padding-bottom 0.3s;
@@ -247,13 +246,13 @@ body {
   border: none;
   padding: 0.2rem 0.4rem;
   font-family: inherit;
-  font-size: 0.72rem;
+  font-size: 1.44rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
   cursor: pointer;
-  opacity: 0.5;
+  opacity: 0.75;
   transition: opacity 0.15s, color 0.15s;
 }
 
@@ -421,7 +420,7 @@ body {
 
 .gear-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width), 1fr));
+  grid-template-columns: repeat(auto-fill, var(--card-width));
   gap: 1rem;
 }
 
@@ -2056,6 +2055,160 @@ body {
   color: var(--text-muted);
   line-height: 1.7;
   margin: 0;
+}
+
+/* ── Settings dialog ── */
+
+.settings-dialog {
+  max-height: calc(100dvh - 4rem);
+  overflow-y: auto;
+}
+
+.settings-section__title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin: 0 0 0.75rem;
+}
+
+.settings-account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-left: 0.75rem;
+}
+
+.settings-account__status {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.settings-logout-btn {
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 0.3rem 0.85rem;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.settings-logout-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.settings-logout-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.settings-help-list {
+  list-style: none;
+  padding: 0 0 0 0.75rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.settings-help-item {
+  font-size: 0.82rem;
+  color: #a0a0c8;
+  line-height: 1.6;
+}
+
+.settings-kbd {
+  display: inline-block;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.05rem 0.4rem;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+/* ── Settings: danger zone ── */
+
+.settings-danger-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding-left: 0.75rem;
+}
+
+.settings-danger-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(255, 60, 40, 0.06);
+  border: 1px solid rgba(255, 60, 40, 0.2);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+}
+
+.settings-danger-row__desc {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.settings-danger-row__label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-danger-row__note {
+  font-size: 0.73rem;
+  color: #a0a0c8;
+  line-height: 1.4;
+}
+
+.settings-danger-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid rgba(255, 60, 40, 0.5);
+  border-radius: 6px;
+  color: #ff6b55;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.settings-danger-btn:hover:not(:disabled) {
+  background: rgba(255, 60, 40, 0.15);
+  border-color: rgba(255, 60, 40, 0.7);
+}
+
+.settings-danger-btn--all {
+  border-color: rgba(255, 60, 40, 0.8);
+  color: #ff4433;
+}
+
+.settings-danger-btn--all:hover:not(:disabled) {
+  background: rgba(255, 60, 40, 0.25);
+}
+
+.settings-danger-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* ── Status messages ── */
