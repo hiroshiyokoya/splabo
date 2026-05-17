@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "geartoon",
-        "width": 1280,
-        "height": 800,
+        "width": 1333,
+        "height": 1028,
         "minWidth": 800,
         "minHeight": 600,
         "resizable": true,
