@@ -35,36 +35,11 @@ Windows / macOS / Linux 対応（WSL 不要）。
 
 Samuel Thomas 氏が開発する OSS である [nxapi](https://github.com/samuelthomas2774/nxapi)（任天堂非公式）を用いて、SplatNet 3 から所持ギア情報を取得します。
 
-nxapi は Tauri サイドカーとしてアプリに同梱されており、**アプリ内の「データ更新」ボタンから直接データを取得できます**（Docker 不要）。`tools/` 配下のスクリプトは開発・デバッグ用のレガシーです。
-
-### CLI ツール（開発・デバッグ用）
-
-```bash
-cd tools
-
-# ギア検索（スキル・ブランド・カテゴリ・レアリティで絞り込み）
-# スタック型スキルは「スキル名:最低AP」形式で AP 閾値を指定可能（AP 高い順に表示）
-python3 scripts/find_gear.py --skill インク回復力アップ
-python3 scripts/find_gear.py --skill "インク回復力アップ:13"
-python3 scripts/find_gear.py --skill "インク回復力アップ:10" --category clothing
-python3 scripts/find_gear.py --skill インク回復力アップ --main
-python3 scripts/find_gear.py --brand アナアキ --category clothing
-python3 scripts/find_gear.py --category head --list
-
-# スキル構成の自動生成（目標 AP を満たす頭・服・靴の組み合わせを探索）
-# スタック型は「スキル名:目標AP」。発動型（メイン専用・カムバック等）は名前のみ（10AP 固定として解釈）
-python3 scripts/find_combo.py --list-skills
-python3 scripts/find_combo.py "カムバック" "スペシャル増加量アップ:6"
-python3 scripts/find_combo.py "インク回復力アップ:20" --limit 5
-
-# nxapi コマンドのラッパ
-python3 scripts/nxapi.py nso user
-python3 scripts/nxapi.py splatnet3 dump-records data/splatnet3
-```
+nxapi は Tauri サイドカーとしてアプリに同梱されており、**アプリ内の「データ更新」ボタンから直接データを取得できます**（Docker 不要）。
 
 ### ギアパワー（AP）
 
-ギアパワーは **57 点法**で数えます（1 着あたりメイン 10 + サブ 3×3 = 19AP、頭・服・靴で最大 57AP）。`find_combo` やアプリの絞り込みはこの前提に合わせています。
+ギアパワーは **57 点法**で数えます（1 着あたりメイン 10 + サブ 3×3 = 19AP、頭・服・靴で最大 57AP）。アプリの絞り込みおよびコーデ生成はこの前提に合わせています。
 
 ### gear_db のフォーマット
 
@@ -78,7 +53,7 @@ python3 scripts/nxapi.py splatnet3 dump-records data/splatnet3
 }
 ```
 
-画像ファイルは XOR スクランブルされ `.gpng` 形式で保存されます。ビューワーアプリ（Android）はデスクトップアプリと同じキーで復号できます。
+画像ファイルは XOR スクランブルされ `.gti` 形式で保存されます。ビューワーアプリ（Android）はデスクトップアプリと同じキー・アルゴリズムで復号できます。
 
 ---
 
@@ -102,7 +77,8 @@ python3 scripts/nxapi.py splatnet3 dump-records data/splatnet3
     - 達成可能な AP 値のみステッパーで選択できる（`stepUp` / `stepDown` が `aAvail` を考慮）
   - 候補リストからワンタップでスロットに適用
 - デザイントークン管理（`index.css` の `:root` にぼかし・透明度・レイアウト値を集約）
-  - ボトムシートのカラーテーマを変数で切り替え可能（A=パープル / B=ネイビー+オレンジ / C=グリーン / D=ダークオレンジ）
+  - カラーテーマを設定画面から切り替え可能（Purple / Solarized Light / Solarized Dark）
+  - 表示密度・コーデ候補件数・惜しい候補の上限を設定画面から変更可能（設定は `localStorage` に保持）
 
 ### アプリ起動（Tauri）
 
