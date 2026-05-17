@@ -2122,7 +2122,7 @@ body {
 
 .settings-help-item {
   font-size: 0.82rem;
-  color: var(--text-muted);
+  color: #a0a0c8;
   line-height: 1.6;
 }
 
@@ -2175,7 +2175,7 @@ body {
 
 .settings-danger-row__note {
   font-size: 0.73rem;
-  color: var(--text-muted);
+  color: #a0a0c8;
   line-height: 1.4;
 }
 
