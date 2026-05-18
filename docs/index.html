@@ -331,13 +331,13 @@
     </p>
     <div class="hero-download">
       <a class="btn-download" id="btn-win" href="https://github.com/hiroshiyokoya/geartoon/releases/latest">
-        Windows <span class="btn-version" id="btn-version"></span>
+        Windows
       </a>
       <a class="btn-download" id="btn-mac" href="https://github.com/hiroshiyokoya/geartoon/releases/latest">
         macOS
       </a>
     </div>
-    <p class="hero-note">無料 &nbsp;·&nbsp; オープンソース</p>
+    <p class="hero-note"><span id="btn-version"></span><span id="btn-version-sep" style="display:none"> &nbsp;·&nbsp; </span>無料 &nbsp;·&nbsp; オープンソース</p>
     <p class="hero-release-link">
       <a href="https://github.com/hiroshiyokoya/geartoon/releases/latest">リリースノートを見る →</a>
     </p>
@@ -465,7 +465,11 @@
 
         // バージョン表示
         const ver = document.getElementById('btn-version');
-        if (ver && data.tag_name) ver.textContent = data.tag_name;
+        const sep = document.getElementById('btn-version-sep');
+        if (ver && data.tag_name) {
+          ver.textContent = data.tag_name;
+          if (sep) sep.style.display = 'inline';
+        }
 
         // アセットから Windows(.exe) と macOS(.dmg) を探す
         const winAsset = data.assets.find(a => a.name.endsWith('x64-setup.exe'));
