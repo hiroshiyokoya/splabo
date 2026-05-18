@@ -56,11 +56,19 @@
       max-width: 1000px;
       margin: 0 auto 2.5rem;
     }
+    .hero-download {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
     .btn-download {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
       background: var(--accent);
       color: #fff;
-      padding: 0.8rem 2.2rem;
+      padding: 0.8rem 2rem;
       border-radius: 10px;
       font-weight: 700;
       font-size: 1rem;
@@ -70,16 +78,27 @@
       background: var(--accent-dim);
       text-decoration: none;
     }
+    .btn-download--secondary {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--accent);
+    }
+    .btn-download--secondary:hover {
+      background: var(--border);
+    }
     .btn-version {
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       font-weight: 500;
       opacity: 0.85;
-      margin-left: 0.4rem;
     }
     .hero-note {
       margin-top: 0.9rem;
       font-size: 0.8rem;
       color: var(--text-muted);
+    }
+    .hero-release-link {
+      margin-top: 0.6rem;
+      font-size: 0.8rem;
     }
 
     /* ── Screenshots ── */
@@ -310,11 +329,18 @@
       Nintendo アカウントから非公式 API 経由で所持ギアを取得・表示する OSS の PC アプリです。<br>
       スキル・ブランドで絞り込んだり、目標スキルからコーデ候補を自動生成できます。
     </p>
-    <a class="btn-download" href="https://github.com/hiroshiyokoya/geartoon/releases/latest">
-      ダウンロード
-      <span class="btn-version" id="btn-version"></span>
-    </a>
-    <p class="hero-note">Windows / macOS 対応 &nbsp;·&nbsp; 無料</p>
+    <div class="hero-download">
+      <a class="btn-download" id="btn-win" href="https://github.com/hiroshiyokoya/geartoon/releases/latest">
+        Windows <span class="btn-version" id="btn-version"></span>
+      </a>
+      <a class="btn-download" id="btn-mac" href="https://github.com/hiroshiyokoya/geartoon/releases/latest">
+        macOS
+      </a>
+    </div>
+    <p class="hero-note">無料 &nbsp;·&nbsp; オープンソース</p>
+    <p class="hero-release-link">
+      <a href="https://github.com/hiroshiyokoya/geartoon/releases/latest">リリースノートを見る →</a>
+    </p>
   </section>
 
   <!-- Screenshots -->
@@ -430,12 +456,23 @@
   </div>
 
   <script>
-    // 最新バージョンをボタンに表示
-    fetch('https://api.github.com/repos/hiroshiyokoya/geartoon/releases/latest')
+    // 最新リリースからバージョンと直接ダウンロードリンクを取得
+    fetch('https://api.github.com/repos/hiroshiyokoya/geartoon/releases')
       .then(r => r.json())
-      .then(data => {
-        const el = document.getElementById('btn-version');
-        if (el && data.tag_name) el.textContent = data.tag_name;
+      .then(releases => {
+        const data = releases[0];
+        if (!data) return;
+
+        // バージョン表示
+        const ver = document.getElementById('btn-version');
+        if (ver && data.tag_name) ver.textContent = data.tag_name;
+
+        // アセットから Windows(.exe) と macOS(.dmg) を探す
+        const winAsset = data.assets.find(a => a.name.endsWith('x64-setup.exe'));
+        const macAsset = data.assets.find(a => a.name.endsWith('aarch64.dmg'));
+
+        if (winAsset) document.getElementById('btn-win').href = winAsset.browser_download_url;
+        if (macAsset) document.getElementById('btn-mac').href = macAsset.browser_download_url;
       })
       .catch(() => {});
 
