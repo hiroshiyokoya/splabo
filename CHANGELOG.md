@@ -7,6 +7,8 @@
 ### Added
 - GitHub Pages ダウンロードページを追加（https://hiroshiyokoya.github.io/geartoon/）
 - About 画面にフィードバックフォームへのリンクボタンを追加
+- ダウンロードボタンに最新バージョンを動的表示
+- スクリーンショットをクリックで拡大表示（ライトボックス）
 
 ### Fixed
 - Tauri WebView 内で About 画面の Author・Repository リンクが開かなかった問題を修正
