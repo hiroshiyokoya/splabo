@@ -115,7 +115,7 @@ git push origin vX.Y.Z
 ### 7. GitHub Pages の確認
 
 - マージ後、数分で GitHub Pages が更新される
-- `https://hiroshiyokoya.github.io/geartoon/` を開いて確認
+- `https://geartoon.pages.dev/` を開いて確認
 
 ---
 
