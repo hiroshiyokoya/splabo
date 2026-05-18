@@ -5,7 +5,7 @@
 ## [0.5.1] — 2026-05-18
 
 ### Added
-- GitHub Pages ダウンロードページを追加（https://hiroshiyokoya.github.io/geartoon/）
+- [GitHub Pages ダウンロードページ](https://hiroshiyokoya.github.io/geartoon/)を追加
 - About 画面にフィードバックフォームへのリンクボタンを追加
 - ダウンロードボタンに最新バージョンを動的表示
 - スクリーンショットをクリックで拡大表示（ライトボックス）
