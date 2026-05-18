@@ -28,8 +28,8 @@
 | ファイル内容の確認 | **Read**（絶対） |
 | ファイルの編集 | **Edit / Write** |
 | ファイル一覧・検索 | bash の `ls`・`find`・`grep` はOK |
-| TypeScript型チェック | bash の `tsc --noEmit` はOK |
-| コンパイル・ビルド | bash はOK |
+| TypeScript型チェック | bash の `cd app && tsc --noEmit` はOK |
+| コンパイル・ビルド | bash はOK（`cd app` してから実行） |
 
 ---
 
@@ -124,7 +124,7 @@ git push origin vX.Y.Z
 
 ```
 git checkout -b feature/1-example
-# ... 作業 ...
+# ... 作業（アプリ本体の変更は app/ 以下） ...
 git push origin feature/1-example
 gh pr create --base develop --title "feat: 〇〇 (#1)" --body "Closes #1"
 ```

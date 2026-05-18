@@ -4,8 +4,9 @@ Nintendo アカウントから [nxapi](https://github.com/samuelthomas2774/nxapi
 
 ```
 chartoon/
-└── src-tauri/   # Rust バックエンド（Tauri + SQLite）
-└── src/         # グラフ表示 UI（Vite + React + recharts）
+└── app/         # Tauri アプリ本体（Vite + React + recharts + Rust）
+    ├── src/         # フロントエンド（React + TypeScript）
+    └── src-tauri/   # Rust バックエンド（Tauri + SQLite）
 ```
 
 ## 機能
@@ -31,6 +32,7 @@ Windows / macOS / Linux 対応（WSL 不要）。
 ## アプリ起動（開発）
 
 ```bash
+cd app
 npm install        # 初回のみ
 npx tauri dev      # アプリ起動（初回は Rust のコンパイルで数分かかります）
 ```
@@ -38,10 +40,11 @@ npx tauri dev      # アプリ起動（初回は Rust のコンパイルで数�
 ## ローカルビルド（インストーラー生成）
 
 ```bash
+cd app
 npx tauri build    # インストーラーを生成（初回は Rust のフルビルドで数分かかります）
 ```
 
-生成物は `src-tauri/target/release/bundle/` に出力されます（Windows: `.msi` / `.exe`、macOS: `.dmg`）。
+生成物は `app/src-tauri/target/release/bundle/` に出力されます（Windows: `.msi` / `.exe`、macOS: `.dmg`）。
 
 ---
 
