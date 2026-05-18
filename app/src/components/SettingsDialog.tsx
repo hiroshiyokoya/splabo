@@ -294,7 +294,7 @@ export function SettingsDialog({ open, onClose, onGearDataDeleted, comboLimit = 
               </div>
               <div className="about-divider" />
               <p className="about-disclaimer">
-                geartoon は非公式のファンツールです。任天堂株式会社、およびスプラトゥーンシリーズとは一切関係ありません。
+                geartoon は任天堂株式会社と無関係の非公式 OSS アプリです。スプラトゥーンシリーズとは一切関係ありません。
                 Splatoon™ は任天堂株式会社の商標です。
               </p>
             </>
