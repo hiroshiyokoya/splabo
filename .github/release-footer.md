@@ -3,7 +3,7 @@
 
 ## ダウンロード
 
-| OS | ファイル |
+| OS | ファイル（下部 Assets 内） |
 |---|---|
 | Windows | geartoon_VERSION_x64-setup.exe（推奨）または .msi |
 | macOS (Apple Silicon) | geartoon_VERSION_aarch64.dmg |
@@ -25,7 +25,7 @@ xattr -cr /Applications/geartoon.app
 
 ---
 
-📄 [注意事項・プライバシーポリシー](https://github.com/hiroshiyokoya/geartoon/blob/vVERSION/README.md#注意事項) | [README](https://github.com/hiroshiyokoya/geartoon/blob/vVERSION/README.md)
+🌐 [ダウンロードページ](https://hiroshiyokoya.github.io/geartoon/) | 📄 [注意事項・プライバシーポリシー](https://github.com/hiroshiyokoya/geartoon/blob/vVERSION/README.md#注意事項) | [README](https://github.com/hiroshiyokoya/geartoon/blob/vVERSION/README.md)
 
 <br>
 
