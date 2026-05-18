@@ -79,6 +79,25 @@ gh pr create --base develop --title "..." --body "..."
 - **PR の本文に必ず `Closes #<イシュー番号>` を含める。** マージ時にイシューが自動クローズされる。
 - **PRのマージはユーザーが行う。** Claude は `gh pr merge` を実行しない。
 
+### ブランチが切り替わっている問題への対策
+
+**ユーザーはターミナルで `git checkout develop && git pull` を実行することがある。**
+これにより、Claude が feature ブランチを作成した後でも、ローカルのカレントブランチが `develop` に戻ってしまう。
+
+**コミット前に必ず以下を確認すること：**
+
+```
+git branch --show-current
+```
+
+`develop` と表示された場合は、目的の feature ブランチに切り替えてからコミットする：
+
+```
+git checkout feature/<ブランチ名>
+git add ...
+git commit ...
+```
+
 ---
 
 ## git操作

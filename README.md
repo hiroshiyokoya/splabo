@@ -17,7 +17,7 @@ geartoon/
 
 ## 関連リポジトリ
 
-- [geartoon-mobile](https://github.com/hiroshiyokoya/geartoon-mobile) — Android ビューワー（Kotlin + Jetpack Compose）
+- [geartoon-viewer](https://github.com/hiroshiyokoya/geartoon-viewer) — Android ビューワー（Kotlin + Jetpack Compose）
 
 ## 必要なもの
 
@@ -64,7 +64,7 @@ nxapi は Tauri サイドカーとしてアプリに同梱されており、**�
 ### 機能
 
 - ギア一覧（頭 / 服 / 靴タブ切り替え）
-- 並び替え（ブランド / メインパワー / 名前 / レアリティ / EXP）
+- 並び替え（ブランド / ギアパワー / 名前 / レア度 / ケイケン値）
 - 絞り込みドロワー（右スライド、すりガラス風半透明UI）
   - **発動型**: タブ対応スキルをシングルセレクト（カムバック・ステルスジャンプ等）
   - **スタック型**: 最低 pt をステッパーで指定
@@ -141,7 +141,7 @@ Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して
 - 本ツールは個人の利用を目的としています。
 - SplatNet 3 は任天堂が公式に公開している API ではありません。任天堂側の仕様変更により、予告なく動作しなくなる可能性があります。
 - SplatNet 3 からダウンロードされるギア・スキル画像の著作権は任天堂株式会社に帰属します。これらの画像は個人利用の範囲内でのみ使用し、再配布・商用利用・二次創作物への無断使用は行わないでください。
-- 認証情報ファイルはアプリの AppData ディレクトリ（Windows: `%APPDATA%\com.hiroshiyokoya.geartoon\`、macOS: `~/Library/Application Support/com.hiroshiyokoya.geartoon/`）にのみ保存されます。コミットしないでください。
+- 認証情報ファイルはアプリの AppData ディレクトリ（Windows: `%APPDATA%\com.geartoon.app\`、macOS: `~/Library/Application Support/com.geartoon.app/`）にのみ保存されます。コミットしないでください。
 - 認証に使用する Nintendo アカウントの情報はローカルにのみ保存されます。外部サーバーへの送信は nxapi の仕様に準じます。
 - アプリのUIは、現状日本語のみです。
 
@@ -152,7 +152,7 @@ Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して
 ### 収集する情報
 
 - **Nintendo アカウントのセッショントークン（session_token）および各種アクセストークン**
-  - ローカルの AppData ディレクトリ（`com.hiroshiyokoya.geartoon/nxapi/`）にのみ保存されます。
+  - ローカルの AppData ディレクトリ（`com.geartoon.app/nxapi/`）にのみ保存されます。
   - 外部サーバーへ送信・アップロードすることはありません。
 
 ### 外部サービスへの送信
