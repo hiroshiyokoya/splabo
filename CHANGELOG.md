@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+## [0.5.1] — 2026-05-18
+
+### Added
+- GitHub Pages ダウンロードページを追加（https://hiroshiyokoya.github.io/geartoon/）
+- About 画面にフィードバックフォームへのリンクボタンを追加
+- ダウンロードボタンに最新バージョンを動的表示
+- スクリーンショットをクリックで拡大表示（ライトボックス）
+
+### Fixed
+- Tauri WebView 内で About 画面の Author・Repository リンクが開かなかった問題を修正
+
+### Changed
+- README のフィードバック先を Google フォームに変更（匿名可）
+
 ## [0.5.0] — 2026-05-18
 
 geartoon 初回リリース。
