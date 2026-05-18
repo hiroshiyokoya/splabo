@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { isTauri } from '../utils/tauri'
+import { isTauri, openExternal } from '../utils/tauri'
 import {
   THEMES, DENSITIES, COMBO_LIMITS, NEAR_LIMITS,
   loadThemeId, loadDensityId,
@@ -261,16 +261,36 @@ export function SettingsDialog({ open, onClose, onGearDataDeleted, comboLimit = 
               <div className="about-meta">
                 <div className="about-meta__row">
                   <span className="about-meta__label">Author</span>
-                  <a className="about-meta__value about-link" href="https://github.com/hiroshiyokoya" target="_blank" rel="noreferrer">hiroshiyokoya</a>
+                  <button
+                    className="about-meta__value about-link about-link-btn"
+                    onClick={() => openExternal('https://github.com/hiroshiyokoya')}
+                  >
+                    hiroshiyokoya
+                  </button>
                 </div>
                 <div className="about-meta__row">
                   <span className="about-meta__label">Repository</span>
-                  <a className="about-meta__value about-link" href="https://github.com/hiroshiyokoya/geartoon" target="_blank" rel="noreferrer">github.com/hiroshiyokoya/geartoon</a>
+                  <button
+                    className="about-meta__value about-link about-link-btn"
+                    onClick={() => openExternal('https://github.com/hiroshiyokoya/geartoon')}
+                  >
+                    github.com/hiroshiyokoya/geartoon
+                  </button>
                 </div>
                 <div className="about-meta__row">
                   <span className="about-meta__label">License</span>
                   <span className="about-meta__value">MIT License</span>
                 </div>
+              </div>
+              <div className="about-divider" />
+              <div className="about-feedback">
+                <p className="about-feedback__text">バグ報告・機能要望など、フィードバックを歓迎します。</p>
+                <button
+                  className="about-feedback__btn"
+                  onClick={() => openExternal('https://docs.google.com/forms/d/e/1FAIpQLScAP6LH9JDHaJGs4c7UJakF-YNU1UJRN10H4uSePqiknN-apQ/viewform')}
+                >
+                  フィードバックフォームを開く
+                </button>
               </div>
               <div className="about-divider" />
               <p className="about-disclaimer">
