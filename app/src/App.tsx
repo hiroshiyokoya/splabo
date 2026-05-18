@@ -444,7 +444,7 @@ function App() {
       <div ref={appTopRef} className="app-top app-top--sticky">
         <header className="app-header">
           <div className="app-header__left">
-            <img src="/geartoon-logo.png" alt="geartoon" height="68" style={{ display: 'block' }} />
+            <img src="/geartoon-logo.png" alt="geartoon" height="102" style={{ display: 'block' }} />
             <p className="app-subtitle">Splatoon 3 Gear Wardrobe</p>
           </div>
           <div className="app-header__right">
