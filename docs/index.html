@@ -53,7 +53,7 @@
     .hero-desc {
       font-size: 1rem;
       color: var(--text);
-      max-width: 520px;
+      max-width: 660px;
       margin: 0 auto 2.5rem;
     }
     .btn-download {
@@ -69,6 +69,12 @@
     .btn-download:hover {
       background: var(--accent-dim);
       text-decoration: none;
+    }
+    .btn-version {
+      font-size: 0.85rem;
+      font-weight: 500;
+      opacity: 0.85;
+      margin-left: 0.4rem;
     }
     .hero-note {
       margin-top: 0.9rem;
@@ -99,12 +105,38 @@
       border-radius: 10px;
       border: 1px solid var(--border);
       display: block;
+      cursor: zoom-in;
+      transition: opacity 0.15s;
+    }
+    .screenshot-item img:hover {
+      opacity: 0.85;
     }
     .screenshot-item p {
       text-align: center;
       font-size: 0.82rem;
       color: var(--text-muted);
       margin-top: 0.5rem;
+    }
+
+    /* ── Lightbox ── */
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.88);
+      z-index: 1000;
+      cursor: zoom-out;
+      align-items: center;
+      justify-content: center;
+    }
+    #lightbox.active {
+      display: flex;
+    }
+    #lightbox-img {
+      max-width: 90vw;
+      max-height: 90vh;
+      border-radius: 10px;
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7);
     }
 
     /* ── Features ── */
@@ -280,6 +312,7 @@
     </p>
     <a class="btn-download" href="https://github.com/hiroshiyokoya/geartoon/releases/latest">
       ダウンロード
+      <span class="btn-version" id="btn-version"></span>
     </a>
     <p class="hero-note">Windows / macOS 対応 &nbsp;·&nbsp; 無料</p>
   </section>
@@ -289,15 +322,15 @@
     <h2 class="section-title">スクリーンショット</h2>
     <div class="screenshot-grid">
       <div class="screenshot-item">
-        <img src="screenshots/main.png" alt="ギア一覧">
+        <img src="screenshots/main.png" alt="ギア一覧" onclick="openLightbox(this)">
         <p>所持ギアを一覧表示</p>
       </div>
       <div class="screenshot-item">
-        <img src="screenshots/filter.png" alt="絞り込み">
+        <img src="screenshots/filter.png" alt="絞り込み" onclick="openLightbox(this)">
         <p>スキル・ブランドで絞り込み</p>
       </div>
       <div class="screenshot-item">
-        <img src="screenshots/combo.png" alt="コーデ生成">
+        <img src="screenshots/combo.png" alt="コーデ生成" onclick="openLightbox(this)">
         <p>目標スキルからコーデを自動生成</p>
       </div>
     </div>
@@ -390,6 +423,34 @@
       </a>
     </div>
   </section>
+
+  <!-- Lightbox -->
+  <div id="lightbox" onclick="closeLightbox()">
+    <img id="lightbox-img" src="" alt="">
+  </div>
+
+  <script>
+    // 最新バージョンをボタンに表示
+    fetch('https://api.github.com/repos/hiroshiyokoya/geartoon/releases/latest')
+      .then(r => r.json())
+      .then(data => {
+        const el = document.getElementById('btn-version');
+        if (el && data.tag_name) el.textContent = data.tag_name;
+      })
+      .catch(() => {});
+
+    function openLightbox(img) {
+      document.getElementById('lightbox-img').src = img.src;
+      document.getElementById('lightbox-img').alt = img.alt;
+      document.getElementById('lightbox').classList.add('active');
+    }
+    function closeLightbox() {
+      document.getElementById('lightbox').classList.remove('active');
+    }
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeLightbox();
+    });
+  </script>
 
   <!-- Footer -->
   <footer>
