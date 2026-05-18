@@ -1,6 +1,6 @@
 # チャートゥーン (chartoon)
 
-Nintendo アカウントから非公式 API 経由で Splatoon 3 のバトル履歴を取得し、グラフで可視化する OSS の PC アプリです。任天堂株式会社とは無関係です。
+Nintendo アカウントから [nxapi](https://github.com/samuelthomas2774/nxapi) が解析した非公式 API 経由で Splatoon 3 のバトル履歴を取得し、グラフで可視化する OSS の PC アプリです。任天堂株式会社とは無関係です。
 
 ```
 chartoon/
@@ -47,16 +47,21 @@ npx tauri build    # インストーラーを生成（初回は Rust のフル�
 
 ## 技術メモ
 
+### SplatNet 3 とは
+
+**SplatNet 3** は、Nintendo Switch Online スマートフォンアプリが内部で使用している任天堂のサービスです。バトル履歴・ギア情報などを取得できる GraphQL API を持ちますが、公式には公開されていません。
+
+[**nxapi**](https://github.com/samuelthomas2774/nxapi)（Samuel Thomas 氏が開発する OSS）は、このフローを解析し、サードパーティ製ツールから SplatNet 3 へアクセスする方法を明らかにしました。chartoon の認証実装はこの nxapi のフローを Rust で再実装したものです。
+
 ### 認証
 
-Nintendo Switch Online (NSO) OAuth2 (PKCE) フローを Rust で実装（`src-tauri/src/auth.rs`）。
-f-token の生成には [imink API](https://github.com/imink-app/f-API)（`api.imink.app`）を使用。
+Nintendo Switch Online (NSO) OAuth2 (PKCE) フローを Rust で実装（`src-tauri/src/auth.rs`）。nxapi が明らかにした認証フローに基づいています。f-token の生成には nxapi が内部で使用する `nxapi-znca-api.fancy.org.uk` エンドポイントを使用。
 
-認証フロー:
+認証フロー（nxapi が解析したフロー）:
 ```
 Nintendo Account ログインURL → ブラウザで開く（deep-link で認可コードを受け取る）
 → session_token（長期保存）
-→ id_token → f-token (imink) → Coral login → gtoken
+→ id_token → f-token (nxapi-znca-api) → Coral login → gtoken
 → bulletToken（SplatNet3 アクセス用、約2時間有効）
 ```
 
@@ -92,13 +97,19 @@ OpenAI (gpt-4o-mini 等) または Google Gemini に集計データを渡し、r
 
 ### 外部サービスへの送信
 
-- **imink API（`api.imink.app`）**: Nintendo 認証フローで必要な f-token を生成するため、`id_token` がこのエンドポイントへ送信されます。詳細は [imink-app/f-API](https://github.com/imink-app/f-API) を参照してください。
+- **nxapi-znca-api（`nxapi-znca-api.fancy.org.uk`）**: Nintendo 認証フローで必要な f-token を生成するため、nxapi の内部処理として `id_token` がこのエンドポイントへ送信されます。これは nxapi の仕様に基づくものであり、chartoon 独自の送信ではありません。詳細は [nxapi](https://github.com/samuelthomas2774/nxapi) を参照してください。
 - **OpenAI / Google Gemini API**: AI 分析機能を使用する場合、バトル集計データ（個人を特定できないサマリー統計）がリクエストに含まれます。設定した API キーはローカルにのみ保存され、外部へ転送されません。
 - 上記以外に、本ツールが独自に情報を外部送信することはありません。
 
 ### 個人情報の収集について
 
 本ツールは、氏名・メールアドレス・位置情報などの個人情報を収集・記録・送信しません。
+
+## 参考リポジトリ
+
+Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して以下を参照しました。
+
+- [samuelthomas2774/nxapi](https://github.com/samuelthomas2774/nxapi) — Nintendo Switch Online の認証・API アクセスライブラリ。chartoon の認証フローはこのプロジェクトが明らかにした仕様に基づいています。f-token 生成も nxapi が内部で使用するエンドポイント（`nxapi-znca-api.fancy.org.uk`）を利用します。
 
 ## 免責事項
 
