@@ -53,7 +53,7 @@
     .hero-desc {
       font-size: 1rem;
       color: var(--text);
-      max-width: 520px;
+      max-width: 660px;
       margin: 0 auto 2.5rem;
     }
     .btn-download {
@@ -99,12 +99,38 @@
       border-radius: 10px;
       border: 1px solid var(--border);
       display: block;
+      cursor: zoom-in;
+      transition: opacity 0.15s;
+    }
+    .screenshot-item img:hover {
+      opacity: 0.85;
     }
     .screenshot-item p {
       text-align: center;
       font-size: 0.82rem;
       color: var(--text-muted);
       margin-top: 0.5rem;
+    }
+
+    /* ── Lightbox ── */
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.88);
+      z-index: 1000;
+      cursor: zoom-out;
+      align-items: center;
+      justify-content: center;
+    }
+    #lightbox.active {
+      display: flex;
+    }
+    #lightbox-img {
+      max-width: 90vw;
+      max-height: 90vh;
+      border-radius: 10px;
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7);
     }
 
     /* ── Features ── */
@@ -289,15 +315,15 @@
     <h2 class="section-title">スクリーンショット</h2>
     <div class="screenshot-grid">
       <div class="screenshot-item">
-        <img src="screenshots/main.png" alt="ギア一覧">
+        <img src="screenshots/main.png" alt="ギア一覧" onclick="openLightbox(this)">
         <p>所持ギアを一覧表示</p>
       </div>
       <div class="screenshot-item">
-        <img src="screenshots/filter.png" alt="絞り込み">
+        <img src="screenshots/filter.png" alt="絞り込み" onclick="openLightbox(this)">
         <p>スキル・ブランドで絞り込み</p>
       </div>
       <div class="screenshot-item">
-        <img src="screenshots/combo.png" alt="コーデ生成">
+        <img src="screenshots/combo.png" alt="コーデ生成" onclick="openLightbox(this)">
         <p>目標スキルからコーデを自動生成</p>
       </div>
     </div>
@@ -390,6 +416,25 @@
       </a>
     </div>
   </section>
+
+  <!-- Lightbox -->
+  <div id="lightbox" onclick="closeLightbox()">
+    <img id="lightbox-img" src="" alt="">
+  </div>
+
+  <script>
+    function openLightbox(img) {
+      document.getElementById('lightbox-img').src = img.src;
+      document.getElementById('lightbox-img').alt = img.alt;
+      document.getElementById('lightbox').classList.add('active');
+    }
+    function closeLightbox() {
+      document.getElementById('lightbox').classList.remove('active');
+    }
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeLightbox();
+    });
+  </script>
 
   <!-- Footer -->
   <footer>
