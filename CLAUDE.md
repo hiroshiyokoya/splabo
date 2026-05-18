@@ -54,6 +54,71 @@ gh api repos/hiroshiyokoya/geartoon/issues/<番号> -X PATCH -f body="..."
 
 ---
 
+## リリースルーチン
+
+リリース作業を依頼されたとき（または「リリース準備して」と言われたとき）は、以下を順番に確認・実施する。
+
+### 1. CHANGELOG.md を更新
+
+- `[Unreleased]` セクションをバージョン番号と日付に変更する
+  ```
+  ## [X.Y.Z] — YYYY-MM-DD
+  ```
+- 新しい `[Unreleased]` セクションを先頭に追加する
+
+### 2. docs/index.html（GitHub Pages）を確認・更新
+
+以下の箇所が最新かチェックする：
+
+| 箇所 | 確認内容 |
+|------|---------|
+| `できること` フィーチャーカード | 新機能が追加されていれば記載を更新 |
+| スクリーンショット | 大きなUI変更があれば `docs/screenshots/` の画像を差し替え |
+| 説明文 | 機能の説明が現状と合っているか |
+
+変更なければスキップしてよい。
+
+### 3. README.md を確認
+
+- 機能説明・注意事項・技術メモが最新か確認
+- 大きな変更があれば更新
+
+### 4. ブランチ・PR を作成してマージ
+
+```
+git checkout -b release/vX.Y.Z
+# ファイル編集後
+git add CHANGELOG.md docs/index.html README.md  # 変更したもののみ
+git commit -m "chore: リリース準備 vX.Y.Z"
+git push origin release/vX.Y.Z
+gh pr create --base develop --title "chore: リリース準備 vX.Y.Z" --body "..."
+```
+
+**PRのマージはユーザーが行う。**
+
+### 5. タグ打ち（ユーザーが実施）
+
+ユーザーが develop ブランチで以下を実行：
+```
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+→ GitHub Actions が自動でビルド・ドラフトリリース作成まで行う。
+
+### 6. ドラフトリリースの確認（ユーザーが実施）
+
+- GitHub の Releases ページでドラフトを確認
+- リリースノートの内容を確認
+- 問題なければ「Publish release」を押す
+
+### 7. GitHub Pages の確認
+
+- マージ後、数分で GitHub Pages が更新される
+- `https://hiroshiyokoya.github.io/geartoon/` を開いて確認
+
+---
+
 ## ブランチ・PRのルール
 
 **イシューに対する作業は、必ずブランチを切ってからPRでマージすること。`develop` への直接コミットは禁止。**

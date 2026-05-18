@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>geartoon — Splatoon 3 Gear Wardrobe</title>
+  <title>ギアトゥーン (geartoon) — Splatoon 3 Gear Wardrobe</title>
   <link rel="icon" href="https://raw.githubusercontent.com/hiroshiyokoya/geartoon/develop/app/public/favicon.png">
   <style>
     :root {
@@ -35,15 +35,15 @@
       padding: 5rem 2rem 4rem;
     }
     .hero-logo {
-      width: 100px;
+      width: 220px;
       margin-bottom: 1.5rem;
     }
     .hero h1 {
-      font-size: 2.8rem;
+      font-size: 2.2rem;
       font-weight: 800;
       color: var(--accent);
-      letter-spacing: -0.02em;
-      margin-bottom: 0.4rem;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.5rem;
     }
     .hero-tagline {
       color: var(--text-muted);
@@ -215,6 +215,37 @@
       margin-top: 0.75rem;
     }
 
+    /* ── Feedback ── */
+    .feedback {
+      background: var(--surface);
+      padding: 3rem 2rem;
+    }
+    .feedback-inner {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .feedback-inner p {
+      font-size: 0.87rem;
+      color: var(--text-muted);
+      margin-top: 0.75rem;
+    }
+    .feedback-inner .btn-discuss {
+      display: inline-block;
+      margin-top: 1.25rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--accent);
+      padding: 0.6rem 1.6rem;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      transition: background 0.15s;
+    }
+    .feedback-inner .btn-discuss:hover {
+      background: var(--border);
+      text-decoration: none;
+    }
+
     /* ── Footer ── */
     footer {
       background: var(--surface);
@@ -241,11 +272,11 @@
     <img class="hero-logo"
       src="https://raw.githubusercontent.com/hiroshiyokoya/geartoon/develop/app/public/geartoon-logo.png"
       alt="geartoon logo">
-    <h1>geartoon</h1>
+    <h1>ギアトゥーン (geartoon)</h1>
     <p class="hero-tagline">Splatoon 3 Gear Wardrobe</p>
     <p class="hero-desc">
-      所持ギアを一覧表示・絞り込みできる非公式ファンツールです。<br>
-      目標スキルを指定するとコーデ候補を自動生成します。
+      Nintendo アカウントで認証し、非公式 API 経由で所持ギアを取得・表示する非公式ファンツールです。<br>
+      スキル・ブランドで絞り込んだり、目標スキルからコーデ候補を自動生成できます。
     </p>
     <a class="btn-download" href="https://github.com/hiroshiyokoya/geartoon/releases/latest">
       ダウンロード
@@ -346,6 +377,18 @@
     <h2 class="section-title">プライバシーについて</h2>
     <p>本ツールが外部に送信するのは、Nintendo 認証に必要な情報のみです（nxapi の仕様に基づくもので、geartoon 独自の送信はありません）。氏名・メールアドレス等の個人情報を収集・記録することはありません。</p>
     <p>詳細は <a href="https://github.com/hiroshiyokoya/geartoon#プライバシーポリシー">プライバシーポリシー（README）</a> を参照してください。</p>
+  </section>
+
+  <!-- Feedback -->
+  <section class="feedback">
+    <div class="feedback-inner">
+      <h2 class="section-title">フィードバック・ご意見</h2>
+      <p>バグ報告・機能要望・感想など、どんなフィードバックも歓迎します。<br>
+         匿名で送信できます。返信希望の場合はメールアドレスをご記入ください。</p>
+      <a class="btn-discuss" href="https://docs.google.com/forms/d/e/1FAIpQLScAP6LH9JDHaJGs4c7UJakF-YNU1UJRN10H4uSePqiknN-apQ/viewform" target="_blank" rel="noopener">
+        フィードバックフォームを開く
+      </a>
+    </div>
   </section>
 
   <!-- Footer -->
