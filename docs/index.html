@@ -65,10 +65,19 @@
       font-weight: 700;
       font-size: 1rem;
       transition: background 0.15s;
+      line-height: 1.3;
     }
     .btn-download:hover {
       background: var(--accent-dim);
       text-decoration: none;
+    }
+    .btn-version {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 500;
+      opacity: 0.8;
+      margin-top: 0.15rem;
+      min-height: 1em;
     }
     .hero-note {
       margin-top: 0.9rem;
@@ -306,6 +315,7 @@
     </p>
     <a class="btn-download" href="https://github.com/hiroshiyokoya/geartoon/releases/latest">
       ダウンロード
+      <span class="btn-version" id="btn-version"></span>
     </a>
     <p class="hero-note">Windows / macOS 対応 &nbsp;·&nbsp; 無料</p>
   </section>
@@ -423,6 +433,15 @@
   </div>
 
   <script>
+    // 最新バージョンをボタンに表示
+    fetch('https://api.github.com/repos/hiroshiyokoya/geartoon/releases/latest')
+      .then(r => r.json())
+      .then(data => {
+        const el = document.getElementById('btn-version');
+        if (el && data.tag_name) el.textContent = data.tag_name;
+      })
+      .catch(() => {});
+
     function openLightbox(img) {
       document.getElementById('lightbox-img').src = img.src;
       document.getElementById('lightbox-img').alt = img.alt;
