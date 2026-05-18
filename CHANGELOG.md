@@ -2,42 +2,14 @@
 
 ## [Unreleased]
 
-## [0.5.2] — 2026-05-18
-
-### Added
-- ダウンロードページを Cloudflare Pages に移行（[geartoon.pages.dev](https://geartoon.pages.dev/)）
-- Pages のロゴサイズを拡大・スクリーンショットをクリックで拡大表示
-- ダウンロードボタンに最新バージョンを動的表示
-
-### Fixed
-- リリースノートのフィードバック先を Google フォームに変更
-- リリースノートのダウンロード表記を「ファイル（下部 Assets 内）」に変更
-- GitHub Actions の Node.js 20 deprecation warning を解消
-
-### Changed
-- 説明文を「非公式ファンツール」→「OSS の PC アプリ」に統一
-- 説明文の「Nintendo アカウントで認証し」→「Nintendo アカウントから」に変更
-
-## [0.5.1] — 2026-05-18
-
-### Added
-- [GitHub Pages ダウンロードページ](https://hiroshiyokoya.github.io/geartoon/)を追加
-- About 画面にフィードバックフォームへのリンクボタンを追加
-- ダウンロードボタンに最新バージョンを動的表示
-- スクリーンショットをクリックで拡大表示（ライトボックス）
-
-### Fixed
-- Tauri WebView 内で About 画面の Author・Repository リンクが開かなかった問題を修正
-
-### Changed
-- README のフィードバック先を Google フォームに変更（匿名可）
-
 ## [0.5.0] — 2026-05-18
 
 geartoon 初回リリース。
 
 Splatoon 3 の所持ギアを閲覧・検索できる OSS の PC アプリです。
 nxapi を通じて Nintendo アカウントから SplatNet 3 のギアデータを取得します。スキル・ブランドで絞り込んだり、目標スキル構成に近いコーデを自動生成したりできます。
+
+🌐 **ダウンロードページ**: https://geartoon.pages.dev/
 
 ### ギア一覧・絞り込み
 - 頭・服・靴タブで所持ギアを一覧表示
