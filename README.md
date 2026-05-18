@@ -1,6 +1,10 @@
 <img src="app/public/geartoon-logo.png" alt="geartoon" height="300">
 
-これは、Splatoon 3 の所持ギアを閲覧・検索する非公式ファンツールです。任天堂株式会社とは無関係で、データ取得に [nxapi](https://github.com/samuelthomas2774/nxapi) を使用しています。
+# ギアトゥーン (geartoon)
+
+Nintendo アカウントで認証し、非公式 API 経由で Splatoon 3 の所持ギアを取得・表示する非公式ファンツールです。任天堂株式会社とは無関係で、データ取得に [nxapi](https://github.com/samuelthomas2774/nxapi) を使用しています。
+
+バグ報告・機能要望・感想など、フィードバックは [GitHub Discussions](https://github.com/hiroshiyokoya/geartoon/discussions) でお気軽にどうぞ。
 
 ```
 geartoon/

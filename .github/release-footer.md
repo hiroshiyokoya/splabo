@@ -1,6 +1,10 @@
 
 ---
 
+バグ報告・機能要望・感想など、フィードバックは [GitHub Discussions](https://github.com/hiroshiyokoya/geartoon/discussions) でお気軽にどうぞ。
+
+---
+
 ## ダウンロード
 
 | OS | ファイル |
