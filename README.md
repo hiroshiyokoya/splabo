@@ -1,6 +1,6 @@
 # チャートゥーン (chartoon)
 
-Nintendo アカウントから非公式 API 経由で Splatoon 3 のバトル履歴を取得し、グラフで可視化する OSS の PC アプリです。任天堂株式会社とは無関係です。
+Nintendo アカウントから [nxapi](https://github.com/samuelthomas2774/nxapi) が解析した非公式 API 経由で Splatoon 3 のバトル履歴を取得し、グラフで可視化する OSS の PC アプリです。任天堂株式会社とは無関係です。
 
 ```
 chartoon/
@@ -47,12 +47,17 @@ npx tauri build    # インストーラーを生成（初回は Rust のフル�
 
 ## 技術メモ
 
+### SplatNet 3 とは
+
+**SplatNet 3** は、Nintendo Switch Online スマートフォンアプリが内部で使用している任天堂のサービスです。バトル履歴・ギア情報などを取得できる GraphQL API を持ちますが、公式には公開されていません。
+
+[**nxapi**](https://github.com/samuelthomas2774/nxapi)（Samuel Thomas 氏が開発する OSS）は、このフローを解析し、サードパーティ製ツールから SplatNet 3 へアクセスする方法を明らかにしました。chartoon の認証実装はこの nxapi のフローを Rust で再実装したものです。
+
 ### 認証
 
-Nintendo Switch Online (NSO) OAuth2 (PKCE) フローを Rust で実装（`src-tauri/src/auth.rs`）。
-f-token の生成には [imink API](https://github.com/imink-app/f-API)（`api.imink.app`）を使用。
+Nintendo Switch Online (NSO) OAuth2 (PKCE) フローを Rust で実装（`src-tauri/src/auth.rs`）。nxapi が明らかにした認証フローに基づいています。f-token の生成には [imink API](https://github.com/imink-app/f-API)（`api.imink.app`）を使用。
 
-認証フロー:
+認証フロー（nxapi が解析したフロー）:
 ```
 Nintendo Account ログインURL → ブラウザで開く（deep-link で認可コードを受け取る）
 → session_token（長期保存）
@@ -99,6 +104,13 @@ OpenAI (gpt-4o-mini 等) または Google Gemini に集計データを渡し、r
 ### 個人情報の収集について
 
 本ツールは、氏名・メールアドレス・位置情報などの個人情報を収集・記録・送信しません。
+
+## 参考リポジトリ
+
+Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して以下を参照しました。
+
+- [samuelthomas2774/nxapi](https://github.com/samuelthomas2774/nxapi) — Nintendo Switch Online の認証・API アクセスライブラリ。chartoon の認証フローはこのプロジェクトが明らかにした仕様に基づいています。
+- [imink-app/f-API](https://github.com/imink-app/f-API) — Nintendo 認証に必要な f-token 生成 API。
 
 ## 免責事項
 
