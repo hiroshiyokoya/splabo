@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-05-18
+
+### Added
+- ダウンロードページを Cloudflare Pages に移行（[geartoon.pages.dev](https://geartoon.pages.dev/)）
+- Pages のロゴサイズを拡大・スクリーンショットをクリックで拡大表示
+- ダウンロードボタンに最新バージョンを動的表示
+
+### Fixed
+- リリースノートのフィードバック先を Google フォームに変更
+- リリースノートのダウンロード表記を「ファイル（下部 Assets 内）」に変更
+- GitHub Actions の Node.js 20 deprecation warning を解消
+
+### Changed
+- 説明文を「非公式ファンツール」→「OSS の PC アプリ」に統一
+- 説明文の「Nintendo アカウントで認証し」→「Nintendo アカウントから」に変更
+
 ## [0.5.1] — 2026-05-18
 
 ### Added
