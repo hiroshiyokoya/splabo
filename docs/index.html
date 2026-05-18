@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>geartoon — Splatoon 3 Gear Wardrobe</title>
+  <link rel="icon" href="https://raw.githubusercontent.com/hiroshiyokoya/geartoon/develop/app/public/favicon.png">
+  <style>
+    :root {
+      --bg: #1a1a1e;
+      --surface: #26262c;
+      --surface2: #2e2e36;
+      --accent: #9b7fe8;
+      --accent-dim: #7a60c8;
+      --text: #e8e8f0;
+      --text-muted: #8888a0;
+      --border: #36363f;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      padding: 5rem 2rem 4rem;
+    }
+    .hero-logo {
+      width: 100px;
+      margin-bottom: 1.5rem;
+    }
+    .hero h1 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      color: var(--accent);
+      letter-spacing: -0.02em;
+      margin-bottom: 0.4rem;
+    }
+    .hero-tagline {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      margin-bottom: 0.75rem;
+    }
+    .hero-desc {
+      font-size: 1rem;
+      color: var(--text);
+      max-width: 520px;
+      margin: 0 auto 2.5rem;
+    }
+    .btn-download {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      padding: 0.8rem 2.2rem;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 1rem;
+      transition: background 0.15s;
+    }
+    .btn-download:hover {
+      background: var(--accent-dim);
+      text-decoration: none;
+    }
+    .hero-note {
+      margin-top: 0.9rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* ── Screenshots ── */
+    .screenshots {
+      padding: 3rem 2rem 4rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .section-title {
+      text-align: center;
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+      color: var(--text);
+    }
+    .screenshot-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+    }
+    .screenshot-item img {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      display: block;
+    }
+    .screenshot-item p {
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+    }
+
+    /* ── Features ── */
+    .features {
+      background: var(--surface);
+      padding: 3rem 2rem;
+    }
+    .features-inner {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+    .feature-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+    }
+    .feature-card h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+    }
+    .feature-card ul {
+      list-style: none;
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .feature-card li::before {
+      content: "· ";
+      color: var(--accent);
+    }
+
+    /* ── Warning ── */
+    .warning {
+      padding: 3rem 2rem;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .warning-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-top: 1.5rem;
+    }
+    .warning-box h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+    }
+    .warning-box p {
+      font-size: 0.87rem;
+      color: var(--text-muted);
+    }
+    .warning-box code {
+      background: var(--surface2);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+    .warning-box + .warning-box {
+      margin-top: 0.75rem;
+    }
+
+    /* ── Notes ── */
+    .notes {
+      background: var(--surface);
+      padding: 3rem 2rem;
+    }
+    .notes-inner {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .notes ul {
+      list-style: none;
+      font-size: 0.87rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+    .notes li::before {
+      content: "※ ";
+    }
+
+    /* ── Privacy ── */
+    .privacy {
+      padding: 3rem 2rem;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .privacy p {
+      font-size: 0.87rem;
+      color: var(--text-muted);
+      margin-top: 0.75rem;
+    }
+
+    /* ── Footer ── */
+    footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      text-align: center;
+      padding: 2rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    footer a { color: var(--text-muted); }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .hero h1 { font-size: 2rem; }
+      .screenshot-grid { grid-template-columns: 1fr; }
+      .features-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Hero -->
+  <section class="hero">
+    <img class="hero-logo"
+      src="https://raw.githubusercontent.com/hiroshiyokoya/geartoon/develop/app/public/geartoon-logo.png"
+      alt="geartoon logo">
+    <h1>geartoon</h1>
+    <p class="hero-tagline">Splatoon 3 Gear Wardrobe</p>
+    <p class="hero-desc">
+      所持ギアを一覧表示・絞り込みできる非公式ファンツールです。<br>
+      目標スキルを指定するとコーデ候補を自動生成します。
+    </p>
+    <a class="btn-download" href="https://github.com/hiroshiyokoya/geartoon/releases/latest">
+      ダウンロード
+    </a>
+    <p class="hero-note">Windows / macOS 対応 &nbsp;·&nbsp; 無料</p>
+  </section>
+
+  <!-- Screenshots -->
+  <section class="screenshots">
+    <h2 class="section-title">スクリーンショット</h2>
+    <div class="screenshot-grid">
+      <div class="screenshot-item">
+        <img src="screenshots/main.png" alt="ギア一覧">
+        <p>所持ギアを一覧表示</p>
+      </div>
+      <div class="screenshot-item">
+        <img src="screenshots/filter.png" alt="絞り込み">
+        <p>スキル・ブランドで絞り込み</p>
+      </div>
+      <div class="screenshot-item">
+        <img src="screenshots/combo.png" alt="コーデ生成">
+        <p>目標スキルからコーデを自動生成</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features">
+    <div class="features-inner">
+      <h2 class="section-title">できること</h2>
+      <div class="features-grid">
+        <div class="feature-card">
+          <h3>ギア一覧・絞り込み</h3>
+          <ul>
+            <li>頭・服・靴タブで一覧表示</li>
+            <li>スキル・ブランドで絞り込み</li>
+            <li>ブランド / ギアパワー / 名前 などで並び替え</li>
+          </ul>
+        </div>
+        <div class="feature-card">
+          <h3>コーデ生成</h3>
+          <ul>
+            <li>目標スキルを指定してコーデ候補を自動生成</li>
+            <li>発動型スキルにも対応</li>
+            <li>「惜しい候補」も表示</li>
+          </ul>
+        </div>
+        <div class="feature-card">
+          <h3>データ取得</h3>
+          <ul>
+            <li>Nintendo アカウント認証でワンクリック取得</li>
+            <li>データはローカルに暗号化保存</li>
+            <li>インターネット接続は更新時のみ</li>
+          </ul>
+        </div>
+        <div class="feature-card">
+          <h3>カスタマイズ</h3>
+          <ul>
+            <li>カラーテーマ 3種類</li>
+            <li>表示密度の切り替え</li>
+            <li>候補件数の設定</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Warning -->
+  <section class="warning">
+    <h2 class="section-title">インストール時の注意</h2>
+    <div class="warning-box">
+      <h3>Windows — SmartScreen 警告が出た場合</h3>
+      <p>「Windows によって PC が保護されました」と表示されたら、<strong>「詳細情報」→「実行」</strong>をクリックしてください。</p>
+    </div>
+    <div class="warning-box">
+      <h3>macOS — 「壊れているため開けません」と表示された場合</h3>
+      <p>ターミナルで以下を実行してください：<br>
+        <code>xattr -cr /Applications/geartoon.app</code>
+      </p>
+    </div>
+  </section>
+
+  <!-- Notes -->
+  <section class="notes">
+    <div class="notes-inner">
+      <h2 class="section-title">注意事項</h2>
+      <ul>
+        <li>本ツールは任天堂株式会社とは無関係の非公式ファンツールです。</li>
+        <li>任天堂側の仕様変更により、予告なく動作しなくなる可能性があります。</li>
+        <li>ギア・スキル画像の著作権は任天堂株式会社に帰属します。個人利用の範囲内でのみ使用してください。</li>
+        <li>認証情報はお使いの PC 内にのみ保存されます。外部サーバーへのアップロードは行いません。</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Privacy -->
+  <section class="privacy">
+    <h2 class="section-title">プライバシーについて</h2>
+    <p>本ツールが外部に送信するのは、Nintendo 認証に必要な情報のみです（nxapi の仕様に基づくもので、geartoon 独自の送信はありません）。氏名・メールアドレス等の個人情報を収集・記録することはありません。</p>
+    <p>詳細は <a href="https://github.com/hiroshiyokoya/geartoon#プライバシーポリシー">プライバシーポリシー（README）</a> を参照してください。</p>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>geartoon は非公式のファンツールです。Splatoon™ は任天堂株式会社の商標です。</p>
+    <p style="margin-top: 0.4rem;">
+      <a href="https://github.com/hiroshiyokoya/geartoon">GitHub</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/hiroshiyokoya/geartoon/releases">Releases</a>
+      &nbsp;·&nbsp;
+      MIT License
+    </p>
+  </footer>
+
+</body>
+</html>
