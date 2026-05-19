@@ -7,7 +7,8 @@ import {
 import type { Summary, SummaryEntry, ChartSpec, Filters } from '../types'
 import { filtersToRange } from '../types'
 
-const COLOR_TOTAL = '#7c8fa0'
+const COLOR_TOTAL       = '#a8c0d0'
+const COLOR_TOTAL_HOVER = '#cde0ec'
 
 function winRateColor(rate: number): string {
   if (rate >= 0.55) return '#22c55e'
@@ -253,6 +254,11 @@ function WinRateChart({ data, height, images, hoverImageSize = 64 }: {
     return activeIndex === null || activeIndex === i ? 1 : 0.35
   }
 
+  function totalCellFill(i: number) {
+    if (activeIndex === i) return COLOR_TOTAL_HOVER
+    return COLOR_TOTAL
+  }
+
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart
@@ -289,6 +295,7 @@ function WinRateChart({ data, height, images, hoverImageSize = 64 }: {
         />
         <ReferenceLine yAxisId="right" y={0.5} stroke="#4b5563" strokeDasharray="4 4" />
         <Tooltip
+          cursor={false}
           contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
           labelStyle={{ color: 'var(--text)', fontWeight: 700 }}
           itemStyle={{ color: 'var(--text)' }}
@@ -296,12 +303,12 @@ function WinRateChart({ data, height, images, hoverImageSize = 64 }: {
             name === 'win_rate' ? [`${(Number(value) * 100).toFixed(1)}%`, '勝率'] : [value, '試合数']
           }
         />
-        <Bar yAxisId="left" dataKey="total" name="total" maxBarSize={32}>
+        <Bar yAxisId="left" dataKey="total" name="total" maxBarSize={32} activeBar={false}>
           {data.map((_, i) => (
-            <Cell key={i} fill={COLOR_TOTAL} fillOpacity={cellOpacity(i)} />
+            <Cell key={i} fill={totalCellFill(i)} fillOpacity={cellOpacity(i)} />
           ))}
         </Bar>
-        <Bar yAxisId="right" dataKey="win_rate" name="win_rate" maxBarSize={32}>
+        <Bar yAxisId="right" dataKey="win_rate" name="win_rate" maxBarSize={32} activeBar={false}>
           {data.map((entry, i) => (
             <Cell key={i} fill={winRateColor(entry.win_rate)} fillOpacity={cellOpacity(i)} />
           ))}
