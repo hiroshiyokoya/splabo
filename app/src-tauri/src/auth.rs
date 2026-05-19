@@ -51,8 +51,10 @@ const CORAL_LOGIN_URL: &str = "https://api-lp1.znc.srv.nintendo.net/v4/Account/L
 const CORAL_GET_WEB_SERVICE_TOKEN_URL: &str =
     "https://api-lp1.znc.srv.nintendo.net/v4/Game/GetWebServiceToken";
 
-/// imink f-token 生成 API。
-const IMINK_F_URL: &str = "https://api.imink.app/f";
+/// nxapi-znca-api f-token 生成エンドポイント。
+const ZNCA_API_URL: &str = "https://nxapi-znca-api.fancy.org.uk/api/znca/f";
+/// nxapi クライアント互換バージョン（nxapi の ZNCA_API_COMPATIBILITY_VERSION と同値）。
+const ZNCA_API_COMPATIBILITY_VERSION: &str = "w8zSLBsxR7rVoGJA";
 
 /// SplatNet3 bullet_token エンドポイント。
 const SPLATNET3_BULLET_TOKEN_URL: &str =
@@ -66,9 +68,9 @@ const ZNCA_VERSION: &str = "3.3.0";
 /// SplatNet3 WebView バージョン（remote config の `coral_gws_splatnet3.app_ver`）。
 const SPLATNET3_WEB_VIEW_VER: &str = "10.0.0-dfefd0af";
 
-/// imink hash_method: Coral の Account/Login 用。
+/// znca-api hash_method: Coral の Account/Login 用。
 const HASH_METHOD_CORAL: u8 = 1;
-/// imink hash_method: Web Service Token 用。
+/// znca-api hash_method: Web Service Token 用。
 const HASH_METHOD_WEB_SERVICE: u8 = 2;
 
 /// store のファイル名と session_token のキー。
@@ -161,7 +163,7 @@ struct NaUserMe {
 }
 
 #[derive(Deserialize)]
-struct IminkFResponse {
+struct ZncaFResponse {
     f: String,
     request_id: String,
     timestamp: serde_json::Value,
@@ -577,7 +579,7 @@ pub async fn get_bullet_token(app: AppHandle) -> Result<BulletTokenResult, Strin
     fetch_bullet_token(&session_token, &client).await
 }
 
-/// imink f-token API を呼び出す。
+/// nxapi-znca-api の f-token エンドポイントを呼び出す。
 /// - `token`: hash_method=1 では NA の id_token、=2 では Coral の accessToken。
 /// - `na_id`: Nintendo Account ID。
 /// - `coral_user_id`: hash_method=2 のときに付与する Coral ユーザー ID。
@@ -587,10 +589,11 @@ async fn request_f(
     hash_method: u8,
     na_id: Option<&str>,
     coral_user_id: Option<u64>,
-) -> Result<IminkFResponse, String> {
+) -> Result<ZncaFResponse, String> {
+    // hash_method は文字列として送る（nxapi-znca-api の仕様）
     let mut body = serde_json::json!({
         "token": token,
-        "hash_method": hash_method,
+        "hash_method": hash_method.to_string(),
     });
     if let Some(id) = na_id {
         body["na_id"] = serde_json::Value::String(id.to_string());
@@ -600,23 +603,25 @@ async fn request_f(
     }
 
     let resp = client
-        .post(IMINK_F_URL)
+        .post(ZNCA_API_URL)
         .header("Content-Type", "application/json")
+        .header("Accept", "application/json")
         .header("User-Agent", "chartoon/0.1.0")
+        .header("X-znca-Client-Version", ZNCA_API_COMPATIBILITY_VERSION)
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("imink f リクエスト失敗: {e}"))?;
+        .map_err(|e| format!("znca-api f リクエスト失敗: {e}"))?;
 
     if !resp.status().is_success() {
         let s = resp.status();
         let b = resp.text().await.unwrap_or_default();
-        return Err(format!("imink f 失敗 ({s}): {b}"));
+        return Err(format!("znca-api f 失敗 ({s}): {b}"));
     }
 
-    resp.json::<IminkFResponse>()
+    resp.json::<ZncaFResponse>()
         .await
-        .map_err(|e| format!("imink f レスポンス解析失敗: {e}"))
+        .map_err(|e| format!("znca-api f レスポンス解析失敗: {e}"))
 }
 
 /// session_token が保存済みか（= ログイン済みか）を返す。
