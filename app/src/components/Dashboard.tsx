@@ -264,9 +264,6 @@ function WinRateChart({ data, height, images, hoverImageSize = 64 }: {
       <BarChart
         data={data}
         margin={{ top: 4, right: 8, left: 0, bottom: hasImages ? 8 : 4 }}
-        onMouseMove={(state: any) => {
-          if (state?.activeTooltipIndex != null) setActiveIndex(state.activeTooltipIndex)
-        }}
         onMouseLeave={() => setActiveIndex(null)}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
@@ -303,12 +300,16 @@ function WinRateChart({ data, height, images, hoverImageSize = 64 }: {
             name === 'win_rate' ? [`${(Number(value) * 100).toFixed(1)}%`, '勝率'] : [value, '試合数']
           }
         />
-        <Bar yAxisId="left" dataKey="total" name="total" maxBarSize={32} activeBar={false}>
+        <Bar yAxisId="left" dataKey="total" name="total" maxBarSize={32} activeBar={false}
+          onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
+        >
           {data.map((_, i) => (
             <Cell key={i} fill={totalCellFill(i)} fillOpacity={cellOpacity(i)} />
           ))}
         </Bar>
-        <Bar yAxisId="right" dataKey="win_rate" name="win_rate" maxBarSize={32} activeBar={false}>
+        <Bar yAxisId="right" dataKey="win_rate" name="win_rate" maxBarSize={32} activeBar={false}
+          onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
+        >
           {data.map((entry, i) => (
             <Cell key={i} fill={winRateColor(entry.win_rate)} fillOpacity={cellOpacity(i)} />
           ))}
