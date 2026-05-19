@@ -40,9 +40,11 @@ pub fn run() {
             db::db_list_battles,
             db::db_weapons_used,
             db::db_summary,
+            db::db_list_weapons,
             images::read_image,
             fetch_battles,
             fetch_battle_details,
+            fetch_weapons,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -94,6 +96,24 @@ async fn fetch_battles(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
         .build()
         .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
     splatnet3::fetch_and_store_battles(
+        &db,
+        &result.bullet_token,
+        &result.country,
+        &result.language,
+        &client,
+        &app,
+    )
+    .await
+}
+
+/// WeaponRecordQuery で全武器マスターを取得して DB に保存する。保存件数を返す。
+#[tauri::command]
+async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usize, String> {
+    let result = nxapi::nxapi_get_bullet_token(&app).await?;
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    splatnet3::fetch_and_store_weapons(
         &db,
         &result.bullet_token,
         &result.country,

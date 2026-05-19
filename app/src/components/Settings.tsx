@@ -13,6 +13,8 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   const [saved, setSaved] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
   const [authLoading, setAuthLoading] = useState(false)
+  const [masterRefreshing, setMasterRefreshing] = useState(false)
+  const [masterResult, setMasterResult] = useState<string | null>(null)
 
   useEffect(() => {
     invoke<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
@@ -38,6 +40,19 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
       console.error('ログアウト失敗:', e)
     } finally {
       setAuthLoading(false)
+    }
+  }
+
+  async function handleRefreshMasterData() {
+    setMasterRefreshing(true)
+    setMasterResult(null)
+    try {
+      const count = await invoke<number>('fetch_weapons')
+      setMasterResult(`武器データを ${count} 件更新しました`)
+    } catch (e) {
+      setMasterResult(`エラー: ${String(e)}`)
+    } finally {
+      setMasterRefreshing(false)
     }
   }
 
@@ -125,6 +140,23 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
             disabled={!draft.autoFetchEnabled}
           />
         </label>
+      </section>
+
+      <section className="settings-section">
+        <h3>マスターデータ</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+          武器図鑑のデータを SplatNet3 から再取得します。武器が追加されたときなどに使用してください。
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button className="btn-secondary" onClick={handleRefreshMasterData} disabled={masterRefreshing}>
+            {masterRefreshing ? '更新中...' : '武器データを更新'}
+          </button>
+          {masterResult && (
+            <span style={{ fontSize: 13, color: masterResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
+              {masterResult}
+            </span>
+          )}
+        </div>
       </section>
 
       <button className="btn-primary" onClick={save}>

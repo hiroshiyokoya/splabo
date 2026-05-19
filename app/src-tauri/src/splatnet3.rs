@@ -11,7 +11,8 @@ const WEB_VIEW_VER: &str = "10.0.0-dfefd0af";
 const HASH_REGULAR: &str = "2fe6ea7a2de1d6a888b7bd3dbeb6acc8e3246f055ca39b80c4531bbcd0727bba";
 const HASH_BANKARA: &str = "9863ea4744730743268e2940396e21b891104ed40e2286789f05100b45a0b0fd";
 const HASH_XMATCH: &str = "eb5996a12705c2e94813a62e05c0dc419aad2811b8d49d53e5732290105559cb";
-const HASH_DETAIL: &str = "94faa2ff992222d11ced55e0f349920a82ac50f414ae33c83d1d1c9d8161c5dd";
+const HASH_DETAIL:   &str = "94faa2ff992222d11ced55e0f349920a82ac50f414ae33c83d1d1c9d8161c5dd";
+const HASH_WEAPONS:  &str = "974fad8a1275b415c3386aa212b07eddc3f6582686e4fef286ec4043cdf17135";
 
 // ---------------------------------------------------------------------------
 // HTTP ヘルパー
@@ -504,6 +505,44 @@ pub async fn fetch_and_update_details(
     }
 
     Ok(updated)
+}
+
+/// WeaponRecordQuery で全武器マスターを取得し DB に保存する。保存件数を返す。
+pub async fn fetch_and_store_weapons(
+    pool: &crate::db::DbPool,
+    bullet_token: &str,
+    country: &str,
+    language: &str,
+    client: &reqwest::Client,
+    app: &tauri::AppHandle,
+) -> Result<usize, String> {
+    let resp = graphql_request(client, bullet_token, country, language, HASH_WEAPONS).await?;
+
+    let nodes = resp
+        .pointer("/data/weaponRecords/nodes")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "weaponRecords.nodes が見つかりません".to_string())?;
+
+    let mut count = 0usize;
+    for node in nodes {
+        let name = node.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        if name.is_empty() { continue; }
+
+        let category       = node.pointer("/weaponCategory/name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let sub_weapon     = node.pointer("/subWeapon/name").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let special_weapon = node.pointer("/specialWeapon/name").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+        if let Some(url) = node.pointer("/image2d/url").and_then(|v| v.as_str()) {
+            if let Err(e) = crate::images::download_and_cache(app, client, "weapon", &name, url).await {
+                log::warn!("武器画像キャッシュ失敗 ({name}): {e}");
+            }
+        }
+
+        crate::db::upsert_weapon(pool, &name, &category, sub_weapon.as_deref(), special_weapon.as_deref()).await?;
+        count += 1;
+    }
+
+    Ok(count)
 }
 
 /// バトルノード一覧から武器・ステージの画像 URL を収集する（重複なし）。

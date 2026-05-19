@@ -1,4 +1,4 @@
-export type Tab = 'dashboard' | 'battles' | 'ai' | 'settings'
+export type Tab = 'dashboard' | 'battles' | 'weapons' | 'ai' | 'settings'
 
 export type Period = 'all' | '30d' | '7d'
 
@@ -64,6 +64,15 @@ export interface Summary {
   by_mode: SummaryEntry[]
   by_stage: SummaryEntry[]
   by_rule: SummaryEntry[]
+}
+
+export interface WeaponRecord {
+  name: string
+  category: string
+  sub_weapon: string | null
+  special_weapon: string | null
+  total: number
+  wins: number
 }
 
 export interface AiSettings {

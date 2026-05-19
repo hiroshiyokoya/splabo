@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 import { Dashboard } from './components/Dashboard'
 import { BattleLog } from './components/BattleLog'
 import { FilterBar } from './components/FilterBar'
+import { WeaponBook } from './components/WeaponBook'
 import { AiAnalysis } from './components/AiAnalysis'
 import { Settings } from './components/Settings'
 import type { Tab, AppSettings, ChartSpec, Filters } from './types'
@@ -41,6 +42,7 @@ export default function App() {
         try {
           await invoke('handle_auth_redirect', { url })
           setLoginVersion(v => v + 1)
+          invoke('fetch_weapons').catch(console.error)
         } catch (e) {
           console.error('認証リダイレクト処理失敗:', e)
         }
@@ -64,9 +66,10 @@ export default function App() {
       <nav className="sidebar">
         <div className="logo">chartoon</div>
         <NavItem id="dashboard" label="ダッシュボード" active={tab} onClick={setTab} />
-        <NavItem id="battles" label="バトルログ" active={tab} onClick={setTab} />
-        <NavItem id="ai" label="AI分析" active={tab} onClick={setTab} />
-        <NavItem id="settings" label="設定" active={tab} onClick={setTab} />
+        <NavItem id="battles"   label="バトルログ"     active={tab} onClick={setTab} />
+        <NavItem id="weapons"   label="武器図鑑"       active={tab} onClick={setTab} />
+        <NavItem id="ai"        label="AI分析"         active={tab} onClick={setTab} />
+        <NavItem id="settings"  label="設定"           active={tab} onClick={setTab} />
       </nav>
 
       <main className="content">
@@ -74,7 +77,8 @@ export default function App() {
           <FilterBar filters={filters} onChange={setFilters} />
         )}
         {tab === 'dashboard' && <Dashboard filters={filters} aiChart={aiChart} />}
-        {tab === 'battles' && <BattleLog filters={filters} />}
+        {tab === 'battles'   && <BattleLog filters={filters} />}
+        {tab === 'weapons'   && <WeaponBook />}
         {tab === 'ai' && <AiAnalysis settings={settings} onChartReady={handleAiChart} />}
         {tab === 'settings' && <Settings settings={settings} onSave={saveSettings} loginVersion={loginVersion} />}
       </main>
