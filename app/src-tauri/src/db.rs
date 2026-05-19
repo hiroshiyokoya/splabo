@@ -399,7 +399,7 @@ pub async fn db_battle_stats(
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR weapon = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)",
     )
     .bind(&since).bind(&since)
@@ -444,7 +444,7 @@ pub async fn db_battle_count(
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR weapon = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)",
     )
     .bind(&since).bind(&since)
@@ -494,7 +494,7 @@ pub async fn db_list_battles(
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR weapon = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)
          ORDER BY {order_col} {order_dir} LIMIT ? OFFSET ?"
     );
@@ -555,7 +555,7 @@ pub async fn db_summary(
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR weapon = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)";
 
     macro_rules! bind_filters {

@@ -7,7 +7,7 @@ export interface Filters {
   mode: string | null
   rule: string | null
   result: string | null
-  weapon: string | null
+  weapon: string[]
   stage: string[]
   customFrom: string | null
   customTo: string | null
@@ -18,7 +18,7 @@ export const DEFAULT_FILTERS: Filters = {
   mode: null,
   rule: null,
   result: null,
-  weapon: null,
+  weapon: [],
   stage: [],
   customFrom: null,
   customTo: null,
