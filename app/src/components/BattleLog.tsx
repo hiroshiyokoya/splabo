@@ -71,12 +71,12 @@ export function BattleLog() {
       invoke<BattleRow[]>('db_list_battles', {
         limit: PAGE_SIZE, offset,
         mode: filterMode, rule: filterRule,
-        result_filter: filterResult, weapon: filterWeapon,
-        order_by: orderBy, order_asc: orderAsc,
+        resultFilter: filterResult, weapon: filterWeapon,
+        orderBy, orderAsc,
       }),
       invoke<number>('db_battle_count', {
         mode: filterMode, rule: filterRule,
-        result_filter: filterResult, weapon: filterWeapon,
+        resultFilter: filterResult, weapon: filterWeapon,
       }),
     ])
       .then(([rows, count]) => { setBattles(rows); setTotal(count) })
@@ -84,9 +84,19 @@ export function BattleLog() {
       .finally(() => setLoading(false))
   }, [offset, filterMode, filterRule, filterResult, filterWeapon, orderBy, orderAsc])
 
+  const hasFilter = !!(filterMode || filterRule || filterResult || filterWeapon)
+
   function toggle<T>(val: T, cur: T | null, set: (v: T | null) => void) {
     setOffset(0)
     set(cur === val ? null : val)
+  }
+
+  function resetFilters() {
+    setOffset(0)
+    setFilterMode(null)
+    setFilterRule(null)
+    setFilterResult(null)
+    setFilterWeapon(null)
   }
 
   function handleSort(col: OrderBy) {
@@ -142,6 +152,9 @@ export function BattleLog() {
               onSelect={w => { toggle(w, filterWeapon, setFilterWeapon); setPickerOpen(false) }}
             />
           </FilterGroup>
+          {hasFilter && (
+            <button className="filter-reset-btn" onClick={resetFilters}>✕ リセット</button>
+          )}
         </div>
       </div>
 

@@ -197,7 +197,7 @@ pub async fn db_battle_count(
     db: tauri::State<'_, DbPool>,
     mode: Option<String>,
     rule: Option<String>,
-    result_filter: Option<String>,
+    result_filter: Option<String>,  // JS: resultFilter
     weapon: Option<String>,
 ) -> Result<i64, String> {
     let row = sqlx::query(
@@ -224,10 +224,10 @@ pub async fn db_list_battles(
     offset: i64,
     mode: Option<String>,
     rule: Option<String>,
-    result_filter: Option<String>,
+    result_filter: Option<String>,  // JS: resultFilter
     weapon: Option<String>,
-    order_by: Option<String>,
-    order_asc: Option<bool>,
+    order_by: Option<String>,       // JS: orderBy
+    order_asc: Option<bool>,        // JS: orderAsc
 ) -> Result<Vec<BattleRow>, String> {
     let order_col = match order_by.as_deref() {
         Some("kill")  => "kill",
