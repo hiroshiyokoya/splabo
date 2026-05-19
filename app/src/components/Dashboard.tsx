@@ -163,11 +163,11 @@ export function Dashboard({ filters, aiChart }: Props) {
 
           <div className="chart-grid">
             <ChartCard title="武器別 勝率 & 試合数" sortBy={weaponSort} onSortChange={setWeaponSort}>
-              <WinRateChart data={sorted(summary.by_weapon.slice(0, 14), weaponSort)} height={260} images={weaponImages} />
+              <WinRateChart data={sorted(summary.by_weapon.slice(0, 14), weaponSort)} height={260} images={weaponImages} hoverImageSize={64} />
             </ChartCard>
 
             <ChartCard title="ステージ別 勝率 & 試合数" sortBy={stageSort} onSortChange={setStageSort}>
-              <WinRateChart data={sorted(summary.by_stage.slice(0, 14), stageSort)} height={260} images={stageImages} />
+              <WinRateChart data={sorted(summary.by_stage.slice(0, 14), stageSort)} height={260} images={stageImages} hoverImageSize={160} />
             </ChartCard>
 
             <ChartCard title="ルール別 勝率 & 試合数" sortBy={ruleSort} onSortChange={setRuleSort}>
@@ -191,63 +191,94 @@ export function Dashboard({ filters, aiChart }: Props) {
 }
 
 // ---------------------------------------------------------------------------
-// Custom XAxis tick — shows image if available, falls back to truncated text
-// Hover enlarges the image
+// Custom XAxis tick — controlled by parent's activeIndex
 // ---------------------------------------------------------------------------
 
-function ImageTick(props: { x?: number; y?: number; payload?: { value: string }; images: Map<string, string> }) {
-  const { x = 0, y = 0, payload, images } = props
-  const [hovered, setHovered] = useState(false)
+function ImageTick(props: {
+  x?: number; y?: number; payload?: { value: string }; index?: number
+  images: Map<string, string>
+  activeIndex: number | null
+  onHoverIndex: (i: number | null) => void
+  hoverSize: number
+}) {
+  const { x = 0, y = 0, payload, index, images, activeIndex, onHoverIndex, hoverSize } = props
   if (!payload) return null
+  const isActive  = activeIndex === null || activeIndex === index
+  const isHovered = activeIndex === index
   const url = images.get(payload.value)
   if (url) {
-    const size   = hovered ? 160 : 32
+    const size   = isHovered ? hoverSize : 32
     const offset = -(size / 2)
-    const yOff   = hovered ? -124 : 4
+    const yOff   = 36 - size  // bottom of image stays fixed at y+36
     return (
-      <g transform={`translate(${x},${y})`} style={{ cursor: 'pointer' }}>
+      <g
+        transform={`translate(${x},${y})`}
+        style={{ cursor: 'pointer', opacity: isActive ? 1 : 0.35 }}
+        onMouseEnter={() => onHoverIndex(index ?? null)}
+        onMouseLeave={() => onHoverIndex(null)}
+      >
         <image
           href={url}
           x={offset} y={yOff}
           width={size} height={size}
           style={{ transition: 'all 0.15s' }}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
         />
       </g>
     )
   }
   const label = payload.value.length > 6 ? payload.value.slice(0, 6) + '…' : payload.value
   return (
-    <text x={x} y={y + 10} textAnchor="middle" fill="var(--text)" fontSize={9}>
+    <text x={x} y={y + 10} textAnchor="middle" fill="var(--text)" fontSize={9} opacity={isActive ? 1 : 0.4}>
       {label}
     </text>
   )
 }
 
 // ---------------------------------------------------------------------------
-// WinRateChart
+// WinRateChart — activeIndex shared between tick icons and bars
 // ---------------------------------------------------------------------------
 
-function WinRateChart({ data, height, images }: { data: SummaryEntry[]; height: number; images: Map<string, string> }) {
+function WinRateChart({ data, height, images, hoverImageSize = 64 }: {
+  data: SummaryEntry[]
+  height: number
+  images: Map<string, string>
+  hoverImageSize?: number
+}) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const hasImages = data.some(d => images.has(d.name))
   const tickHeight = hasImages ? 40 : 16
   const tickStyle = { fontSize: 10, fill: 'var(--text)' }
+
+  function cellOpacity(i: number) {
+    return activeIndex === null || activeIndex === i ? 1 : 0.35
+  }
+
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: hasImages ? 8 : 4 }}>
+      <BarChart
+        data={data}
+        margin={{ top: 4, right: 8, left: 0, bottom: hasImages ? 8 : 4 }}
+        onMouseMove={(state: any) => {
+          if (state?.activeTooltipIndex != null) setActiveIndex(state.activeTooltipIndex)
+        }}
+        onMouseLeave={() => setActiveIndex(null)}
+      >
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
         <XAxis
           dataKey="name"
-          tick={<ImageTick images={images} />}
+          tick={(props: any) => (
+            <ImageTick
+              {...props}
+              images={images}
+              activeIndex={activeIndex}
+              onHoverIndex={setActiveIndex}
+              hoverSize={hoverImageSize}
+            />
+          )}
           interval={0}
           height={tickHeight}
         />
-        <YAxis
-          yAxisId="left"
-          tick={tickStyle}
-          width={36}
-        />
+        <YAxis yAxisId="left" tick={tickStyle} width={36} />
         <YAxis
           yAxisId="right"
           orientation="right"
@@ -258,28 +289,21 @@ function WinRateChart({ data, height, images }: { data: SummaryEntry[]; height: 
         />
         <ReferenceLine yAxisId="right" y={0.5} stroke="#4b5563" strokeDasharray="4 4" />
         <Tooltip
-          contentStyle={{
-            background: 'var(--surface2)',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            fontSize: 12,
-          }}
+          contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
           labelStyle={{ color: 'var(--text)', fontWeight: 700 }}
           itemStyle={{ color: 'var(--text)' }}
           formatter={(value, name) =>
-            name === 'win_rate'
-              ? [`${(Number(value) * 100).toFixed(1)}%`, '勝率']
-              : [value, '試合数']
+            name === 'win_rate' ? [`${(Number(value) * 100).toFixed(1)}%`, '勝率'] : [value, '試合数']
           }
         />
-        <Bar yAxisId="left" dataKey="total" fill={COLOR_TOTAL} name="total" maxBarSize={32}
-          activeBar={{ fillOpacity: 0.5 }}
-        />
-        <Bar yAxisId="right" dataKey="win_rate" name="win_rate" maxBarSize={32}
-          activeBar={{ fillOpacity: 0.5 }}
-        >
+        <Bar yAxisId="left" dataKey="total" name="total" maxBarSize={32}>
+          {data.map((_, i) => (
+            <Cell key={i} fill={COLOR_TOTAL} fillOpacity={cellOpacity(i)} />
+          ))}
+        </Bar>
+        <Bar yAxisId="right" dataKey="win_rate" name="win_rate" maxBarSize={32}>
           {data.map((entry, i) => (
-            <Cell key={i} fill={winRateColor(entry.win_rate)} />
+            <Cell key={i} fill={winRateColor(entry.win_rate)} fillOpacity={cellOpacity(i)} />
           ))}
         </Bar>
       </BarChart>
