@@ -51,6 +51,28 @@ export function BattleLog({ filters }: Props) {
   // 集計
   const [stats, setStats] = useState<{ total: number; wins: number; win_rate: number; weapon_count: number } | null>(null)
 
+  // データ取得
+  const [refreshKey, setRefreshKey]     = useState(0)
+  const [fetching, setFetching]         = useState(false)
+  const [fetchResult, setFetchResult]   = useState<string | null>(null)
+  const [fetchError, setFetchError]     = useState<string | null>(null)
+
+  async function handleFetch() {
+    setFetching(true)
+    setFetchResult(null)
+    setFetchError(null)
+    try {
+      const count = await invoke<number>('fetch_battles')
+      setFetchResult(`${count}件取得しました`)
+      setRefreshKey(k => k + 1)
+      invoke('fetch_weapons').catch(console.error)
+    } catch (e) {
+      setFetchError(String(e))
+    } finally {
+      setFetching(false)
+    }
+  }
+
   // 武器アイコンをロード（テーブル行・モーダル用）
   useEffect(() => {
     invoke<string[]>('db_weapons_used').then(weapons => {
@@ -66,7 +88,7 @@ export function BattleLog({ filters }: Props) {
     })
   }, [])
 
-  // フィルター・ソート・ページ変化でバトル再取得
+  // フィルター変化でページをリセット
   useEffect(() => {
     setOffset(0)
   }, [filters])
@@ -90,7 +112,7 @@ export function BattleLog({ filters }: Props) {
       .then(([rows, count, s]) => { setBattles(rows); setTotal(count); setStats(s) })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [offset, filters, orderBy, orderAsc])
+  }, [offset, filters, orderBy, orderAsc, refreshKey])
 
   function handleSort(col: OrderBy) {
     setOffset(0)
@@ -102,6 +124,13 @@ export function BattleLog({ filters }: Props) {
     <div className="battle-log">
       <div className="log-header">
         <h2>バトルログ</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
+          {fetchResult && <span style={{ color: 'var(--win)', fontSize: 13 }}>{fetchResult}</span>}
+          {fetchError  && <span style={{ color: 'var(--lose)', fontSize: 13 }}>{fetchError}</span>}
+          <button className="btn-primary" onClick={handleFetch} disabled={fetching}>
+            {fetching ? '取得中...' : 'バトルデータを取得'}
+          </button>
+        </div>
       </div>
 
       {stats && (

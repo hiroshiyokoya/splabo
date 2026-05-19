@@ -70,8 +70,8 @@ export default function App() {
       <nav className="sidebar">
         <button className="logo" onClick={() => setShowAbout(true)}>chartoon</button>
         <NavItem id="dashboard" label="ダッシュボード" active={tab} onClick={setTab} />
-        <NavItem id="ai"        label="AI分析"         active={tab} onClick={setTab} />
         <NavItem id="battles"   label="バトルログ"     active={tab} onClick={setTab} />
+        <NavItem id="ai"        label="AI分析"         active={tab} onClick={setTab} />
         <NavItem id="weapons"   label="武器図鑑"       active={tab} onClick={setTab} />
         <NavItem id="settings"  label="設定"           active={tab} onClick={setTab} />
       </nav>
