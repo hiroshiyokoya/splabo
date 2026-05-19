@@ -25,7 +25,7 @@ chartoon/
 | Rust + Cargo | Tauri デスクトップアプリのビルド |
 
 Windows / macOS / Linux 対応（WSL 不要）。
-動作確認済みは Windows。macOS・Linux は未検証。
+動作確認済みは macOS・Windows。Linux は未検証。
 
 ---
 
@@ -36,6 +36,8 @@ cd app
 npm install        # 初回のみ
 npx tauri dev      # アプリ起動（初回は Rust のコンパイルで数分かかります）
 ```
+
+> **macOS の注意**: `tauri dev` では Nintendo ログインの deep-link（`npf71b963c1b7b6d119://`）が正常に処理されない場合があります。ログイン機能を含む動作確認は `npx tauri build` でビルドした `.app` を使ってください。
 
 ## ローカルビルド（インストーラー生成）
 
@@ -83,7 +85,7 @@ OpenAI (gpt-4o-mini 等) または Google Gemini に集計データを渡し、r
 
 - 本ツールは個人の利用を目的としています。
 - SplatNet 3 は任天堂が公式に公開している API ではありません。任天堂側の仕様変更により、予告なく動作しなくなる可能性があります。
-- 認証情報はアプリの AppData ディレクトリにのみ保存されます（Windows: `%APPDATA%\com.chartoon.app\`、macOS: `~/Library/Application Support/com.chartoon.app/`）。コミットしないでください。
+- 認証情報はアプリの AppData ディレクトリにのみ保存されます（Windows: `%APPDATA%\com.hiroshiyokoya.chartoon\`、macOS: `~/Library/Application Support/com.hiroshiyokoya.chartoon/`）。コミットしないでください。
 - アプリの UI は現状日本語のみです。
 
 ## プライバシーポリシー
