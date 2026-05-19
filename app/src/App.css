@@ -179,6 +179,18 @@ body {
 }
 .battle-table tr:hover td { background: var(--surface2); }
 
+.weapon-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.weapon-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
 .result-cell { font-weight: 600; }
 .result-cell.win { color: var(--win); }
 .result-cell.lose { color: var(--lose); }

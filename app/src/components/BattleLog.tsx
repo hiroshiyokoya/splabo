@@ -9,6 +9,7 @@ export function BattleLog() {
   const [offset, setOffset] = useState(0)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
 
   useEffect(() => {
     setLoading(true)
@@ -19,6 +20,16 @@ export function BattleLog() {
       .then(([rows, count]) => {
         setBattles(rows)
         setTotal(count)
+        const uniqueWeapons = [...new Set(rows.map(b => b.weapon))]
+        Promise.all(
+          uniqueWeapons.map(name =>
+            invoke<string | null>('read_image', { kind: 'weapon', name })
+              .then(url => url ? [name, url] as [string, string] : null)
+              .catch(() => null)
+          )
+        ).then(results => {
+          setWeaponImages(new Map(results.filter((r): r is [string, string] => r !== null)))
+        })
       })
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -57,7 +68,14 @@ export function BattleLog() {
                   <td>{b.mode}</td>
                   <td>{b.rule}</td>
                   <td>{b.stage}</td>
-                  <td>{b.weapon}</td>
+                  <td>
+                    <span className="weapon-cell">
+                      {weaponImages.get(b.weapon) && (
+                        <img src={weaponImages.get(b.weapon)} alt="" className="weapon-icon" />
+                      )}
+                      {b.weapon}
+                    </span>
+                  </td>
                   <td className={`result-cell ${b.result.toLowerCase()}`}>{b.result}</td>
                   <td>{b.kill}/{b.death}/{b.assist}</td>
                   <td>{b.inked.toLocaleString()}</td>

@@ -313,6 +313,7 @@ pub async fn fetch_and_store_battles(
     country: &str,
     language: &str,
     client: &reqwest::Client,
+    app: &tauri::AppHandle,
 ) -> Result<usize, String> {
     let fetched_at = chrono::Utc::now().to_rfc3339();
     let mut total_inserted = 0usize;
@@ -320,8 +321,9 @@ pub async fn fetch_and_store_battles(
     // --- レギュラー ---
     let regular_resp =
         graphql_request(client, bullet_token, country, language, HASH_REGULAR).await?;
-    let regular_rows: Vec<BattleRow> = extract_battle_nodes(&regular_resp)
-        .into_iter()
+    let regular_nodes = extract_battle_nodes(&regular_resp);
+    let regular_rows: Vec<BattleRow> = regular_nodes
+        .iter()
         .map(|n| parse_regular_node(n, &fetched_at))
         .collect();
     total_inserted += crate::db::insert_battles(pool, regular_rows).await?;
@@ -329,8 +331,9 @@ pub async fn fetch_and_store_battles(
     // --- バンカラ ---
     let bankara_resp =
         graphql_request(client, bullet_token, country, language, HASH_BANKARA).await?;
-    let bankara_rows: Vec<BattleRow> = extract_battle_nodes(&bankara_resp)
-        .into_iter()
+    let bankara_nodes = extract_battle_nodes(&bankara_resp);
+    let bankara_rows: Vec<BattleRow> = bankara_nodes
+        .iter()
         .map(|n| parse_bankara_node(n, &fetched_at))
         .collect();
     total_inserted += crate::db::insert_battles(pool, bankara_rows).await?;
@@ -338,11 +341,48 @@ pub async fn fetch_and_store_battles(
     // --- Xマッチ ---
     let xmatch_resp =
         graphql_request(client, bullet_token, country, language, HASH_XMATCH).await?;
-    let xmatch_rows: Vec<BattleRow> = extract_battle_nodes(&xmatch_resp)
-        .into_iter()
+    let xmatch_nodes = extract_battle_nodes(&xmatch_resp);
+    let xmatch_rows: Vec<BattleRow> = xmatch_nodes
+        .iter()
         .map(|n| parse_xmatch_node(n, &fetched_at))
         .collect();
     total_inserted += crate::db::insert_battles(pool, xmatch_rows).await?;
 
+    // --- 画像キャッシュ ---
+    let all_nodes = regular_nodes
+        .into_iter()
+        .chain(bankara_nodes)
+        .chain(xmatch_nodes);
+    let image_targets = collect_image_targets(all_nodes);
+    for (kind, name, url) in image_targets {
+        if let Err(e) = crate::images::download_and_cache(app, client, &kind, &name, &url).await {
+            log::warn!("画像ダウンロードスキップ: {e}");
+        }
+    }
+
     Ok(total_inserted)
+}
+
+/// バトルノード一覧から武器・ステージの画像 URL を収集する（重複なし）。
+fn collect_image_targets<'a>(
+    nodes: impl Iterator<Item = &'a serde_json::Value>,
+) -> Vec<(String, String, String)> {
+    let mut seen = std::collections::HashSet::new();
+    let mut targets = Vec::new();
+    for node in nodes {
+        for (kind, name_ptr, url_ptr) in [
+            ("weapon", "/player/weapon/name", "/player/weapon/image/url"),
+            ("stage", "/vsStage/name", "/vsStage/image/url"),
+        ] {
+            if let (Some(name), Some(url)) = (
+                node.pointer(name_ptr).and_then(|v| v.as_str()),
+                node.pointer(url_ptr).and_then(|v| v.as_str()),
+            ) {
+                if !name.is_empty() && !url.is_empty() && seen.insert((kind, name.to_string())) {
+                    targets.push((kind.to_string(), name.to_string(), url.to_string()));
+                }
+            }
+        }
+    }
+    targets
 }
