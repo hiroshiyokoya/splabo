@@ -515,7 +515,8 @@ pub async fn fetch_and_update_details(
 }
 
 /// HistoryRecordQuery から全武器マスター（名前・カテゴリ・画像）を取得し DB に保存する。
-/// レスポンス構造: data.playHistory.weaponHistory.nodes[].weaponCategories[].{ weaponCategory.name, weapons[].weapon.{ name, image.url } }
+/// レスポンス構造: data.playHistory.weaponHistories[] (シーズンごと配列)
+///   各要素: weaponCategories[].{ weaponCategory.name, weapons[].weapon.{ name, image.url } }
 pub async fn fetch_and_store_weapons(
     pool: &crate::db::DbPool,
     bullet_token: &str,
@@ -526,18 +527,16 @@ pub async fn fetch_and_store_weapons(
 ) -> Result<usize, String> {
     let resp = graphql_request(client, bullet_token, country, language, HASH_WEAPONS).await?;
 
+    // weaponHistories は配列（シーズン x）。全シーズンをフラットに処理する。
     let seasonal_nodes = resp
-        .pointer("/data/playHistory/weaponHistory/nodes")
+        .pointer("/data/playHistory/weaponHistories")
         .and_then(|v| v.as_array())
         .ok_or_else(|| {
             let ph_keys = resp.pointer("/data/playHistory")
                 .and_then(|d| d.as_object())
                 .map(|o| o.keys().cloned().collect::<Vec<_>>().join(", "))
                 .unwrap_or_else(|| "playHistory なし".to_string());
-            let wh_val = resp.pointer("/data/playHistory/weaponHistory")
-                .map(|v| v.to_string()[..v.to_string().len().min(120)].to_string())
-                .unwrap_or_else(|| "weaponHistory なし".to_string());
-            format!("playHistory のキー: [{ph_keys}] / weaponHistory: {wh_val}")
+            format!("playHistory.weaponHistories が見つかりません。playHistory のキー: [{ph_keys}]")
         })?;
 
     let mut seen = std::collections::HashSet::new();
