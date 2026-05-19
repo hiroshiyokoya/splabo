@@ -124,7 +124,7 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
         &app,
     )
     .await?;
-    // battles 詳細データから sub/special を補完（category は上書きしない）
+    // battle_players から sub/special を補完（category は上書きしない）
     db::populate_weapons_from_battles(&db).await?;
     Ok(count)
 }

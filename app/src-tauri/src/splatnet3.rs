@@ -529,7 +529,14 @@ pub async fn fetch_and_store_weapons(
     let seasonal_nodes = resp
         .pointer("/data/playHistory/weaponHistory/nodes")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| "playHistory.weaponHistory.nodes が見つかりません".to_string())?;
+        .ok_or_else(|| {
+            // デバッグ用: レスポンスのトップレベルキーを出力
+            let data_keys = resp.pointer("/data")
+                .and_then(|d| d.as_object())
+                .map(|o| o.keys().cloned().collect::<Vec<_>>().join(", "))
+                .unwrap_or_else(|| format!("data なし: {}", &resp.to_string()[..200.min(resp.to_string().len())]));
+            format!("playHistory.weaponHistory.nodes が見つかりません (data のキー: {data_keys})")
+        })?;
 
     let mut seen = std::collections::HashSet::new();
     let mut count = 0usize;
