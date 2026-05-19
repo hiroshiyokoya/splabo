@@ -6,3 +6,4 @@ app/src-tauri/binaries/nxapi-sidecar*
 tools/nxapi-wrapper/node_modules/
 tools/nxapi-wrapper/dist/
 .env
+.claude/worktrees/

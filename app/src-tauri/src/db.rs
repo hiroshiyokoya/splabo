@@ -62,6 +62,13 @@ const SCHEMA: &str = r#"
     CREATE INDEX IF NOT EXISTS battles_played_at ON battles(played_at);
     CREATE INDEX IF NOT EXISTS battles_mode      ON battles(mode);
     CREATE INDEX IF NOT EXISTS battles_weapon    ON battles(weapon);
+
+    CREATE TABLE IF NOT EXISTS weapons (
+        name           TEXT PRIMARY KEY,
+        category       TEXT NOT NULL DEFAULT '',
+        sub_weapon     TEXT,
+        special_weapon TEXT
+    );
 "#;
 
 // ---------------------------------------------------------------------------
@@ -94,6 +101,16 @@ pub struct BattleRow {
     pub awards: Option<String>,
     pub my_team: Option<String>,
     pub other_teams: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct WeaponRecord {
+    pub name: String,
+    pub category: String,
+    pub sub_weapon: Option<String>,
+    pub special_weapon: Option<String>,
+    pub total: i64,
+    pub wins: i64,
 }
 
 // ---------------------------------------------------------------------------
@@ -401,4 +418,87 @@ pub async fn db_summary(
         "by_stage": to_json(by_stage),
         "by_rule": to_json(by_rule),
     }))
+}
+
+// ---------------------------------------------------------------------------
+// 武器マスター
+// ---------------------------------------------------------------------------
+
+pub async fn upsert_weapon(
+    pool: &DbPool,
+    name: &str,
+    category: &str,
+    sub_weapon: Option<&str>,
+    special_weapon: Option<&str>,
+) -> Result<(), String> {
+    sqlx::query(
+        "INSERT INTO weapons (name, category, sub_weapon, special_weapon)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(name) DO UPDATE SET
+             category       = CASE WHEN excluded.category != '' THEN excluded.category ELSE weapons.category END,
+             sub_weapon     = COALESCE(excluded.sub_weapon, weapons.sub_weapon),
+             special_weapon = COALESCE(excluded.special_weapon, weapons.special_weapon)",
+    )
+    .bind(name)
+    .bind(category)
+    .bind(sub_weapon)
+    .bind(special_weapon)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// battles テーブルの詳細データから weapons テーブルを構築する。
+/// WeaponRecordQuery が使えない場合の代替手段。
+pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, String> {
+    // detail_fetched=1 の行から sub/special を取得してアップサート
+    sqlx::query(
+        "INSERT INTO weapons (name, category, sub_weapon, special_weapon)
+         SELECT weapon, '', sub_weapon, special_weapon
+         FROM (
+             SELECT weapon, sub_weapon, special_weapon,
+                    ROW_NUMBER() OVER (PARTITION BY weapon ORDER BY played_at DESC) AS rn
+             FROM battles
+             WHERE detail_fetched = 1 AND weapon != ''
+         ) WHERE rn = 1
+         ON CONFLICT(name) DO UPDATE SET
+             sub_weapon     = COALESCE(excluded.sub_weapon, weapons.sub_weapon),
+             special_weapon = COALESCE(excluded.special_weapon, weapons.special_weapon)",
+    )
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // detail 未取得の武器も name だけ登録
+    sqlx::query(
+        "INSERT OR IGNORE INTO weapons (name, category, sub_weapon, special_weapon)
+         SELECT DISTINCT weapon, '', NULL, NULL FROM battles WHERE weapon != ''",
+    )
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let row = sqlx::query("SELECT COUNT(*) as cnt FROM weapons")
+        .fetch_one(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.get::<i64, _>("cnt") as usize)
+}
+
+#[tauri::command]
+pub async fn db_list_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<WeaponRecord>, String> {
+    let rows = sqlx::query_as::<_, WeaponRecord>(
+        "SELECT w.name, w.category, w.sub_weapon, w.special_weapon,
+                COUNT(b.id) as total,
+                COALESCE(SUM(CASE WHEN b.result='WIN' THEN 1 ELSE 0 END), 0) as wins
+         FROM weapons w
+         LEFT JOIN battles b ON b.weapon = w.name
+         GROUP BY w.name
+         ORDER BY w.category, total DESC, w.name",
+    )
+    .fetch_all(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows)
 }

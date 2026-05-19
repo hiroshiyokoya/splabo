@@ -11,7 +11,9 @@ const WEB_VIEW_VER: &str = "10.0.0-dfefd0af";
 const HASH_REGULAR: &str = "2fe6ea7a2de1d6a888b7bd3dbeb6acc8e3246f055ca39b80c4531bbcd0727bba";
 const HASH_BANKARA: &str = "9863ea4744730743268e2940396e21b891104ed40e2286789f05100b45a0b0fd";
 const HASH_XMATCH: &str = "eb5996a12705c2e94813a62e05c0dc419aad2811b8d49d53e5732290105559cb";
-const HASH_DETAIL: &str = "94faa2ff992222d11ced55e0f349920a82ac50f414ae33c83d1d1c9d8161c5dd";
+const HASH_DETAIL:   &str = "94faa2ff992222d11ced55e0f349920a82ac50f414ae33c83d1d1c9d8161c5dd";
+// WeaponRecordQuery は v10 で廃止。HistoryRecordQuery の weaponHistory に武器+カテゴリが含まれる。
+const HASH_WEAPONS:  &str = "a654ecc80161a7ca5c38761c1d9e502d405eae764e2d343618b9c74b1dc0a80f";
 
 // ---------------------------------------------------------------------------
 // HTTP ヘルパー
@@ -504,6 +506,66 @@ pub async fn fetch_and_update_details(
     }
 
     Ok(updated)
+}
+
+/// HistoryRecordQuery から全武器マスター（名前・カテゴリ・画像）を取得し DB に保存する。
+/// レスポンス構造: data.playHistory.weaponHistory.nodes[].weaponCategories[].{ weaponCategory.name, weapons[].weapon.{ name, image.url } }
+pub async fn fetch_and_store_weapons(
+    pool: &crate::db::DbPool,
+    bullet_token: &str,
+    country: &str,
+    language: &str,
+    client: &reqwest::Client,
+    app: &tauri::AppHandle,
+) -> Result<usize, String> {
+    let resp = graphql_request(client, bullet_token, country, language, HASH_WEAPONS).await?;
+
+    let seasonal_nodes = resp
+        .pointer("/data/playHistory/weaponHistory/nodes")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "playHistory.weaponHistory.nodes が見つかりません".to_string())?;
+
+    let mut seen = std::collections::HashSet::new();
+    let mut count = 0usize;
+
+    for seasonal in seasonal_nodes {
+        let categories = match seasonal.pointer("/weaponCategories").and_then(|v| v.as_array()) {
+            Some(c) => c,
+            None => continue,
+        };
+        for cat_node in categories {
+            let category = cat_node
+                .pointer("/weaponCategory/name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            let weapons = match cat_node.pointer("/weapons").and_then(|v| v.as_array()) {
+                Some(w) => w,
+                None => continue,
+            };
+            for w_node in weapons {
+                let name = w_node
+                    .pointer("/weapon/name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if name.is_empty() || !seen.insert(name.to_string()) {
+                    continue;
+                }
+
+                if let Some(url) = w_node.pointer("/weapon/image/url").and_then(|v| v.as_str()) {
+                    if let Err(e) = crate::images::download_and_cache(app, client, "weapon", name, url).await {
+                        log::warn!("武器画像キャッシュ失敗 ({name}): {e}");
+                    }
+                }
+
+                crate::db::upsert_weapon(pool, name, &category, None, None).await?;
+                count += 1;
+            }
+        }
+    }
+
+    Ok(count)
 }
 
 /// バトルノード一覧から武器・ステージの画像 URL を収集する（重複なし）。

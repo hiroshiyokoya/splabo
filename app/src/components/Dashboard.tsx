@@ -51,6 +51,7 @@ export function Dashboard({ filters, aiChart }: Props) {
       const count = await invoke<number>('fetch_battles')
       setFetchResult(`${count}件取得しました`)
       setRefreshKey(k => k + 1)
+      invoke('fetch_weapons').catch(console.error)
     } catch (e) {
       setFetchError(String(e))
     } finally {
@@ -66,6 +67,7 @@ export function Dashboard({ filters, aiChart }: Props) {
       const count = await invoke<number>('fetch_battle_details')
       setFetchResult(`詳細データ ${count}件更新しました`)
       setRefreshKey(k => k + 1)
+      invoke('fetch_weapons').catch(console.error)
     } catch (e) {
       setFetchError(String(e))
     } finally {
