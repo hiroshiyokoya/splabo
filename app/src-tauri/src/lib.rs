@@ -5,7 +5,9 @@ use tauri::{
 };
 
 pub mod auth;
+pub mod crypto;
 pub mod db;
+pub mod images;
 pub mod nxapi;
 pub mod splatnet3;
 
@@ -36,6 +38,7 @@ pub fn run() {
             db::db_battle_count,
             db::db_list_battles,
             db::db_summary,
+            images::read_image,
             fetch_battles,
         ])
         .setup(|app| {
@@ -93,6 +96,7 @@ async fn fetch_battles(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
         &result.country,
         &result.language,
         &client,
+        &app,
     )
     .await
 }
