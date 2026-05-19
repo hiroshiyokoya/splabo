@@ -40,6 +40,7 @@ pub fn run() {
             db::db_summary,
             images::read_image,
             fetch_battles,
+            fetch_battle_details,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -97,6 +98,23 @@ async fn fetch_battles(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
         &result.language,
         &client,
         &app,
+    )
+    .await
+}
+
+/// 詳細未取得バトルに VsHistoryDetailQuery を発行して K/D/A を更新する。更新件数を返す。
+#[tauri::command]
+async fn fetch_battle_details(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usize, String> {
+    let result = nxapi::nxapi_get_bullet_token(&app).await?;
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    splatnet3::fetch_and_update_details(
+        &db,
+        &result.bullet_token,
+        &result.country,
+        &result.language,
+        &client,
     )
     .await
 }

@@ -38,6 +38,7 @@ export function Dashboard({ aiChart }: Props) {
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
   const [fetching, setFetching] = useState(false)
+  const [fetchingDetails, setFetchingDetails] = useState(false)
   const [fetchResult, setFetchResult] = useState<string | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [period, setPeriod] = useState<Period>('all')
@@ -62,6 +63,21 @@ export function Dashboard({ aiChart }: Props) {
       setFetchError(String(e))
     } finally {
       setFetching(false)
+    }
+  }
+
+  async function handleFetchDetails() {
+    setFetchingDetails(true)
+    setFetchResult(null)
+    setFetchError(null)
+    try {
+      const count = await invoke<number>('fetch_battle_details')
+      setFetchResult(`詳細データ ${count}件更新しました`)
+      setRefreshKey(k => k + 1)
+    } catch (e) {
+      setFetchError(String(e))
+    } finally {
+      setFetchingDetails(false)
     }
   }
 
@@ -90,7 +106,10 @@ export function Dashboard({ aiChart }: Props) {
           {fetchResult && (
             <span style={{ color: 'var(--win)', fontSize: 13 }}>{fetchResult}</span>
           )}
-          <button className="btn-primary" onClick={handleFetch} disabled={fetching}>
+          <button className="btn-secondary" onClick={handleFetchDetails} disabled={fetchingDetails || fetching}>
+            {fetchingDetails ? '取得中...' : '詳細データを取得'}
+          </button>
+          <button className="btn-primary" onClick={handleFetch} disabled={fetching || fetchingDetails}>
             {fetching ? '取得中...' : 'バトルデータを取得'}
           </button>
         </div>

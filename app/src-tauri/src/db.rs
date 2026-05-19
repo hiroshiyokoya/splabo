@@ -23,6 +23,18 @@ pub async fn init_db(app: &AppHandle) -> Result<DbPool, String> {
 
     let pool = SqlitePool::connect(&url).await.map_err(|e| e.to_string())?;
     sqlx::query(SCHEMA).execute(&pool).await.map_err(|e| e.to_string())?;
+    // 既存 DB への追加カラム（失敗は無視 = 既存カラムなら OK）
+    for sql in [
+        "ALTER TABLE battles ADD COLUMN detail_fetched INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE battles ADD COLUMN knockout       TEXT",
+        "ALTER TABLE battles ADD COLUMN sub_weapon     TEXT",
+        "ALTER TABLE battles ADD COLUMN special_weapon TEXT",
+        "ALTER TABLE battles ADD COLUMN awards         TEXT",
+        "ALTER TABLE battles ADD COLUMN my_team        TEXT",
+        "ALTER TABLE battles ADD COLUMN other_teams    TEXT",
+    ] {
+        let _ = sqlx::query(sql).execute(&pool).await;
+    }
     Ok(Arc::new(pool))
 }
 
@@ -76,6 +88,12 @@ pub struct BattleRow {
     pub x_power: Option<f64>,
     pub raw_json: String,
     pub fetched_at: String,
+    pub knockout: Option<String>,
+    pub sub_weapon: Option<String>,
+    pub special_weapon: Option<String>,
+    pub awards: Option<String>,
+    pub my_team: Option<String>,
+    pub other_teams: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +136,58 @@ pub async fn insert_battles(pool: &DbPool, rows: Vec<BattleRow>) -> Result<usize
     Ok(inserted)
 }
 
+/// 詳細取得が未完了のバトル ID 一覧を返す。
+pub async fn get_battles_without_detail(pool: &DbPool) -> Result<Vec<String>, String> {
+    let rows = sqlx::query("SELECT id FROM battles WHERE detail_fetched = 0 ORDER BY played_at DESC")
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|r| r.get::<String, _>("id")).collect())
+}
+
+/// バトル詳細データをすべて更新し detail_fetched=1 にする。
+pub async fn update_battle_detail(
+    pool: &DbPool,
+    id: &str,
+    kill: i64,
+    death: i64,
+    assist: i64,
+    special: i64,
+    inked: i64,
+    raw_json: &str,
+    knockout: Option<&str>,
+    sub_weapon: Option<&str>,
+    special_weapon: Option<&str>,
+    awards: Option<&str>,
+    my_team: Option<&str>,
+    other_teams: Option<&str>,
+) -> Result<(), String> {
+    sqlx::query(
+        "UPDATE battles SET kill=?, death=?, assist=?, special=?, inked=?,
+                            raw_json=?, detail_fetched=1,
+                            knockout=?, sub_weapon=?, special_weapon=?,
+                            awards=?, my_team=?, other_teams=?
+         WHERE id=?",
+    )
+    .bind(kill)
+    .bind(death)
+    .bind(assist)
+    .bind(special)
+    .bind(inked)
+    .bind(raw_json)
+    .bind(knockout)
+    .bind(sub_weapon)
+    .bind(special_weapon)
+    .bind(awards)
+    .bind(my_team)
+    .bind(other_teams)
+    .bind(id)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Tauri コマンド
 // ---------------------------------------------------------------------------
@@ -140,7 +210,8 @@ pub async fn db_list_battles(
     let rows = sqlx::query_as::<_, BattleRow>(
         "SELECT id, played_at, mode, rule, stage, weapon, result,
                 kill, death, assist, special, inked, duration,
-                rank_before, rank_after, x_power, raw_json, fetched_at
+                rank_before, rank_after, x_power, raw_json, fetched_at,
+                knockout, sub_weapon, special_weapon, awards, my_team, other_teams
          FROM battles ORDER BY played_at DESC LIMIT ? OFFSET ?",
     )
     .bind(limit)
