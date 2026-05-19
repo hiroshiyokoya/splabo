@@ -19,6 +19,40 @@
 
 ---
 
+## geartoon を参考にすること
+
+chartoon と同じ作者が開発する Tauri + React アプリ。構成・実装・UI/UX のいずれも geartoon を第一の参考にし、転用できるものは積極的に転用する。
+
+**リポジトリ:** `hiroshiyokoya/geartoon`（ローカルにない場合は GitHub API で取得）
+
+```bash
+# ファイル一覧
+gh api repos/hiroshiyokoya/geartoon/contents/<path> | python3 -c "import sys,json; [print(x['name']) for x in json.load(sys.stdin)]"
+
+# ファイル内容
+gh api repos/hiroshiyokoya/geartoon/contents/<path> --jq '.content' | base64 -d
+```
+
+### 転用・参照の優先順位
+
+| 判断 | ケース |
+|------|--------|
+| **そのまま転用** | ほぼ同じ課題（ビルドスクリプト・設定ファイル・CI など） |
+| **改変して転用** | 目的は同じだが chartoon 向けに調整が必要（サイドカー・認証フローなど） |
+| **参考にして独自実装** | UI コンポーネントや機能がチャートゥーン固有の場合 |
+
+### 主な参照先
+
+| 対象 | geartoon でのパス |
+|------|-----------------|
+| nxapi サイドカー | `tools/nxapi-wrapper/` |
+| Tauri 設定 | `app/src-tauri/tauri.conf.json` |
+| Rust バックエンド構成 | `app/src-tauri/src/` |
+| React コンポーネント構成 | `app/src/components/` |
+| CSS 設計・カラーパレット | `app/src/App.css` |
+
+---
+
 ## ファイル確認は必ず Read ツールを使うこと
 
 **bashでファイル内容を確認してはいけない。**
