@@ -469,10 +469,11 @@ pub async fn db_list_battles(
     order_asc: Option<bool>,        // JS: orderAsc
 ) -> Result<Vec<BattleRow>, String> {
     let order_col = match order_by.as_deref() {
-        Some("kill")  => "kill",
-        Some("death") => "death",
-        Some("inked") => "inked",
-        _             => "played_at",
+        Some("kill")    => "kill",
+        Some("death")   => "death",
+        Some("special") => "special",
+        Some("inked")   => "inked",
+        _               => "played_at",
     };
     let order_dir = if order_asc.unwrap_or(false) { "ASC" } else { "DESC" };
     let sql = format!(

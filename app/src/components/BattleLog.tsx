@@ -10,7 +10,7 @@ function winRateColor(rate: number): string {
   if (rate >= 0.45) return '#f59e0b'
   return '#ef4444'
 }
-type OrderBy = 'played_at' | 'kill' | 'death' | 'inked'
+type OrderBy = 'played_at' | 'kill' | 'death' | 'special' | 'inked'
 
 // ---------------------------------------------------------------------------
 // 型（詳細モーダル用）
@@ -158,8 +158,7 @@ export function BattleLog({ filters }: Props) {
           <LogStatCard label="全体勝率"        value={stats.total > 0 ? `${(stats.win_rate * 100).toFixed(1)}%` : '—'}
             valueColor={stats.total > 0 ? winRateColor(stats.win_rate) : undefined} />
           <LogStatCard label="Win / Lose (Draw)"
-            value={`${stats.wins} / ${stats.total - stats.wins - stats.draws} (${stats.draws})`}
-            small />
+            value={`${stats.wins} / ${stats.total - stats.wins - stats.draws} (${stats.draws})`} />
           <LogStatCard label="使用武器数" value={stats.weapon_count.toString()} />
         </div>
       )}
@@ -179,7 +178,9 @@ export function BattleLog({ filters }: Props) {
                 <th>ステージ</th>
                 <th>武器</th>
                 <th>結果</th>
-                <SortTh col="kill"      label="K/D/A"  orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <SortTh col="kill"    label="キル"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <SortTh col="death"   label="デス"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <SortTh col="special" label="スペシャル" orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
                 <SortTh col="inked"     label="塗り"   orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
               </tr>
             </thead>
@@ -197,7 +198,9 @@ export function BattleLog({ filters }: Props) {
                     </span>
                   </td>
                   <td className={`result-cell ${b.result.toLowerCase()}`}>{b.result}</td>
-                  <td>{b.kill}/{b.death}/{b.assist}</td>
+                  <td>{b.kill}</td>
+                  <td>{b.death}</td>
+                  <td>{b.special}</td>
                   <td>{b.inked.toLocaleString()}</td>
                 </tr>
               ))}
