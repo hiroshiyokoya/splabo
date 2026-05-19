@@ -18,6 +18,21 @@ interface Props {
   aiChart: ChartSpec | null
 }
 
+type Period = 'all' | '30d' | '7d'
+
+const PERIODS: { id: Period; label: string }[] = [
+  { id: 'all', label: '全期間' },
+  { id: '30d', label: '直近30日' },
+  { id: '7d', label: '直近7日' },
+]
+
+function periodToSince(period: Period): string | null {
+  if (period === 'all') return null
+  const d = new Date()
+  d.setDate(d.getDate() - (period === '30d' ? 30 : 7))
+  return d.toISOString().slice(0, 10)
+}
+
 export function Dashboard({ aiChart }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -25,14 +40,15 @@ export function Dashboard({ aiChart }: Props) {
   const [fetching, setFetching] = useState(false)
   const [fetchResult, setFetchResult] = useState<string | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const [period, setPeriod] = useState<Period>('all')
 
   useEffect(() => {
     setLoading(true)
-    invoke<Summary>('db_summary', { since: null })
+    invoke<Summary>('db_summary', { since: periodToSince(period) })
       .then(setSummary)
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [refreshKey])
+  }, [refreshKey, period])
 
   async function handleFetch() {
     setFetching(true)
@@ -56,7 +72,20 @@ export function Dashboard({ aiChart }: Props) {
   return (
     <div className="dashboard">
       <div className="dashboard-header">
-        <h2>ダッシュボード</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h2>ダッシュボード</h2>
+          <div className="period-filter">
+            {PERIODS.map(p => (
+              <button
+                key={p.id}
+                className={`period-btn${period === p.id ? ' active' : ''}`}
+                onClick={() => setPeriod(p.id)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {fetchResult && (
             <span style={{ color: 'var(--win)', fontSize: 13 }}>{fetchResult}</span>
