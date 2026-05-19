@@ -5,7 +5,7 @@
 //! - 全生データは raw_json に格納し、将来の分析に備える
 
 use serde::{Deserialize, Serialize};
-use sqlx::{Pool, Sqlite, SqlitePool, Row};
+use sqlx::{Pool, Sqlite, SqlitePool, Row, FromRow};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
@@ -56,7 +56,7 @@ const SCHEMA: &str = r#"
 // 型
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct BattleRow {
     pub id: String,
     pub played_at: String,
@@ -79,6 +79,46 @@ pub struct BattleRow {
 }
 
 // ---------------------------------------------------------------------------
+// 書き込み
+// ---------------------------------------------------------------------------
+
+pub async fn insert_battles(pool: &DbPool, rows: Vec<BattleRow>) -> Result<usize, String> {
+    let mut inserted = 0usize;
+    for row in rows {
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO battles
+             (id, played_at, mode, rule, stage, weapon, result,
+              kill, death, assist, special, inked, duration,
+              rank_before, rank_after, x_power, raw_json, fetched_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        )
+        .bind(&row.id)
+        .bind(&row.played_at)
+        .bind(&row.mode)
+        .bind(&row.rule)
+        .bind(&row.stage)
+        .bind(&row.weapon)
+        .bind(&row.result)
+        .bind(row.kill)
+        .bind(row.death)
+        .bind(row.assist)
+        .bind(row.special)
+        .bind(row.inked)
+        .bind(row.duration)
+        .bind(&row.rank_before)
+        .bind(&row.rank_after)
+        .bind(row.x_power)
+        .bind(&row.raw_json)
+        .bind(&row.fetched_at)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+        inserted += result.rows_affected() as usize;
+    }
+    Ok(inserted)
+}
+
+// ---------------------------------------------------------------------------
 // Tauri コマンド
 // ---------------------------------------------------------------------------
 
@@ -97,15 +137,14 @@ pub async fn db_list_battles(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<BattleRow>, String> {
-    let rows = sqlx::query_as!(
-        BattleRow,
+    let rows = sqlx::query_as::<_, BattleRow>(
         "SELECT id, played_at, mode, rule, stage, weapon, result,
                 kill, death, assist, special, inked, duration,
                 rank_before, rank_after, x_power, raw_json, fetched_at
          FROM battles ORDER BY played_at DESC LIMIT ? OFFSET ?",
-        limit,
-        offset
     )
+    .bind(limit)
+    .bind(offset)
     .fetch_all(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;

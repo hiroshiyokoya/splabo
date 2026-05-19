@@ -602,7 +602,7 @@ async fn request_f(
     let resp = client
         .post(IMINK_F_URL)
         .header("Content-Type", "application/json")
-        .header("User-Agent", "geartoon/0.1.0")
+        .header("User-Agent", "chartoon/0.1.0")
         .json(&body)
         .send()
         .await

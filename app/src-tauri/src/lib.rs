@@ -1,11 +1,12 @@
 use tauri::{
-    AppHandle, Emitter, Manager,
+    AppHandle, Emitter, Manager, State,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 
 pub mod auth;
 pub mod db;
+pub mod splatnet3;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -35,6 +36,7 @@ pub fn run() {
             db::db_battle_count,
             db::db_list_battles,
             db::db_summary,
+            fetch_battles,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -64,7 +66,7 @@ pub fn run() {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 match db::init_db(&handle).await {
-                    Ok(pool) => handle.manage(pool),
+                    Ok(pool) => { handle.manage(pool); }
                     Err(e) => log::error!("DB初期化失敗: {e}"),
                 }
             });
@@ -76,6 +78,23 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// SplatNet3 からバトル履歴を取得して DB に保存する。新規保存件数を返す。
+#[tauri::command]
+async fn fetch_battles(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usize, String> {
+    let result = auth::get_bullet_token(app).await?;
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    splatnet3::fetch_and_store_battles(
+        &db,
+        &result.bullet_token,
+        &result.country,
+        &result.language,
+        &client,
+    )
+    .await
 }
 
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
