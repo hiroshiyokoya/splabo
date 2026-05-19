@@ -1,6 +1,6 @@
 export type Tab = 'dashboard' | 'battles' | 'weapons' | 'ai' | 'settings'
 
-export type Period = 'all' | '30d' | '7d'
+export type Period = 'all' | '30d' | '7d' | 'custom'
 
 export interface Filters {
   period: Period
@@ -8,6 +8,8 @@ export interface Filters {
   rule: string | null
   result: string | null
   weapon: string | null
+  customFrom: string | null
+  customTo: string | null
 }
 
 export const DEFAULT_FILTERS: Filters = {
@@ -16,13 +18,22 @@ export const DEFAULT_FILTERS: Filters = {
   rule: null,
   result: null,
   weapon: null,
+  customFrom: null,
+  customTo: null,
 }
 
 export function periodToSince(period: Period): string | null {
-  if (period === 'all') return null
+  if (period === 'all' || period === 'custom') return null
   const d = new Date()
   d.setDate(d.getDate() - (period === '30d' ? 30 : 7))
   return d.toISOString().slice(0, 10)
+}
+
+export function filtersToRange(filters: Filters): { since: string | null; until: string | null } {
+  if (filters.period === 'custom') {
+    return { since: filters.customFrom, until: filters.customTo }
+  }
+  return { since: periodToSince(filters.period), until: null }
 }
 
 export interface BattleRow {

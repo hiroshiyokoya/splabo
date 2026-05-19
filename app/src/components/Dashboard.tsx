@@ -5,7 +5,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
 import type { Summary, SummaryEntry, ChartSpec, Filters } from '../types'
-import { periodToSince } from '../types'
+import { filtersToRange } from '../types'
 
 const COLOR_TOTAL = '#374151'
 
@@ -14,6 +14,8 @@ function winRateColor(rate: number): string {
   if (rate >= 0.45) return '#f59e0b'
   return '#ef4444'
 }
+
+type SortBy = 'total' | 'win_rate'
 
 interface Props {
   filters: Filters
@@ -28,11 +30,19 @@ export function Dashboard({ filters, aiChart }: Props) {
   const [fetchingDetails, setFetchingDetails] = useState(false)
   const [fetchResult, setFetchResult] = useState<string | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
+  const [stageImages, setStageImages] = useState<Map<string, string>>(new Map())
+  const [weaponSort, setWeaponSort] = useState<SortBy>('total')
+  const [stageSort, setStageSort] = useState<SortBy>('total')
+  const [ruleSort, setRuleSort] = useState<SortBy>('total')
+  const [modeSort, setModeSort] = useState<SortBy>('total')
 
   useEffect(() => {
+    const { since, until } = filtersToRange(filters)
     setLoading(true)
     invoke<Summary>('db_summary', {
-      since: periodToSince(filters.period),
+      since,
+      until,
       mode: filters.mode,
       rule: filters.rule,
       resultFilter: filters.result,
@@ -42,6 +52,36 @@ export function Dashboard({ filters, aiChart }: Props) {
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [refreshKey, filters])
+
+  // Load weapon images once
+  useEffect(() => {
+    invoke<string[]>('db_weapons_used').then(weapons => {
+      Promise.all(
+        weapons.map(name =>
+          invoke<string | null>('read_image', { kind: 'weapon', name })
+            .then(url => (url ? ([name, url] as [string, string]) : null))
+            .catch(() => null)
+        )
+      ).then(results => {
+        setWeaponImages(new Map(results.filter((r): r is [string, string] => r !== null)))
+      })
+    }).catch(() => {})
+  }, [])
+
+  // Load stage images after summary loads (names come from summary)
+  useEffect(() => {
+    if (!summary) return
+    const names = summary.by_stage.map(e => e.name)
+    Promise.all(
+      names.map(name =>
+        invoke<string | null>('read_image', { kind: 'stage', name })
+          .then(url => (url ? ([name, url] as [string, string]) : null))
+          .catch(() => null)
+      )
+    ).then(results => {
+      setStageImages(new Map(results.filter((r): r is [string, string] => r !== null)))
+    })
+  }, [summary])
 
   async function handleFetch() {
     setFetching(true)
@@ -78,6 +118,10 @@ export function Dashboard({ filters, aiChart }: Props) {
   const totalBattles = summary?.by_mode.reduce((s, e) => s + e.total, 0) ?? 0
   const totalWins = summary?.by_mode.reduce((s, e) => s + e.wins, 0) ?? 0
   const overallWinRate = totalBattles > 0 ? totalWins / totalBattles : null
+
+  function sorted(data: SummaryEntry[], by: SortBy): SummaryEntry[] {
+    return [...data].sort((a, b) => b[by] - a[by])
+  }
 
   return (
     <div className="dashboard">
@@ -116,20 +160,20 @@ export function Dashboard({ filters, aiChart }: Props) {
           </div>
 
           <div className="chart-grid">
-            <ChartCard title="武器別 勝率 & 試合数">
-              <WinRateChart data={summary.by_weapon.slice(0, 14)} height={260} />
+            <ChartCard title="武器別 勝率 & 試合数" sortBy={weaponSort} onSortChange={setWeaponSort}>
+              <WinRateChart data={sorted(summary.by_weapon.slice(0, 14), weaponSort)} height={260} images={weaponImages} />
             </ChartCard>
 
-            <ChartCard title="ステージ別 勝率 & 試合数">
-              <WinRateChart data={summary.by_stage.slice(0, 14)} height={260} />
+            <ChartCard title="ステージ別 勝率 & 試合数" sortBy={stageSort} onSortChange={setStageSort}>
+              <WinRateChart data={sorted(summary.by_stage.slice(0, 14), stageSort)} height={260} images={stageImages} />
             </ChartCard>
 
-            <ChartCard title="モード別 勝率 & 試合数">
-              <WinRateChart data={summary.by_mode} height={180} />
+            <ChartCard title="ルール別 勝率 & 試合数" sortBy={ruleSort} onSortChange={setRuleSort}>
+              <WinRateChart data={sorted(summary.by_rule, ruleSort)} height={220} images={new Map()} />
             </ChartCard>
 
-            <ChartCard title="ルール別 勝率 & 試合数">
-              <WinRateChart data={summary.by_rule} height={220} />
+            <ChartCard title="モード別 勝率 & 試合数" sortBy={modeSort} onSortChange={setModeSort}>
+              <WinRateChart data={sorted(summary.by_mode, modeSort)} height={180} images={new Map()} />
             </ChartCard>
 
             {aiChart && (
@@ -144,28 +188,68 @@ export function Dashboard({ filters, aiChart }: Props) {
   )
 }
 
-function WinRateChart({ data, height }: { data: SummaryEntry[]; height: number }) {
+// ---------------------------------------------------------------------------
+// Custom XAxis tick — shows image if available, falls back to truncated text
+// ---------------------------------------------------------------------------
+
+function ImageTick(props: { x?: number; y?: number; payload?: { value: string }; images: Map<string, string> }) {
+  const { x = 0, y = 0, payload, images } = props
+  if (!payload) return null
+  const url = images.get(payload.value)
+  if (url) {
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <image href={url} x={-12} y={4} width={24} height={24} />
+      </g>
+    )
+  }
+  const label = payload.value.length > 6 ? payload.value.slice(0, 6) + '…' : payload.value
+  return (
+    <text x={x} y={y + 10} textAnchor="middle" fill="var(--text-muted)" fontSize={9}>
+      {label}
+    </text>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// WinRateChart
+// ---------------------------------------------------------------------------
+
+function WinRateChart({ data, height, images }: { data: SummaryEntry[]; height: number; images: Map<string, string> }) {
+  const hasImages = data.some(d => images.has(d.name))
+  const tickHeight = hasImages ? 32 : 16
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#2e2e40" vertical={false} />
-        <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} />
+      <BarChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: hasImages ? 8 : 4 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+        <XAxis
+          dataKey="name"
+          tick={<ImageTick images={images} />}
+          interval={0}
+          height={tickHeight}
+        />
         <YAxis
           yAxisId="left"
           tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
           domain={[0, 1]}
-          tick={{ fontSize: 10 }}
+          tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
           width={36}
         />
         <YAxis
           yAxisId="right"
           orientation="right"
-          tick={{ fontSize: 10 }}
+          tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
           width={32}
         />
         <ReferenceLine yAxisId="left" y={0.5} stroke="#4b5563" strokeDasharray="4 4" />
         <Tooltip
-          contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
+          contentStyle={{
+            background: 'var(--surface2)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            fontSize: 12,
+            color: 'var(--text)',
+          }}
           formatter={(value, name) =>
             name === 'win_rate'
               ? [`${(Number(value) * 100).toFixed(1)}%`, '勝率']
@@ -183,6 +267,10 @@ function WinRateChart({ data, height }: { data: SummaryEntry[]; height: number }
   )
 }
 
+// ---------------------------------------------------------------------------
+// ChartCard with optional sort buttons
+// ---------------------------------------------------------------------------
+
 function StatCard({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
   return (
     <div className="stat-card">
@@ -192,14 +280,39 @@ function StatCard({ label, value, valueColor }: { label: string; value: string; 
   )
 }
 
-function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+function ChartCard({
+  title, children, sortBy, onSortChange,
+}: {
+  title: string
+  children: React.ReactNode
+  sortBy?: SortBy
+  onSortChange?: (s: SortBy) => void
+}) {
   return (
     <div className="chart-card">
-      <h3 className="chart-title">{title}</h3>
+      <div className="chart-card-header">
+        <h3 className="chart-title">{title}</h3>
+        {onSortChange && (
+          <div className="chart-sort-btns">
+            <button
+              className={`chart-sort-btn${sortBy === 'total' ? ' active' : ''}`}
+              onClick={() => onSortChange('total')}
+            >試合数</button>
+            <button
+              className={`chart-sort-btn${sortBy === 'win_rate' ? ' active' : ''}`}
+              onClick={() => onSortChange('win_rate')}
+            >勝率</button>
+          </div>
+        )}
+      </div>
       {children}
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// AI chart renderer
+// ---------------------------------------------------------------------------
 
 function AiChartRenderer({ spec }: { spec: ChartSpec }) {
   const { chartType, data, xKey, yKey } = spec
@@ -207,27 +320,27 @@ function AiChartRenderer({ spec }: { spec: ChartSpec }) {
     <ResponsiveContainer width="100%" height={240}>
       {chartType === 'bar' ? (
         <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#2e2e40" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
           <XAxis dataKey={xKey} />
           <YAxis />
-          <Tooltip />
-          <Bar dataKey={yKey} fill="#7c3aed" />
+          <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+          <Bar dataKey={yKey} fill="var(--accent)" />
         </BarChart>
       ) : chartType === 'line' ? (
         <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#2e2e40" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
           <XAxis dataKey={xKey} />
           <YAxis />
-          <Tooltip />
-          <Line dataKey={yKey} stroke="#7c3aed" dot={false} />
+          <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+          <Line dataKey={yKey} stroke="var(--accent)" dot={false} />
         </LineChart>
       ) : (
         <ScatterChart>
-          <CartesianGrid strokeDasharray="3 3" stroke="#2e2e40" />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
           <XAxis dataKey={xKey} />
           <YAxis dataKey={yKey} />
-          <Tooltip />
-          <Scatter data={data} fill="#7c3aed" />
+          <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+          <Scatter data={data} fill="var(--accent)" />
         </ScatterChart>
       )}
     </ResponsiveContainer>

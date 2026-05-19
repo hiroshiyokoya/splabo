@@ -45,7 +45,14 @@ body {
   color: var(--accent);
   padding: 0 16px 20px;
   letter-spacing: 0.05em;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: opacity 0.15s;
 }
+.logo:hover { opacity: 0.8; }
 
 .nav-item {
   display: block;
@@ -88,12 +95,33 @@ body {
   border-radius: 8px;
   padding: 16px;
 }
+.chart-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
 .chart-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-muted);
-  margin-bottom: 12px;
 }
+.chart-sort-btns {
+  display: flex;
+  gap: 4px;
+}
+.chart-sort-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.chart-sort-btn:hover { color: var(--text); }
+.chart-sort-btn.active { color: var(--accent); border-color: var(--accent); }
 .tooltip-box {
   background: var(--surface2);
   border: 1px solid var(--border);
@@ -727,4 +755,93 @@ body {
   color: var(--text-muted);
   padding: 40px;
   text-align: center;
+}
+
+/* ── Custom Date Range ── */
+.custom-date-range {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.custom-date-sep { font-size: 11px; color: var(--text-muted); }
+.custom-date-input {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  padding: 2px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.custom-date-input:focus { outline: 1px solid var(--accent); }
+
+/* ── Theme Selector ── */
+.theme-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s;
+  max-width: 260px;
+}
+.theme-option:hover { border-color: var(--text-muted); }
+.theme-option.active { border-color: var(--accent); color: var(--accent); }
+.theme-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── About Dialog ── */
+.about-panel {
+  max-width: 420px !important;
+}
+.about-body {
+  align-items: center;
+  text-align: center;
+  gap: 12px !important;
+}
+.about-logo {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+}
+.about-version {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.about-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  max-width: 300px;
+}
+.about-links { display: flex; gap: 12px; }
+.about-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+}
+.about-link:hover { text-decoration: underline; }
+.about-notice {
+  font-size: 11px;
+  color: var(--text-muted);
+  max-width: 300px;
+  line-height: 1.5;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { BattleRow, Filters } from '../types'
-import { periodToSince } from '../types'
+import { filtersToRange } from '../types'
 
 const PAGE_SIZE = 50
 
@@ -73,8 +73,10 @@ export function BattleLog({ filters }: Props) {
 
   useEffect(() => {
     setLoading(true)
+    const { since, until } = filtersToRange(filters)
     const filterArgs = {
-      since: periodToSince(filters.period),
+      since,
+      until,
       mode: filters.mode,
       rule: filters.rule,
       resultFilter: filters.result,

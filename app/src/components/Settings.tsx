@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { AppSettings } from '../types'
+import { THEMES, saveTheme, getThemeId } from '../utils/appSettings'
 
 interface Props {
   settings: AppSettings
@@ -15,6 +16,7 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   const [authLoading, setAuthLoading] = useState(false)
   const [masterRefreshing, setMasterRefreshing] = useState(false)
   const [masterResult, setMasterResult] = useState<string | null>(null)
+  const [themeId, setThemeId] = useState(getThemeId)
 
   useEffect(() => {
     invoke<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
@@ -156,6 +158,22 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
               {masterResult}
             </span>
           )}
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h3>カラーテーマ</h3>
+        <div className="theme-options">
+          {THEMES.map(t => (
+            <button
+              key={t.id}
+              className={`theme-option${themeId === t.id ? ' active' : ''}`}
+              onClick={() => { saveTheme(t.id); setThemeId(t.id) }}
+            >
+              <span className="theme-dot" style={{ background: t.dot }} />
+              {t.label}
+            </button>
+          ))}
         </div>
       </section>
 

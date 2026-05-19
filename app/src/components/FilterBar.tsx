@@ -6,9 +6,10 @@ const MODES   = ['REGULAR', 'BANKARA', 'XMATCH']
 const RULES   = ['ナワバリバトル', 'ガチエリア', 'ガチヤグラ', 'ガチホコバトル', 'ガチアサリ']
 const RESULTS = ['WIN', 'LOSE', 'DRAW']
 const PERIODS: { id: Period; label: string }[] = [
-  { id: 'all',  label: '全期間' },
-  { id: '30d',  label: '直近30日' },
-  { id: '7d',   label: '直近7日' },
+  { id: 'all',    label: '全期間' },
+  { id: '30d',    label: '直近30日' },
+  { id: '7d',     label: '直近7日' },
+  { id: 'custom', label: 'カスタム' },
 ]
 
 interface Props {
@@ -45,7 +46,7 @@ export function FilterBar({ filters, onChange }: Props) {
   }
 
   function reset() {
-    onChange({ period: 'all', mode: null, rule: null, result: null, weapon: null })
+    onChange({ period: 'all', mode: null, rule: null, result: null, weapon: null, customFrom: null, customTo: null })
     setPickerOpen(false)
   }
 
@@ -65,6 +66,23 @@ export function FilterBar({ filters, onChange }: Props) {
               onClick={() => patch('period', p.id)}
             >{p.label}</button>
           ))}
+          {filters.period === 'custom' && (
+            <span className="custom-date-range">
+              <input
+                type="date"
+                className="custom-date-input"
+                value={filters.customFrom ?? ''}
+                onChange={e => patch('customFrom', e.target.value || null)}
+              />
+              <span className="custom-date-sep">〜</span>
+              <input
+                type="date"
+                className="custom-date-input"
+                value={filters.customTo ?? ''}
+                onChange={e => patch('customTo', e.target.value || null)}
+              />
+            </span>
+          )}
         </FilterGroup>
         <FilterGroup label="モード">
           {MODES.map(m => (

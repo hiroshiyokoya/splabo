@@ -380,6 +380,7 @@ pub async fn backfill_battle_players(db: tauri::State<'_, DbPool>) -> Result<usi
 pub async fn db_battle_stats(
     db: tauri::State<'_, DbPool>,
     since: Option<String>,
+    until: Option<String>,
     mode: Option<String>,
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
@@ -392,12 +393,14 @@ pub async fn db_battle_stats(
             COUNT(DISTINCT weapon) as weapon_count
          FROM battles
          WHERE (? IS NULL OR played_at >= ?)
+           AND (? IS NULL OR played_at <= ?)
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR weapon = ?)",
     )
     .bind(&since).bind(&since)
+    .bind(&until).bind(&until)
     .bind(&mode).bind(&mode)
     .bind(&rule).bind(&rule)
     .bind(&result_filter).bind(&result_filter)
@@ -421,6 +424,7 @@ pub async fn db_battle_stats(
 pub async fn db_battle_count(
     db: tauri::State<'_, DbPool>,
     since: Option<String>,
+    until: Option<String>,
     mode: Option<String>,
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
@@ -429,12 +433,14 @@ pub async fn db_battle_count(
     let row = sqlx::query(
         "SELECT COUNT(*) as cnt FROM battles
          WHERE (? IS NULL OR played_at >= ?)
+           AND (? IS NULL OR played_at <= ?)
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR weapon = ?)",
     )
     .bind(&since).bind(&since)
+    .bind(&until).bind(&until)
     .bind(&mode).bind(&mode)
     .bind(&rule).bind(&rule)
     .bind(&result_filter).bind(&result_filter)
@@ -451,6 +457,7 @@ pub async fn db_list_battles(
     limit: i64,
     offset: i64,
     since: Option<String>,
+    until: Option<String>,
     mode: Option<String>,
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
@@ -472,6 +479,7 @@ pub async fn db_list_battles(
                 knockout, sub_weapon, special_weapon, awards, my_team, other_teams
          FROM battles
          WHERE (? IS NULL OR played_at >= ?)
+           AND (? IS NULL OR played_at <= ?)
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
@@ -480,6 +488,7 @@ pub async fn db_list_battles(
     );
     let rows = sqlx::query_as::<_, BattleRow>(&sql)
         .bind(&since).bind(&since)
+        .bind(&until).bind(&until)
         .bind(&mode).bind(&mode)
         .bind(&rule).bind(&rule)
         .bind(&result_filter).bind(&result_filter)
@@ -508,6 +517,7 @@ pub async fn db_weapons_used(db: tauri::State<'_, DbPool>) -> Result<Vec<String>
 pub async fn db_summary(
     db: tauri::State<'_, DbPool>,
     since: Option<String>,
+    until: Option<String>,
     mode: Option<String>,
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
@@ -515,6 +525,7 @@ pub async fn db_summary(
 ) -> Result<serde_json::Value, String> {
     let filter_where =
         "(? IS NULL OR played_at >= ?)
+           AND (? IS NULL OR played_at <= ?)
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
@@ -523,6 +534,7 @@ pub async fn db_summary(
     macro_rules! bind_filters {
         ($q:expr) => {
             $q.bind(&since).bind(&since)
+              .bind(&until).bind(&until)
               .bind(&mode).bind(&mode)
               .bind(&rule).bind(&rule)
               .bind(&result_filter).bind(&result_filter)
