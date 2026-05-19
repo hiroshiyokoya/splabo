@@ -83,11 +83,11 @@ fn i64_val(v: &serde_json::Value, key: &str) -> i64 {
 /// レギュラーバトル1件のレスポンスノードから BattleRow を生成する。
 fn parse_regular_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
     let id = str_val(node, "id");
-    let played_at = str_val(node, "playedTime");
+    let played_at = get_played_at(node);
     let rule = node
-        .pointer("/vsRule/rule")
+        .pointer("/vsRule/name")
         .and_then(|x| x.as_str())
-        .unwrap_or("TURF_WAR")
+        .unwrap_or("")
         .to_string();
     let stage = node
         .pointer("/vsStage/name")
@@ -123,9 +123,9 @@ fn parse_regular_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
 /// バンカラバトル1件のレスポンスノードから BattleRow を生成する。
 fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
     let id = str_val(node, "id");
-    let played_at = str_val(node, "playedTime");
+    let played_at = get_played_at(node);
     let rule = node
-        .pointer("/vsRule/rule")
+        .pointer("/vsRule/name")
         .and_then(|x| x.as_str())
         .unwrap_or("")
         .to_string();
@@ -168,9 +168,9 @@ fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
 /// Xマッチ1件のレスポンスノードから BattleRow を生成する。
 fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
     let id = str_val(node, "id");
-    let played_at = str_val(node, "playedTime");
+    let played_at = get_played_at(node);
     let rule = node
-        .pointer("/vsRule/rule")
+        .pointer("/vsRule/name")
         .and_then(|x| x.as_str())
         .unwrap_or("")
         .to_string();
@@ -209,26 +209,51 @@ fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
     }
 }
 
-/// myResult から武器名・kill/death/assist/special/inked を抽出する。
+/// VsHistoryListQuery のノードから武器名・inked を抽出する。
+/// kill/death/assist/special はリストクエリに含まれないため 0。（#21 詳細クエリで対応予定）
 fn parse_my_result(node: &serde_json::Value) -> (String, i64, i64, i64, i64, i64) {
-    let my = match node.get("myResult") {
-        Some(v) => v,
-        None => return (String::new(), 0, 0, 0, 0, 0),
-    };
-    let weapon = my
-        .pointer("/weapon/name")
+    let weapon = node
+        .pointer("/player/weapon/name")
         .and_then(|x| x.as_str())
         .unwrap_or("")
         .to_string();
-    let kill = i64_val(my, "kill");
-    let death = i64_val(my, "death");
-    let assist = i64_val(my, "assist");
-    let special = i64_val(my, "special");
-    let inked = my
-        .get("paint")
+    let inked = node
+        .pointer("/myTeam/result/paintPoint")
         .and_then(|x| x.as_i64())
         .unwrap_or(0);
-    (weapon, kill, death, assist, special, inked)
+    (weapon, 0, 0, 0, 0, inked)
+}
+
+/// バトル ID の base64 から played_at（ISO 8601 UTC）を抽出する。
+/// ID 形式: base64("VsHistoryDetail-...:MODE:yyyyMMddTHHmmss_uuid")
+/// BANKARA / XMATCH のレスポンスには playedTime フィールドが存在しないためこちらを使う。
+fn played_at_from_id(id: &str) -> String {
+    use base64::Engine;
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(id)
+        .unwrap_or_default();
+    let s = String::from_utf8_lossy(&decoded);
+    // "MODE:20260518T143321_uuid" のパターンを探す
+    for part in s.split(':') {
+        if let Some(ts) = part.split('_').next() {
+            if ts.len() == 15 && ts.as_bytes().get(8) == Some(&b'T') {
+                let (date, time) = ts.split_at(8);
+                let time = &time[1..]; // 'T' を除く
+                let (y, md) = date.split_at(4);
+                let (m, d) = md.split_at(2);
+                let (hh, ms) = time.split_at(2);
+                let (mm, ss) = ms.split_at(2);
+                return format!("{y}-{m}-{d}T{hh}:{mm}:{ss}Z");
+            }
+        }
+    }
+    String::new()
+}
+
+/// playedTime フィールドがなければ id から抽出する。
+fn get_played_at(node: &serde_json::Value) -> String {
+    let v = str_val(node, "playedTime");
+    if !v.is_empty() { v } else { played_at_from_id(&str_val(node, "id")) }
 }
 
 /// judgement フィールドを WIN / LOSE / DRAW に正規化する。
