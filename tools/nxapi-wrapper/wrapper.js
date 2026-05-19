@@ -120,14 +120,13 @@ async function cmdGetBulletToken([dataDir]) {
   process.stderr.write('bulletToken を取得中...\n');
   // splatnet3.js は coral の top-level await を含むため、ここで動的インポート
   const { getBulletToken } = await import('./node_modules/nxapi/dist/common/auth/splatnet3.js');
-  const result = await getBulletToken(storage, sessionToken, undefined, true);
-  const splatnet = result.splatnet;
+  const { data } = await getBulletToken(storage, sessionToken, undefined, true);
 
   respond({
     ok: true,
-    bullet_token: splatnet.bullet_token,
-    country: splatnet.country,
-    language: splatnet.language,
+    bullet_token: data.bullet_token.bulletToken,
+    country: data.country,
+    language: data.bullet_token.lang,
   });
 }
 
