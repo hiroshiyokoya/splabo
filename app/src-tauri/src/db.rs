@@ -610,18 +610,18 @@ pub async fn upsert_weapon(
     Ok(())
 }
 
-/// battles テーブルの詳細データから weapons テーブルを構築する。
-/// WeaponRecordQuery が使えない場合の代替手段。
+/// battle_players テーブルから sub/special を weapons テーブルに補完する。
+/// 自分の武器だけでなく、同じバトルの味方・敵の武器も対象になる。
 pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, String> {
-    // detail_fetched=1 の行から sub/special を取得してアップサート
+    // battle_players から全プレイヤーの sub/special をアップサート
     sqlx::query(
         "INSERT INTO weapons (name, category, sub_weapon, special_weapon)
          SELECT weapon, '', sub_weapon, special_weapon
          FROM (
              SELECT weapon, sub_weapon, special_weapon,
-                    ROW_NUMBER() OVER (PARTITION BY weapon ORDER BY played_at DESC) AS rn
-             FROM battles
-             WHERE detail_fetched = 1 AND weapon != ''
+                    ROW_NUMBER() OVER (PARTITION BY weapon ORDER BY battle_id DESC) AS rn
+             FROM battle_players
+             WHERE weapon != '' AND sub_weapon IS NOT NULL
          ) WHERE rn = 1
          ON CONFLICT(name) DO UPDATE SET
              sub_weapon     = COALESCE(excluded.sub_weapon, weapons.sub_weapon),
@@ -631,7 +631,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
     .await
     .map_err(|e| e.to_string())?;
 
-    // detail 未取得の武器も name だけ登録
+    // 詳細未取得で battle_players にもない武器を name だけ登録
     sqlx::query(
         "INSERT OR IGNORE INTO weapons (name, category, sub_weapon, special_weapon)
          SELECT DISTINCT weapon, '', NULL, NULL FROM battles WHERE weapon != ''",
