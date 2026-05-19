@@ -3,9 +3,11 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { Dashboard } from './components/Dashboard'
 import { BattleLog } from './components/BattleLog'
+import { FilterBar } from './components/FilterBar'
 import { AiAnalysis } from './components/AiAnalysis'
 import { Settings } from './components/Settings'
-import type { Tab, AppSettings, ChartSpec } from './types'
+import type { Tab, AppSettings, ChartSpec, Filters } from './types'
+import { DEFAULT_FILTERS } from './types'
 import './App.css'
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -30,6 +32,7 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
   const [aiChart, setAiChart] = useState<ChartSpec | null>(null)
   const [loginVersion, setLoginVersion] = useState(0)
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
 
   useEffect(() => {
     const unlistenPromise = listen<string>('deep-link-received', async (event) => {
@@ -67,8 +70,11 @@ export default function App() {
       </nav>
 
       <main className="content">
-        {tab === 'dashboard' && <Dashboard aiChart={aiChart} />}
-        {tab === 'battles' && <BattleLog />}
+        {(tab === 'dashboard' || tab === 'battles') && (
+          <FilterBar filters={filters} onChange={setFilters} />
+        )}
+        {tab === 'dashboard' && <Dashboard filters={filters} aiChart={aiChart} />}
+        {tab === 'battles' && <BattleLog filters={filters} />}
         {tab === 'ai' && <AiAnalysis settings={settings} onChartReady={handleAiChart} />}
         {tab === 'settings' && <Settings settings={settings} onSave={saveSettings} loginVersion={loginVersion} />}
       </main>

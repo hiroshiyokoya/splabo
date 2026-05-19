@@ -1,18 +1,16 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { BattleRow } from '../types'
+import type { BattleRow, Filters } from '../types'
+import { periodToSince } from '../types'
 
 const PAGE_SIZE = 50
-const MODES   = ['REGULAR', 'BANKARA', 'XMATCH']
 
 function winRateColor(rate: number): string {
   if (rate >= 0.55) return '#22c55e'
   if (rate >= 0.45) return '#f59e0b'
   return '#ef4444'
 }
-const RULES   = ['ナワバリ', 'ガチエリア', 'ガチヤグラ', 'ガチホコ', 'ガチアサリ']
-const RESULTS = ['WIN', 'LOSE', 'DRAW']
-type OrderBy  = 'played_at' | 'kill' | 'death' | 'inked'
+type OrderBy = 'played_at' | 'kill' | 'death' | 'inked'
 
 // ---------------------------------------------------------------------------
 // 型（詳細モーダル用）
@@ -32,23 +30,19 @@ interface Award     { name?: string; rank?: string }
 // メインコンポーネント
 // ---------------------------------------------------------------------------
 
-export function BattleLog() {
+interface Props {
+  filters: Filters
+}
+
+export function BattleLog({ filters }: Props) {
   const [battles, setBattles]           = useState<BattleRow[]>([])
   const [total, setTotal]               = useState(0)
   const [loading, setLoading]           = useState(true)
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
-  const [weaponList, setWeaponList]     = useState<string[]>([])
   const [selected, setSelected]         = useState<BattleRow | null>(null)
 
   // ページ
   const [offset, setOffset] = useState(0)
-
-  // フィルター
-  const [filterMode,   setFilterMode]   = useState<string | null>(null)
-  const [filterRule,   setFilterRule]   = useState<string | null>(null)
-  const [filterResult, setFilterResult] = useState<string | null>(null)
-  const [filterWeapon, setFilterWeapon] = useState<string | null>(null)
-  const [pickerOpen,   setPickerOpen]   = useState(false)
 
   // ソート
   const [orderBy,  setOrderBy]  = useState<OrderBy>('played_at')
@@ -57,10 +51,9 @@ export function BattleLog() {
   // 集計
   const [stats, setStats] = useState<{ total: number; wins: number; win_rate: number; weapon_count: number } | null>(null)
 
-  // 武器一覧を初回ロード（アイコン付き）
+  // 武器アイコンをロード（テーブル行・モーダル用）
   useEffect(() => {
     invoke<string[]>('db_weapons_used').then(weapons => {
-      setWeaponList(weapons)
       Promise.all(
         weapons.map(name =>
           invoke<string | null>('read_image', { kind: 'weapon', name })
@@ -75,8 +68,18 @@ export function BattleLog() {
 
   // フィルター・ソート・ページ変化でバトル再取得
   useEffect(() => {
+    setOffset(0)
+  }, [filters])
+
+  useEffect(() => {
     setLoading(true)
-    const filterArgs = { mode: filterMode, rule: filterRule, resultFilter: filterResult, weapon: filterWeapon }
+    const filterArgs = {
+      since: periodToSince(filters.period),
+      mode: filters.mode,
+      rule: filters.rule,
+      resultFilter: filters.result,
+      weapon: filters.weapon,
+    }
     Promise.all([
       invoke<BattleRow[]>('db_list_battles', { limit: PAGE_SIZE, offset, ...filterArgs, orderBy, orderAsc }),
       invoke<number>('db_battle_count', filterArgs),
@@ -85,22 +88,7 @@ export function BattleLog() {
       .then(([rows, count, s]) => { setBattles(rows); setTotal(count); setStats(s) })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [offset, filterMode, filterRule, filterResult, filterWeapon, orderBy, orderAsc])
-
-  const hasFilter = !!(filterMode || filterRule || filterResult || filterWeapon)
-
-  function toggle<T>(val: T, cur: T | null, set: (v: T | null) => void) {
-    setOffset(0)
-    set(cur === val ? null : val)
-  }
-
-  function resetFilters() {
-    setOffset(0)
-    setFilterMode(null)
-    setFilterRule(null)
-    setFilterResult(null)
-    setFilterWeapon(null)
-  }
+  }, [offset, filters, orderBy, orderAsc])
 
   function handleSort(col: OrderBy) {
     setOffset(0)
@@ -123,52 +111,6 @@ export function BattleLog() {
           <LogStatCard label="使用武器数" value={stats.weapon_count.toString()} />
         </div>
       )}
-
-      {/* フィルターバー */}
-      <div className="filter-bar">
-        <div className="filter-row">
-          <FilterGroup label="モード">
-            {MODES.map(m => (
-              <button key={m}
-                className={`filter-btn${filterMode === m ? ' active' : ''}`}
-                onClick={() => toggle(m, filterMode, setFilterMode)}
-              >{m}</button>
-            ))}
-          </FilterGroup>
-          <FilterGroup label="ルール">
-            {RULES.map(r => (
-              <button key={r}
-                className={`filter-btn${filterRule === r ? ' active' : ''}`}
-                onClick={() => toggle(r, filterRule, setFilterRule)}
-              >{r}</button>
-            ))}
-          </FilterGroup>
-        </div>
-        <div className="filter-row">
-          <FilterGroup label="結果">
-            {RESULTS.map(r => (
-              <button key={r}
-                className={`filter-btn result-btn-${r.toLowerCase()}${filterResult === r ? ' active' : ''}`}
-                onClick={() => toggle(r, filterResult, setFilterResult)}
-              >{r}</button>
-            ))}
-          </FilterGroup>
-          <FilterGroup label="武器">
-            <WeaponPicker
-              weaponList={weaponList}
-              weaponImages={weaponImages}
-              selected={filterWeapon}
-              open={pickerOpen}
-              onToggleOpen={() => setPickerOpen(v => !v)}
-              onClose={() => setPickerOpen(false)}
-              onSelect={w => { setOffset(0); setFilterWeapon(w); setPickerOpen(false) }}
-            />
-          </FilterGroup>
-          {hasFilter && (
-            <button className="filter-reset-btn" onClick={resetFilters}>✕ リセット</button>
-          )}
-        </div>
-      </div>
 
       {loading ? (
         <div className="loading">読み込み中...</div>
@@ -220,74 +162,6 @@ export function BattleLog() {
 
       {selected && (
         <BattleDetailModal battle={selected} weaponImages={weaponImages} onClose={() => setSelected(null)} />
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// フィルターグループ
-// ---------------------------------------------------------------------------
-
-function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="filter-group">
-      <span className="filter-group-label">{label}</span>
-      {children}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// 武器ピッカー
-// ---------------------------------------------------------------------------
-
-function WeaponPicker({
-  weaponList, weaponImages, selected, open, onToggleOpen, onClose, onSelect,
-}: {
-  weaponList: string[]
-  weaponImages: Map<string, string>
-  selected: string | null
-  open: boolean
-  onToggleOpen: () => void
-  onClose: () => void
-  onSelect: (w: string | null) => void
-}) {
-  const wrapRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function handler(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) onClose()
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open, onClose])
-
-  return (
-    <div className="weapon-picker-wrap" ref={wrapRef}>
-      <button className={`filter-btn weapon-trigger${selected ? ' active' : ''}`} onClick={onToggleOpen}>
-        {selected ? (
-          <span className="weapon-cell">
-            {weaponImages.get(selected) && <img src={weaponImages.get(selected)} alt="" className="weapon-icon" />}
-            {selected}
-          </span>
-        ) : '全武器 ▼'}
-      </button>
-      {open && (
-        <div className="weapon-picker-dropdown">
-          <button className={`weapon-picker-item${selected === null ? ' active' : ''}`} onClick={() => onSelect(null)}>
-            <span style={{ width: 24, display: 'inline-block' }} />
-            全武器
-          </button>
-          <div className="weapon-picker-divider" />
-          {weaponList.map(w => (
-            <button key={w} className={`weapon-picker-item${selected === w ? ' active' : ''}`} onClick={() => onSelect(w)}>
-              {weaponImages.get(w) && <img src={weaponImages.get(w)} alt="" className="weapon-icon" />}
-              {w}
-            </button>
-          ))}
-        </div>
       )}
     </div>
   )

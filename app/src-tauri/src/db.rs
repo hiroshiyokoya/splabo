@@ -195,6 +195,7 @@ pub async fn update_battle_detail(
 #[tauri::command]
 pub async fn db_battle_stats(
     db: tauri::State<'_, DbPool>,
+    since: Option<String>,
     mode: Option<String>,
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
@@ -206,11 +207,13 @@ pub async fn db_battle_stats(
             SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins,
             COUNT(DISTINCT weapon) as weapon_count
          FROM battles
-         WHERE (? IS NULL OR mode = ?)
+         WHERE (? IS NULL OR played_at >= ?)
+           AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR weapon = ?)",
     )
+    .bind(&since).bind(&since)
     .bind(&mode).bind(&mode)
     .bind(&rule).bind(&rule)
     .bind(&result_filter).bind(&result_filter)
@@ -233,6 +236,7 @@ pub async fn db_battle_stats(
 #[tauri::command]
 pub async fn db_battle_count(
     db: tauri::State<'_, DbPool>,
+    since: Option<String>,
     mode: Option<String>,
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
@@ -240,11 +244,13 @@ pub async fn db_battle_count(
 ) -> Result<i64, String> {
     let row = sqlx::query(
         "SELECT COUNT(*) as cnt FROM battles
-         WHERE (? IS NULL OR mode = ?)
+         WHERE (? IS NULL OR played_at >= ?)
+           AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR weapon = ?)",
     )
+    .bind(&since).bind(&since)
     .bind(&mode).bind(&mode)
     .bind(&rule).bind(&rule)
     .bind(&result_filter).bind(&result_filter)
@@ -260,6 +266,7 @@ pub async fn db_list_battles(
     db: tauri::State<'_, DbPool>,
     limit: i64,
     offset: i64,
+    since: Option<String>,
     mode: Option<String>,
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
@@ -280,13 +287,15 @@ pub async fn db_list_battles(
                 rank_before, rank_after, x_power, raw_json, fetched_at,
                 knockout, sub_weapon, special_weapon, awards, my_team, other_teams
          FROM battles
-         WHERE (? IS NULL OR mode = ?)
+         WHERE (? IS NULL OR played_at >= ?)
+           AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR weapon = ?)
          ORDER BY {order_col} {order_dir} LIMIT ? OFFSET ?"
     );
     let rows = sqlx::query_as::<_, BattleRow>(&sql)
+        .bind(&since).bind(&since)
         .bind(&mode).bind(&mode)
         .bind(&rule).bind(&rule)
         .bind(&result_filter).bind(&result_filter)
@@ -315,45 +324,60 @@ pub async fn db_weapons_used(db: tauri::State<'_, DbPool>) -> Result<Vec<String>
 pub async fn db_summary(
     db: tauri::State<'_, DbPool>,
     since: Option<String>,
+    mode: Option<String>,
+    rule: Option<String>,
+    result_filter: Option<String>,  // JS: resultFilter
+    weapon: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let since = since.unwrap_or_else(|| "1970-01-01".to_string());
+    let filter_where =
+        "(? IS NULL OR played_at >= ?)
+           AND (? IS NULL OR mode = ?)
+           AND (? IS NULL OR rule = ?)
+           AND (? IS NULL OR result = ?)
+           AND (? IS NULL OR weapon = ?)";
 
-    let by_weapon = sqlx::query(
+    macro_rules! bind_filters {
+        ($q:expr) => {
+            $q.bind(&since).bind(&since)
+              .bind(&mode).bind(&mode)
+              .bind(&rule).bind(&rule)
+              .bind(&result_filter).bind(&result_filter)
+              .bind(&weapon).bind(&weapon)
+        };
+    }
+
+    let by_weapon = bind_filters!(sqlx::query(&format!(
         "SELECT weapon as name, COUNT(*) as total,
                 SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins
-         FROM battles WHERE played_at >= ? GROUP BY weapon ORDER BY total DESC",
-    )
-    .bind(&since)
+         FROM battles WHERE {filter_where} GROUP BY weapon ORDER BY total DESC"
+    )))
     .fetch_all(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;
 
-    let by_mode = sqlx::query(
+    let by_mode = bind_filters!(sqlx::query(&format!(
         "SELECT mode as name, COUNT(*) as total,
                 SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins
-         FROM battles WHERE played_at >= ? GROUP BY mode ORDER BY total DESC",
-    )
-    .bind(&since)
+         FROM battles WHERE {filter_where} GROUP BY mode ORDER BY total DESC"
+    )))
     .fetch_all(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;
 
-    let by_stage = sqlx::query(
+    let by_stage = bind_filters!(sqlx::query(&format!(
         "SELECT stage as name, COUNT(*) as total,
                 SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins
-         FROM battles WHERE played_at >= ? GROUP BY stage ORDER BY total DESC",
-    )
-    .bind(&since)
+         FROM battles WHERE {filter_where} GROUP BY stage ORDER BY total DESC"
+    )))
     .fetch_all(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;
 
-    let by_rule = sqlx::query(
+    let by_rule = bind_filters!(sqlx::query(&format!(
         "SELECT rule as name, COUNT(*) as total,
                 SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins
-         FROM battles WHERE played_at >= ? GROUP BY rule ORDER BY total DESC",
-    )
-    .bind(&since)
+         FROM battles WHERE {filter_where} GROUP BY rule ORDER BY total DESC"
+    )))
     .fetch_all(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;

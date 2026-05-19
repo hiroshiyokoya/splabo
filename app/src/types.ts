@@ -1,5 +1,30 @@
 export type Tab = 'dashboard' | 'battles' | 'ai' | 'settings'
 
+export type Period = 'all' | '30d' | '7d'
+
+export interface Filters {
+  period: Period
+  mode: string | null
+  rule: string | null
+  result: string | null
+  weapon: string | null
+}
+
+export const DEFAULT_FILTERS: Filters = {
+  period: 'all',
+  mode: null,
+  rule: null,
+  result: null,
+  weapon: null,
+}
+
+export function periodToSince(period: Period): string | null {
+  if (period === 'all') return null
+  const d = new Date()
+  d.setDate(d.getDate() - (period === '30d' ? 30 : 7))
+  return d.toISOString().slice(0, 10)
+}
+
 export interface BattleRow {
   id: string
   played_at: string

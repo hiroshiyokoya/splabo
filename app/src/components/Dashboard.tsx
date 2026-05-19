@@ -4,7 +4,8 @@ import {
   BarChart, Bar, LineChart, Line, ScatterChart, Scatter,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
-import type { Summary, SummaryEntry, ChartSpec } from '../types'
+import type { Summary, SummaryEntry, ChartSpec, Filters } from '../types'
+import { periodToSince } from '../types'
 
 const COLOR_TOTAL = '#374151'
 
@@ -15,25 +16,11 @@ function winRateColor(rate: number): string {
 }
 
 interface Props {
+  filters: Filters
   aiChart: ChartSpec | null
 }
 
-type Period = 'all' | '30d' | '7d'
-
-const PERIODS: { id: Period; label: string }[] = [
-  { id: 'all', label: '全期間' },
-  { id: '30d', label: '直近30日' },
-  { id: '7d', label: '直近7日' },
-]
-
-function periodToSince(period: Period): string | null {
-  if (period === 'all') return null
-  const d = new Date()
-  d.setDate(d.getDate() - (period === '30d' ? 30 : 7))
-  return d.toISOString().slice(0, 10)
-}
-
-export function Dashboard({ aiChart }: Props) {
+export function Dashboard({ filters, aiChart }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -41,15 +28,20 @@ export function Dashboard({ aiChart }: Props) {
   const [fetchingDetails, setFetchingDetails] = useState(false)
   const [fetchResult, setFetchResult] = useState<string | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
-  const [period, setPeriod] = useState<Period>('all')
 
   useEffect(() => {
     setLoading(true)
-    invoke<Summary>('db_summary', { since: periodToSince(period) })
+    invoke<Summary>('db_summary', {
+      since: periodToSince(filters.period),
+      mode: filters.mode,
+      rule: filters.rule,
+      resultFilter: filters.result,
+      weapon: filters.weapon,
+    })
       .then(setSummary)
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [refreshKey, period])
+  }, [refreshKey, filters])
 
   async function handleFetch() {
     setFetching(true)
@@ -88,20 +80,7 @@ export function Dashboard({ aiChart }: Props) {
   return (
     <div className="dashboard">
       <div className="dashboard-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <h2>ダッシュボード</h2>
-          <div className="period-filter">
-            {PERIODS.map(p => (
-              <button
-                key={p.id}
-                className={`period-btn${period === p.id ? ' active' : ''}`}
-                onClick={() => setPeriod(p.id)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <h2>ダッシュボード</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {fetchResult && (
             <span style={{ color: 'var(--win)', fontSize: 13 }}>{fetchResult}</span>
