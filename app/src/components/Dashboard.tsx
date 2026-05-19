@@ -47,7 +47,7 @@ export function Dashboard({ filters, aiChart }: Props) {
       rule: filters.rule,
       resultFilter: filters.result,
       weapon: filters.weapon,
-      stage: filters.stage,
+      stage: filters.stage.length > 0 ? filters.stage.join('|') : null,
     })
       .then(setSummary)
       .catch(console.error)

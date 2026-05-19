@@ -50,14 +50,14 @@ export function FilterBar({ filters, onChange }: Props) {
   }
 
   function reset() {
-    onChange({ period: 'all', mode: null, rule: null, result: null, weapon: null, stage: null, customFrom: null, customTo: null })
+    onChange({ period: 'all', mode: null, rule: null, result: null, weapon: null, stage: [], customFrom: null, customTo: null })
     setPickerOpen(false)
     setStagePickerOpen(false)
   }
 
   const hasFilter = !!(
     filters.period !== 'all' ||
-    filters.mode || filters.rule || filters.result || filters.weapon || filters.stage
+    filters.mode || filters.rule || filters.result || filters.weapon || filters.stage.length > 0
   )
 
   return (
@@ -138,7 +138,13 @@ export function FilterBar({ filters, onChange }: Props) {
             open={stagePickerOpen}
             onToggleOpen={() => setStagePickerOpen(v => !v)}
             onClose={() => setStagePickerOpen(false)}
-            onSelect={s => { patch('stage', s); setStagePickerOpen(false) }}
+            onToggleStage={s => {
+              const next = filters.stage.includes(s)
+                ? filters.stage.filter(x => x !== s)
+                : [...filters.stage, s]
+              patch('stage', next)
+            }}
+            onClear={() => patch('stage', [])}
           />
         </FilterGroup>
         {hasFilter && (
@@ -159,14 +165,15 @@ function FilterGroup({ label, children }: { label: string; children: React.React
 }
 
 function StagePicker({
-  stageList, selected, open, onToggleOpen, onClose, onSelect,
+  stageList, selected, open, onToggleOpen, onClose, onToggleStage, onClear,
 }: {
   stageList: string[]
-  selected: string | null
+  selected: string[]
   open: boolean
   onToggleOpen: () => void
   onClose: () => void
-  onSelect: (s: string | null) => void
+  onToggleStage: (s: string) => void
+  onClear: () => void
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -179,24 +186,31 @@ function StagePicker({
     return () => document.removeEventListener('mousedown', handler)
   }, [open, onClose])
 
+  const label = selected.length === 0
+    ? '全ステージ ▼'
+    : `${selected.length}件選択 ▼`
+
   return (
     <div className="weapon-picker-wrap" ref={wrapRef}>
-      <button className={`filter-btn weapon-trigger${selected ? ' active' : ''}`} onClick={onToggleOpen}>
-        {selected ?? '全ステージ ▼'}
+      <button className={`filter-btn weapon-trigger${selected.length > 0 ? ' active' : ''}`} onClick={onToggleOpen}>
+        {label}
       </button>
       {open && (
         <div className="weapon-picker-dropdown">
           <button
-            className={`weapon-picker-item${selected === null ? ' active' : ''}`}
-            onClick={() => onSelect(null)}
+            className={`weapon-picker-item${selected.length === 0 ? ' active' : ''}`}
+            onClick={onClear}
           >全ステージ</button>
           <div className="weapon-picker-divider" />
           {stageList.map(s => (
             <button
               key={s}
-              className={`weapon-picker-item${selected === s ? ' active' : ''}`}
-              onClick={() => onSelect(s)}
-            >{s}</button>
+              className={`weapon-picker-item${selected.includes(s) ? ' active' : ''}`}
+              onClick={() => onToggleStage(s)}
+            >
+              <span className="stage-check">{selected.includes(s) ? '✓' : ' '}</span>
+              {s}
+            </button>
           ))}
         </div>
       )}

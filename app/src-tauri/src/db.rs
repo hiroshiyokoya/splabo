@@ -400,7 +400,7 @@ pub async fn db_battle_stats(
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR weapon = ?)
-           AND (? IS NULL OR stage = ?)",
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)",
     )
     .bind(&since).bind(&since)
     .bind(&until).bind(&until)
@@ -445,7 +445,7 @@ pub async fn db_battle_count(
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR weapon = ?)
-           AND (? IS NULL OR stage = ?)",
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)",
     )
     .bind(&since).bind(&since)
     .bind(&until).bind(&until)
@@ -495,7 +495,7 @@ pub async fn db_list_battles(
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR weapon = ?)
-           AND (? IS NULL OR stage = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)
          ORDER BY {order_col} {order_dir} LIMIT ? OFFSET ?"
     );
     let rows = sqlx::query_as::<_, BattleRow>(&sql)
@@ -556,7 +556,7 @@ pub async fn db_summary(
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR weapon = ?)
-           AND (? IS NULL OR stage = ?)";
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)";
 
     macro_rules! bind_filters {
         ($q:expr) => {
