@@ -527,24 +527,25 @@ pub async fn fetch_and_store_weapons(
 ) -> Result<usize, String> {
     let resp = graphql_request(client, bullet_token, country, language, HASH_WEAPONS).await?;
 
-    // weaponHistories は { nodes: [...] } ラッパー形式。全シーズンをフラットに処理する。
-    let seasonal_nodes = resp
-        .pointer("/data/playHistory/weaponHistories/nodes")
+    // weaponHistories は edges/node カーソルページネーション形式。全シーズンをフラットに処理する。
+    let edges = resp
+        .pointer("/data/playHistory/weaponHistories/edges")
         .and_then(|v| v.as_array())
         .ok_or_else(|| {
             let wh_val = resp.pointer("/data/playHistory/weaponHistories")
-                .map(|v| {
-                    let s = v.to_string();
-                    s[..s.len().min(200)].to_string()
-                })
+                .map(|v| { let s = v.to_string(); s[..s.len().min(200)].to_string() })
                 .unwrap_or_else(|| "weaponHistories なし".to_string());
-            format!("playHistory.weaponHistories.nodes が見つかりません。weaponHistories: {wh_val}")
+            format!("playHistory.weaponHistories.edges が見つかりません。weaponHistories: {wh_val}")
         })?;
 
     let mut seen = std::collections::HashSet::new();
     let mut count = 0usize;
 
-    for seasonal in seasonal_nodes {
+    for edge in edges {
+        let seasonal = match edge.pointer("/node") {
+            Some(n) => n,
+            None => continue,
+        };
         let categories = match seasonal.pointer("/weaponCategories").and_then(|v| v.as_array()) {
             Some(c) => c,
             None => continue,
