@@ -107,7 +107,7 @@ export function Dashboard({ aiChart }: Props) {
             <span style={{ color: 'var(--win)', fontSize: 13 }}>{fetchResult}</span>
           )}
           <button className="btn-secondary" onClick={handleFetchDetails} disabled={fetchingDetails || fetching}>
-            {fetchingDetails ? '取得中...' : 'K/D/A を取得'}
+            {fetchingDetails ? '取得中...' : '詳細データを取得'}
           </button>
           <button className="btn-primary" onClick={handleFetch} disabled={fetching || fetchingDetails}>
             {fetching ? '取得中...' : 'バトルデータを取得'}
