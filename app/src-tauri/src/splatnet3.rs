@@ -118,6 +118,12 @@ fn parse_regular_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
         x_power: None,
         raw_json: node.to_string(),
         fetched_at: fetched_at.to_string(),
+        knockout: None,
+        sub_weapon: None,
+        special_weapon: None,
+        awards: None,
+        my_team: None,
+        other_teams: None,
     }
 }
 
@@ -163,6 +169,12 @@ fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
         x_power: None,
         raw_json: node.to_string(),
         fetched_at: fetched_at.to_string(),
+        knockout: None,
+        sub_weapon: None,
+        special_weapon: None,
+        awards: None,
+        my_team: None,
+        other_teams: None,
     }
 }
 
@@ -207,6 +219,12 @@ fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
         x_power,
         raw_json: node.to_string(),
         fetched_at: fetched_at.to_string(),
+        knockout: None,
+        sub_weapon: None,
+        special_weapon: None,
+        awards: None,
+        my_team: None,
+        other_teams: None,
     }
 }
 
@@ -448,8 +466,23 @@ pub async fn fetch_and_update_details(
         let special = player_result.and_then(|r| r.get("special")).and_then(|v| v.as_i64()).unwrap_or(0);
         let inked = detail.pointer("/player/paint").and_then(|v| v.as_i64()).unwrap_or(0);
 
+        let knockout = detail.get("knockout").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let sub_weapon = detail.pointer("/player/weapon/subWeapon/name")
+            .and_then(|v| v.as_str()).map(|s| s.to_string());
+        let special_weapon = detail.pointer("/player/weapon/specialWeapon/name")
+            .and_then(|v| v.as_str()).map(|s| s.to_string());
+        let awards = detail.get("awards").map(|v| v.to_string());
+        let my_team = detail.pointer("/myTeam/players").map(|v| v.to_string());
+        let other_teams = detail.get("otherTeams").map(|v| v.to_string());
+
         if let Err(e) = crate::db::update_battle_detail(
             pool, id, kill, death, assist, special, inked, &detail.to_string(),
+            knockout.as_deref(),
+            sub_weapon.as_deref(),
+            special_weapon.as_deref(),
+            awards.as_deref(),
+            my_team.as_deref(),
+            other_teams.as_deref(),
         )
         .await
         {

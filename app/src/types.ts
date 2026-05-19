@@ -19,6 +19,12 @@ export interface BattleRow {
   x_power: number | null
   raw_json: string
   fetched_at: string
+  knockout: string | null
+  sub_weapon: string | null
+  special_weapon: string | null
+  awards: string | null
+  my_team: string | null
+  other_teams: string | null
 }
 
 export interface SummaryEntry {
