@@ -303,12 +303,19 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
         <ReferenceLine yAxisId="right" y={0.5} stroke="#4b5563" strokeDasharray="4 4" />
         <Tooltip
           cursor={false}
-          contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
-          labelStyle={{ color: 'var(--text)', fontWeight: 700 }}
-          itemStyle={{ color: 'var(--text)' }}
-          formatter={(value, name) =>
-            name === 'win_rate' ? [`${(Number(value) * 100).toFixed(1)}%`, '勝率'] : [value, '試合数']
-          }
+          content={({ active, payload, label }: any) => {
+            if (!active || !payload?.length) return null
+            const entry = payload[0]?.payload as SummaryEntry
+            const displayLabel = nameTransform ? nameTransform(label) : label
+            return (
+              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, padding: '6px 10px' }}>
+                <div style={{ color: 'var(--text)', fontWeight: 700, marginBottom: 4 }}>{displayLabel}</div>
+                <div style={{ color: 'var(--text)' }}>試合数: {entry.total}</div>
+                <div style={{ color: 'var(--text)' }}>勝ち数: {entry.wins}</div>
+                <div style={{ color: 'var(--text)' }}>勝率: {(entry.win_rate * 100).toFixed(1)}%</div>
+              </div>
+            )
+          }}
         />
         <Bar yAxisId="left" dataKey="total" name="total" maxBarSize={32} activeBar={false}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
