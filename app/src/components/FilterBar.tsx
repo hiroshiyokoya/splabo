@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { Filters, Period } from '../types'
-import { modeLabel, resultLabel, stageAbbr } from '../types'
+import { modeLabel, resultLabel } from '../types'
 
 const MODES   = ['REGULAR', 'BANKARA', 'XMATCH']
 const RULES   = ['ナワバリバトル', 'ガチエリア', 'ガチヤグラ', 'ガチホコバトル', 'ガチアサリ']
@@ -118,6 +118,8 @@ export function FilterBar({ filters, onChange }: Props) {
             >{resultLabel(r)}</button>
           ))}
         </FilterGroup>
+      </div>
+      <div className="filter-row">
         <FilterGroup label="武器">
           <WeaponPicker
             weaponList={weaponList}
@@ -180,7 +182,7 @@ function StagePicker({
   return (
     <div className="weapon-picker-wrap" ref={wrapRef}>
       <button className={`filter-btn weapon-trigger${selected ? ' active' : ''}`} onClick={onToggleOpen}>
-        {selected ? stageAbbr(selected) : '全ステージ ▼'}
+        {selected ?? '全ステージ ▼'}
       </button>
       {open && (
         <div className="weapon-picker-dropdown">
@@ -194,7 +196,7 @@ function StagePicker({
               key={s}
               className={`weapon-picker-item${selected === s ? ' active' : ''}`}
               onClick={() => onSelect(s)}
-            >{stageAbbr(s)}</button>
+            >{s}</button>
           ))}
         </div>
       )}
