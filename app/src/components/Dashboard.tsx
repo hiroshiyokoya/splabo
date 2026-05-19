@@ -7,7 +7,7 @@ import {
 import type { Summary, SummaryEntry, ChartSpec, Filters } from '../types'
 import { filtersToRange } from '../types'
 
-const COLOR_TOTAL = '#374151'
+const COLOR_TOTAL = '#7c8fa0'
 
 function winRateColor(rate: number): string {
   if (rate >= 0.55) return '#22c55e'
@@ -205,7 +205,7 @@ function ImageTick(props: { x?: number; y?: number; payload?: { value: string };
   }
   const label = payload.value.length > 6 ? payload.value.slice(0, 6) + '…' : payload.value
   return (
-    <text x={x} y={y + 10} textAnchor="middle" fill="var(--text-muted)" fontSize={9}>
+    <text x={x} y={y + 10} textAnchor="middle" fill="var(--text)" fontSize={9}>
       {label}
     </text>
   )
@@ -218,6 +218,7 @@ function ImageTick(props: { x?: number; y?: number; payload?: { value: string };
 function WinRateChart({ data, height, images }: { data: SummaryEntry[]; height: number; images: Map<string, string> }) {
   const hasImages = data.some(d => images.has(d.name))
   const tickHeight = hasImages ? 32 : 16
+  const tickStyle = { fontSize: 10, fill: 'var(--text)' }
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: hasImages ? 8 : 4 }}>
@@ -230,18 +231,18 @@ function WinRateChart({ data, height, images }: { data: SummaryEntry[]; height: 
         />
         <YAxis
           yAxisId="left"
-          tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
-          domain={[0, 1]}
-          tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+          tick={tickStyle}
           width={36}
         />
         <YAxis
           yAxisId="right"
           orientation="right"
-          tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
-          width={32}
+          tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
+          domain={[0, 1]}
+          tick={tickStyle}
+          width={36}
         />
-        <ReferenceLine yAxisId="left" y={0.5} stroke="#4b5563" strokeDasharray="4 4" />
+        <ReferenceLine yAxisId="right" y={0.5} stroke="#4b5563" strokeDasharray="4 4" />
         <Tooltip
           contentStyle={{
             background: 'var(--surface2)',
@@ -256,12 +257,16 @@ function WinRateChart({ data, height, images }: { data: SummaryEntry[]; height: 
               : [value, '試合数']
           }
         />
-        <Bar yAxisId="left" dataKey="win_rate" name="win_rate" maxBarSize={32}>
+        <Bar yAxisId="left" dataKey="total" fill={COLOR_TOTAL} name="total" maxBarSize={32}
+          activeBar={{ fillOpacity: 0.5 }}
+        />
+        <Bar yAxisId="right" dataKey="win_rate" name="win_rate" maxBarSize={32}
+          activeBar={{ fillOpacity: 0.5 }}
+        >
           {data.map((entry, i) => (
             <Cell key={i} fill={winRateColor(entry.win_rate)} />
           ))}
         </Bar>
-        <Bar yAxisId="right" dataKey="total" fill={COLOR_TOTAL} name="total" maxBarSize={32} />
       </BarChart>
     </ResponsiveContainer>
   )
