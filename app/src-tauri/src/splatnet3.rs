@@ -11,6 +11,7 @@ const WEB_VIEW_VER: &str = "10.0.0-dfefd0af";
 const HASH_REGULAR: &str = "2fe6ea7a2de1d6a888b7bd3dbeb6acc8e3246f055ca39b80c4531bbcd0727bba";
 const HASH_BANKARA: &str = "9863ea4744730743268e2940396e21b891104ed40e2286789f05100b45a0b0fd";
 const HASH_XMATCH: &str = "eb5996a12705c2e94813a62e05c0dc419aad2811b8d49d53e5732290105559cb";
+const HASH_DETAIL: &str = "f893e1ddcfb8a4fd645fd75ced173f18b2750e5cfba41d2669b9814f6ceaec46";
 
 // ---------------------------------------------------------------------------
 // HTTP ヘルパー
@@ -361,6 +362,105 @@ pub async fn fetch_and_store_battles(
     }
 
     Ok(total_inserted)
+}
+
+/// 詳細クエリ（vsResultId 指定）を発行し、レスポンスを返す。
+async fn graphql_detail_request(
+    client: &reqwest::Client,
+    bullet_token: &str,
+    country: &str,
+    language: &str,
+    vs_result_id: &str,
+) -> Result<serde_json::Value, String> {
+    let body = serde_json::json!({
+        "variables": { "vsResultId": vs_result_id },
+        "extensions": {
+            "persistedQuery": {
+                "version": 1,
+                "sha256Hash": HASH_DETAIL
+            }
+        }
+    });
+
+    let resp = client
+        .post(GRAPHQL_URL)
+        .header("Authorization", format!("Bearer {bullet_token}"))
+        .header("X-Web-View-Ver", WEB_VIEW_VER)
+        .header("Content-Type", "application/json")
+        .header("Accept", "*/*")
+        .header("Accept-Language", language)
+        .header("X-NACOUNTRY", country)
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Linux; Android 8.0.0) AppleWebKit/537.36 \
+             (KHTML, like Gecko) Chrome/94.0.4606.61 Mobile Safari/537.36",
+        )
+        .header("Referer", "https://api.lp1.av5ja.srv.nintendo.net/")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("詳細クエリ失敗: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("詳細クエリエラー ({status}): {text}"));
+    }
+
+    resp.json::<serde_json::Value>()
+        .await
+        .map_err(|e| format!("詳細クエリレスポンス解析失敗: {e}"))
+}
+
+/// detail_fetched=0 のバトルに VsHistoryDetailQuery を発行して K/D/A を更新する。
+/// 更新件数を返す。
+pub async fn fetch_and_update_details(
+    pool: &DbPool,
+    bullet_token: &str,
+    country: &str,
+    language: &str,
+    client: &reqwest::Client,
+) -> Result<usize, String> {
+    let ids = crate::db::get_battles_without_detail(pool).await?;
+    let mut updated = 0usize;
+
+    for id in &ids {
+        let resp = match graphql_detail_request(client, bullet_token, country, language, id).await {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("詳細取得スキップ ({id}): {e}");
+                continue;
+            }
+        };
+
+        let detail = match resp.pointer("/data/vsHistoryDetail") {
+            Some(d) => d,
+            None => {
+                log::warn!("vsHistoryDetail が見つからない: {id}");
+                continue;
+            }
+        };
+
+        let player_result = detail.pointer("/player/result");
+        let kill = player_result.and_then(|r| r.get("kill")).and_then(|v| v.as_i64()).unwrap_or(0);
+        let death = player_result.and_then(|r| r.get("death")).and_then(|v| v.as_i64()).unwrap_or(0);
+        let assist = player_result.and_then(|r| r.get("assist")).and_then(|v| v.as_i64()).unwrap_or(0);
+        let special = player_result.and_then(|r| r.get("special")).and_then(|v| v.as_i64()).unwrap_or(0);
+        let inked = detail.pointer("/player/paint").and_then(|v| v.as_i64()).unwrap_or(0);
+
+        if let Err(e) = crate::db::update_battle_detail(
+            pool, id, kill, death, assist, special, inked, &detail.to_string(),
+        )
+        .await
+        {
+            log::warn!("詳細DB更新失敗 ({id}): {e}");
+            continue;
+        }
+
+        updated += 1;
+    }
+
+    Ok(updated)
 }
 
 /// バトルノード一覧から武器・ステージの画像 URL を収集する（重複なし）。

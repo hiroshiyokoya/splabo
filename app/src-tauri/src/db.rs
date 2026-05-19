@@ -23,6 +23,12 @@ pub async fn init_db(app: &AppHandle) -> Result<DbPool, String> {
 
     let pool = SqlitePool::connect(&url).await.map_err(|e| e.to_string())?;
     sqlx::query(SCHEMA).execute(&pool).await.map_err(|e| e.to_string())?;
+    // 既存 DB への追加カラム（失敗は無視 = 既存カラムなら OK）
+    let _ = sqlx::query(
+        "ALTER TABLE battles ADD COLUMN detail_fetched INTEGER NOT NULL DEFAULT 0",
+    )
+    .execute(&pool)
+    .await;
     Ok(Arc::new(pool))
 }
 
@@ -116,6 +122,44 @@ pub async fn insert_battles(pool: &DbPool, rows: Vec<BattleRow>) -> Result<usize
         inserted += result.rows_affected() as usize;
     }
     Ok(inserted)
+}
+
+/// 詳細取得が未完了のバトル ID 一覧を返す。
+pub async fn get_battles_without_detail(pool: &DbPool) -> Result<Vec<String>, String> {
+    let rows = sqlx::query("SELECT id FROM battles WHERE detail_fetched = 0 ORDER BY played_at DESC")
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|r| r.get::<String, _>("id")).collect())
+}
+
+/// バトル詳細データ（K/D/A/special/inked）を更新し detail_fetched=1 にする。
+pub async fn update_battle_detail(
+    pool: &DbPool,
+    id: &str,
+    kill: i64,
+    death: i64,
+    assist: i64,
+    special: i64,
+    inked: i64,
+    raw_json: &str,
+) -> Result<(), String> {
+    sqlx::query(
+        "UPDATE battles SET kill=?, death=?, assist=?, special=?, inked=?,
+                            raw_json=?, detail_fetched=1
+         WHERE id=?",
+    )
+    .bind(kill)
+    .bind(death)
+    .bind(assist)
+    .bind(special)
+    .bind(inked)
+    .bind(raw_json)
+    .bind(id)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
