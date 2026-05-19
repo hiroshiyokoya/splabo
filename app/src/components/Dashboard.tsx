@@ -201,9 +201,9 @@ function ImageTick(props: { x?: number; y?: number; payload?: { value: string };
   if (!payload) return null
   const url = images.get(payload.value)
   if (url) {
-    const size   = hovered ? 56 : 32
+    const size   = hovered ? 160 : 32
     const offset = -(size / 2)
-    const yOff   = hovered ? -18 : 4
+    const yOff   = hovered ? -124 : 4
     return (
       <g transform={`translate(${x},${y})`} style={{ cursor: 'pointer' }}>
         <image
@@ -214,12 +214,6 @@ function ImageTick(props: { x?: number; y?: number; payload?: { value: string };
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
         />
-        {hovered && (
-          <text x={0} y={46} textAnchor="middle" fill="var(--text)" fontSize={9}
-            style={{ pointerEvents: 'none' }}>
-            {payload.value.length > 10 ? payload.value.slice(0, 10) + '…' : payload.value}
-          </text>
-        )}
       </g>
     )
   }
