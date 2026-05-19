@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { Filters, Period } from '../types'
+import { modeLabel } from '../types'
 
 const MODES   = ['REGULAR', 'BANKARA', 'XMATCH']
 const RULES   = ['ナワバリバトル', 'ガチエリア', 'ガチヤグラ', 'ガチホコバトル', 'ガチアサリ']
@@ -90,7 +91,7 @@ export function FilterBar({ filters, onChange }: Props) {
               key={m}
               className={`filter-btn${filters.mode === m ? ' active' : ''}`}
               onClick={() => toggle('mode', m)}
-            >{m}</button>
+            >{modeLabel(m)}</button>
           ))}
         </FilterGroup>
       </div>
