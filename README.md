@@ -31,10 +31,21 @@ Windows / macOS / Linux 対応（WSL 不要）。
 
 ## アプリ起動（開発）
 
+**初回セットアップ（nxapi-sidecar のビルドが必要）:**
+
 ```bash
+# nxapi-sidecar をビルド（初回のみ）
+cd tools/nxapi-wrapper
+npm install
+./build.sh mac-arm    # macOS Apple Silicon
+# ./build.sh mac-x64  # macOS Intel
+# build.bat           # Windows
+cd ../..
+
+# アプリ起動
 cd app
-npm install        # 初回のみ
-npx tauri dev      # アプリ起動（初回は Rust のコンパイルで数分かかります）
+npm install
+npx tauri dev      # 初回は Rust のコンパイルで数分かかります
 ```
 
 > **macOS の注意**: `tauri dev` では Nintendo ログインの deep-link（`npf71b963c1b7b6d119://`）が正常に処理されない場合があります。ログイン機能を含む動作確認は `npx tauri build` でビルドした `.app` を使ってください。
