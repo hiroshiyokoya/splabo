@@ -389,7 +389,8 @@ pub async fn db_battle_stats(
     let row = sqlx::query(
         "SELECT
             COUNT(*) as total,
-            SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws,
             COUNT(DISTINCT weapon) as weapon_count
          FROM battles
          WHERE (? IS NULL OR played_at >= ?)
@@ -409,12 +410,14 @@ pub async fn db_battle_stats(
     .await
     .map_err(|e| e.to_string())?;
 
-    let total: i64 = row.get("total");
-    let wins: i64  = row.get("wins");
+    let total: i64        = row.get("total");
+    let wins: i64         = row.get("wins");
+    let draws: i64        = row.get("draws");
     let weapon_count: i64 = row.get("weapon_count");
     Ok(serde_json::json!({
         "total": total,
         "wins": wins,
+        "draws": draws,
         "win_rate": if total > 0 { wins as f64 / total as f64 } else { 0.0 },
         "weapon_count": weapon_count,
     }))

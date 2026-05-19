@@ -157,7 +157,7 @@ export function Dashboard({ filters, aiChart }: Props) {
               value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '—'}
               valueColor={overallWinRate !== null ? winRateColor(overallWinRate) : undefined}
             />
-            <StatCard label="勝 / 敗 (引き分け)" value={`${totalWins} / ${totalLosses} (${totalDraws})`} small />
+            <StatCard label="Win / Lose (Draw)" value={`${totalWins} / ${totalLosses} (${totalDraws})`} small />
             <StatCard label="使用武器数" value={summary.by_weapon.length.toString()} />
           </div>
 
