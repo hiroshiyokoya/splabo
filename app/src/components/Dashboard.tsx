@@ -153,7 +153,7 @@ export function Dashboard({ filters, aiChart }: Props) {
             </ChartCard>
 
             <ChartCard title="ステージ別 勝率 & 試合数" sortBy={stageSort} onSortChange={setStageSort}>
-              <WinRateChart data={sorted(summary.by_stage.slice(0, 14), stageSort)} height={260} images={new Map()} nameTransform={stageAbbr} />
+              <WinRateChart data={sorted(summary.by_stage.slice(0, 14), stageSort)} height={260} images={new Map()} nameTransform={stageAbbr} tickAngle={30} />
             </ChartCard>
 
             <ChartCard title="ルール別 勝率 & 試合数" sortBy={ruleSort} onSortChange={setRuleSort}>
@@ -187,8 +187,9 @@ function ImageTick(props: {
   onHoverIndex: (i: number | null) => void
   hoverSize: number
   nameTransform?: (name: string) => string
+  tickAngle?: number
 }) {
-  const { x = 0, y = 0, payload, index, images, activeIndex, onHoverIndex, hoverSize, nameTransform } = props
+  const { x = 0, y = 0, payload, index, images, activeIndex, onHoverIndex, hoverSize, nameTransform, tickAngle } = props
   if (!payload) return null
   const isActive  = activeIndex === null || activeIndex === index
   const isHovered = activeIndex === index
@@ -215,15 +216,26 @@ function ImageTick(props: {
   }
   const raw = payload.value
   const label = nameTransform ? nameTransform(raw) : (raw.length > 6 ? raw.slice(0, 6) + '…' : raw)
+  const textProps = {
+    fill: 'var(--text)' as const,
+    fontSize: 10,
+    opacity: isActive ? 1 : 0.4,
+    fontWeight: isHovered ? 700 : 400,
+    onMouseEnter: () => onHoverIndex(index ?? null),
+    onMouseLeave: () => onHoverIndex(null),
+    style: { cursor: 'default' as const },
+  }
+  if (tickAngle) {
+    return (
+      <g transform={`translate(${x}, ${y + 4})`}>
+        <text {...textProps} transform={`rotate(${tickAngle})`} textAnchor="start">
+          {label}
+        </text>
+      </g>
+    )
+  }
   return (
-    <text
-      x={x} y={y + 10} textAnchor="middle" fill="var(--text)" fontSize={10}
-      opacity={isActive ? 1 : 0.4}
-      fontWeight={isHovered ? 700 : 400}
-      onMouseEnter={() => onHoverIndex(index ?? null)}
-      onMouseLeave={() => onHoverIndex(null)}
-      style={{ cursor: 'default' }}
-    >
+    <text {...textProps} x={x} y={y + 10} textAnchor="middle">
       {label}
     </text>
   )
@@ -233,16 +245,17 @@ function ImageTick(props: {
 // WinRateChart — activeIndex shared between tick icons and bars
 // ---------------------------------------------------------------------------
 
-function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform }: {
+function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform, tickAngle }: {
   data: SummaryEntry[]
   height: number
   images: Map<string, string>
   hoverImageSize?: number
   nameTransform?: (name: string) => string
+  tickAngle?: number
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const hasImages = data.some(d => images.has(d.name))
-  const tickHeight = hasImages ? 40 : 16
+  const tickHeight = hasImages ? 40 : tickAngle ? 36 : 16
   const tickStyle = { fontSize: 10, fill: 'var(--text)' }
 
   function cellOpacity(i: number) {
@@ -272,6 +285,7 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
               onHoverIndex={setActiveIndex}
               hoverSize={hoverImageSize}
               nameTransform={nameTransform}
+              tickAngle={tickAngle}
             />
           )}
           interval={0}
