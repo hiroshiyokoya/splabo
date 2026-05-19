@@ -435,9 +435,9 @@ pub async fn upsert_weapon(
         "INSERT INTO weapons (name, category, sub_weapon, special_weapon)
          VALUES (?, ?, ?, ?)
          ON CONFLICT(name) DO UPDATE SET
-             category       = excluded.category,
-             sub_weapon     = excluded.sub_weapon,
-             special_weapon = excluded.special_weapon",
+             category       = CASE WHEN excluded.category != '' THEN excluded.category ELSE weapons.category END,
+             sub_weapon     = COALESCE(excluded.sub_weapon, weapons.sub_weapon),
+             special_weapon = COALESCE(excluded.special_weapon, weapons.special_weapon)",
     )
     .bind(name)
     .bind(category)
@@ -447,6 +447,43 @@ pub async fn upsert_weapon(
     .await
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// battles テーブルの詳細データから weapons テーブルを構築する。
+/// WeaponRecordQuery が使えない場合の代替手段。
+pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, String> {
+    // detail_fetched=1 の行から sub/special を取得してアップサート
+    sqlx::query(
+        "INSERT INTO weapons (name, category, sub_weapon, special_weapon)
+         SELECT weapon, '', sub_weapon, special_weapon
+         FROM (
+             SELECT weapon, sub_weapon, special_weapon,
+                    ROW_NUMBER() OVER (PARTITION BY weapon ORDER BY played_at DESC) AS rn
+             FROM battles
+             WHERE detail_fetched = 1 AND weapon != ''
+         ) WHERE rn = 1
+         ON CONFLICT(name) DO UPDATE SET
+             sub_weapon     = COALESCE(excluded.sub_weapon, weapons.sub_weapon),
+             special_weapon = COALESCE(excluded.special_weapon, weapons.special_weapon)",
+    )
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // detail 未取得の武器も name だけ登録
+    sqlx::query(
+        "INSERT OR IGNORE INTO weapons (name, category, sub_weapon, special_weapon)
+         SELECT DISTINCT weapon, '', NULL, NULL FROM battles WHERE weapon != ''",
+    )
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let row = sqlx::query("SELECT COUNT(*) as cnt FROM weapons")
+        .fetch_one(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.get::<i64, _>("cnt") as usize)
 }
 
 #[tauri::command]

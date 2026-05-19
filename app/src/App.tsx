@@ -42,7 +42,6 @@ export default function App() {
         try {
           await invoke('handle_auth_redirect', { url })
           setLoginVersion(v => v + 1)
-          invoke('fetch_weapons').catch(console.error)
         } catch (e) {
           console.error('認証リダイレクト処理失敗:', e)
         }
