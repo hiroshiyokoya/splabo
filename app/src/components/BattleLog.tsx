@@ -149,7 +149,7 @@ export function BattleLog() {
               open={pickerOpen}
               onToggleOpen={() => setPickerOpen(v => !v)}
               onClose={() => setPickerOpen(false)}
-              onSelect={w => { toggle(w, filterWeapon, setFilterWeapon); setPickerOpen(false) }}
+              onSelect={w => { setOffset(0); setFilterWeapon(w); setPickerOpen(false) }}
             />
           </FilterGroup>
           {hasFilter && (
@@ -239,7 +239,7 @@ function WeaponPicker({
   open: boolean
   onToggleOpen: () => void
   onClose: () => void
-  onSelect: (w: string) => void
+  onSelect: (w: string | null) => void
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -264,6 +264,11 @@ function WeaponPicker({
       </button>
       {open && (
         <div className="weapon-picker-dropdown">
+          <button className={`weapon-picker-item${selected === null ? ' active' : ''}`} onClick={() => onSelect(null)}>
+            <span style={{ width: 24, display: 'inline-block' }} />
+            全武器
+          </button>
+          <div className="weapon-picker-divider" />
           {weaponList.map(w => (
             <button key={w} className={`weapon-picker-item${selected === w ? ' active' : ''}`} onClick={() => onSelect(w)}>
               {weaponImages.get(w) && <img src={weaponImages.get(w)} alt="" className="weapon-icon" />}

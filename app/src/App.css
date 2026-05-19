@@ -295,6 +295,7 @@ body {
 }
 .weapon-picker-item:hover { background: var(--surface2); }
 .weapon-picker-item.active { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+.weapon-picker-divider { height: 1px; background: var(--border); margin: 4px 0; }
 
 /* ── Sortable Headers ── */
 .sortable-th {
