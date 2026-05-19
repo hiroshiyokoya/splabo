@@ -102,6 +102,28 @@ body {
   font-size: 12px;
 }
 
+/* ── Period Filter ── */
+.period-filter {
+  display: flex;
+  gap: 4px;
+}
+.period-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.period-btn:hover { color: var(--text); }
+.period-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
 /* ── Stat Cards ── */
 .stat-cards {
   display: grid;
