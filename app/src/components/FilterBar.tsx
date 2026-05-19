@@ -91,6 +91,8 @@ export function FilterBar({ filters, onChange }: Props) {
             </span>
           )}
         </FilterGroup>
+      </div>
+      <div className="filter-row">
         <FilterGroup label="モード">
           {MODES.map(m => (
             <button
@@ -100,8 +102,6 @@ export function FilterBar({ filters, onChange }: Props) {
             >{modeLabel(m)}</button>
           ))}
         </FilterGroup>
-      </div>
-      <div className="filter-row">
         <FilterGroup label="ルール">
           {RULES.map(r => (
             <button
@@ -109,15 +109,6 @@ export function FilterBar({ filters, onChange }: Props) {
               className={`filter-btn${filters.rule === r ? ' active' : ''}`}
               onClick={() => toggle('rule', r)}
             >{r}</button>
-          ))}
-        </FilterGroup>
-        <FilterGroup label="結果">
-          {RESULTS.map(r => (
-            <button
-              key={r}
-              className={`filter-btn result-btn-${r.toLowerCase()}${filters.result === r ? ' active' : ''}`}
-              onClick={() => toggle('result', r)}
-            >{resultLabel(r)}</button>
           ))}
         </FilterGroup>
       </div>
@@ -161,6 +152,15 @@ export function FilterBar({ filters, onChange }: Props) {
             }}
             onClear={() => patch('stage', [])}
           />
+        </FilterGroup>
+        <FilterGroup label="結果">
+          {RESULTS.map(r => (
+            <button
+              key={r}
+              className={`filter-btn result-btn-${r.toLowerCase()}${filters.result === r ? ' active' : ''}`}
+              onClick={() => toggle('result', r)}
+            >{resultLabel(r)}</button>
+          ))}
         </FilterGroup>
         {hasFilter && (
           <button className="filter-reset-btn" onClick={reset}>✕ リセット</button>
