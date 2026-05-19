@@ -530,12 +530,14 @@ pub async fn fetch_and_store_weapons(
         .pointer("/data/playHistory/weaponHistory/nodes")
         .and_then(|v| v.as_array())
         .ok_or_else(|| {
-            // デバッグ用: レスポンスのトップレベルキーを出力
-            let data_keys = resp.pointer("/data")
+            let ph_keys = resp.pointer("/data/playHistory")
                 .and_then(|d| d.as_object())
                 .map(|o| o.keys().cloned().collect::<Vec<_>>().join(", "))
-                .unwrap_or_else(|| format!("data なし: {}", &resp.to_string()[..200.min(resp.to_string().len())]));
-            format!("playHistory.weaponHistory.nodes が見つかりません (data のキー: {data_keys})")
+                .unwrap_or_else(|| "playHistory なし".to_string());
+            let wh_val = resp.pointer("/data/playHistory/weaponHistory")
+                .map(|v| v.to_string()[..v.to_string().len().min(120)].to_string())
+                .unwrap_or_else(|| "weaponHistory なし".to_string());
+            format!("playHistory のキー: [{ph_keys}] / weaponHistory: {wh_val}")
         })?;
 
     let mut seen = std::collections::HashSet::new();
