@@ -2,11 +2,17 @@ import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import {
   BarChart, Bar, LineChart, Line, ScatterChart, Scatter,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
-import type { Summary, ChartSpec } from '../types'
+import type { Summary, SummaryEntry, ChartSpec } from '../types'
 
-const WIN_COLOR = '#7c3aed'
+const COLOR_TOTAL = '#374151'
+
+function winRateColor(rate: number): string {
+  if (rate >= 0.55) return '#22c55e'
+  if (rate >= 0.45) return '#f59e0b'
+  return '#ef4444'
+}
 
 interface Props {
   aiChart: ChartSpec | null
@@ -43,6 +49,10 @@ export function Dashboard({ aiChart }: Props) {
     }
   }
 
+  const totalBattles = summary?.by_mode.reduce((s, e) => s + e.total, 0) ?? 0
+  const totalWins = summary?.by_mode.reduce((s, e) => s + e.wins, 0) ?? 0
+  const overallWinRate = totalBattles > 0 ? totalWins / totalBattles : null
+
   return (
     <div className="dashboard">
       <div className="dashboard-header">
@@ -64,73 +74,87 @@ export function Dashboard({ aiChart }: Props) {
       ) : !summary ? (
         <div className="empty">データがありません</div>
       ) : (
-        <div className="chart-grid">
-          <ChartCard title="武器別 勝率 & 試合数">
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={summary.by_weapon.slice(0, 12)}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                <YAxis yAxisId="left" tickFormatter={(v) => `${(v * 100).toFixed(0)}%`} domain={[0, 1]} />
-                <YAxis yAxisId="right" orientation="right" />
-                <Tooltip
-                  formatter={(value, name) =>
-                    name === 'win_rate'
-                      ? [`${(Number(value) * 100).toFixed(1)}%`, '勝率']
-                      : [value, '試合数']
-                  }
-                />
-                <Bar yAxisId="left" dataKey="win_rate" fill={WIN_COLOR} name="win_rate" />
-                <Bar yAxisId="right" dataKey="total" fill="#4b5563" name="total" />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
+        <>
+          <div className="stat-cards">
+            <StatCard label="総試合数" value={totalBattles.toLocaleString()} />
+            <StatCard
+              label="全体勝率"
+              value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '—'}
+              valueColor={overallWinRate !== null ? winRateColor(overallWinRate) : undefined}
+            />
+            <StatCard label="勝利数" value={totalWins.toLocaleString()} />
+            <StatCard label="使用武器数" value={summary.by_weapon.length.toString()} />
+          </div>
 
-          <ChartCard title="モード別 勝率">
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={summary.by_mode} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis type="number" tickFormatter={(v) => `${(v * 100).toFixed(0)}%`} domain={[0, 1]} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={80} />
-                <Tooltip formatter={(v) => [`${(Number(v) * 100).toFixed(1)}%`, '勝率']} />
-                <Bar dataKey="win_rate" fill={WIN_COLOR}>
-                  {summary.by_mode.map((_, i) => <Cell key={i} fill={WIN_COLOR} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          <ChartCard title="ステージ別 勝率 & 試合数">
-            <ResponsiveContainer width="100%" height={240}>
-              <ScatterChart>
-                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="total" name="試合数" />
-                <YAxis dataKey="win_rate" name="勝率" tickFormatter={(v) => `${(v * 100).toFixed(0)}%`} domain={[0, 1]} />
-                <Tooltip
-                  cursor={{ strokeDasharray: '3 3' }}
-                  content={({ payload }) => {
-                    if (!payload?.length) return null
-                    const d = payload[0].payload
-                    return (
-                      <div className="tooltip-box">
-                        <div>{d.name}</div>
-                        <div>試合数: {d.total}</div>
-                        <div>勝率: {(d.win_rate * 100).toFixed(1)}%</div>
-                      </div>
-                    )
-                  }}
-                />
-                <Scatter data={summary.by_stage} fill={WIN_COLOR} />
-              </ScatterChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          {aiChart && (
-            <ChartCard title={aiChart.title}>
-              <AiChartRenderer spec={aiChart} />
+          <div className="chart-grid">
+            <ChartCard title="武器別 勝率 & 試合数">
+              <WinRateChart data={summary.by_weapon.slice(0, 14)} height={260} />
             </ChartCard>
-          )}
-        </div>
+
+            <ChartCard title="ステージ別 勝率 & 試合数">
+              <WinRateChart data={summary.by_stage.slice(0, 14)} height={260} />
+            </ChartCard>
+
+            <ChartCard title="モード別 勝率 & 試合数">
+              <WinRateChart data={summary.by_mode} height={180} />
+            </ChartCard>
+
+            {aiChart && (
+              <ChartCard title={aiChart.title}>
+                <AiChartRenderer spec={aiChart} />
+              </ChartCard>
+            )}
+          </div>
+        </>
       )}
+    </div>
+  )
+}
+
+function WinRateChart({ data, height }: { data: SummaryEntry[]; height: number }) {
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#2e2e40" vertical={false} />
+        <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} />
+        <YAxis
+          yAxisId="left"
+          tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
+          domain={[0, 1]}
+          tick={{ fontSize: 10 }}
+          width={36}
+        />
+        <YAxis
+          yAxisId="right"
+          orientation="right"
+          tick={{ fontSize: 10 }}
+          width={32}
+        />
+        <ReferenceLine yAxisId="left" y={0.5} stroke="#4b5563" strokeDasharray="4 4" />
+        <Tooltip
+          contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}
+          formatter={(value, name) =>
+            name === 'win_rate'
+              ? [`${(Number(value) * 100).toFixed(1)}%`, '勝率']
+              : [value, '試合数']
+          }
+        />
+        <Bar yAxisId="left" dataKey="win_rate" name="win_rate" maxBarSize={32}>
+          {data.map((entry, i) => (
+            <Cell key={i} fill={winRateColor(entry.win_rate)} />
+          ))}
+        </Bar>
+        <Bar yAxisId="right" dataKey="total" fill={COLOR_TOTAL} name="total" maxBarSize={32} />
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
+function StatCard({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
+  return (
+    <div className="stat-card">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value" style={valueColor ? { color: valueColor } : undefined}>{value}</div>
     </div>
   )
 }
@@ -150,27 +174,27 @@ function AiChartRenderer({ spec }: { spec: ChartSpec }) {
     <ResponsiveContainer width="100%" height={240}>
       {chartType === 'bar' ? (
         <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#2e2e40" />
           <XAxis dataKey={xKey} />
           <YAxis />
           <Tooltip />
-          <Bar dataKey={yKey} fill={WIN_COLOR} />
+          <Bar dataKey={yKey} fill="#7c3aed" />
         </BarChart>
       ) : chartType === 'line' ? (
         <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#2e2e40" />
           <XAxis dataKey={xKey} />
           <YAxis />
           <Tooltip />
-          <Line dataKey={yKey} stroke={WIN_COLOR} dot={false} />
+          <Line dataKey={yKey} stroke="#7c3aed" dot={false} />
         </LineChart>
       ) : (
         <ScatterChart>
-          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#2e2e40" />
           <XAxis dataKey={xKey} />
           <YAxis dataKey={yKey} />
           <Tooltip />
-          <Scatter data={data} fill={WIN_COLOR} />
+          <Scatter data={data} fill="#7c3aed" />
         </ScatterChart>
       )}
     </ResponsiveContainer>
