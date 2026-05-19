@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { Filters, Period } from '../types'
-import { modeLabel, resultLabel } from '../types'
+import { modeLabel, resultLabel, stageAbbr } from '../types'
 
 const MODES   = ['REGULAR', 'BANKARA', 'XMATCH']
 const RULES   = ['ナワバリバトル', 'ガチエリア', 'ガチヤグラ', 'ガチホコバトル', 'ガチアサリ']
@@ -19,9 +19,11 @@ interface Props {
 }
 
 export function FilterBar({ filters, onChange }: Props) {
-  const [weaponList,   setWeaponList]   = useState<string[]>([])
-  const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
-  const [pickerOpen,   setPickerOpen]   = useState(false)
+  const [weaponList,        setWeaponList]        = useState<string[]>([])
+  const [weaponImages,      setWeaponImages]      = useState<Map<string, string>>(new Map())
+  const [pickerOpen,        setPickerOpen]        = useState(false)
+  const [stageList,         setStageList]         = useState<string[]>([])
+  const [stagePickerOpen,   setStagePickerOpen]   = useState(false)
 
   useEffect(() => {
     invoke<string[]>('db_weapons_used').then(weapons => {
@@ -36,6 +38,7 @@ export function FilterBar({ filters, onChange }: Props) {
         setWeaponImages(new Map(results.filter((r): r is [string, string] => r !== null)))
       })
     })
+    invoke<string[]>('db_stages_used').then(setStageList).catch(() => {})
   }, [])
 
   function patch<K extends keyof Filters>(key: K, val: Filters[K]) {
@@ -47,13 +50,14 @@ export function FilterBar({ filters, onChange }: Props) {
   }
 
   function reset() {
-    onChange({ period: 'all', mode: null, rule: null, result: null, weapon: null, customFrom: null, customTo: null })
+    onChange({ period: 'all', mode: null, rule: null, result: null, weapon: null, stage: null, customFrom: null, customTo: null })
     setPickerOpen(false)
+    setStagePickerOpen(false)
   }
 
   const hasFilter = !!(
     filters.period !== 'all' ||
-    filters.mode || filters.rule || filters.result || filters.weapon
+    filters.mode || filters.rule || filters.result || filters.weapon || filters.stage
   )
 
   return (
@@ -125,6 +129,16 @@ export function FilterBar({ filters, onChange }: Props) {
             onSelect={w => { patch('weapon', w); setPickerOpen(false) }}
           />
         </FilterGroup>
+        <FilterGroup label="ステージ">
+          <StagePicker
+            stageList={stageList}
+            selected={filters.stage}
+            open={stagePickerOpen}
+            onToggleOpen={() => setStagePickerOpen(v => !v)}
+            onClose={() => setStagePickerOpen(false)}
+            onSelect={s => { patch('stage', s); setStagePickerOpen(false) }}
+          />
+        </FilterGroup>
         {hasFilter && (
           <button className="filter-reset-btn" onClick={reset}>✕ リセット</button>
         )}
@@ -138,6 +152,52 @@ function FilterGroup({ label, children }: { label: string; children: React.React
     <div className="filter-group">
       <span className="filter-group-label">{label}</span>
       {children}
+    </div>
+  )
+}
+
+function StagePicker({
+  stageList, selected, open, onToggleOpen, onClose, onSelect,
+}: {
+  stageList: string[]
+  selected: string | null
+  open: boolean
+  onToggleOpen: () => void
+  onClose: () => void
+  onSelect: (s: string | null) => void
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handler(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open, onClose])
+
+  return (
+    <div className="weapon-picker-wrap" ref={wrapRef}>
+      <button className={`filter-btn weapon-trigger${selected ? ' active' : ''}`} onClick={onToggleOpen}>
+        {selected ? stageAbbr(selected) : '全ステージ ▼'}
+      </button>
+      {open && (
+        <div className="weapon-picker-dropdown">
+          <button
+            className={`weapon-picker-item${selected === null ? ' active' : ''}`}
+            onClick={() => onSelect(null)}
+          >全ステージ</button>
+          <div className="weapon-picker-divider" />
+          {stageList.map(s => (
+            <button
+              key={s}
+              className={`weapon-picker-item${selected === s ? ' active' : ''}`}
+              onClick={() => onSelect(s)}
+            >{stageAbbr(s)}</button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

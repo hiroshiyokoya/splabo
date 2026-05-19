@@ -39,6 +39,7 @@ pub fn run() {
             db::db_battle_count,
             db::db_list_battles,
             db::db_weapons_used,
+            db::db_stages_used,
             db::db_summary,
             db::db_list_weapons,
             db::backfill_battle_players,

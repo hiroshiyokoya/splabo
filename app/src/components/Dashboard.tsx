@@ -47,6 +47,7 @@ export function Dashboard({ filters, aiChart }: Props) {
       rule: filters.rule,
       resultFilter: filters.result,
       weapon: filters.weapon,
+      stage: filters.stage,
     })
       .then(setSummary)
       .catch(console.error)

@@ -119,6 +119,7 @@ export function BattleLog({ filters }: Props) {
       rule: filters.rule,
       resultFilter: filters.result,
       weapon: filters.weapon,
+      stage: filters.stage,
     }
     Promise.all([
       invoke<BattleRow[]>('db_list_battles', { limit: PAGE_SIZE, offset, ...filterArgs, orderBy, orderAsc }),

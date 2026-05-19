@@ -385,6 +385,7 @@ pub async fn db_battle_stats(
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
     weapon: Option<String>,
+    stage: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let row = sqlx::query(
         "SELECT
@@ -398,7 +399,8 @@ pub async fn db_battle_stats(
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR weapon = ?)",
+           AND (? IS NULL OR weapon = ?)
+           AND (? IS NULL OR stage = ?)",
     )
     .bind(&since).bind(&since)
     .bind(&until).bind(&until)
@@ -406,6 +408,7 @@ pub async fn db_battle_stats(
     .bind(&rule).bind(&rule)
     .bind(&result_filter).bind(&result_filter)
     .bind(&weapon).bind(&weapon)
+    .bind(&stage).bind(&stage)
     .fetch_one(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;
@@ -432,6 +435,7 @@ pub async fn db_battle_count(
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
     weapon: Option<String>,
+    stage: Option<String>,
 ) -> Result<i64, String> {
     let row = sqlx::query(
         "SELECT COUNT(*) as cnt FROM battles
@@ -440,7 +444,8 @@ pub async fn db_battle_count(
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR weapon = ?)",
+           AND (? IS NULL OR weapon = ?)
+           AND (? IS NULL OR stage = ?)",
     )
     .bind(&since).bind(&since)
     .bind(&until).bind(&until)
@@ -448,6 +453,7 @@ pub async fn db_battle_count(
     .bind(&rule).bind(&rule)
     .bind(&result_filter).bind(&result_filter)
     .bind(&weapon).bind(&weapon)
+    .bind(&stage).bind(&stage)
     .fetch_one(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;
@@ -465,6 +471,7 @@ pub async fn db_list_battles(
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
     weapon: Option<String>,
+    stage: Option<String>,
     order_by: Option<String>,       // JS: orderBy
     order_asc: Option<bool>,        // JS: orderAsc
 ) -> Result<Vec<BattleRow>, String> {
@@ -488,6 +495,7 @@ pub async fn db_list_battles(
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR weapon = ?)
+           AND (? IS NULL OR stage = ?)
          ORDER BY {order_col} {order_dir} LIMIT ? OFFSET ?"
     );
     let rows = sqlx::query_as::<_, BattleRow>(&sql)
@@ -497,12 +505,25 @@ pub async fn db_list_battles(
         .bind(&rule).bind(&rule)
         .bind(&result_filter).bind(&result_filter)
         .bind(&weapon).bind(&weapon)
+        .bind(&stage).bind(&stage)
         .bind(limit)
         .bind(offset)
         .fetch_all(db.as_ref())
         .await
         .map_err(|e| e.to_string())?;
     Ok(rows)
+}
+
+/// 使用済みステージの一覧を試合数の多い順で返す。
+#[tauri::command]
+pub async fn db_stages_used(db: tauri::State<'_, DbPool>) -> Result<Vec<String>, String> {
+    let rows = sqlx::query(
+        "SELECT stage FROM battles GROUP BY stage ORDER BY COUNT(*) DESC",
+    )
+    .fetch_all(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|r| r.get::<String, _>("stage")).collect())
 }
 
 /// 使用済み武器の一覧を試合数の多い順で返す。
@@ -526,6 +547,7 @@ pub async fn db_summary(
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
     weapon: Option<String>,
+    stage: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let filter_where =
         "(? IS NULL OR played_at >= ?)
@@ -533,7 +555,8 @@ pub async fn db_summary(
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR weapon = ?)";
+           AND (? IS NULL OR weapon = ?)
+           AND (? IS NULL OR stage = ?)";
 
     macro_rules! bind_filters {
         ($q:expr) => {
@@ -543,6 +566,7 @@ pub async fn db_summary(
               .bind(&rule).bind(&rule)
               .bind(&result_filter).bind(&result_filter)
               .bind(&weapon).bind(&weapon)
+              .bind(&stage).bind(&stage)
         };
     }
 
