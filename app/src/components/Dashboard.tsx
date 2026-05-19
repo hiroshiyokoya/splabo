@@ -7,8 +7,9 @@ import {
 import type { Summary, SummaryEntry, ChartSpec, Filters } from '../types'
 import { filtersToRange, stageAbbr, modeLabel } from '../types'
 
-const COLOR_TOTAL       = '#a8c0d0'
-const COLOR_TOTAL_HOVER = '#cde0ec'
+const COLOR_WIN  = '#22c55e'
+const COLOR_LOSE = '#ef4444'
+const COLOR_DRAW = '#9ca3af'
 
 function winRateColor(rate: number): string {
   if (rate >= 0.55) return '#22c55e'
@@ -258,19 +259,16 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
   const tickHeight = hasImages ? 40 : tickAngle ? 36 : 16
   const tickStyle = { fontSize: 10, fill: 'var(--text)' }
 
+  const chartData = data.map(d => ({ ...d, losses: d.total - d.wins - d.draws }))
+
   function cellOpacity(i: number) {
     return activeIndex === null || activeIndex === i ? 1 : 0.35
-  }
-
-  function totalCellFill(i: number) {
-    if (activeIndex === i) return COLOR_TOTAL_HOVER
-    return COLOR_TOTAL
   }
 
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart
-        data={data}
+        data={chartData}
         margin={{ top: 4, right: 8, left: 0, bottom: hasImages ? 8 : 4 }}
         onMouseLeave={() => setActiveIndex(null)}
       >
@@ -311,23 +309,33 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, padding: '6px 10px' }}>
                 <div style={{ color: 'var(--text)', fontWeight: 700, marginBottom: 4 }}>{displayLabel}</div>
                 <div style={{ color: 'var(--text)' }}>試合数: {entry.total}</div>
-                <div style={{ color: 'var(--text)' }}>勝ち数: {entry.wins}</div>
+                <div style={{ color: COLOR_WIN }}>勝ち: {entry.wins}</div>
+                <div style={{ color: COLOR_LOSE }}>負け: {entry.total - entry.wins - entry.draws}</div>
+                {entry.draws > 0 && <div style={{ color: COLOR_DRAW }}>引き分け: {entry.draws}</div>}
                 <div style={{ color: 'var(--text)' }}>勝率: {(entry.win_rate * 100).toFixed(1)}%</div>
               </div>
             )
           }}
         />
-        <Bar yAxisId="left" dataKey="total" name="total" maxBarSize={32} activeBar={false}
+        <Bar yAxisId="left" dataKey="wins" stackId="s" maxBarSize={32} activeBar={false}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
         >
-          {data.map((_, i) => (
-            <Cell key={i} fill={totalCellFill(i)} fillOpacity={cellOpacity(i)} />
-          ))}
+          {chartData.map((_, i) => <Cell key={i} fill={COLOR_WIN} fillOpacity={cellOpacity(i)} />)}
+        </Bar>
+        <Bar yAxisId="left" dataKey="losses" stackId="s" maxBarSize={32} activeBar={false}
+          onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
+        >
+          {chartData.map((_, i) => <Cell key={i} fill={COLOR_LOSE} fillOpacity={cellOpacity(i)} />)}
+        </Bar>
+        <Bar yAxisId="left" dataKey="draws" stackId="s" maxBarSize={32} activeBar={false}
+          onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
+        >
+          {chartData.map((_, i) => <Cell key={i} fill={COLOR_DRAW} fillOpacity={cellOpacity(i)} />)}
         </Bar>
         <Bar yAxisId="right" dataKey="win_rate" name="win_rate" maxBarSize={32} activeBar={false}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
         >
-          {data.map((entry, i) => (
+          {chartData.map((entry, i) => (
             <Cell key={i} fill={winRateColor(entry.win_rate)} fillOpacity={cellOpacity(i)} />
           ))}
         </Bar>
