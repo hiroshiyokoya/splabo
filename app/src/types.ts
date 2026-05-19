@@ -32,6 +32,7 @@ export interface Summary {
   by_weapon: SummaryEntry[]
   by_mode: SummaryEntry[]
   by_stage: SummaryEntry[]
+  by_rule: SummaryEntry[]
 }
 
 export interface AiSettings {

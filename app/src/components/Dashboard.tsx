@@ -128,6 +128,10 @@ export function Dashboard({ aiChart }: Props) {
               <WinRateChart data={summary.by_mode} height={180} />
             </ChartCard>
 
+            <ChartCard title="ルール別 勝率 & 試合数">
+              <WinRateChart data={summary.by_rule} height={220} />
+            </ChartCard>
+
             {aiChart && (
               <ChartCard title={aiChart.title}>
                 <AiChartRenderer spec={aiChart} />
