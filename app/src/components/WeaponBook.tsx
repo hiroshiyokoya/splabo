@@ -189,24 +189,14 @@ function WeaponCard({ weapon, image, subImage, spImage }: {
           ? <img src={image} alt={weapon.name} className="weapon-card-icon" />
           : <div className="weapon-card-icon weapon-card-icon--placeholder" />
         }
+        {spImage && (
+          <img src={spImage} alt={weapon.special_weapon ?? ''} className="weapon-card-overlay weapon-card-overlay--sp" title={weapon.special_weapon ?? ''} />
+        )}
+        {subImage && (
+          <img src={subImage} alt={weapon.sub_weapon ?? ''} className="weapon-card-overlay weapon-card-overlay--sub" title={weapon.sub_weapon ?? ''} />
+        )}
       </div>
       <div className="weapon-card-name" title={weapon.name}>{weapon.name}</div>
-      <div className="weapon-card-sub-sp">
-        {weapon.sub_weapon && (
-          <span className="weapon-card-sub" title={weapon.sub_weapon}>
-            {subImage
-              ? <img src={subImage} alt={weapon.sub_weapon} className="weapon-card-sub-icon" />
-              : weapon.sub_weapon}
-          </span>
-        )}
-        {weapon.special_weapon && (
-          <span className="weapon-card-sp" title={weapon.special_weapon}>
-            {spImage
-              ? <img src={spImage} alt={weapon.special_weapon} className="weapon-card-sub-icon" />
-              : weapon.special_weapon}
-          </span>
-        )}
-      </div>
       {weapon.total > 0 ? (
         <div className="weapon-card-stats">
           <span className="weapon-card-stat">{weapon.total}試合</span>

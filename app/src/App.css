@@ -582,6 +582,7 @@ body {
 .weapon-card:hover { border-color: var(--text-muted); }
 
 .weapon-card-icon-wrap {
+  position: relative;
   width: 52px;
   height: 52px;
   display: flex;
@@ -630,11 +631,14 @@ body {
   align-items: center;
   justify-content: center;
 }
-.weapon-card-sub-icon {
-  width: 20px;
-  height: 20px;
+.weapon-card-overlay {
+  position: absolute;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
 }
+.weapon-card-overlay--sp  { top: 0;    right: 0; }
+.weapon-card-overlay--sub { bottom: 0; right: 0; }
 .weapon-card-stats {
   display: flex;
   gap: 8px;
