@@ -193,11 +193,65 @@ pub async fn update_battle_detail(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub async fn db_battle_count(db: tauri::State<'_, DbPool>) -> Result<i64, String> {
-    let row = sqlx::query("SELECT COUNT(*) as cnt FROM battles")
-        .fetch_one(db.as_ref())
-        .await
-        .map_err(|e| e.to_string())?;
+pub async fn db_battle_stats(
+    db: tauri::State<'_, DbPool>,
+    mode: Option<String>,
+    rule: Option<String>,
+    result_filter: Option<String>,  // JS: resultFilter
+    weapon: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let row = sqlx::query(
+        "SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins,
+            COUNT(DISTINCT weapon) as weapon_count
+         FROM battles
+         WHERE (? IS NULL OR mode = ?)
+           AND (? IS NULL OR rule = ?)
+           AND (? IS NULL OR result = ?)
+           AND (? IS NULL OR weapon = ?)",
+    )
+    .bind(&mode).bind(&mode)
+    .bind(&rule).bind(&rule)
+    .bind(&result_filter).bind(&result_filter)
+    .bind(&weapon).bind(&weapon)
+    .fetch_one(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let total: i64 = row.get("total");
+    let wins: i64  = row.get("wins");
+    let weapon_count: i64 = row.get("weapon_count");
+    Ok(serde_json::json!({
+        "total": total,
+        "wins": wins,
+        "win_rate": if total > 0 { wins as f64 / total as f64 } else { 0.0 },
+        "weapon_count": weapon_count,
+    }))
+}
+
+#[tauri::command]
+pub async fn db_battle_count(
+    db: tauri::State<'_, DbPool>,
+    mode: Option<String>,
+    rule: Option<String>,
+    result_filter: Option<String>,  // JS: resultFilter
+    weapon: Option<String>,
+) -> Result<i64, String> {
+    let row = sqlx::query(
+        "SELECT COUNT(*) as cnt FROM battles
+         WHERE (? IS NULL OR mode = ?)
+           AND (? IS NULL OR rule = ?)
+           AND (? IS NULL OR result = ?)
+           AND (? IS NULL OR weapon = ?)",
+    )
+    .bind(&mode).bind(&mode)
+    .bind(&rule).bind(&rule)
+    .bind(&result_filter).bind(&result_filter)
+    .bind(&weapon).bind(&weapon)
+    .fetch_one(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(row.get::<i64, _>("cnt"))
 }
 
@@ -206,20 +260,55 @@ pub async fn db_list_battles(
     db: tauri::State<'_, DbPool>,
     limit: i64,
     offset: i64,
+    mode: Option<String>,
+    rule: Option<String>,
+    result_filter: Option<String>,  // JS: resultFilter
+    weapon: Option<String>,
+    order_by: Option<String>,       // JS: orderBy
+    order_asc: Option<bool>,        // JS: orderAsc
 ) -> Result<Vec<BattleRow>, String> {
-    let rows = sqlx::query_as::<_, BattleRow>(
+    let order_col = match order_by.as_deref() {
+        Some("kill")  => "kill",
+        Some("death") => "death",
+        Some("inked") => "inked",
+        _             => "played_at",
+    };
+    let order_dir = if order_asc.unwrap_or(false) { "ASC" } else { "DESC" };
+    let sql = format!(
         "SELECT id, played_at, mode, rule, stage, weapon, result,
                 kill, death, assist, special, inked, duration,
                 rank_before, rank_after, x_power, raw_json, fetched_at,
                 knockout, sub_weapon, special_weapon, awards, my_team, other_teams
-         FROM battles ORDER BY played_at DESC LIMIT ? OFFSET ?",
+         FROM battles
+         WHERE (? IS NULL OR mode = ?)
+           AND (? IS NULL OR rule = ?)
+           AND (? IS NULL OR result = ?)
+           AND (? IS NULL OR weapon = ?)
+         ORDER BY {order_col} {order_dir} LIMIT ? OFFSET ?"
+    );
+    let rows = sqlx::query_as::<_, BattleRow>(&sql)
+        .bind(&mode).bind(&mode)
+        .bind(&rule).bind(&rule)
+        .bind(&result_filter).bind(&result_filter)
+        .bind(&weapon).bind(&weapon)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(db.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+/// 使用済み武器の一覧を試合数の多い順で返す。
+#[tauri::command]
+pub async fn db_weapons_used(db: tauri::State<'_, DbPool>) -> Result<Vec<String>, String> {
+    let rows = sqlx::query(
+        "SELECT weapon FROM battles GROUP BY weapon ORDER BY COUNT(*) DESC",
     )
-    .bind(limit)
-    .bind(offset)
     .fetch_all(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;
-    Ok(rows)
+    Ok(rows.into_iter().map(|r| r.get::<String, _>("weapon")).collect())
 }
 
 #[tauri::command]

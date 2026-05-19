@@ -35,8 +35,10 @@ pub fn run() {
             auth::handle_auth_redirect,
             auth::check_auth_status,
             auth::logout,
+            db::db_battle_stats,
             db::db_battle_count,
             db::db_list_battles,
+            db::db_weapons_used,
             db::db_summary,
             images::read_image,
             fetch_battles,
@@ -124,7 +126,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &quit])?;
 
-    TrayIconBuilder::new()
+    TrayIconBuilder::with_id("main")
         .icon(app.default_window_icon().unwrap().clone())
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
