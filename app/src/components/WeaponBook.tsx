@@ -9,10 +9,12 @@ function winRateColor(rate: number): string {
 }
 
 export function WeaponBook() {
-  const [weapons,      setWeapons]      = useState<WeaponRecord[]>([])
-  const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
-  const [loading,      setLoading]      = useState(true)
-  const [category,     setCategory]     = useState<string | null>(null)
+  const [weapons,        setWeapons]        = useState<WeaponRecord[]>([])
+  const [weaponImages,   setWeaponImages]   = useState<Map<string, string>>(new Map())
+  const [loading,        setLoading]        = useState(true)
+  const [category,       setCategory]       = useState<string | null>(null)
+  const [subWeapon,      setSubWeapon]      = useState<string | null>(null)
+  const [specialWeapon,  setSpecialWeapon]  = useState<string | null>(null)
 
   useEffect(() => {
     invoke<WeaponRecord[]>('db_list_weapons')
@@ -32,14 +34,32 @@ export function WeaponBook() {
       .finally(() => setLoading(false))
   }, [])
 
-  const categories = [...new Set(weapons.map(w => w.category))].filter(Boolean)
-  const filtered   = category ? weapons.filter(w => w.category === category) : weapons
+  const categories     = [...new Set(weapons.map(w => w.category))].filter(Boolean).sort()
+  const subWeapons     = [...new Set(weapons.map(w => w.sub_weapon).filter((s): s is string => !!s))].sort()
+  const specialWeapons = [...new Set(weapons.map(w => w.special_weapon).filter((s): s is string => !!s))].sort()
+
+  const filtered = weapons.filter(w =>
+    (!category      || w.category       === category) &&
+    (!subWeapon     || w.sub_weapon     === subWeapon) &&
+    (!specialWeapon || w.special_weapon === specialWeapon)
+  )
+
+  const hasFilter = !!(category || subWeapon || specialWeapon)
+
+  function reset() {
+    setCategory(null)
+    setSubWeapon(null)
+    setSpecialWeapon(null)
+  }
 
   return (
     <div className="weapon-book">
       <div className="weapon-book-header">
         <h2>武器図鑑</h2>
         <span className="total-count">{filtered.length} 種</span>
+        {hasFilter && (
+          <button className="filter-reset-btn" onClick={reset} style={{ marginLeft: 8 }}>✕ リセット</button>
+        )}
       </div>
 
       <div className="category-tabs">
@@ -51,10 +71,40 @@ export function WeaponBook() {
           <button
             key={c}
             className={`category-tab${category === c ? ' active' : ''}`}
-            onClick={() => setCategory(c)}
+            onClick={() => setCategory(prev => prev === c ? null : c)}
           >{c}</button>
         ))}
       </div>
+
+      {subWeapons.length > 0 && (
+        <div className="weapon-filter-row">
+          <span className="weapon-filter-label">サブ</span>
+          <div className="weapon-filter-btns">
+            {subWeapons.map(s => (
+              <button
+                key={s}
+                className={`filter-btn${subWeapon === s ? ' active' : ''}`}
+                onClick={() => setSubWeapon(prev => prev === s ? null : s)}
+              >{s}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {specialWeapons.length > 0 && (
+        <div className="weapon-filter-row">
+          <span className="weapon-filter-label">SP</span>
+          <div className="weapon-filter-btns">
+            {specialWeapons.map(s => (
+              <button
+                key={s}
+                className={`filter-btn${specialWeapon === s ? ' active' : ''}`}
+                onClick={() => setSpecialWeapon(prev => prev === s ? null : s)}
+              >{s}</button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="loading">読み込み中...</div>
@@ -63,6 +113,8 @@ export function WeaponBook() {
           武器データがありません。<br />
           設定 › マスターデータ › 「武器データを更新」を実行してください。
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="empty">条件に一致する武器がありません。</div>
       ) : (
         <div className="weapon-grid">
           {filtered.map(w => (

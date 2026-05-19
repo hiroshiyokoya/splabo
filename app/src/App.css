@@ -541,6 +541,26 @@ body {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.weapon-filter-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.weapon-filter-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 28px;
+  padding-top: 4px;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.weapon-filter-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 .weapon-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
