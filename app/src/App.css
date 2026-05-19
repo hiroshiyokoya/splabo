@@ -96,6 +96,7 @@ body {
   border-radius: 8px;
   padding: 16px;
 }
+.chart-card svg { overflow: visible; }
 .chart-card-header {
   display: flex;
   align-items: center;
@@ -178,6 +179,7 @@ body {
   color: var(--text);
   line-height: 1;
 }
+.stat-value--small { font-size: 15px; }
 
 /* ── Battle Log ── */
 .battle-log { max-width: 1100px; }

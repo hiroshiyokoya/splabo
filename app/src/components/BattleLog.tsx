@@ -52,10 +52,11 @@ export function BattleLog({ filters }: Props) {
   const [stats, setStats] = useState<{ total: number; wins: number; win_rate: number; weapon_count: number } | null>(null)
 
   // データ取得
-  const [refreshKey, setRefreshKey]     = useState(0)
-  const [fetching, setFetching]         = useState(false)
-  const [fetchResult, setFetchResult]   = useState<string | null>(null)
-  const [fetchError, setFetchError]     = useState<string | null>(null)
+  const [refreshKey, setRefreshKey]         = useState(0)
+  const [fetching, setFetching]             = useState(false)
+  const [fetchingDetails, setFetchingDetails] = useState(false)
+  const [fetchResult, setFetchResult]       = useState<string | null>(null)
+  const [fetchError, setFetchError]         = useState<string | null>(null)
 
   async function handleFetch() {
     setFetching(true)
@@ -70,6 +71,21 @@ export function BattleLog({ filters }: Props) {
       setFetchError(String(e))
     } finally {
       setFetching(false)
+    }
+  }
+
+  async function handleFetchDetails() {
+    setFetchingDetails(true)
+    setFetchResult(null)
+    setFetchError(null)
+    try {
+      const count = await invoke<number>('fetch_battle_details')
+      setFetchResult(`詳細データ ${count}件更新しました`)
+      setRefreshKey(k => k + 1)
+    } catch (e) {
+      setFetchError(String(e))
+    } finally {
+      setFetchingDetails(false)
     }
   }
 
@@ -127,7 +143,10 @@ export function BattleLog({ filters }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
           {fetchResult && <span style={{ color: 'var(--win)', fontSize: 13 }}>{fetchResult}</span>}
           {fetchError  && <span style={{ color: 'var(--lose)', fontSize: 13 }}>{fetchError}</span>}
-          <button className="btn-primary" onClick={handleFetch} disabled={fetching}>
+          <button className="btn-secondary" onClick={handleFetchDetails} disabled={fetchingDetails || fetching}>
+            {fetchingDetails ? '取得中...' : '詳細データを取得'}
+          </button>
+          <button className="btn-primary" onClick={handleFetch} disabled={fetching || fetchingDetails}>
             {fetching ? '取得中...' : 'バトルデータを取得'}
           </button>
         </div>

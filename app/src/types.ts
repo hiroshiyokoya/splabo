@@ -67,6 +67,7 @@ export interface SummaryEntry {
   name: string
   total: number
   wins: number
+  draws: number
   win_rate: number
 }
 

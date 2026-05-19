@@ -116,7 +116,9 @@ export function Dashboard({ filters, aiChart }: Props) {
   }
 
   const totalBattles = summary?.by_mode.reduce((s, e) => s + e.total, 0) ?? 0
-  const totalWins = summary?.by_mode.reduce((s, e) => s + e.wins, 0) ?? 0
+  const totalWins    = summary?.by_mode.reduce((s, e) => s + e.wins,  0) ?? 0
+  const totalDraws   = summary?.by_mode.reduce((s, e) => s + e.draws, 0) ?? 0
+  const totalLosses  = totalBattles - totalWins - totalDraws
   const overallWinRate = totalBattles > 0 ? totalWins / totalBattles : null
 
   function sorted(data: SummaryEntry[], by: SortBy): SummaryEntry[] {
@@ -155,7 +157,7 @@ export function Dashboard({ filters, aiChart }: Props) {
               value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '—'}
               valueColor={overallWinRate !== null ? winRateColor(overallWinRate) : undefined}
             />
-            <StatCard label="勝利 / 敗北" value={`${totalWins.toLocaleString()} / ${(totalBattles - totalWins).toLocaleString()}`} />
+            <StatCard label="勝 / 敗 (引き分け)" value={`${totalWins} / ${totalLosses} (${totalDraws})`} small />
             <StatCard label="使用武器数" value={summary.by_weapon.length.toString()} />
           </div>
 
@@ -190,16 +192,34 @@ export function Dashboard({ filters, aiChart }: Props) {
 
 // ---------------------------------------------------------------------------
 // Custom XAxis tick — shows image if available, falls back to truncated text
+// Hover enlarges the image
 // ---------------------------------------------------------------------------
 
 function ImageTick(props: { x?: number; y?: number; payload?: { value: string }; images: Map<string, string> }) {
   const { x = 0, y = 0, payload, images } = props
+  const [hovered, setHovered] = useState(false)
   if (!payload) return null
   const url = images.get(payload.value)
   if (url) {
+    const size   = hovered ? 56 : 32
+    const offset = -(size / 2)
+    const yOff   = hovered ? -18 : 4
     return (
-      <g transform={`translate(${x},${y})`}>
-        <image href={url} x={-12} y={4} width={24} height={24} />
+      <g transform={`translate(${x},${y})`} style={{ cursor: 'pointer' }}>
+        <image
+          href={url}
+          x={offset} y={yOff}
+          width={size} height={size}
+          style={{ transition: 'all 0.15s' }}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+        />
+        {hovered && (
+          <text x={0} y={46} textAnchor="middle" fill="var(--text)" fontSize={9}
+            style={{ pointerEvents: 'none' }}>
+            {payload.value.length > 10 ? payload.value.slice(0, 10) + '…' : payload.value}
+          </text>
+        )}
       </g>
     )
   }
@@ -217,7 +237,7 @@ function ImageTick(props: { x?: number; y?: number; payload?: { value: string };
 
 function WinRateChart({ data, height, images }: { data: SummaryEntry[]; height: number; images: Map<string, string> }) {
   const hasImages = data.some(d => images.has(d.name))
-  const tickHeight = hasImages ? 32 : 16
+  const tickHeight = hasImages ? 40 : 16
   const tickStyle = { fontSize: 10, fill: 'var(--text)' }
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -277,11 +297,11 @@ function WinRateChart({ data, height, images }: { data: SummaryEntry[]; height: 
 // ChartCard with optional sort buttons
 // ---------------------------------------------------------------------------
 
-function StatCard({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
+function StatCard({ label, value, valueColor, small }: { label: string; value: string; valueColor?: string; small?: boolean }) {
   return (
     <div className="stat-card">
       <div className="stat-label">{label}</div>
-      <div className="stat-value" style={valueColor ? { color: valueColor } : undefined}>{value}</div>
+      <div className={`stat-value${small ? ' stat-value--small' : ''}`} style={valueColor ? { color: valueColor } : undefined}>{value}</div>
     </div>
   )
 }

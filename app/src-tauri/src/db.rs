@@ -544,7 +544,8 @@ pub async fn db_summary(
 
     let by_weapon = bind_filters!(sqlx::query(&format!(
         "SELECT weapon as name, COUNT(*) as total,
-                SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins
+                SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws
          FROM battles WHERE {filter_where} GROUP BY weapon ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
@@ -553,7 +554,8 @@ pub async fn db_summary(
 
     let by_mode = bind_filters!(sqlx::query(&format!(
         "SELECT mode as name, COUNT(*) as total,
-                SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins
+                SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws
          FROM battles WHERE {filter_where} GROUP BY mode ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
@@ -562,7 +564,8 @@ pub async fn db_summary(
 
     let by_stage = bind_filters!(sqlx::query(&format!(
         "SELECT stage as name, COUNT(*) as total,
-                SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins
+                SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws
          FROM battles WHERE {filter_where} GROUP BY stage ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
@@ -571,7 +574,8 @@ pub async fn db_summary(
 
     let by_rule = bind_filters!(sqlx::query(&format!(
         "SELECT rule as name, COUNT(*) as total,
-                SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins
+                SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws
          FROM battles WHERE {filter_where} GROUP BY rule ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
@@ -581,11 +585,13 @@ pub async fn db_summary(
     fn to_json(rows: Vec<sqlx::sqlite::SqliteRow>) -> Vec<serde_json::Value> {
         rows.into_iter().map(|r| {
             let total: i64 = r.get("total");
-            let wins: i64 = r.get("wins");
+            let wins: i64  = r.get("wins");
+            let draws: i64 = r.get("draws");
             serde_json::json!({
                 "name": r.get::<String, _>("name"),
                 "total": total,
                 "wins": wins,
+                "draws": draws,
                 "win_rate": if total > 0 { wins as f64 / total as f64 } else { 0.0 }
             })
         }).collect()
