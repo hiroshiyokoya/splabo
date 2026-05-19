@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { Dashboard } from './components/Dashboard'
 import { BattleLog } from './components/BattleLog'
 import { AiAnalysis } from './components/AiAnalysis'
@@ -27,6 +29,22 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('dashboard')
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
   const [aiChart, setAiChart] = useState<ChartSpec | null>(null)
+  const [loginVersion, setLoginVersion] = useState(0)
+
+  useEffect(() => {
+    const unlistenPromise = listen<string>('deep-link-received', async (event) => {
+      const url = event.payload
+      if (url.startsWith('npf71b963c1b7b6d119://')) {
+        try {
+          await invoke('handle_auth_redirect', { url })
+          setLoginVersion(v => v + 1)
+        } catch (e) {
+          console.error('認証リダイレクト処理失敗:', e)
+        }
+      }
+    })
+    return () => { unlistenPromise.then(fn => fn()) }
+  }, [])
 
   function saveSettings(s: AppSettings) {
     setSettings(s)
@@ -52,7 +70,7 @@ export default function App() {
         {tab === 'dashboard' && <Dashboard aiChart={aiChart} />}
         {tab === 'battles' && <BattleLog />}
         {tab === 'ai' && <AiAnalysis settings={settings} onChartReady={handleAiChart} />}
-        {tab === 'settings' && <Settings settings={settings} onSave={saveSettings} />}
+        {tab === 'settings' && <Settings settings={settings} onSave={saveSettings} loginVersion={loginVersion} />}
       </main>
     </div>
   )

@@ -1,14 +1,45 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import type { AppSettings } from '../types'
 
 interface Props {
   settings: AppSettings
   onSave: (s: AppSettings) => void
+  loginVersion: number
 }
 
-export function Settings({ settings, onSave }: Props) {
+export function Settings({ settings, onSave, loginVersion }: Props) {
   const [draft, setDraft] = useState<AppSettings>(settings)
   const [saved, setSaved] = useState(false)
+  const [loggedIn, setLoggedIn] = useState(false)
+  const [authLoading, setAuthLoading] = useState(false)
+
+  useEffect(() => {
+    invoke<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
+  }, [loginVersion])
+
+  async function handleLogin() {
+    setAuthLoading(true)
+    try {
+      await invoke('start_login')
+    } catch (e) {
+      console.error('ログイン開始失敗:', e)
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  async function handleLogout() {
+    setAuthLoading(true)
+    try {
+      await invoke('logout')
+      setLoggedIn(false)
+    } catch (e) {
+      console.error('ログアウト失敗:', e)
+    } finally {
+      setAuthLoading(false)
+    }
+  }
 
   function save() {
     onSave(draft)
@@ -19,6 +50,27 @@ export function Settings({ settings, onSave }: Props) {
   return (
     <div className="settings-panel">
       <h2>設定</h2>
+
+      <section className="settings-section">
+        <h3>Nintendo アカウント</h3>
+        {loggedIn ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ color: 'var(--win)', fontSize: 13 }}>連携済み</span>
+            <button className="btn-primary" onClick={handleLogout} disabled={authLoading}>
+              {authLoading ? '処理中...' : 'ログアウト'}
+            </button>
+          </div>
+        ) : (
+          <div>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+              バトルデータの取得には Nintendo アカウントへのログインが必要です。
+            </p>
+            <button className="btn-primary" onClick={handleLogin} disabled={authLoading}>
+              {authLoading ? '処理中...' : 'Nintendo アカウントでログイン'}
+            </button>
+          </div>
+        )}
+      </section>
 
       <section className="settings-section">
         <h3>AI API</h3>
