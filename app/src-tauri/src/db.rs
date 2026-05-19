@@ -193,6 +193,44 @@ pub async fn update_battle_detail(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+pub async fn db_battle_stats(
+    db: tauri::State<'_, DbPool>,
+    mode: Option<String>,
+    rule: Option<String>,
+    result_filter: Option<String>,  // JS: resultFilter
+    weapon: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let row = sqlx::query(
+        "SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins,
+            COUNT(DISTINCT weapon) as weapon_count
+         FROM battles
+         WHERE (? IS NULL OR mode = ?)
+           AND (? IS NULL OR rule = ?)
+           AND (? IS NULL OR result = ?)
+           AND (? IS NULL OR weapon = ?)",
+    )
+    .bind(&mode).bind(&mode)
+    .bind(&rule).bind(&rule)
+    .bind(&result_filter).bind(&result_filter)
+    .bind(&weapon).bind(&weapon)
+    .fetch_one(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let total: i64 = row.get("total");
+    let wins: i64  = row.get("wins");
+    let weapon_count: i64 = row.get("weapon_count");
+    Ok(serde_json::json!({
+        "total": total,
+        "wins": wins,
+        "win_rate": if total > 0 { wins as f64 / total as f64 } else { 0.0 },
+        "weapon_count": weapon_count,
+    }))
+}
+
+#[tauri::command]
 pub async fn db_battle_count(
     db: tauri::State<'_, DbPool>,
     mode: Option<String>,

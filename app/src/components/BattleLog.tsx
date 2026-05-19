@@ -4,6 +4,12 @@ import type { BattleRow } from '../types'
 
 const PAGE_SIZE = 50
 const MODES   = ['REGULAR', 'BANKARA', 'XMATCH']
+
+function winRateColor(rate: number): string {
+  if (rate >= 0.55) return '#22c55e'
+  if (rate >= 0.45) return '#f59e0b'
+  return '#ef4444'
+}
 const RULES   = ['ナワバリ', 'ガチエリア', 'ガチヤグラ', 'ガチホコ', 'ガチアサリ']
 const RESULTS = ['WIN', 'LOSE', 'DRAW']
 type OrderBy  = 'played_at' | 'kill' | 'death' | 'inked'
@@ -48,6 +54,9 @@ export function BattleLog() {
   const [orderBy,  setOrderBy]  = useState<OrderBy>('played_at')
   const [orderAsc, setOrderAsc] = useState(false)
 
+  // 集計
+  const [stats, setStats] = useState<{ total: number; wins: number; win_rate: number; weapon_count: number } | null>(null)
+
   // 武器一覧を初回ロード（アイコン付き）
   useEffect(() => {
     invoke<string[]>('db_weapons_used').then(weapons => {
@@ -67,19 +76,13 @@ export function BattleLog() {
   // フィルター・ソート・ページ変化でバトル再取得
   useEffect(() => {
     setLoading(true)
+    const filterArgs = { mode: filterMode, rule: filterRule, resultFilter: filterResult, weapon: filterWeapon }
     Promise.all([
-      invoke<BattleRow[]>('db_list_battles', {
-        limit: PAGE_SIZE, offset,
-        mode: filterMode, rule: filterRule,
-        resultFilter: filterResult, weapon: filterWeapon,
-        orderBy, orderAsc,
-      }),
-      invoke<number>('db_battle_count', {
-        mode: filterMode, rule: filterRule,
-        resultFilter: filterResult, weapon: filterWeapon,
-      }),
+      invoke<BattleRow[]>('db_list_battles', { limit: PAGE_SIZE, offset, ...filterArgs, orderBy, orderAsc }),
+      invoke<number>('db_battle_count', filterArgs),
+      invoke<{ total: number; wins: number; win_rate: number; weapon_count: number }>('db_battle_stats', filterArgs),
     ])
-      .then(([rows, count]) => { setBattles(rows); setTotal(count) })
+      .then(([rows, count, s]) => { setBattles(rows); setTotal(count); setStats(s) })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [offset, filterMode, filterRule, filterResult, filterWeapon, orderBy, orderAsc])
@@ -109,8 +112,17 @@ export function BattleLog() {
     <div className="battle-log">
       <div className="log-header">
         <h2>バトルログ</h2>
-        <span className="total-count">計 {total} 試合</span>
       </div>
+
+      {stats && (
+        <div className="stat-cards" style={{ marginBottom: 12 }}>
+          <LogStatCard label="総試合数"   value={stats.total.toLocaleString()} />
+          <LogStatCard label="全体勝率"   value={stats.total > 0 ? `${(stats.win_rate * 100).toFixed(1)}%` : '—'}
+            valueColor={stats.total > 0 ? winRateColor(stats.win_rate) : undefined} />
+          <LogStatCard label="勝利数"     value={stats.wins.toLocaleString()} />
+          <LogStatCard label="使用武器数" value={stats.weapon_count.toString()} />
+        </div>
+      )}
 
       {/* フィルターバー */}
       <div className="filter-bar">
@@ -445,6 +457,15 @@ function TeamTable({ title, players, weaponImages, highlight }: {
           })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+function LogStatCard({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
+  return (
+    <div className="stat-card">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value" style={valueColor ? { color: valueColor } : undefined}>{value}</div>
     </div>
   )
 }

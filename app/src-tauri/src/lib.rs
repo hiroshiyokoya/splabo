@@ -35,6 +35,7 @@ pub fn run() {
             auth::handle_auth_redirect,
             auth::check_auth_status,
             auth::logout,
+            db::db_battle_stats,
             db::db_battle_count,
             db::db_list_battles,
             db::db_weapons_used,
