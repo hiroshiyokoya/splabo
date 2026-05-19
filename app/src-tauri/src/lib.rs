@@ -41,6 +41,7 @@ pub fn run() {
             db::db_weapons_used,
             db::db_summary,
             db::db_list_weapons,
+            db::backfill_battle_players,
             images::read_image,
             fetch_battles,
             fetch_battle_details,
@@ -123,8 +124,10 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
         &app,
     )
     .await?;
-    // battles 詳細データから sub/special を補完（category は上書きしない）
+    // battle_players から sub/special を補完（category は上書きしない）
     db::populate_weapons_from_battles(&db).await?;
+    // バトルデータからサブ・スペシャル画像をキャッシュ
+    splatnet3::cache_sub_special_images(&db, &app, &client).await?;
     Ok(count)
 }
 
