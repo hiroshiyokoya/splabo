@@ -188,6 +188,16 @@ pub async fn db_summary(
     .await
     .map_err(|e| e.to_string())?;
 
+    let by_rule = sqlx::query(
+        "SELECT rule as name, COUNT(*) as total,
+                SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins
+         FROM battles WHERE played_at >= ? GROUP BY rule ORDER BY total DESC",
+    )
+    .bind(&since)
+    .fetch_all(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
     fn to_json(rows: Vec<sqlx::sqlite::SqliteRow>) -> Vec<serde_json::Value> {
         rows.into_iter().map(|r| {
             let total: i64 = r.get("total");
@@ -205,5 +215,6 @@ pub async fn db_summary(
         "by_weapon": to_json(by_weapon),
         "by_mode": to_json(by_mode),
         "by_stage": to_json(by_stage),
+        "by_rule": to_json(by_rule),
     }))
 }
