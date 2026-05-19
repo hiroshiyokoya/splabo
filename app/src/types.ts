@@ -101,6 +101,35 @@ export interface AppSettings {
   autoFetchHour: number
 }
 
+const STAGE_ABBR_OVERRIDE: Record<string, string> = {
+  'ザトウマーケット':           'ザトウ',
+  'タラポートショッピングパーク': 'タラポ',
+  'スメーシーワールド':          'スメーシー',
+  'マンタマリア号':             'マンタ',
+  'リュウグウターミナル':        'リュウグウ',
+  'コンブトラック':             'コンブ',
+  'マヒマヒリゾート&スパ':       'マヒマヒ',
+  '海女美術大学':              '海女美',
+}
+
+export function stageAbbr(name: string): string {
+  if (STAGE_ABBR_OVERRIDE[name]) return STAGE_ABBR_OVERRIDE[name]
+  const m = name.match(/^[゠-ヿ]+/)
+  return m ? m[0] : name
+}
+
+const MODE_LABELS: Record<string, string> = {
+  'BANKARA':  'バンカラ',
+  'REGULAR':  'ナワバリ',
+  'XMATCH':   'Xマッチ',
+  'LEAGUE':   'リーグ',
+  'PRIVATE':  'プライベート',
+}
+
+export function modeLabel(mode: string): string {
+  return MODE_LABELS[mode] ?? mode
+}
+
 export interface ChartSpec {
   chartType: 'bar' | 'line' | 'scatter' | 'pie'
   title: string

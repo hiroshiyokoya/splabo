@@ -5,7 +5,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
 import type { Summary, SummaryEntry, ChartSpec, Filters } from '../types'
-import { filtersToRange } from '../types'
+import { filtersToRange, stageAbbr, modeLabel } from '../types'
 
 const COLOR_TOTAL       = '#a8c0d0'
 const COLOR_TOTAL_HOVER = '#cde0ec'
@@ -32,7 +32,6 @@ export function Dashboard({ filters, aiChart }: Props) {
   const [fetchResult, setFetchResult] = useState<string | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
-  const [stageImages, setStageImages] = useState<Map<string, string>>(new Map())
   const [weaponSort, setWeaponSort] = useState<SortBy>('total')
   const [stageSort, setStageSort] = useState<SortBy>('total')
   const [ruleSort, setRuleSort] = useState<SortBy>('total')
@@ -68,21 +67,6 @@ export function Dashboard({ filters, aiChart }: Props) {
       })
     }).catch(() => {})
   }, [])
-
-  // Load stage images after summary loads (names come from summary)
-  useEffect(() => {
-    if (!summary) return
-    const names = summary.by_stage.map(e => e.name)
-    Promise.all(
-      names.map(name =>
-        invoke<string | null>('read_image', { kind: 'stage', name })
-          .then(url => (url ? ([name, url] as [string, string]) : null))
-          .catch(() => null)
-      )
-    ).then(results => {
-      setStageImages(new Map(results.filter((r): r is [string, string] => r !== null)))
-    })
-  }, [summary])
 
   async function handleFetch() {
     setFetching(true)
@@ -168,7 +152,7 @@ export function Dashboard({ filters, aiChart }: Props) {
             </ChartCard>
 
             <ChartCard title="ステージ別 勝率 & 試合数" sortBy={stageSort} onSortChange={setStageSort}>
-              <WinRateChart data={sorted(summary.by_stage.slice(0, 14), stageSort)} height={260} images={stageImages} hoverImageSize={160} />
+              <WinRateChart data={sorted(summary.by_stage.slice(0, 14), stageSort)} height={260} images={new Map()} nameTransform={stageAbbr} />
             </ChartCard>
 
             <ChartCard title="ルール別 勝率 & 試合数" sortBy={ruleSort} onSortChange={setRuleSort}>
@@ -176,7 +160,7 @@ export function Dashboard({ filters, aiChart }: Props) {
             </ChartCard>
 
             <ChartCard title="モード別 勝率 & 試合数" sortBy={modeSort} onSortChange={setModeSort}>
-              <WinRateChart data={sorted(summary.by_mode, modeSort)} height={180} images={new Map()} />
+              <WinRateChart data={sorted(summary.by_mode, modeSort)} height={180} images={new Map()} nameTransform={modeLabel} />
             </ChartCard>
 
             {aiChart && (
@@ -201,8 +185,9 @@ function ImageTick(props: {
   activeIndex: number | null
   onHoverIndex: (i: number | null) => void
   hoverSize: number
+  nameTransform?: (name: string) => string
 }) {
-  const { x = 0, y = 0, payload, index, images, activeIndex, onHoverIndex, hoverSize } = props
+  const { x = 0, y = 0, payload, index, images, activeIndex, onHoverIndex, hoverSize, nameTransform } = props
   if (!payload) return null
   const isActive  = activeIndex === null || activeIndex === index
   const isHovered = activeIndex === index
@@ -227,9 +212,17 @@ function ImageTick(props: {
       </g>
     )
   }
-  const label = payload.value.length > 6 ? payload.value.slice(0, 6) + '…' : payload.value
+  const raw = payload.value
+  const label = nameTransform ? nameTransform(raw) : (raw.length > 6 ? raw.slice(0, 6) + '…' : raw)
   return (
-    <text x={x} y={y + 10} textAnchor="middle" fill="var(--text)" fontSize={9} opacity={isActive ? 1 : 0.4}>
+    <text
+      x={x} y={y + 10} textAnchor="middle" fill="var(--text)" fontSize={10}
+      opacity={isActive ? 1 : 0.4}
+      fontWeight={isHovered ? 700 : 400}
+      onMouseEnter={() => onHoverIndex(index ?? null)}
+      onMouseLeave={() => onHoverIndex(null)}
+      style={{ cursor: 'default' }}
+    >
       {label}
     </text>
   )
@@ -239,11 +232,12 @@ function ImageTick(props: {
 // WinRateChart — activeIndex shared between tick icons and bars
 // ---------------------------------------------------------------------------
 
-function WinRateChart({ data, height, images, hoverImageSize = 64 }: {
+function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform }: {
   data: SummaryEntry[]
   height: number
   images: Map<string, string>
   hoverImageSize?: number
+  nameTransform?: (name: string) => string
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const hasImages = data.some(d => images.has(d.name))
@@ -276,6 +270,7 @@ function WinRateChart({ data, height, images, hoverImageSize = 64 }: {
               activeIndex={activeIndex}
               onHoverIndex={setActiveIndex}
               hoverSize={hoverImageSize}
+              nameTransform={nameTransform}
             />
           )}
           interval={0}
