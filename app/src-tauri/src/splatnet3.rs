@@ -502,6 +502,12 @@ pub async fn fetch_and_update_details(
             continue;
         }
 
+        // 全プレイヤーの武器データを battle_players に保存
+        let players = crate::db::parse_players_from_json(id, my_team.as_deref(), other_teams.as_deref());
+        if let Err(e) = crate::db::insert_battle_players(pool, &players).await {
+            log::warn!("battle_players 保存失敗 ({id}): {e}");
+        }
+
         updated += 1;
     }
 

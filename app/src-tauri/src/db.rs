@@ -69,6 +69,23 @@ const SCHEMA: &str = r#"
         sub_weapon     TEXT,
         special_weapon TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS battle_players (
+        battle_id      TEXT    NOT NULL,
+        team           TEXT    NOT NULL,
+        slot           INTEGER NOT NULL,
+        is_myself      INTEGER NOT NULL DEFAULT 0,
+        weapon         TEXT    NOT NULL DEFAULT '',
+        sub_weapon     TEXT,
+        special_weapon TEXT,
+        kill           INTEGER NOT NULL DEFAULT 0,
+        death          INTEGER NOT NULL DEFAULT 0,
+        assist         INTEGER NOT NULL DEFAULT 0,
+        special        INTEGER NOT NULL DEFAULT 0,
+        paint          INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (battle_id, team, slot)
+    );
+    CREATE INDEX IF NOT EXISTS idx_bp_weapon ON battle_players(weapon);
 "#;
 
 // ---------------------------------------------------------------------------
@@ -203,6 +220,150 @@ pub async fn update_battle_detail(
     .await
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// battle_players
+// ---------------------------------------------------------------------------
+
+pub struct BattlePlayerRow {
+    pub battle_id:      String,
+    pub team:           String,   // "my" | "other"
+    pub slot:           i64,
+    pub is_myself:      bool,
+    pub weapon:         String,
+    pub sub_weapon:     Option<String>,
+    pub special_weapon: Option<String>,
+    pub kill:           i64,
+    pub death:          i64,
+    pub assist:         i64,
+    pub special:        i64,
+    pub paint:          i64,
+}
+
+fn stat_i64(result: Option<&serde_json::Value>, key: &str) -> i64 {
+    result.and_then(|r| r.get(key)).and_then(|v| v.as_i64()).unwrap_or(0)
+}
+
+/// my_team / other_teams の JSON 文字列からプレイヤー行を生成する。
+pub fn parse_players_from_json(
+    battle_id: &str,
+    my_team_json: Option<&str>,
+    other_teams_json: Option<&str>,
+) -> Vec<BattlePlayerRow> {
+    let mut players: Vec<BattlePlayerRow> = Vec::new();
+
+    if let Some(json) = my_team_json {
+        if let Ok(arr) = serde_json::from_str::<serde_json::Value>(json) {
+            if let Some(list) = arr.as_array() {
+                for (slot, p) in list.iter().enumerate() {
+                    let weapon = p.pointer("/weapon/name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    if weapon.is_empty() { continue; }
+                    let res = p.get("result");
+                    players.push(BattlePlayerRow {
+                        battle_id:      battle_id.to_string(),
+                        team:           "my".to_string(),
+                        slot:           slot as i64,
+                        is_myself:      p.get("isMyself").and_then(|v| v.as_bool()).unwrap_or(false),
+                        weapon,
+                        sub_weapon:     p.pointer("/weapon/subWeapon/name").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        special_weapon: p.pointer("/weapon/specialWeapon/name").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        kill:    stat_i64(res, "kill"),
+                        death:   stat_i64(res, "death"),
+                        assist:  stat_i64(res, "assist"),
+                        special: stat_i64(res, "special"),
+                        paint:   p.get("paint").and_then(|v| v.as_i64()).unwrap_or(0),
+                    });
+                }
+            }
+        }
+    }
+
+    if let Some(json) = other_teams_json {
+        if let Ok(arr) = serde_json::from_str::<serde_json::Value>(json) {
+            if let Some(teams) = arr.as_array() {
+                let mut slot = 0i64;
+                for team in teams {
+                    if let Some(list) = team.pointer("/players").and_then(|v| v.as_array()) {
+                        for p in list {
+                            let weapon = p.pointer("/weapon/name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            if weapon.is_empty() { slot += 1; continue; }
+                            let res = p.get("result");
+                            players.push(BattlePlayerRow {
+                                battle_id:      battle_id.to_string(),
+                                team:           "other".to_string(),
+                                slot,
+                                is_myself:      false,
+                                weapon,
+                                sub_weapon:     p.pointer("/weapon/subWeapon/name").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                special_weapon: p.pointer("/weapon/specialWeapon/name").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                kill:    stat_i64(res, "kill"),
+                                death:   stat_i64(res, "death"),
+                                assist:  stat_i64(res, "assist"),
+                                special: stat_i64(res, "special"),
+                                paint:   p.get("paint").and_then(|v| v.as_i64()).unwrap_or(0),
+                            });
+                            slot += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    players
+}
+
+pub async fn insert_battle_players(pool: &DbPool, players: &[BattlePlayerRow]) -> Result<(), String> {
+    for p in players {
+        sqlx::query(
+            "INSERT OR IGNORE INTO battle_players
+             (battle_id, team, slot, is_myself, weapon, sub_weapon, special_weapon,
+              kill, death, assist, special, paint)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        )
+        .bind(&p.battle_id)
+        .bind(&p.team)
+        .bind(p.slot)
+        .bind(p.is_myself as i64)
+        .bind(&p.weapon)
+        .bind(&p.sub_weapon)
+        .bind(&p.special_weapon)
+        .bind(p.kill)
+        .bind(p.death)
+        .bind(p.assist)
+        .bind(p.special)
+        .bind(p.paint)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// 詳細取得済みで battle_players 未登録のバトルをバックフィルする。
+#[tauri::command]
+pub async fn backfill_battle_players(db: tauri::State<'_, DbPool>) -> Result<usize, String> {
+    let rows = sqlx::query(
+        "SELECT id, my_team, other_teams FROM battles
+         WHERE detail_fetched = 1
+           AND (my_team IS NOT NULL OR other_teams IS NOT NULL)
+           AND id NOT IN (SELECT DISTINCT battle_id FROM battle_players)",
+    )
+    .fetch_all(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut count = 0usize;
+    for row in &rows {
+        let battle_id:   String         = row.get("id");
+        let my_team:     Option<String> = row.get("my_team");
+        let other_teams: Option<String> = row.get("other_teams");
+        let players = parse_players_from_json(&battle_id, my_team.as_deref(), other_teams.as_deref());
+        count += players.len();
+        insert_battle_players(&*db, &players).await?;
+    }
+    Ok(count)
 }
 
 // ---------------------------------------------------------------------------
