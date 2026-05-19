@@ -1,0 +1,323 @@
+//! SplatNet3 GraphQL API からバトル履歴を取得し、DB に保存するモジュール。
+
+use crate::db::{BattleRow, DbPool};
+
+const GRAPHQL_URL: &str = "https://api.lp1.av5ja.srv.nintendo.net/api/graphql";
+
+// SplatNet3 WebView バージョン（auth.rs の SPLATNET3_WEB_VIEW_VER と同値を維持すること）
+const WEB_VIEW_VER: &str = "10.0.0-dfefd0af";
+
+// ハッシュは s3s (https://github.com/frozenpandaman/s3s) の utils.py を参照して更新すること。
+const HASH_REGULAR: &str = "2fe6ea7a2de1d6a888b7bd3dbeb6acc8e3246f055ca39b80c4531bbcd0727bba";
+const HASH_BANKARA: &str = "9863ea4744730743268e2940396e21b891104ed40e2286789f05100b45a0b0fd";
+const HASH_XMATCH: &str = "eb5996a12705c2e94813a62e05c0dc419aad2811b8d49d53e5732290105559cb";
+
+// ---------------------------------------------------------------------------
+// HTTP ヘルパー
+// ---------------------------------------------------------------------------
+
+async fn graphql_request(
+    client: &reqwest::Client,
+    bullet_token: &str,
+    country: &str,
+    language: &str,
+    hash: &str,
+) -> Result<serde_json::Value, String> {
+    let body = serde_json::json!({
+        "variables": {},
+        "extensions": {
+            "persistedQuery": {
+                "version": 1,
+                "sha256Hash": hash
+            }
+        }
+    });
+
+    let resp = client
+        .post(GRAPHQL_URL)
+        .header("Authorization", format!("Bearer {bullet_token}"))
+        .header("X-Web-View-Ver", WEB_VIEW_VER)
+        .header("Content-Type", "application/json")
+        .header("Accept", "*/*")
+        .header("Accept-Language", language)
+        .header("X-NACOUNTRY", country)
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Linux; Android 8.0.0) AppleWebKit/537.36 \
+             (KHTML, like Gecko) Chrome/94.0.4606.61 Mobile Safari/537.36",
+        )
+        .header("Referer", "https://api.lp1.av5ja.srv.nintendo.net/")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("SplatNet3 GraphQL リクエスト失敗: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("SplatNet3 GraphQL エラー ({status}): {text}"));
+    }
+
+    resp.json::<serde_json::Value>()
+        .await
+        .map_err(|e| format!("SplatNet3 GraphQL レスポンス解析失敗: {e}"))
+}
+
+// ---------------------------------------------------------------------------
+// バトルリスト → BattleRow 変換
+// ---------------------------------------------------------------------------
+
+fn str_val(v: &serde_json::Value, key: &str) -> String {
+    v.get(key)
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn i64_val(v: &serde_json::Value, key: &str) -> i64 {
+    v.get(key)
+        .and_then(|x| x.as_i64())
+        .unwrap_or(0)
+}
+
+/// レギュラーバトル1件のレスポンスノードから BattleRow を生成する。
+fn parse_regular_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
+    let id = str_val(node, "id");
+    let played_at = str_val(node, "playedTime");
+    let rule = node
+        .pointer("/vsRule/rule")
+        .and_then(|x| x.as_str())
+        .unwrap_or("TURF_WAR")
+        .to_string();
+    let stage = node
+        .pointer("/vsStage/name")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let (weapon, kill, death, assist, special, inked) = parse_my_result(node);
+    let result = parse_judgement(node);
+    let duration = i64_val(node, "duration");
+
+    BattleRow {
+        id,
+        played_at,
+        mode: "REGULAR".to_string(),
+        rule,
+        stage,
+        weapon,
+        result,
+        kill,
+        death,
+        assist,
+        special,
+        inked,
+        duration,
+        rank_before: None,
+        rank_after: None,
+        x_power: None,
+        raw_json: node.to_string(),
+        fetched_at: fetched_at.to_string(),
+    }
+}
+
+/// バンカラバトル1件のレスポンスノードから BattleRow を生成する。
+fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
+    let id = str_val(node, "id");
+    let played_at = str_val(node, "playedTime");
+    let rule = node
+        .pointer("/vsRule/rule")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let stage = node
+        .pointer("/vsStage/name")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let (weapon, kill, death, assist, special, inked) = parse_my_result(node);
+    let result = parse_judgement(node);
+    let duration = i64_val(node, "duration");
+
+    let rank_before = node
+        .pointer("/bankaraMatch/earnedUdemaePoint")
+        .and_then(|x| x.as_i64())
+        .map(|p| p.to_string());
+
+    BattleRow {
+        id,
+        played_at,
+        mode: "BANKARA".to_string(),
+        rule,
+        stage,
+        weapon,
+        result,
+        kill,
+        death,
+        assist,
+        special,
+        inked,
+        duration,
+        rank_before,
+        rank_after: None,
+        x_power: None,
+        raw_json: node.to_string(),
+        fetched_at: fetched_at.to_string(),
+    }
+}
+
+/// Xマッチ1件のレスポンスノードから BattleRow を生成する。
+fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
+    let id = str_val(node, "id");
+    let played_at = str_val(node, "playedTime");
+    let rule = node
+        .pointer("/vsRule/rule")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let stage = node
+        .pointer("/vsStage/name")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let (weapon, kill, death, assist, special, inked) = parse_my_result(node);
+    let result = parse_judgement(node);
+    let duration = i64_val(node, "duration");
+
+    let x_power = node
+        .pointer("/xMatch/lastXPower")
+        .and_then(|x| x.as_f64());
+
+    BattleRow {
+        id,
+        played_at,
+        mode: "XMATCH".to_string(),
+        rule,
+        stage,
+        weapon,
+        result,
+        kill,
+        death,
+        assist,
+        special,
+        inked,
+        duration,
+        rank_before: None,
+        rank_after: None,
+        x_power,
+        raw_json: node.to_string(),
+        fetched_at: fetched_at.to_string(),
+    }
+}
+
+/// myResult から武器名・kill/death/assist/special/inked を抽出する。
+fn parse_my_result(node: &serde_json::Value) -> (String, i64, i64, i64, i64, i64) {
+    let my = match node.get("myResult") {
+        Some(v) => v,
+        None => return (String::new(), 0, 0, 0, 0, 0),
+    };
+    let weapon = my
+        .pointer("/weapon/name")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let kill = i64_val(my, "kill");
+    let death = i64_val(my, "death");
+    let assist = i64_val(my, "assist");
+    let special = i64_val(my, "special");
+    let inked = my
+        .get("paint")
+        .and_then(|x| x.as_i64())
+        .unwrap_or(0);
+    (weapon, kill, death, assist, special, inked)
+}
+
+/// judgement フィールドを WIN / LOSE / DRAW に正規化する。
+fn parse_judgement(node: &serde_json::Value) -> String {
+    match node
+        .get("judgement")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+    {
+        "WIN" => "WIN".to_string(),
+        "LOSE" | "DEEMED_LOSE" => "LOSE".to_string(),
+        "DRAW" | "EXEMPTED_LOSE" => "DRAW".to_string(),
+        _ => "LOSE".to_string(),
+    }
+}
+
+/// GraphQL レスポンスからバトルノード一覧を抽出する。
+/// SplatNet3 の historyGroups > nodes > historyDetails > nodes 構造を辿る。
+fn extract_battle_nodes(resp: &serde_json::Value) -> Vec<&serde_json::Value> {
+    let mut nodes = Vec::new();
+
+    // data.regularBattleHistories.historyGroups.nodes[]
+    //   .historyDetails.nodes[]
+    // または data.bankaraBattleHistories / xBattleHistories と同じ構造
+    let history_keys = [
+        "regularBattleHistories",
+        "bankaraBattleHistories",
+        "xBattleHistories",
+    ];
+
+    for key in &history_keys {
+        if let Some(history) = resp.pointer(&format!("/data/{key}/historyGroups/nodes")) {
+            if let Some(groups) = history.as_array() {
+                for group in groups {
+                    if let Some(details) =
+                        group.pointer("/historyDetails/nodes").and_then(|x| x.as_array())
+                    {
+                        nodes.extend(details.iter());
+                    }
+                }
+            }
+        }
+    }
+
+    nodes
+}
+
+// ---------------------------------------------------------------------------
+// 公開 API
+// ---------------------------------------------------------------------------
+
+/// レギュラー・バンカラ・Xマッチのバトル履歴を SplatNet3 から取得し DB に保存する。
+/// 新規保存件数の合計を返す。
+pub async fn fetch_and_store_battles(
+    pool: &DbPool,
+    bullet_token: &str,
+    country: &str,
+    language: &str,
+    client: &reqwest::Client,
+) -> Result<usize, String> {
+    let fetched_at = chrono::Utc::now().to_rfc3339();
+    let mut total_inserted = 0usize;
+
+    // --- レギュラー ---
+    let regular_resp =
+        graphql_request(client, bullet_token, country, language, HASH_REGULAR).await?;
+    let regular_rows: Vec<BattleRow> = extract_battle_nodes(&regular_resp)
+        .into_iter()
+        .map(|n| parse_regular_node(n, &fetched_at))
+        .collect();
+    total_inserted += crate::db::insert_battles(pool, regular_rows).await?;
+
+    // --- バンカラ ---
+    let bankara_resp =
+        graphql_request(client, bullet_token, country, language, HASH_BANKARA).await?;
+    let bankara_rows: Vec<BattleRow> = extract_battle_nodes(&bankara_resp)
+        .into_iter()
+        .map(|n| parse_bankara_node(n, &fetched_at))
+        .collect();
+    total_inserted += crate::db::insert_battles(pool, bankara_rows).await?;
+
+    // --- Xマッチ ---
+    let xmatch_resp =
+        graphql_request(client, bullet_token, country, language, HASH_XMATCH).await?;
+    let xmatch_rows: Vec<BattleRow> = extract_battle_nodes(&xmatch_resp)
+        .into_iter()
+        .map(|n| parse_xmatch_node(n, &fetched_at))
+        .collect();
+    total_inserted += crate::db::insert_battles(pool, xmatch_rows).await?;
+
+    Ok(total_inserted)
+}

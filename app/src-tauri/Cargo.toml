@@ -24,8 +24,6 @@ tauri-plugin-store = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-single-instance = "2"
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "macros"] }
-# system tray
-tauri-plugin-tray = "2"
 # Nintendo auth
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 tokio = { version = "1", features = ["full"] }
@@ -33,3 +31,4 @@ uuid = { version = "1", features = ["v4"] }
 sha2 = "0.10"
 base64 = "0.22"
 rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
