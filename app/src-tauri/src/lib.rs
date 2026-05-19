@@ -106,12 +106,26 @@ async fn fetch_battles(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
     .await
 }
 
-/// battles テーブルの詳細データから weapons テーブルを構築する。
-/// SplatNet3 の WeaponRecordQuery は現行アプリバージョンで廃止されたため、
-/// ローカル DB から weapon/sub/special を収集する方式を採用。
+/// HistoryRecordQuery で武器マスター（名前・カテゴリ・画像）を取得して DB に保存し、
+/// さらに battles テーブルから sub/special を補完する。合計保存件数を返す。
 #[tauri::command]
-async fn fetch_weapons(db: State<'_, db::DbPool>) -> Result<usize, String> {
-    db::populate_weapons_from_battles(&db).await
+async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usize, String> {
+    let result = nxapi::nxapi_get_bullet_token(&app).await?;
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    let count = splatnet3::fetch_and_store_weapons(
+        &db,
+        &result.bullet_token,
+        &result.country,
+        &result.language,
+        &client,
+        &app,
+    )
+    .await?;
+    // battles 詳細データから sub/special を補完（category は上書きしない）
+    db::populate_weapons_from_battles(&db).await?;
+    Ok(count)
 }
 
 /// 詳細未取得バトルに VsHistoryDetailQuery を発行して K/D/A を更新する。更新件数を返す。
