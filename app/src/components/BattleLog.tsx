@@ -199,7 +199,7 @@ export function BattleLog({ filters }: Props) {
                     </span>
                   </td>
                   <td className={`result-cell ${b.result.toLowerCase()}`}>{resultLabel(b.result)}</td>
-                  <td>{b.kill}</td>
+                  <td>{b.kill}{b.assist > 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.85em' }}> ({b.assist})</span>}</td>
                   <td>{b.death}</td>
                   <td>{b.special}</td>
                   <td>{b.inked.toLocaleString()}</td>
