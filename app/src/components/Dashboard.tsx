@@ -249,8 +249,9 @@ function WinRateChart({ data, height, images }: { data: SummaryEntry[]; height: 
             border: '1px solid var(--border)',
             borderRadius: 6,
             fontSize: 12,
-            color: 'var(--text)',
           }}
+          labelStyle={{ color: 'var(--text)' }}
+          itemStyle={{ color: 'var(--text)' }}
           formatter={(value, name) =>
             name === 'win_rate'
               ? [`${(Number(value) * 100).toFixed(1)}%`, '勝率']
