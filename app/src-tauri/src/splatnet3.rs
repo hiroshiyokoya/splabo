@@ -459,12 +459,22 @@ pub async fn fetch_and_update_details(
             }
         };
 
-        let player_result = detail.pointer("/player/result");
-        let kill = player_result.and_then(|r| r.get("kill")).and_then(|v| v.as_i64()).unwrap_or(0);
-        let death = player_result.and_then(|r| r.get("death")).and_then(|v| v.as_i64()).unwrap_or(0);
-        let assist = player_result.and_then(|r| r.get("assist")).and_then(|v| v.as_i64()).unwrap_or(0);
-        let special = player_result.and_then(|r| r.get("special")).and_then(|v| v.as_i64()).unwrap_or(0);
-        let inked = detail.pointer("/player/paint").and_then(|v| v.as_i64()).unwrap_or(0);
+        // myTeam.players の isMyself=true なプレイヤーからスタッツを取得する。
+        // top-level の player.result は存在しないケースがあるため使わない。
+        let myself = detail
+            .pointer("/myTeam/players")
+            .and_then(|v| v.as_array())
+            .and_then(|players| {
+                players.iter().find(|p| {
+                    p.get("isMyself").and_then(|v| v.as_bool()).unwrap_or(false)
+                })
+            });
+        let myself_result = myself.and_then(|p| p.get("result"));
+        let kill    = myself_result.and_then(|r| r.get("kill")).and_then(|v| v.as_i64()).unwrap_or(0);
+        let death   = myself_result.and_then(|r| r.get("death")).and_then(|v| v.as_i64()).unwrap_or(0);
+        let assist  = myself_result.and_then(|r| r.get("assist")).and_then(|v| v.as_i64()).unwrap_or(0);
+        let special = myself_result.and_then(|r| r.get("special")).and_then(|v| v.as_i64()).unwrap_or(0);
+        let inked   = myself.and_then(|p| p.get("paint")).and_then(|v| v.as_i64()).unwrap_or(0);
 
         let knockout = detail.get("knockout").and_then(|v| v.as_str()).map(|s| s.to_string());
         let sub_weapon = detail.pointer("/player/weapon/subWeapon/name")
