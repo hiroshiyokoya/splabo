@@ -25,7 +25,7 @@ chartoon/
 | Rust + Cargo | Tauri デスクトップアプリのビルド |
 
 Windows / macOS / Linux 対応（WSL 不要）。
-動作確認済みは Windows。macOS・Linux は未検証。
+動作確認済みは macOS・Windows。Linux は未検証。
 
 ---
 
@@ -36,6 +36,8 @@ cd app
 npm install        # 初回のみ
 npx tauri dev      # アプリ起動（初回は Rust のコンパイルで数分かかります）
 ```
+
+> **macOS の注意**: `tauri dev` では Nintendo ログインの deep-link（`npf71b963c1b7b6d119://`）が正常に処理されない場合があります。ログイン機能を含む動作確認は `npx tauri build` でビルドした `.app` を使ってください。
 
 ## ローカルビルド（インストーラー生成）
 
