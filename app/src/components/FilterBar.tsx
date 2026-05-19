@@ -91,8 +91,6 @@ export function FilterBar({ filters, onChange }: Props) {
             </span>
           )}
         </FilterGroup>
-      </div>
-      <div className="filter-row">
         <FilterGroup label="モード">
           {MODES.map(m => (
             <button
@@ -102,6 +100,8 @@ export function FilterBar({ filters, onChange }: Props) {
             >{modeLabel(m)}</button>
           ))}
         </FilterGroup>
+      </div>
+      <div className="filter-row">
         <FilterGroup label="ルール">
           {RULES.map(r => (
             <button
