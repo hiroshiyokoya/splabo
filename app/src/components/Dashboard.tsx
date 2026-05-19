@@ -250,7 +250,7 @@ function WinRateChart({ data, height, images }: { data: SummaryEntry[]; height: 
             borderRadius: 6,
             fontSize: 12,
           }}
-          labelStyle={{ color: 'var(--text)' }}
+          labelStyle={{ color: 'var(--text)', fontWeight: 700 }}
           itemStyle={{ color: 'var(--text)' }}
           formatter={(value, name) =>
             name === 'win_rate'
