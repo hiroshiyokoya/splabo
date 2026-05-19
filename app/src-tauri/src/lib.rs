@@ -37,6 +37,7 @@ pub fn run() {
             auth::logout,
             db::db_battle_count,
             db::db_list_battles,
+            db::db_weapons_used,
             db::db_summary,
             images::read_image,
             fetch_battles,
