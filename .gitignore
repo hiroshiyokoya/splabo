@@ -1,4 +1,8 @@
 node_modules/
 dist/
 app/src-tauri/target/
+app/src-tauri/binaries/nxapi-sidecar*
+!app/src-tauri/binaries/.gitkeep
+tools/nxapi-wrapper/node_modules/
+tools/nxapi-wrapper/dist/
 .env

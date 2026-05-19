@@ -6,6 +6,7 @@ use tauri::{
 
 pub mod auth;
 pub mod db;
+pub mod nxapi;
 pub mod splatnet3;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -30,7 +31,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             auth::start_login,
             auth::handle_auth_redirect,
-            auth::get_bullet_token,
             auth::check_auth_status,
             auth::logout,
             db::db_battle_count,
@@ -83,7 +83,7 @@ pub fn run() {
 /// SplatNet3 からバトル履歴を取得して DB に保存する。新規保存件数を返す。
 #[tauri::command]
 async fn fetch_battles(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usize, String> {
-    let result = auth::get_bullet_token(app).await?;
+    let result = nxapi::nxapi_get_bullet_token(&app).await?;
     let client = reqwest::Client::builder()
         .build()
         .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;

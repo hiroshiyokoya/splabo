@@ -1,0 +1,22 @@
+{
+  "name": "nxapi-wrapper",
+  "version": "0.1.0",
+  "description": "nxapi sidecar wrapper for chartoon Tauri app",
+  "type": "module",
+  "scripts": {
+    "bundle": "node build.mjs",
+    "build:win": "npm run bundle && npx @yao-pkg/pkg dist/bundle.cjs --target node20-win-x64 --output ../../app/src-tauri/binaries/nxapi-sidecar-x86_64-pc-windows-msvc.exe",
+    "build:mac-arm": "npm run bundle && npx @yao-pkg/pkg dist/bundle.cjs --target node20-macos-arm64 --output ../../app/src-tauri/binaries/nxapi-sidecar-aarch64-apple-darwin",
+    "build:mac-x64": "npm run bundle && npx @yao-pkg/pkg dist/bundle.cjs --target node20-macos-x64 --output ../../app/src-tauri/binaries/nxapi-sidecar-x86_64-apple-darwin",
+    "build:linux": "npm run bundle && npx @yao-pkg/pkg dist/bundle.cjs --target node20-linux-x64 --output ../../app/src-tauri/binaries/nxapi-sidecar-x86_64-unknown-linux-gnu",
+    "test": "node wrapper.js check_login /tmp/test-data"
+  },
+  "dependencies": {
+    "nxapi": "1.6.1-next.254"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^5.12.0",
+    "esbuild": "^0.28.0"
+  },
+  "pkg": {}
+}

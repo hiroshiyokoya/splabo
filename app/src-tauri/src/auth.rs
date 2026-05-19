@@ -556,6 +556,9 @@ pub async fn handle_auth_redirect(
         .save()
         .map_err(|e| format!("store 保存失敗: {e}"))?;
 
+    // nxapi ストレージにも保存（bullet token 取得でサイドカーが使用）。
+    crate::nxapi::nxapi_setup(&app, &session_token).await?;
+
     Ok(session_token)
 }
 
