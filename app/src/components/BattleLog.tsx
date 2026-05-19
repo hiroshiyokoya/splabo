@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { BattleRow, Filters } from '../types'
-import { filtersToRange, stageAbbr, modeLabel } from '../types'
+import { filtersToRange, stageAbbr, modeLabel, resultLabel } from '../types'
 
 const PAGE_SIZE = 50
 
@@ -197,7 +197,7 @@ export function BattleLog({ filters }: Props) {
                       {b.weapon}
                     </span>
                   </td>
-                  <td className={`result-cell ${b.result.toLowerCase()}`}>{b.result}</td>
+                  <td className={`result-cell ${b.result.toLowerCase()}`}>{resultLabel(b.result)}</td>
                   <td>{b.kill}</td>
                   <td>{b.death}</td>
                   <td>{b.special}</td>
@@ -264,7 +264,7 @@ function BattleDetailModal({ battle, weaponImages, onClose }: {
       <div className="modal-panel" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title">
-            <span className={`result-badge ${battle.result.toLowerCase()}`}>{battle.result}</span>
+            <span className={`result-badge ${battle.result.toLowerCase()}`}>{resultLabel(battle.result)}</span>
             {battle.knockout && battle.knockout !== 'NEITHER' && <span className="ko-badge">KO</span>}
             <span>{modeLabel(battle.mode)} / {battle.rule}</span>
             <span className="modal-stage">{stageAbbr(battle.stage)}</span>

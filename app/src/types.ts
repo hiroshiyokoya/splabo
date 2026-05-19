@@ -130,6 +130,13 @@ export function modeLabel(mode: string): string {
   return MODE_LABELS[mode] ?? mode
 }
 
+export function resultLabel(result: string): string {
+  if (result === 'WIN')  return 'Win'
+  if (result === 'LOSE') return 'Lose'
+  if (result === 'DRAW') return 'Draw'
+  return result
+}
+
 export interface ChartSpec {
   chartType: 'bar' | 'line' | 'scatter' | 'pie'
   title: string
