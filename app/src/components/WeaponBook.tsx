@@ -11,6 +11,8 @@ function winRateColor(rate: number): string {
 export function WeaponBook() {
   const [weapons,        setWeapons]        = useState<WeaponRecord[]>([])
   const [weaponImages,   setWeaponImages]   = useState<Map<string, string>>(new Map())
+  const [subImages,      setSubImages]      = useState<Map<string, string>>(new Map())
+  const [spImages,       setSpImages]       = useState<Map<string, string>>(new Map())
   const [loading,        setLoading]        = useState(true)
   const [category,       setCategory]       = useState<string | null>(null)
   const [subWeapon,      setSubWeapon]      = useState<string | null>(null)
@@ -20,6 +22,8 @@ export function WeaponBook() {
     invoke<WeaponRecord[]>('db_list_weapons')
       .then(rows => {
         setWeapons(rows)
+
+        // 主武器画像
         Promise.all(
           rows.map(w =>
             invoke<string | null>('read_image', { kind: 'weapon', name: w.name })
@@ -28,6 +32,34 @@ export function WeaponBook() {
           )
         ).then(results => {
           setWeaponImages(new Map(results.filter((r): r is [string, string] => r !== null)))
+        })
+
+        // サブウェポン画像（ユニーク名のみ）
+        const uniqueSubs = [...new Map(
+          rows.filter(w => w.sub_weapon).map(w => [w.sub_weapon!, w.sub_weapon!])
+        ).keys()]
+        Promise.all(
+          uniqueSubs.map(name =>
+            invoke<string | null>('read_image', { kind: 'sub_weapon', name })
+              .then(url => (url ? ([name, url] as [string, string]) : null))
+              .catch(() => null)
+          )
+        ).then(results => {
+          setSubImages(new Map(results.filter((r): r is [string, string] => r !== null)))
+        })
+
+        // スペシャルウェポン画像（ユニーク名のみ）
+        const uniqueSps = [...new Map(
+          rows.filter(w => w.special_weapon).map(w => [w.special_weapon!, w.special_weapon!])
+        ).keys()]
+        Promise.all(
+          uniqueSps.map(name =>
+            invoke<string | null>('read_image', { kind: 'special_weapon', name })
+              .then(url => (url ? ([name, url] as [string, string]) : null))
+              .catch(() => null)
+          )
+        ).then(results => {
+          setSpImages(new Map(results.filter((r): r is [string, string] => r !== null)))
         })
       })
       .catch(console.error)
@@ -83,9 +115,14 @@ export function WeaponBook() {
             {subWeapons.map(s => (
               <button
                 key={s}
-                className={`filter-btn${subWeapon === s ? ' active' : ''}`}
+                className={`filter-btn filter-btn--icon${subWeapon === s ? ' active' : ''}`}
                 onClick={() => setSubWeapon(prev => prev === s ? null : s)}
-              >{s}</button>
+                title={s}
+              >
+                {subImages.get(s)
+                  ? <img src={subImages.get(s)} alt={s} className="filter-btn-icon" />
+                  : s}
+              </button>
             ))}
           </div>
         </div>
@@ -98,9 +135,14 @@ export function WeaponBook() {
             {specialWeapons.map(s => (
               <button
                 key={s}
-                className={`filter-btn${specialWeapon === s ? ' active' : ''}`}
+                className={`filter-btn filter-btn--icon${specialWeapon === s ? ' active' : ''}`}
                 onClick={() => setSpecialWeapon(prev => prev === s ? null : s)}
-              >{s}</button>
+                title={s}
+              >
+                {spImages.get(s)
+                  ? <img src={spImages.get(s)} alt={s} className="filter-btn-icon" />
+                  : s}
+              </button>
             ))}
           </div>
         </div>
@@ -118,7 +160,13 @@ export function WeaponBook() {
       ) : (
         <div className="weapon-grid">
           {filtered.map(w => (
-            <WeaponCard key={w.name} weapon={w} image={weaponImages.get(w.name) ?? null} />
+            <WeaponCard
+              key={w.name}
+              weapon={w}
+              image={weaponImages.get(w.name) ?? null}
+              subImage={w.sub_weapon ? (subImages.get(w.sub_weapon) ?? null) : null}
+              spImage={w.special_weapon ? (spImages.get(w.special_weapon) ?? null) : null}
+            />
           ))}
         </div>
       )}
@@ -126,7 +174,12 @@ export function WeaponBook() {
   )
 }
 
-function WeaponCard({ weapon, image }: { weapon: WeaponRecord; image: string | null }) {
+function WeaponCard({ weapon, image, subImage, spImage }: {
+  weapon: WeaponRecord
+  image: string | null
+  subImage: string | null
+  spImage: string | null
+}) {
   const winRate = weapon.total > 0 ? weapon.wins / weapon.total : null
 
   return (
@@ -139,8 +192,20 @@ function WeaponCard({ weapon, image }: { weapon: WeaponRecord; image: string | n
       </div>
       <div className="weapon-card-name" title={weapon.name}>{weapon.name}</div>
       <div className="weapon-card-sub-sp">
-        {weapon.sub_weapon     && <span className="weapon-card-sub">サブ: {weapon.sub_weapon}</span>}
-        {weapon.special_weapon && <span className="weapon-card-sp">SP: {weapon.special_weapon}</span>}
+        {weapon.sub_weapon && (
+          <span className="weapon-card-sub" title={weapon.sub_weapon}>
+            {subImage
+              ? <img src={subImage} alt={weapon.sub_weapon} className="weapon-card-sub-icon" />
+              : weapon.sub_weapon}
+          </span>
+        )}
+        {weapon.special_weapon && (
+          <span className="weapon-card-sp" title={weapon.special_weapon}>
+            {spImage
+              ? <img src={spImage} alt={weapon.special_weapon} className="weapon-card-sub-icon" />
+              : weapon.special_weapon}
+          </span>
+        )}
       </div>
       {weapon.total > 0 ? (
         <div className="weapon-card-stats">

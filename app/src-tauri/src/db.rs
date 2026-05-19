@@ -32,6 +32,8 @@ pub async fn init_db(app: &AppHandle) -> Result<DbPool, String> {
         "ALTER TABLE battles ADD COLUMN awards         TEXT",
         "ALTER TABLE battles ADD COLUMN my_team        TEXT",
         "ALTER TABLE battles ADD COLUMN other_teams    TEXT",
+        "ALTER TABLE weapons ADD COLUMN sub_weapon_image     TEXT",
+        "ALTER TABLE weapons ADD COLUMN special_weapon_image TEXT",
     ] {
         let _ = sqlx::query(sql).execute(&pool).await;
     }
@@ -64,10 +66,12 @@ const SCHEMA: &str = r#"
     CREATE INDEX IF NOT EXISTS battles_weapon    ON battles(weapon);
 
     CREATE TABLE IF NOT EXISTS weapons (
-        name           TEXT PRIMARY KEY,
-        category       TEXT NOT NULL DEFAULT '',
-        sub_weapon     TEXT,
-        special_weapon TEXT
+        name                TEXT PRIMARY KEY,
+        category            TEXT NOT NULL DEFAULT '',
+        sub_weapon          TEXT,
+        special_weapon      TEXT,
+        sub_weapon_image    TEXT,
+        special_weapon_image TEXT
     );
 
     CREATE TABLE IF NOT EXISTS battle_players (
@@ -126,6 +130,8 @@ pub struct WeaponRecord {
     pub category: String,
     pub sub_weapon: Option<String>,
     pub special_weapon: Option<String>,
+    pub sub_weapon_image: Option<String>,
+    pub special_weapon_image: Option<String>,
     pub total: i64,
     pub wins: i64,
 }
@@ -610,6 +616,41 @@ pub async fn upsert_weapon(
     Ok(())
 }
 
+/// サブ・スペシャルウェポンの画像 URL を weapons テーブルに保存する。
+/// 既存の値がある場合は上書きしない。
+pub async fn update_weapon_sub_special_images(
+    pool: &DbPool,
+    weapon_name: &str,
+    sub_image: Option<&str>,
+    special_image: Option<&str>,
+) -> Result<(), String> {
+    sqlx::query(
+        "UPDATE weapons SET
+             sub_weapon_image     = COALESCE(sub_weapon_image, ?),
+             special_weapon_image = COALESCE(special_weapon_image, ?)
+         WHERE name = ?",
+    )
+    .bind(sub_image)
+    .bind(special_image)
+    .bind(weapon_name)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// バトル詳細の my_team / other_teams JSON を全件返す（画像キャッシュ用）。
+pub async fn get_battles_team_json(pool: &DbPool) -> Result<Vec<(Option<String>, Option<String>)>, String> {
+    let rows = sqlx::query(
+        "SELECT my_team, other_teams FROM battles
+         WHERE my_team IS NOT NULL OR other_teams IS NOT NULL",
+    )
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|r| (r.get("my_team"), r.get("other_teams"))).collect())
+}
+
 /// battle_players テーブルから sub/special を weapons テーブルに補完する。
 /// 自分の武器だけでなく、同じバトルの味方・敵の武器も対象になる。
 pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, String> {
@@ -651,6 +692,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 pub async fn db_list_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<WeaponRecord>, String> {
     let rows = sqlx::query_as::<_, WeaponRecord>(
         "SELECT w.name, w.category, w.sub_weapon, w.special_weapon,
+                w.sub_weapon_image, w.special_weapon_image,
                 COUNT(b.id) as total,
                 COALESCE(SUM(CASE WHEN b.result='WIN' THEN 1 ELSE 0 END), 0) as wins
          FROM weapons w

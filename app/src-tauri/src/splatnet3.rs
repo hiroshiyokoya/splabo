@@ -585,6 +585,78 @@ pub async fn fetch_and_store_weapons(
     Ok(count)
 }
 
+/// 保存済みバトルの my_team / other_teams JSON からサブ・スペシャルウェポンの画像をキャッシュし、
+/// weapons テーブルに image URL を記録する。
+pub async fn cache_sub_special_images(
+    pool: &crate::db::DbPool,
+    app: &tauri::AppHandle,
+    client: &reqwest::Client,
+) -> Result<(), String> {
+    let team_data = crate::db::get_battles_team_json(pool).await?;
+
+    // weapon_name -> (sub_name, sub_url, special_name, special_url)
+    let mut seen: std::collections::HashMap<String, (Option<String>, Option<String>, Option<String>, Option<String>)> =
+        std::collections::HashMap::new();
+
+    for (my_team_json, other_teams_json) in &team_data {
+        let mut players: Vec<serde_json::Value> = Vec::new();
+
+        if let Some(json) = my_team_json {
+            if let Ok(arr) = serde_json::from_str::<serde_json::Value>(json) {
+                if let Some(list) = arr.as_array() {
+                    players.extend(list.iter().cloned());
+                }
+            }
+        }
+        if let Some(json) = other_teams_json {
+            if let Ok(arr) = serde_json::from_str::<serde_json::Value>(json) {
+                if let Some(teams) = arr.as_array() {
+                    for team in teams {
+                        if let Some(list) = team.pointer("/players").and_then(|v| v.as_array()) {
+                            players.extend(list.iter().cloned());
+                        }
+                    }
+                }
+            }
+        }
+
+        for p in &players {
+            let Some(weapon_name) = p.pointer("/weapon/name").and_then(|v| v.as_str()) else { continue };
+            if seen.contains_key(weapon_name) { continue; }
+            let sub_name = p.pointer("/weapon/subWeapon/name").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let sub_url  = p.pointer("/weapon/subWeapon/image/url").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let sp_name  = p.pointer("/weapon/specialWeapon/name").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let sp_url   = p.pointer("/weapon/specialWeapon/image/url").and_then(|v| v.as_str()).map(|s| s.to_string());
+            seen.insert(weapon_name.to_string(), (sub_name, sub_url, sp_name, sp_url));
+        }
+    }
+
+    for (weapon_name, (sub_name, sub_url, sp_name, sp_url)) in &seen {
+        if let (Some(name), Some(url)) = (sub_name, sub_url) {
+            if let Err(e) = crate::images::download_and_cache(app, client, "sub_weapon", name, url).await {
+                log::warn!("サブウェポン画像キャッシュ失敗 ({name}): {e}");
+            }
+        }
+        if let (Some(name), Some(url)) = (sp_name, sp_url) {
+            if let Err(e) = crate::images::download_and_cache(app, client, "special_weapon", name, url).await {
+                log::warn!("スペシャルウェポン画像キャッシュ失敗 ({name}): {e}");
+            }
+        }
+        if let Err(e) = crate::db::update_weapon_sub_special_images(
+            pool,
+            weapon_name,
+            sub_name.as_deref(),
+            sp_name.as_deref(),
+        )
+        .await
+        {
+            log::warn!("武器画像URL更新失敗 ({weapon_name}): {e}");
+        }
+    }
+
+    Ok(())
+}
+
 /// バトルノード一覧から武器・ステージの画像 URL を収集する（重複なし）。
 fn collect_image_targets<'a>(
     nodes: impl Iterator<Item = &'a serde_json::Value>,

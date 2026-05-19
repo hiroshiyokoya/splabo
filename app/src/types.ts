@@ -71,6 +71,8 @@ export interface WeaponRecord {
   category: string
   sub_weapon: string | null
   special_weapon: string | null
+  sub_weapon_image: string | null
+  special_weapon_image: string | null
   total: number
   wins: number
 }

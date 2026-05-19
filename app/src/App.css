@@ -246,6 +246,8 @@ body {
 .filter-btn.result-btn-win.active   { color: var(--win);  border-color: var(--win);  background: color-mix(in srgb, var(--win)  12%, transparent); }
 .filter-btn.result-btn-lose.active  { color: var(--lose); border-color: var(--lose); background: color-mix(in srgb, var(--lose) 12%, transparent); }
 .filter-btn.result-btn-draw.active  { color: var(--draw); border-color: var(--draw); background: color-mix(in srgb, var(--draw) 12%, transparent); }
+.filter-btn--icon { padding: 2px 4px; }
+.filter-btn-icon { width: 24px; height: 24px; object-fit: contain; display: block; }
 .filter-reset-btn {
   margin-left: auto;
   background: none;
@@ -624,6 +626,14 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.weapon-card-sub-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
 }
 .weapon-card-stats {
   display: flex;
