@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { Filters, Period } from '../types'
 
 const MODES   = ['REGULAR', 'BANKARA', 'XMATCH']
-const RULES   = ['ナワバリ', 'ガチエリア', 'ガチヤグラ', 'ガチホコ', 'ガチアサリ']
+const RULES   = ['ナワバリバトル', 'ガチエリア', 'ガチヤグラ', 'ガチホコバトル', 'ガチアサリ']
 const RESULTS = ['WIN', 'LOSE', 'DRAW']
 const PERIODS: { id: Period; label: string }[] = [
   { id: 'all',  label: '全期間' },
