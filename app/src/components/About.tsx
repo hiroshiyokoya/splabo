@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import { getVersion } from '@tauri-apps/api/app'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { useState } from 'react'
 
 interface Props {
@@ -36,8 +37,7 @@ export function About({ onClose }: Props) {
             <a
               className="about-link"
               href="https://github.com/hiroshiyokoya/chartoon"
-              target="_blank"
-              rel="noopener noreferrer"
+              onClick={e => { e.preventDefault(); openUrl('https://github.com/hiroshiyokoya/chartoon').catch(console.error) }}
             >
               GitHub
             </a>
