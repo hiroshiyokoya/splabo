@@ -88,20 +88,33 @@ fn i64_val(v: &serde_json::Value, key: &str) -> i64 {
         .unwrap_or(0)
 }
 
+/// vsRule/rule フィールドから stat.ink スラグに変換する。
+fn rule_to_slug(rule_raw: &str) -> &'static str {
+    match rule_raw {
+        "TURF_WAR" => "turf_war",
+        "AREA"     => "area",
+        "LOFT"     => "yagura",
+        "GOAL"     => "hoko",
+        "CLAM"     => "asari",
+        _          => "turf_war",
+    }
+}
+
+/// vsStage/id (base64) と vsStage/name を抽出する。
+fn parse_stage(node: &serde_json::Value) -> (String, Option<String>) {
+    let stage_b64 = node.pointer("/vsStage/id").and_then(|x| x.as_str()).unwrap_or("");
+    let stage_id = crate::db::extract_stage_numeric_id(stage_b64);
+    let stage_name = node.pointer("/vsStage/name").and_then(|x| x.as_str()).map(|s| s.to_string());
+    (stage_id, stage_name)
+}
+
 /// レギュラーバトル1件のレスポンスノードから BattleRow を生成する。
 fn parse_regular_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
     let id = str_val(node, "id");
     let played_at = get_played_at(node);
-    let rule = node
-        .pointer("/vsRule/name")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .to_string();
-    let stage = node
-        .pointer("/vsStage/name")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .to_string();
+    let rule_raw = node.pointer("/vsRule/rule").and_then(|x| x.as_str()).unwrap_or("");
+    let rule = rule_to_slug(rule_raw).to_string();
+    let (stage, stage_name) = parse_stage(node);
     let (weapon, kill, death, assist, special, inked) = parse_my_result(node);
     let result = parse_judgement(node);
     let duration = i64_val(node, "duration");
@@ -109,9 +122,10 @@ fn parse_regular_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
     BattleRow {
         id,
         played_at,
-        mode: "REGULAR".to_string(),
+        mode: "regular".to_string(),
         rule,
         stage,
+        stage_name,
         weapon,
         result,
         kill,
@@ -131,6 +145,7 @@ fn parse_regular_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
         awards: None,
         my_team: None,
         other_teams: None,
+        statink_uuid: None,
     }
 }
 
@@ -138,19 +153,18 @@ fn parse_regular_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
 fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
     let id = str_val(node, "id");
     let played_at = get_played_at(node);
-    let rule = node
-        .pointer("/vsRule/name")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .to_string();
-    let stage = node
-        .pointer("/vsStage/name")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .to_string();
+    let rule_raw = node.pointer("/vsRule/rule").and_then(|x| x.as_str()).unwrap_or("");
+    let rule = rule_to_slug(rule_raw).to_string();
+    let (stage, stage_name) = parse_stage(node);
     let (weapon, kill, death, assist, special, inked) = parse_my_result(node);
     let result = parse_judgement(node);
     let duration = i64_val(node, "duration");
+
+    let bankara_mode = node
+        .pointer("/bankaraMatch/bankaraMode")
+        .and_then(|x| x.as_str())
+        .unwrap_or("");
+    let mode = if bankara_mode == "CHALLENGE" { "bankara_challenge" } else { "bankara_open" };
 
     let rank_before = node
         .pointer("/bankaraMatch/earnedUdemaePoint")
@@ -160,9 +174,10 @@ fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
     BattleRow {
         id,
         played_at,
-        mode: "BANKARA".to_string(),
+        mode: mode.to_string(),
         rule,
         stage,
+        stage_name,
         weapon,
         result,
         kill,
@@ -182,6 +197,7 @@ fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
         awards: None,
         my_team: None,
         other_teams: None,
+        statink_uuid: None,
     }
 }
 
@@ -189,16 +205,9 @@ fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
 fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
     let id = str_val(node, "id");
     let played_at = get_played_at(node);
-    let rule = node
-        .pointer("/vsRule/name")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .to_string();
-    let stage = node
-        .pointer("/vsStage/name")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .to_string();
+    let rule_raw = node.pointer("/vsRule/rule").and_then(|x| x.as_str()).unwrap_or("");
+    let rule = rule_to_slug(rule_raw).to_string();
+    let (stage, stage_name) = parse_stage(node);
     let (weapon, kill, death, assist, special, inked) = parse_my_result(node);
     let result = parse_judgement(node);
     let duration = i64_val(node, "duration");
@@ -210,9 +219,10 @@ fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
     BattleRow {
         id,
         played_at,
-        mode: "XMATCH".to_string(),
+        mode: "x".to_string(),
         rule,
         stage,
+        stage_name,
         weapon,
         result,
         kill,
@@ -232,6 +242,7 @@ fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
         awards: None,
         my_team: None,
         other_teams: None,
+        statink_uuid: None,
     }
 }
 
@@ -282,17 +293,17 @@ fn get_played_at(node: &serde_json::Value) -> String {
     if !v.is_empty() { v } else { played_at_from_id(&str_val(node, "id")) }
 }
 
-/// judgement フィールドを WIN / LOSE / DRAW に正規化する。
+/// judgement フィールドを win / lose / draw に正規化する（stat.ink ID 形式）。
 fn parse_judgement(node: &serde_json::Value) -> String {
     match node
         .get("judgement")
         .and_then(|x| x.as_str())
         .unwrap_or("")
     {
-        "WIN" => "WIN".to_string(),
-        "LOSE" | "DEEMED_LOSE" => "LOSE".to_string(),
-        "DRAW" | "EXEMPTED_LOSE" => "DRAW".to_string(),
-        _ => "LOSE".to_string(),
+        "WIN" => "win".to_string(),
+        "LOSE" | "DEEMED_LOSE" => "lose".to_string(),
+        "DRAW" | "EXEMPTED_LOSE" => "draw".to_string(),
+        _ => "lose".to_string(),
     }
 }
 
@@ -477,9 +488,11 @@ pub async fn fetch_and_update_details(
                 })
             });
         let myself_result = myself.and_then(|p| p.get("result"));
-        let kill    = myself_result.and_then(|r| r.get("kill")).and_then(|v| v.as_i64()).unwrap_or(0);
-        let death   = myself_result.and_then(|r| r.get("death")).and_then(|v| v.as_i64()).unwrap_or(0);
+        // Nintendo の result["kill"] は kill+assist（kill_or_assist）なので実キルに変換する
+        let kill_or_assist = myself_result.and_then(|r| r.get("kill")).and_then(|v| v.as_i64()).unwrap_or(0);
         let assist  = myself_result.and_then(|r| r.get("assist")).and_then(|v| v.as_i64()).unwrap_or(0);
+        let kill    = kill_or_assist - assist;
+        let death   = myself_result.and_then(|r| r.get("death")).and_then(|v| v.as_i64()).unwrap_or(0);
         let special = myself_result.and_then(|r| r.get("special")).and_then(|v| v.as_i64()).unwrap_or(0);
         let inked   = myself.and_then(|p| p.get("paint")).and_then(|v| v.as_i64()).unwrap_or(0);
 

@@ -17,6 +17,10 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   const [masterRefreshing, setMasterRefreshing] = useState(false)
   const [masterResult, setMasterResult] = useState<string | null>(null)
   const [themeId, setThemeId] = useState(getThemeId)
+  const [uploading, setUploading] = useState(false)
+  const [uploadResult, setUploadResult] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteResult, setDeleteResult] = useState<string | null>(null)
 
   useEffect(() => {
     invoke<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
@@ -28,6 +32,10 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
       enabled: settings.autoFetchEnabled,
       hour: settings.autoFetchHour,
     }).catch(console.error)
+    invoke('set_statink_config', {
+      autoUpload: settings.statink.autoUpload,
+      apiKey: settings.statink.apiKey,
+    }).catch(console.error)
   }, [])
 
   function update(patch: Partial<AppSettings>) {
@@ -38,6 +46,13 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
       invoke('set_scheduler_config', {
         enabled: next.autoFetchEnabled,
         hour: next.autoFetchHour,
+      }).catch(console.error)
+    }
+    // stat.ink 設定の変更も即 Rust 側へ同期
+    if ('statink' in patch) {
+      invoke('set_statink_config', {
+        autoUpload: next.statink.autoUpload,
+        apiKey: next.statink.apiKey,
       }).catch(console.error)
     }
   }
@@ -75,6 +90,46 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
       setFetchResult(`エラー: ${String(e)}`)
     } finally {
       setFetching(false)
+    }
+  }
+
+  async function handleDeleteStatink() {
+    if (!confirm('stat.ink にアップロード済みのバトルを全件削除し、再アップロード可能な状態に戻します。\nよろしいですか？')) return
+    setDeleting(true)
+    setDeleteResult(null)
+    try {
+      const count = await invoke<number>('delete_statink_all')
+      setDeleteResult(count > 0 ? `${count}件削除しました` : '削除対象なし')
+    } catch (e) {
+      setDeleteResult(`エラー: ${String(e)}`)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  async function handleUploadStatink() {
+    setUploading(true)
+    setUploadResult(null)
+    try {
+      const count = await invoke<number>('upload_to_statink')
+      setUploadResult(count > 0 ? `${count}件アップロードしました` : '新規アップロードなし')
+    } catch (e) {
+      setUploadResult(`エラー: ${String(e)}`)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleUploadStatinkOne() {
+    setUploading(true)
+    setUploadResult(null)
+    try {
+      const count = await invoke<number>('upload_to_statink_one')
+      setUploadResult(count > 0 ? '1件アップロードしました（テスト成功）' : '対象バトルなし')
+    } catch (e) {
+      setUploadResult(`エラー: ${String(e)}`)
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -200,6 +255,68 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
           {masterResult && (
             <span style={{ fontSize: 13, color: masterResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
               {masterResult}
+            </span>
+          )}
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h3>stat.ink 連携</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+          <a href="https://stat.ink" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>stat.ink</a>
+          {' '}のプロフィールページから API キーを取得してください。
+        </p>
+        <label>
+          API キー
+          <input
+            type="password"
+            value={settings.statink.apiKey}
+            onChange={(e) => update({ statink: { ...settings.statink, apiKey: e.target.value } })}
+            placeholder="stat.ink の API キーを入力"
+          />
+        </label>
+        <label className="checkbox-label" style={{ marginTop: 8 }}>
+          <input
+            type="checkbox"
+            checked={settings.statink.autoUpload}
+            onChange={(e) => update({ statink: { ...settings.statink, autoUpload: e.target.checked } })}
+            disabled={!settings.statink.apiKey}
+          />
+          バトルデータ取得後に自動でアップロードする
+        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+          <button
+            className="btn-secondary"
+            onClick={handleUploadStatink}
+            disabled={uploading || !settings.statink.apiKey}
+          >
+            {uploading ? 'アップロード中...' : '今すぐアップロード'}
+          </button>
+          <button
+            className="btn-secondary"
+            onClick={handleUploadStatinkOne}
+            disabled={uploading || !settings.statink.apiKey}
+          >
+            1件だけテスト
+          </button>
+          {uploadResult && (
+            <span style={{ fontSize: 13, color: uploadResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
+              {uploadResult}
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+          <button
+            className="btn-secondary"
+            onClick={handleDeleteStatink}
+            disabled={deleting || !settings.statink.apiKey}
+            style={{ color: 'var(--lose)' }}
+          >
+            {deleting ? '削除中...' : 'アップロード済みを全件削除（再アップロード用）'}
+          </button>
+          {deleteResult && (
+            <span style={{ fontSize: 13, color: deleteResult.startsWith('エラー') ? 'var(--lose)' : 'var(--text-muted)' }}>
+              {deleteResult}
             </span>
           )}
         </div>

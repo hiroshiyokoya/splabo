@@ -32,6 +32,8 @@ pub async fn init_db(app: &AppHandle) -> Result<DbPool, String> {
         "ALTER TABLE battles ADD COLUMN awards         TEXT",
         "ALTER TABLE battles ADD COLUMN my_team        TEXT",
         "ALTER TABLE battles ADD COLUMN other_teams    TEXT",
+        "ALTER TABLE battles ADD COLUMN stage_name     TEXT",
+        "ALTER TABLE battles ADD COLUMN statink_uuid  TEXT",
         "ALTER TABLE weapons ADD COLUMN sub_weapon_image     TEXT",
         "ALTER TABLE weapons ADD COLUMN special_weapon_image TEXT",
     ] {
@@ -47,6 +49,7 @@ const SCHEMA: &str = r#"
         mode        TEXT NOT NULL,
         rule        TEXT NOT NULL,
         stage       TEXT NOT NULL,
+        stage_name  TEXT,
         weapon      TEXT NOT NULL,
         result      TEXT NOT NULL,
         kill        INTEGER NOT NULL DEFAULT 0,
@@ -103,6 +106,7 @@ pub struct BattleRow {
     pub mode: String,
     pub rule: String,
     pub stage: String,
+    pub stage_name: Option<String>,
     pub weapon: String,
     pub result: String,
     pub kill: i64,
@@ -122,6 +126,7 @@ pub struct BattleRow {
     pub awards: Option<String>,
     pub my_team: Option<String>,
     pub other_teams: Option<String>,
+    pub statink_uuid: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -145,16 +150,17 @@ pub async fn insert_battles(pool: &DbPool, rows: Vec<BattleRow>) -> Result<usize
     for row in rows {
         let result = sqlx::query(
             "INSERT OR IGNORE INTO battles
-             (id, played_at, mode, rule, stage, weapon, result,
+             (id, played_at, mode, rule, stage, stage_name, weapon, result,
               kill, death, assist, special, inked, duration,
               rank_before, rank_after, x_power, raw_json, fetched_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .bind(&row.id)
         .bind(&row.played_at)
         .bind(&row.mode)
         .bind(&row.rule)
         .bind(&row.stage)
+        .bind(&row.stage_name)
         .bind(&row.weapon)
         .bind(&row.result)
         .bind(row.kill)
@@ -274,7 +280,7 @@ pub fn parse_players_from_json(
                         weapon,
                         sub_weapon:     p.pointer("/weapon/subWeapon/name").and_then(|v| v.as_str()).map(|s| s.to_string()),
                         special_weapon: p.pointer("/weapon/specialWeapon/name").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                        kill:    stat_i64(res, "kill"),
+                        kill:    stat_i64(res, "kill") - stat_i64(res, "assist"),
                         death:   stat_i64(res, "death"),
                         assist:  stat_i64(res, "assist"),
                         special: stat_i64(res, "special"),
@@ -378,6 +384,23 @@ pub async fn backfill_battle_players(db: tauri::State<'_, DbPool>) -> Result<usi
 }
 
 // ---------------------------------------------------------------------------
+// フィルターヘルパー
+// ---------------------------------------------------------------------------
+
+/// モードフィルターを正規化する。
+/// 'bankara' は 'bankara_challenge|bankara_open' に展開し、
+/// instr パイプフィルターでどちらにもマッチさせる。
+fn normalize_mode_filter(mode: Option<String>) -> Option<String> {
+    mode.map(|m| {
+        if m == "bankara" {
+            "bankara_challenge|bankara_open".to_string()
+        } else {
+            m
+        }
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Tauri コマンド
 // ---------------------------------------------------------------------------
 
@@ -392,16 +415,17 @@ pub async fn db_battle_stats(
     weapon: Option<String>,
     stage: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    let mode = normalize_mode_filter(mode);
     let row = sqlx::query(
         "SELECT
             COUNT(*) as total,
-            SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
-            SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws,
+            SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN result='draw' THEN 1 ELSE 0 END) as draws,
             COUNT(DISTINCT weapon) as weapon_count
          FROM battles
          WHERE (? IS NULL OR played_at >= ?)
            AND (? IS NULL OR played_at <= ?)
-           AND (? IS NULL OR mode = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || mode || '|') > 0)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
@@ -442,11 +466,12 @@ pub async fn db_battle_count(
     weapon: Option<String>,
     stage: Option<String>,
 ) -> Result<i64, String> {
+    let mode = normalize_mode_filter(mode);
     let row = sqlx::query(
         "SELECT COUNT(*) as cnt FROM battles
          WHERE (? IS NULL OR played_at >= ?)
            AND (? IS NULL OR played_at <= ?)
-           AND (? IS NULL OR mode = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || mode || '|') > 0)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
@@ -480,6 +505,7 @@ pub async fn db_list_battles(
     order_by: Option<String>,       // JS: orderBy
     order_asc: Option<bool>,        // JS: orderAsc
 ) -> Result<Vec<BattleRow>, String> {
+    let mode = normalize_mode_filter(mode);
     let order_col = match order_by.as_deref() {
         Some("kill")    => "kill",
         Some("death")   => "death",
@@ -489,14 +515,15 @@ pub async fn db_list_battles(
     };
     let order_dir = if order_asc.unwrap_or(false) { "ASC" } else { "DESC" };
     let sql = format!(
-        "SELECT id, played_at, mode, rule, stage, weapon, result,
+        "SELECT id, played_at, mode, rule, stage, stage_name, weapon, result,
                 kill, death, assist, special, inked, duration,
                 rank_before, rank_after, x_power, raw_json, fetched_at,
-                knockout, sub_weapon, special_weapon, awards, my_team, other_teams
+                knockout, sub_weapon, special_weapon, awards, my_team, other_teams,
+                statink_uuid
          FROM battles
          WHERE (? IS NULL OR played_at >= ?)
            AND (? IS NULL OR played_at <= ?)
-           AND (? IS NULL OR mode = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || mode || '|') > 0)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
@@ -519,16 +546,20 @@ pub async fn db_list_battles(
     Ok(rows)
 }
 
-/// 使用済みステージの一覧を試合数の多い順で返す。
+/// 使用済みステージの一覧を試合数の多い順で返す。{id, name} 形式。
 #[tauri::command]
-pub async fn db_stages_used(db: tauri::State<'_, DbPool>) -> Result<Vec<String>, String> {
+pub async fn db_stages_used(db: tauri::State<'_, DbPool>) -> Result<Vec<serde_json::Value>, String> {
     let rows = sqlx::query(
-        "SELECT stage FROM battles GROUP BY stage ORDER BY COUNT(*) DESC",
+        "SELECT stage, stage_name FROM battles GROUP BY stage ORDER BY COUNT(*) DESC",
     )
     .fetch_all(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;
-    Ok(rows.into_iter().map(|r| r.get::<String, _>("stage")).collect())
+    Ok(rows.into_iter().map(|r| {
+        let id: String          = r.get("stage");
+        let name: Option<String> = r.get("stage_name");
+        serde_json::json!({ "id": id, "name": name.unwrap_or_else(|| id.clone()) })
+    }).collect())
 }
 
 /// 使用済み武器の一覧を試合数の多い順で返す。
@@ -554,10 +585,11 @@ pub async fn db_summary(
     weapon: Option<String>,
     stage: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    let mode = normalize_mode_filter(mode);
     let filter_where =
         "(? IS NULL OR played_at >= ?)
            AND (? IS NULL OR played_at <= ?)
-           AND (? IS NULL OR mode = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || mode || '|') > 0)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
@@ -577,8 +609,8 @@ pub async fn db_summary(
 
     let by_weapon = bind_filters!(sqlx::query(&format!(
         "SELECT weapon as name, COUNT(*) as total,
-                SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws
+                SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result='draw' THEN 1 ELSE 0 END) as draws
          FROM battles WHERE {filter_where} GROUP BY weapon ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
@@ -586,19 +618,25 @@ pub async fn db_summary(
     .map_err(|e| e.to_string())?;
 
     let by_mode = bind_filters!(sqlx::query(&format!(
-        "SELECT mode as name, COUNT(*) as total,
-                SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws
-         FROM battles WHERE {filter_where} GROUP BY mode ORDER BY total DESC"
+        "SELECT
+                CASE WHEN mode LIKE 'bankara%' THEN 'bankara' ELSE mode END as name,
+                COUNT(*) as total,
+                SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result='draw' THEN 1 ELSE 0 END) as draws
+         FROM battles WHERE {filter_where}
+         GROUP BY CASE WHEN mode LIKE 'bankara%' THEN 'bankara' ELSE mode END
+         ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;
 
     let by_stage = bind_filters!(sqlx::query(&format!(
-        "SELECT stage as name, COUNT(*) as total,
-                SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws
+        "SELECT stage as name,
+                COALESCE(MAX(stage_name), stage) as display_name,
+                COUNT(*) as total,
+                SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result='draw' THEN 1 ELSE 0 END) as draws
          FROM battles WHERE {filter_where} GROUP BY stage ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
@@ -607,21 +645,26 @@ pub async fn db_summary(
 
     let by_rule = bind_filters!(sqlx::query(&format!(
         "SELECT rule as name, COUNT(*) as total,
-                SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws
+                SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result='draw' THEN 1 ELSE 0 END) as draws
          FROM battles WHERE {filter_where} GROUP BY rule ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;
 
-    fn to_json(rows: Vec<sqlx::sqlite::SqliteRow>) -> Vec<serde_json::Value> {
+    fn to_json(rows: Vec<sqlx::sqlite::SqliteRow>, use_display_name: bool) -> Vec<serde_json::Value> {
         rows.into_iter().map(|r| {
             let total: i64 = r.get("total");
             let wins: i64  = r.get("wins");
             let draws: i64 = r.get("draws");
+            let name: String = if use_display_name {
+                r.try_get("display_name").unwrap_or_else(|_| r.get::<String, _>("name"))
+            } else {
+                r.get("name")
+            };
             serde_json::json!({
-                "name": r.get::<String, _>("name"),
+                "name": name,
                 "total": total,
                 "wins": wins,
                 "draws": draws,
@@ -631,10 +674,10 @@ pub async fn db_summary(
     }
 
     Ok(serde_json::json!({
-        "by_weapon": to_json(by_weapon),
-        "by_mode": to_json(by_mode),
-        "by_stage": to_json(by_stage),
-        "by_rule": to_json(by_rule),
+        "by_weapon": to_json(by_weapon, false),
+        "by_mode": to_json(by_mode, false),
+        "by_stage": to_json(by_stage, true),
+        "by_rule": to_json(by_rule, false),
     }))
 }
 
@@ -739,13 +782,233 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
     Ok(row.get::<i64, _>("cnt") as usize)
 }
 
+// ---------------------------------------------------------------------------
+// stat.ink ID 正規化マイグレーション
+// ---------------------------------------------------------------------------
+
+/// DB マイグレーションを必要なバージョンまで実行する。
+/// PRAGMA user_version でどこまで完了したかを管理する。
+///
+/// version 1: mode/rule/stage/result を stat.ink ID 形式に変換（初回実装・バグあり）
+/// version 2: mode 判定バグ修正版で全件再処理
+pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
+    let ver_row = sqlx::query("PRAGMA user_version")
+        .fetch_one(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    let current_version: i64 = ver_row.get(0);
+
+    if current_version >= 3 {
+        return Ok(0); // 最新バージョンに達している
+    }
+
+    let mut updated = 0usize;
+
+    // version 2 未適用なら mode/rule/stage/result を正規化する
+    if current_version < 2 {
+    let rows = sqlx::query("SELECT id, raw_json FROM battles")
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    for row in &rows {
+        let id:       String = row.get("id");
+        let raw_json: String = row.get("raw_json");
+
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw_json) else { continue };
+
+        // mode 判定
+        // 優先順位:
+        //   1. vsMode.mode（vsHistoryDetail の raw_json に含まれる）
+        //   2. bankaraMatch が非 null → bankara
+        //   3. xMatch が非 null → x
+        //   4. それ以外 → regular
+        let vsmode = json.pointer("/vsMode/mode").and_then(|v| v.as_str()).unwrap_or("");
+        let new_mode: &str = if !vsmode.is_empty() {
+            match vsmode {
+                "REGULAR" => "regular",
+                "BANKARA" => {
+                    let bm = json.pointer("/bankaraMatch/bankaraMode")
+                        .and_then(|v| v.as_str()).unwrap_or("");
+                    if bm == "CHALLENGE" { "bankara_challenge" } else { "bankara_open" }
+                }
+                "X_MATCH" => "x",
+                _ => "regular",
+            }
+        } else {
+            // リストクエリの raw_json（vsMode なし）
+            // bankaraMatch / xMatch が null でないことを確認してから判定
+            let has_bankara = json.get("bankaraMatch").map(|v| !v.is_null()).unwrap_or(false);
+            let has_xmatch  = json.get("xMatch").map(|v| !v.is_null()).unwrap_or(false);
+            if has_bankara {
+                let bm = json.pointer("/bankaraMatch/bankaraMode")
+                    .and_then(|v| v.as_str()).unwrap_or("");
+                if bm == "CHALLENGE" { "bankara_challenge" } else { "bankara_open" }
+            } else if has_xmatch {
+                "x"
+            } else {
+                "regular"
+            }
+        };
+
+        // rule
+        let rule_raw = json.pointer("/vsRule/rule").and_then(|v| v.as_str()).unwrap_or("");
+        let new_rule = match rule_raw {
+            "TURF_WAR" => "turf_war",
+            "AREA"     => "area",
+            "LOFT"     => "yagura",
+            "GOAL"     => "hoko",
+            "CLAM"     => "asari",
+            other      => other,
+        };
+
+        // stage
+        let stage_b64 = json.pointer("/vsStage/id").and_then(|v| v.as_str()).unwrap_or("");
+        let new_stage = extract_stage_numeric_id(stage_b64);
+        let new_stage_name = json.pointer("/vsStage/name")
+            .and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+        // result（小文字に統一）
+        let result_raw = json.get("judgement").and_then(|v| v.as_str()).unwrap_or("");
+        let new_result = match result_raw {
+            "WIN"                        => "win",
+            "LOSE" | "DEEMED_LOSE"       => "lose",
+            "DRAW" | "EXEMPTED_LOSE"     => "draw",
+            _                            => "lose",
+        };
+
+        let _ = sqlx::query(
+            "UPDATE battles SET mode=?, rule=?, stage=?, stage_name=?, result=? WHERE id=?",
+        )
+        .bind(new_mode)
+        .bind(new_rule)
+        .bind(&new_stage)
+        .bind(if new_stage_name.is_empty() { None } else { Some(new_stage_name) })
+        .bind(new_result)
+        .bind(&id)
+        .execute(pool.as_ref())
+        .await;
+
+        updated += 1;
+    }
+
+    // v2 マイグレーション完了を記録
+    sqlx::query("PRAGMA user_version = 2")
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    log::info!("migrate v2: mode/rule/stage/result 正規化 {} 件", updated);
+    } // end if current_version < 2
+
+    // version 3: Nintendo の result["kill"] は kill+assist（kill_or_assist）であり、
+    //            実キル数は kill_or_assist - assist。既存レコードを修正する。
+    if current_version < 3 {
+        sqlx::query(
+            "UPDATE battles SET kill = kill - assist WHERE detail_fetched = 1 AND assist > 0 AND kill >= assist",
+        )
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+        sqlx::query(
+            "UPDATE battle_players SET kill = kill - assist WHERE assist > 0 AND kill >= assist",
+        )
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+        sqlx::query("PRAGMA user_version = 3")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        log::info!("migrate v3: kill カウント（kill_or_assist → 実キル）修正完了");
+    }
+
+    Ok(updated)
+}
+
+// ---------------------------------------------------------------------------
+// stat.ink アップロード管理
+// ---------------------------------------------------------------------------
+
+/// statink_uuid が未設定のバトル一覧を返す（古い順）。
+pub async fn get_battles_not_uploaded(pool: &DbPool) -> Result<Vec<BattleRow>, String> {
+    let rows = sqlx::query_as::<_, BattleRow>(
+        "SELECT id, played_at, mode, rule, stage, stage_name, weapon, result,
+                kill, death, assist, special, inked, duration,
+                rank_before, rank_after, x_power, raw_json, fetched_at,
+                knockout, sub_weapon, special_weapon, awards, my_team, other_teams,
+                statink_uuid
+         FROM battles
+         WHERE statink_uuid IS NULL
+           AND detail_fetched = 1
+         ORDER BY played_at ASC",
+    )
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+/// statink_uuid が設定済みのバトル一覧を返す（id, statink_uuid のペア）。
+pub async fn get_battles_uploaded(pool: &DbPool) -> Result<Vec<(String, String)>, String> {
+    let rows = sqlx::query("SELECT id, statink_uuid FROM battles WHERE statink_uuid IS NOT NULL ORDER BY played_at ASC")
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|r| (r.get::<String, _>("id"), r.get::<String, _>("statink_uuid"))).collect())
+}
+
+/// バトルの statink_uuid を NULL にリセットする（削除後の再アップロード用）。
+pub async fn reset_statink_uuid(pool: &DbPool, id: &str) -> Result<(), String> {
+    sqlx::query("UPDATE battles SET statink_uuid = NULL WHERE id = ?")
+        .bind(id)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// バトルを stat.ink アップロード済みとしてマークする。
+pub async fn mark_statink_uploaded(pool: &DbPool, id: &str, uuid: &str) -> Result<(), String> {
+    sqlx::query("UPDATE battles SET statink_uuid=? WHERE id=?")
+        .bind(uuid)
+        .bind(id)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// ステージ ID（base64 エンコード "VsStage-N"）から数値部分を抽出する。
+pub fn extract_stage_numeric_id(b64_id: &str) -> String {
+    use base64::Engine;
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(b64_id)
+        .unwrap_or_default();
+    let s = String::from_utf8_lossy(&decoded);
+    // "VsStage-11" → "11"
+    if let Some(pos) = s.rfind('-') {
+        let num = &s[pos + 1..];
+        if !num.is_empty() && num.chars().all(|c| c.is_ascii_digit()) {
+            return num.to_string();
+        }
+    }
+    // フォールバック: 数字だけならそのまま
+    if !b64_id.is_empty() && b64_id.chars().all(|c| c.is_ascii_digit()) {
+        return b64_id.to_string();
+    }
+    b64_id.to_string()
+}
+
 #[tauri::command]
 pub async fn db_list_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<WeaponRecord>, String> {
     let rows = sqlx::query_as::<_, WeaponRecord>(
         "SELECT w.name, w.category, w.sub_weapon, w.special_weapon,
                 w.sub_weapon_image, w.special_weapon_image,
                 COUNT(b.id) as total,
-                COALESCE(SUM(CASE WHEN b.result='WIN' THEN 1 ELSE 0 END), 0) as wins
+                COALESCE(SUM(CASE WHEN b.result='win' THEN 1 ELSE 0 END), 0) as wins
          FROM weapons w
          LEFT JOIN battles b ON b.weapon = w.name
          GROUP BY w.name

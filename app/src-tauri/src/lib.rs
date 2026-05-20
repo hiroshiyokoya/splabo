@@ -10,6 +10,7 @@ pub mod db;
 pub mod images;
 pub mod nxapi;
 pub mod splatnet3;
+pub mod statink;
 
 /// スケジューラー設定（フロントエンドから set_scheduler_config で更新される）
 pub struct SchedulerConfig(pub std::sync::Mutex<(bool, u8)>);
@@ -17,11 +18,18 @@ impl Default for SchedulerConfig {
     fn default() -> Self { Self(std::sync::Mutex::new((false, 4))) }
 }
 
+/// stat.ink 設定（フロントエンドから set_statink_config で更新される）
+pub struct StatinkConfig(pub std::sync::Mutex<(bool, String)>);  // (auto_upload, api_key)
+impl Default for StatinkConfig {
+    fn default() -> Self { Self(std::sync::Mutex::new((false, String::new()))) }
+}
+
 /// fetch_complete イベントのペイロード
 #[derive(serde::Serialize, Clone)]
 struct FetchCompletePayload {
     battles: usize,
     details: usize,
+    uploaded: usize,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -59,6 +67,7 @@ pub fn run() {
         })
         .manage(auth::AuthState::default())
         .manage(SchedulerConfig::default())
+        .manage(StatinkConfig::default())
         .invoke_handler(tauri::generate_handler![
             auth::start_login,
             auth::handle_auth_redirect,
@@ -76,6 +85,10 @@ pub fn run() {
             fetch_battles_full,
             fetch_weapons,
             set_scheduler_config,
+            set_statink_config,
+            upload_to_statink,
+            upload_to_statink_one,
+            delete_statink_all,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -107,13 +120,21 @@ pub fn run() {
                 match db::init_db(&handle).await {
                     Ok(pool) => {
                         handle.manage(pool);
+                        // 既存レコードを stat.ink ID 形式に移行
+                        if let Some(pool) = handle.try_state::<db::DbPool>() {
+                            match db::migrate_battle_ids(&pool).await {
+                                Ok(n) if n > 0 => log::info!("[移行] mode/rule/stage/result を正規化 {n}件"),
+                                Ok(_) => {},
+                                Err(e) => log::warn!("[移行] 失敗: {e}"),
+                            }
+                        }
                         // DB 準備完了後に起動時フェッチ（未ログインならスキップ）
                         if let Some(pool) = handle.try_state::<db::DbPool>() {
                             if auth::is_logged_in(&handle) {
                                 log::info!("[起動時取得] 開始");
                                 match run_fetch_full(&handle, &pool).await {
-                                    Ok((b, d)) => log::info!("[起動時取得] 完了 バトル+{b}件 詳細+{d}件"),
-                                    Err(e)     => log::error!("[起動時取得] 失敗: {e}"),
+                                    Ok((b, d, u)) => log::info!("[起動時取得] 完了 バトル+{b}件 詳細+{d}件 stat.ink+{u}件"),
+                                    Err(e)        => log::error!("[起動時取得] 失敗: {e}"),
                                 }
                             } else {
                                 log::info!("[起動時取得] 未ログインのためスキップ");
@@ -150,8 +171,8 @@ pub fn run() {
                         if let Some(pool) = handle.try_state::<db::DbPool>() {
                             log::info!("[自動取得] 開始 ({}時)", target_hour);
                             match run_fetch_full(&handle, &pool).await {
-                                Ok((b, _)) => {
-                                    log::info!("[自動取得] 完了 バトル+{b}件");
+                                Ok((b, _, u)) => {
+                                    log::info!("[自動取得] 完了 バトル+{b}件 stat.ink+{u}件");
                                     send_notification(&handle, b);
                                 }
                                 Err(e) => {
@@ -175,9 +196,9 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-/// バトル取得 → 詳細取得 → 武器補完 → 画像キャッシュ を一括実行。
+/// バトル取得 → 詳細取得 → 武器補完 → 画像キャッシュ → stat.ink 自動アップロード を一括実行。
 /// 完了後に "fetch_complete" イベントを emit する。
-async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usize), String> {
+async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usize, usize), String> {
     let result = nxapi::nxapi_get_bullet_token(app).await?;
     let client = reqwest::Client::builder()
         .build()
@@ -194,14 +215,83 @@ async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usiz
     db::populate_weapons_from_battles(db).await?;
     splatnet3::cache_sub_special_images(db, app, &client).await?;
 
-    let _ = app.emit("fetch_complete", FetchCompletePayload { battles, details });
-    Ok((battles, details))
+    // stat.ink 自動アップロード（設定が有効かつ API キーがある場合のみ）
+    let uploaded = if let Some(sc) = app.try_state::<StatinkConfig>() {
+        let (auto_upload, api_key) = {
+            let v = sc.0.lock().unwrap();
+            (v.0, v.1.clone())
+        };
+        if auto_upload && !api_key.is_empty() {
+            match statink::upload_pending_battles(db, &client, &api_key, None).await {
+                Ok(n)  => n,
+                Err(e) => { log::warn!("[stat.ink] 自動アップロード失敗: {e}"); 0 }
+            }
+        } else { 0 }
+    } else { 0 };
+
+    let _ = app.emit("fetch_complete", FetchCompletePayload { battles, details, uploaded });
+    Ok((battles, details, uploaded))
 }
 
-/// バトル取得・詳細取得を一括実行する。新規バトル数と更新詳細数のタプルを返す。
+/// バトル取得・詳細取得・stat.ink アップロードを一括実行する。
 #[tauri::command]
-async fn fetch_battles_full(app: AppHandle, db: State<'_, db::DbPool>) -> Result<(usize, usize), String> {
+async fn fetch_battles_full(app: AppHandle, db: State<'_, db::DbPool>) -> Result<(usize, usize, usize), String> {
     run_fetch_full(&app, &db).await
+}
+
+/// stat.ink 設定を更新する。フロントエンドが設定変更時に呼び出す。
+#[tauri::command]
+fn set_statink_config(config: State<'_, StatinkConfig>, auto_upload: bool, api_key: String) {
+    *config.0.lock().unwrap() = (auto_upload, api_key);
+    log::info!("[stat.ink] 設定更新: auto_upload={auto_upload}");
+}
+
+/// stat.ink にアップロード済みのバトルを全件削除して statink_uuid をリセットする（再アップロード用）。
+#[tauri::command]
+async fn delete_statink_all(
+    config: State<'_, StatinkConfig>,
+    db: State<'_, db::DbPool>,
+) -> Result<usize, String> {
+    let api_key = config.0.lock().unwrap().1.clone();
+    if api_key.is_empty() {
+        return Err("stat.ink API キーが設定されていません".to_string());
+    }
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    statink::delete_all_uploaded_battles(&db, &client, &api_key).await
+}
+
+/// 未アップロードのバトルを stat.ink へアップロードする（手動・全件）。
+#[tauri::command]
+async fn upload_to_statink(
+    config: State<'_, StatinkConfig>,
+    db: State<'_, db::DbPool>,
+) -> Result<usize, String> {
+    let api_key = config.0.lock().unwrap().1.clone();
+    if api_key.is_empty() {
+        return Err("stat.ink API キーが設定されていません".to_string());
+    }
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    statink::upload_pending_battles(&db, &client, &api_key, None).await
+}
+
+/// 未アップロードのバトルを stat.ink へ 1 件だけアップロードする（テスト用）。
+#[tauri::command]
+async fn upload_to_statink_one(
+    config: State<'_, StatinkConfig>,
+    db: State<'_, db::DbPool>,
+) -> Result<usize, String> {
+    let api_key = config.0.lock().unwrap().1.clone();
+    if api_key.is_empty() {
+        return Err("stat.ink API キーが設定されていません".to_string());
+    }
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    statink::upload_pending_battles(&db, &client, &api_key, Some(1)).await
 }
 
 /// HistoryRecordQuery で武器マスター（名前・カテゴリ・画像）を取得して DB に保存し、

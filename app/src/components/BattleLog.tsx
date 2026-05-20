@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { BattleRow, Filters } from '../types'
-import { filtersToRange, stageAbbr, modeLabel, resultLabel } from '../types'
+import { filtersToRange, stageAbbr, modeLabel, ruleLabel, resultLabel } from '../types'
 
 const PAGE_SIZE = 50
 
@@ -149,11 +149,11 @@ export function BattleLog({ filters }: Props) {
             </thead>
             <tbody>
               {battles.map(b => (
-                <tr key={b.id} className={`result-${b.result.toLowerCase()} clickable-row`} onClick={() => setSelected(b)}>
+                <tr key={b.id} className={`result-${b.result} clickable-row`} onClick={() => setSelected(b)}>
                   <td>{new Date(b.played_at).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                   <td>{modeLabel(b.mode)}</td>
-                  <td>{b.rule}</td>
-                  <td>{stageAbbr(b.stage)}</td>
+                  <td>{ruleLabel(b.rule)}</td>
+                  <td>{stageAbbr(b.stage_name ?? b.stage)}</td>
                   <td>
                     <span className="weapon-cell">
                       {weaponImages.get(b.weapon) && <img src={weaponImages.get(b.weapon)} alt="" className="weapon-icon" />}
@@ -229,8 +229,8 @@ function BattleDetailModal({ battle, weaponImages, onClose }: {
           <div className="modal-title">
             <span className={`result-badge ${battle.result.toLowerCase()}`}>{resultLabel(battle.result)}</span>
             {battle.knockout && battle.knockout !== 'NEITHER' && <span className="ko-badge">KO</span>}
-            <span>{modeLabel(battle.mode)} / {battle.rule}</span>
-            <span className="modal-stage">{stageAbbr(battle.stage)}</span>
+            <span>{modeLabel(battle.mode)} / {ruleLabel(battle.rule)}</span>
+            <span className="modal-stage">{stageAbbr(battle.stage_name ?? battle.stage)}</span>
           </div>
           <div className="modal-meta">
             {new Date(battle.played_at).toLocaleString('ja-JP')}

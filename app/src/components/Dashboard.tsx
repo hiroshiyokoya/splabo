@@ -6,7 +6,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
 import type { Summary, SummaryEntry, ChartSpec, Filters } from '../types'
-import { filtersToRange, stageAbbr, modeLabel } from '../types'
+import { filtersToRange, stageAbbr, modeLabel, ruleLabel } from '../types'
 
 const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
@@ -116,7 +116,7 @@ export function Dashboard({ filters, aiChart }: Props) {
             </ChartCard>
 
             <ChartCard title="ルール別 勝率 & 試合数" sortBy={ruleSort} onSortChange={setRuleSort}>
-              <WinRateChart data={sorted(summary.by_rule, ruleSort)} height={220} images={new Map()} />
+              <WinRateChart data={sorted(summary.by_rule, ruleSort)} height={220} images={new Map()} nameTransform={ruleLabel} />
             </ChartCard>
 
             <ChartCard title="モード別 勝率 & 試合数" sortBy={modeSort} onSortChange={setModeSort}>
