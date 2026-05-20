@@ -193,6 +193,9 @@ pub async fn get_battles_without_detail(pool: &DbPool) -> Result<Vec<String>, St
 }
 
 /// バトル詳細データをすべて更新し detail_fetched=1 にする。
+/// rule もここで詳細クエリ由来の値で上書きする（リスト取り込み時の
+/// 取りこぼし・誤分類を救済するため）。
+#[allow(clippy::too_many_arguments)]
 pub async fn update_battle_detail(
     pool: &DbPool,
     id: &str,
@@ -202,6 +205,7 @@ pub async fn update_battle_detail(
     special: i64,
     inked: i64,
     raw_json: &str,
+    rule: &str,
     knockout: Option<&str>,
     sub_weapon: Option<&str>,
     special_weapon: Option<&str>,
@@ -211,7 +215,7 @@ pub async fn update_battle_detail(
 ) -> Result<(), String> {
     sqlx::query(
         "UPDATE battles SET kill=?, death=?, assist=?, special=?, inked=?,
-                            raw_json=?, detail_fetched=1,
+                            raw_json=?, rule=?, detail_fetched=1,
                             knockout=?, sub_weapon=?, special_weapon=?,
                             awards=?, my_team=?, other_teams=?
          WHERE id=?",
@@ -222,6 +226,7 @@ pub async fn update_battle_detail(
     .bind(special)
     .bind(inked)
     .bind(raw_json)
+    .bind(rule)
     .bind(knockout)
     .bind(sub_weapon)
     .bind(special_weapon)
@@ -814,7 +819,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 3 {
+    if current_version >= 4 {
         return Ok(0); // 最新バージョンに達している
     }
 
@@ -939,6 +944,53 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             .map_err(|e| e.to_string())?;
 
         log::info!("migrate v3: kill カウント（kill_or_assist → 実キル）修正完了");
+    }
+
+    // version 4: rule_to_slug の旧フォールバック（_ => "turf_war"）で
+    //            未知ルールが全部 "turf_war" になっていた問題の修復。
+    //            全バトルの raw_json から rule を再パースして DB を更新する。
+    //            （冪等：正しい値はそのまま、間違った値だけ直る）
+    if current_version < 4 {
+        let rows = sqlx::query("SELECT id, raw_json, rule FROM battles")
+            .fetch_all(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let mut fixed = 0usize;
+        for row in &rows {
+            let id:        String = row.get("id");
+            let raw_json:  String = row.get("raw_json");
+            let cur_rule:  String = row.get("rule");
+
+            let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw_json) else { continue };
+            let rule_raw = json.pointer("/vsRule/rule").and_then(|v| v.as_str()).unwrap_or("");
+            if rule_raw.is_empty() { continue; }  // raw_json に rule が無いものは触らない
+
+            let new_rule = match rule_raw {
+                "TURF_WAR" => "turf_war",
+                "AREA"     => "area",
+                "LOFT"     => "yagura",
+                "GOAL"     => "hoko",
+                "CLAM"     => "asari",
+                other      => other,
+            };
+
+            if cur_rule != new_rule {
+                let _ = sqlx::query("UPDATE battles SET rule=? WHERE id=?")
+                    .bind(new_rule)
+                    .bind(&id)
+                    .execute(pool.as_ref())
+                    .await;
+                fixed += 1;
+            }
+        }
+
+        sqlx::query("PRAGMA user_version = 4")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        log::info!("migrate v4: rule を raw_json から再パース、{} 件修正", fixed);
     }
 
     Ok(updated)

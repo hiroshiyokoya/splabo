@@ -89,14 +89,20 @@ fn i64_val(v: &serde_json::Value, key: &str) -> i64 {
 }
 
 /// vsRule/rule フィールドから stat.ink スラグに変換する。
-fn rule_to_slug(rule_raw: &str) -> &'static str {
+/// 未知の値はそのまま返す（不明なルールを一律 "turf_war" にしないこと。
+/// migrate v2 の挙動と一致）。
+fn rule_to_slug(rule_raw: &str) -> String {
     match rule_raw {
-        "TURF_WAR" => "turf_war",
-        "AREA"     => "area",
-        "LOFT"     => "yagura",
-        "GOAL"     => "hoko",
-        "CLAM"     => "asari",
-        _          => "turf_war",
+        "TURF_WAR" => "turf_war".to_string(),
+        "AREA"     => "area".to_string(),
+        "LOFT"     => "yagura".to_string(),
+        "GOAL"     => "hoko".to_string(),
+        "CLAM"     => "asari".to_string(),
+        ""         => String::new(),
+        other      => {
+            log::warn!("未知のルール値: {}（そのまま保存）", other);
+            other.to_string()
+        }
     }
 }
 
@@ -113,7 +119,7 @@ fn parse_regular_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
     let id = str_val(node, "id");
     let played_at = get_played_at(node);
     let rule_raw = node.pointer("/vsRule/rule").and_then(|x| x.as_str()).unwrap_or("");
-    let rule = rule_to_slug(rule_raw).to_string();
+    let rule = rule_to_slug(rule_raw);
     let (stage, stage_name) = parse_stage(node);
     let (weapon, kill, death, assist, special, inked) = parse_my_result(node);
     let result = parse_judgement(node);
@@ -154,7 +160,7 @@ fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
     let id = str_val(node, "id");
     let played_at = get_played_at(node);
     let rule_raw = node.pointer("/vsRule/rule").and_then(|x| x.as_str()).unwrap_or("");
-    let rule = rule_to_slug(rule_raw).to_string();
+    let rule = rule_to_slug(rule_raw);
     let (stage, stage_name) = parse_stage(node);
     let (weapon, kill, death, assist, special, inked) = parse_my_result(node);
     let result = parse_judgement(node);
@@ -206,7 +212,7 @@ fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
     let id = str_val(node, "id");
     let played_at = get_played_at(node);
     let rule_raw = node.pointer("/vsRule/rule").and_then(|x| x.as_str()).unwrap_or("");
-    let rule = rule_to_slug(rule_raw).to_string();
+    let rule = rule_to_slug(rule_raw);
     let (stage, stage_name) = parse_stage(node);
     let (weapon, kill, death, assist, special, inked) = parse_my_result(node);
     let result = parse_judgement(node);
@@ -505,8 +511,13 @@ pub async fn fetch_and_update_details(
         let my_team = detail.pointer("/myTeam/players").map(|v| v.to_string());
         let other_teams = detail.get("otherTeams").map(|v| v.to_string());
 
+        // 詳細クエリ由来の rule で上書き（リスト取り込み時の取りこぼし救済）
+        let rule_raw = detail.pointer("/vsRule/rule").and_then(|v| v.as_str()).unwrap_or("");
+        let rule = rule_to_slug(rule_raw);
+
         if let Err(e) = crate::db::update_battle_detail(
             pool, id, kill, death, assist, special, inked, &detail.to_string(),
+            &rule,
             knockout.as_deref(),
             sub_weapon.as_deref(),
             special_weapon.as_deref(),
