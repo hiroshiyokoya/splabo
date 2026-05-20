@@ -123,19 +123,19 @@ export function Dashboard({ filters, aiChart }: Props) {
           </div>
 
           <div className="chart-grid">
-            <ChartCard title="武器別 勝率 & バトル数" sortBy={weaponSort} onSortChange={setWeaponSort}>
+            <ChartCard title="武器別 バトル数 & 勝率" sortBy={weaponSort} onSortChange={setWeaponSort}>
               <WinRateChart data={sorted(summary.by_weapon.slice(0, 14), weaponSort)} height={260} images={weaponImages} hoverImageSize={64} />
             </ChartCard>
 
-            <ChartCard title="ステージ別 勝率 & バトル数" sortBy={stageSort} onSortChange={setStageSort}>
+            <ChartCard title="ステージ別 バトル数 & 勝率" sortBy={stageSort} onSortChange={setStageSort}>
               <WinRateChart data={sorted(summary.by_stage.slice(0, 14), stageSort)} height={260} images={new Map()} nameTransform={stageAbbr} tickAngle={30} />
             </ChartCard>
 
-            <ChartCard title="ルール別 勝率 & バトル数" sortBy={ruleSort} onSortChange={setRuleSort}>
+            <ChartCard title="ルール別 バトル数 & 勝率" sortBy={ruleSort} onSortChange={setRuleSort}>
               <WinRateChart data={sorted(summary.by_rule, ruleSort)} height={220} images={new Map()} nameTransform={ruleLabel} />
             </ChartCard>
 
-            <ChartCard title="モード別 勝率 & バトル数" sortBy={modeSort} onSortChange={setModeSort}>
+            <ChartCard title="モード別 バトル数 & 勝率" sortBy={modeSort} onSortChange={setModeSort}>
               <WinRateChart data={sorted(summary.by_mode, modeSort)} height={220} images={new Map()} nameTransform={modeLabel} />
             </ChartCard>
 
