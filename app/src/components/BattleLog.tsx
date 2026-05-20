@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { BattleRow, Filters } from '../types'
+import type { BattleRow, Filters, Player, Team, VsHistoryDetail, Award } from '../types'
 import { filtersToRange, stageAbbr, modeLabel, ruleLabel, resultLabel } from '../types'
+import { ABILITY_LABELS, abilityKeyFromUrl, colorToHex, loadAbilityImages } from '../utils/abilities'
 
 const PAGE_SIZE = 50
 
@@ -14,20 +15,6 @@ function winRateColor(rate: number): string {
 type OrderBy = 'played_at' | 'kill' | 'death' | 'special' | 'inked'
 
 // ---------------------------------------------------------------------------
-// 型（詳細モーダル用）
-// ---------------------------------------------------------------------------
-
-interface Player {
-  name?: string
-  isMyself?: boolean
-  paint?: number
-  weapon?: { name?: string; subWeapon?: { name?: string }; specialWeapon?: { name?: string } }
-  result?: { kill?: number; death?: number; assist?: number; special?: number }
-}
-interface OtherTeam { players?: Player[] }
-interface Award     { name?: string; rank?: string }
-
-// ---------------------------------------------------------------------------
 // メインコンポーネント
 // ---------------------------------------------------------------------------
 
@@ -36,11 +23,12 @@ interface Props {
 }
 
 export function BattleLog({ filters }: Props) {
-  const [battles, setBattles]           = useState<BattleRow[]>([])
-  const [total, setTotal]               = useState(0)
-  const [loading, setLoading]           = useState(true)
-  const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
-  const [selected, setSelected]         = useState<BattleRow | null>(null)
+  const [battles, setBattles]                 = useState<BattleRow[]>([])
+  const [total, setTotal]                     = useState(0)
+  const [loading, setLoading]                 = useState(true)
+  const [weaponImages, setWeaponImages]       = useState<Map<string, string>>(new Map())
+  const [abilityImages, setAbilityImages]     = useState<Map<string, string>>(new Map())
+  const [selected, setSelected]               = useState<BattleRow | null>(null)
 
   // ページ
   const [offset, setOffset] = useState(0)
@@ -61,7 +49,7 @@ export function BattleLog({ filters }: Props) {
     return () => { unlistenPromise.then(fn => fn()) }
   }, [])
 
-  // 武器アイコンをロード（テーブル行・モーダル用）
+  // 武器・アビリティ画像をロード
   useEffect(() => {
     invoke<string[]>('db_weapons_used').then(weapons => {
       Promise.all(
@@ -74,7 +62,8 @@ export function BattleLog({ filters }: Props) {
         setWeaponImages(new Map(results.filter((r): r is [string, string] => r !== null)))
       })
     })
-  }, [])
+    loadAbilityImages().then(setAbilityImages)
+  }, [refreshKey])
 
   // フィルター変化でページをリセット
   useEffect(() => {
@@ -102,6 +91,19 @@ export function BattleLog({ filters }: Props) {
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [offset, filters, orderBy, orderAsc, refreshKey])
+
+  // 行ごとのチームカラーを raw_json から抽出してメモ化
+  const teamColors = useMemo(() => {
+    const m = new Map<string, { my?: string; other?: string }>()
+    for (const b of battles) {
+      const d = tryParse(b.raw_json) as VsHistoryDetail | null
+      m.set(b.id, {
+        my:    colorToHex(d?.myTeam?.color),
+        other: colorToHex(d?.otherTeams?.[0]?.color),
+      })
+    }
+    return m
+  }, [battles])
 
   function handleSort(col: OrderBy) {
     setOffset(0)
@@ -135,38 +137,49 @@ export function BattleLog({ filters }: Props) {
           <table className="battle-table">
             <thead>
               <tr>
+                <th className="team-color-th"></th>
                 <SortTh col="played_at" label="日時"   orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
                 <th>モード</th>
                 <th>ルール</th>
                 <th>ステージ</th>
                 <th>武器</th>
                 <th>結果</th>
-                <SortTh col="kill"    label="キル"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
-                <SortTh col="death"   label="デス"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
-                <SortTh col="special" label="スペシャル" orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
-                <SortTh col="inked"     label="塗り"   orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <SortTh col="kill"    label="K"        orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <th>A</th>
+                <SortTh col="death"   label="D"        orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <SortTh col="special" label="SP"       orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <SortTh col="inked"   label="塗り"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
               </tr>
             </thead>
             <tbody>
-              {battles.map(b => (
-                <tr key={b.id} className={`result-${b.result} clickable-row`} onClick={() => setSelected(b)}>
-                  <td>{new Date(b.played_at).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
-                  <td>{modeLabel(b.mode)}</td>
-                  <td>{ruleLabel(b.rule)}</td>
-                  <td>{stageAbbr(b.stage_name ?? b.stage)}</td>
-                  <td>
-                    <span className="weapon-cell">
-                      {weaponImages.get(b.weapon) && <img src={weaponImages.get(b.weapon)} alt="" className="weapon-icon" />}
-                      {b.weapon}
-                    </span>
-                  </td>
-                  <td className={`result-cell ${b.result.toLowerCase()}`}>{resultLabel(b.result)}</td>
-                  <td>{b.kill}{b.assist > 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.85em' }}> ({b.assist})</span>}</td>
-                  <td>{b.death}</td>
-                  <td>{b.special}</td>
-                  <td>{b.inked.toLocaleString()}</td>
-                </tr>
-              ))}
+              {battles.map(b => {
+                const color = teamColors.get(b.id)?.my
+                const isKo  = !!b.knockout && b.knockout !== 'NEITHER'
+                return (
+                  <tr key={b.id} className={`result-${b.result} clickable-row`} onClick={() => setSelected(b)}>
+                    <td className="team-color-cell" style={color ? { background: color } : undefined} />
+                    <td>{new Date(b.played_at).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                    <td>{modeLabel(b.mode)}</td>
+                    <td>{ruleLabel(b.rule)}</td>
+                    <td>{stageAbbr(b.stage_name ?? b.stage)}</td>
+                    <td>
+                      <span className="weapon-cell">
+                        {weaponImages.get(b.weapon) && <img src={weaponImages.get(b.weapon)} alt="" className="weapon-icon" />}
+                        {b.weapon}
+                      </span>
+                    </td>
+                    <td className={`result-cell ${b.result.toLowerCase()}`}>
+                      {resultLabel(b.result)}
+                      {isKo && <span className="ko-badge-inline">KO</span>}
+                    </td>
+                    <td>{b.kill}</td>
+                    <td>{b.assist}</td>
+                    <td>{b.death}</td>
+                    <td>{b.special}</td>
+                    <td>{b.inked.toLocaleString()}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
 
@@ -179,7 +192,12 @@ export function BattleLog({ filters }: Props) {
       )}
 
       {selected && (
-        <BattleDetailModal battle={selected} weaponImages={weaponImages} onClose={() => setSelected(null)} />
+        <BattleDetailModal
+          battle={selected}
+          weaponImages={weaponImages}
+          abilityImages={abilityImages}
+          onClose={() => setSelected(null)}
+        />
       )}
     </div>
   )
@@ -204,8 +222,11 @@ function SortTh({ col, label, orderBy, orderAsc, onSort }: {
 // 詳細モーダル
 // ---------------------------------------------------------------------------
 
-function BattleDetailModal({ battle, weaponImages, onClose }: {
-  battle: BattleRow; weaponImages: Map<string, string>; onClose: () => void
+function BattleDetailModal({ battle, weaponImages, abilityImages, onClose }: {
+  battle: BattleRow
+  weaponImages: Map<string, string>
+  abilityImages: Map<string, string>
+  onClose: () => void
 }) {
   const [showRaw, setShowRaw] = useState(false)
 
@@ -215,10 +236,15 @@ function BattleDetailModal({ battle, weaponImages, onClose }: {
     return () => window.removeEventListener('keydown', handleKey)
   }, [handleKey])
 
-  const hasDetail  = battle.my_team !== null
-  const myTeam     = (battle.my_team     ? tryParse(battle.my_team)     : null) as Player[]    | null ?? []
-  const otherTeams = (battle.other_teams ? tryParse(battle.other_teams) : null) as OtherTeam[] | null ?? []
-  const awards     = (battle.awards      ? tryParse(battle.awards)      : null) as Award[]     | null ?? []
+  // raw_json から詳細を取得（チームカラー・スコア・トリカラー対応）
+  const detail = useMemo(() => tryParse(battle.raw_json) as VsHistoryDetail | null, [battle.raw_json])
+  const myTeam     = detail?.myTeam ?? null
+  const otherTeams = detail?.otherTeams ?? []
+  const awards     = detail?.awards ?? []
+  const isTricolor = otherTeams.length >= 2
+
+  const hasDetail   = battle.my_team !== null
+  const isKo        = !!battle.knockout && battle.knockout !== 'NEITHER'
   const durationMin = Math.floor(battle.duration / 60)
   const durationSec = battle.duration % 60
 
@@ -228,7 +254,7 @@ function BattleDetailModal({ battle, weaponImages, onClose }: {
         <div className="modal-header">
           <div className="modal-title">
             <span className={`result-badge ${battle.result.toLowerCase()}`}>{resultLabel(battle.result)}</span>
-            {battle.knockout && battle.knockout !== 'NEITHER' && <span className="ko-badge">KO</span>}
+            {isKo && <span className="ko-badge">KO</span>}
             <span>{modeLabel(battle.mode)} / {ruleLabel(battle.rule)}</span>
             <span className="modal-stage">{stageAbbr(battle.stage_name ?? battle.stage)}</span>
           </div>
@@ -241,42 +267,38 @@ function BattleDetailModal({ battle, weaponImages, onClose }: {
 
         <div className="modal-body">
           {!hasDetail && (
-            <div className="detail-notice">詳細データ未取得 — 「詳細データを取得」を実行すると K/D/A・チーム情報が表示されます</div>
+            <div className="detail-notice">詳細データ未取得 — 「バトルデータを取得」を実行すると詳細が表示されます</div>
           )}
 
-          <section className="modal-section">
-            <h3 className="modal-section-title">スタッツ</h3>
-            <div className="stats-grid">
-              <StatItem label="キル"       value={battle.kill} />
-              <StatItem label="デス"       value={battle.death} />
-              <StatItem label="アシスト"   value={battle.assist} />
-              <StatItem label="スペシャル" value={battle.special} />
-              <StatItem label="塗り"       value={battle.inked.toLocaleString()} />
-            </div>
-            <div className="weapon-detail-row">
-              {weaponImages.get(battle.weapon) && <img src={weaponImages.get(battle.weapon)} alt="" className="weapon-icon-lg" />}
-              <div className="weapon-detail-names">
-                <span className="weapon-main">{battle.weapon}</span>
-                {battle.sub_weapon     && <span className="weapon-sub">サブ: {battle.sub_weapon}</span>}
-                {battle.special_weapon && <span className="weapon-sp">スペシャル: {battle.special_weapon}</span>}
-              </div>
-            </div>
-            {(battle.rank_before || battle.rank_after || battle.x_power) && (
-              <div className="rank-row">
-                {battle.rank_before && <span>ランク: {battle.rank_before}</span>}
-                {battle.rank_after  && <span> → {battle.rank_after}</span>}
-                {battle.x_power    && <span> · Xパワー: {battle.x_power}</span>}
-              </div>
-            )}
-          </section>
+          {hasDetail && (myTeam || otherTeams.length > 0) && (
+            <ScoreSummary myTeam={myTeam} otherTeams={otherTeams} rule={battle.rule} />
+          )}
 
-          {hasDetail && (myTeam.length > 0 || otherTeams.length > 0) && (
+          <MyStatsCard battle={battle} weaponImages={weaponImages} />
+
+          {hasDetail && (myTeam || otherTeams.length > 0) && (
             <section className="modal-section">
-              <h3 className="modal-section-title">チーム</h3>
-              <div className="teams-grid">
-                {myTeam.length > 0 && <TeamTable title="自チーム" players={myTeam} weaponImages={weaponImages} highlight />}
+              <h3 className="modal-section-title">スコアボード</h3>
+              <div className="teams-stack">
+                {myTeam && (
+                  <TeamPanel
+                    team={myTeam}
+                    label="自チーム"
+                    highlight
+                    showSignal={isTricolor}
+                    weaponImages={weaponImages}
+                    abilityImages={abilityImages}
+                  />
+                )}
                 {otherTeams.map((team, i) => (
-                  <TeamTable key={i} title={`相手チーム${otherTeams.length > 1 ? i + 1 : ''}`} players={team.players ?? []} weaponImages={weaponImages} />
+                  <TeamPanel
+                    key={i}
+                    team={team}
+                    label={otherTeams.length > 1 ? `相手チーム${i + 1}` : '相手チーム'}
+                    showSignal={isTricolor}
+                    weaponImages={weaponImages}
+                    abilityImages={abilityImages}
+                  />
                 ))}
               </div>
             </section>
@@ -297,11 +319,237 @@ function BattleDetailModal({ battle, weaponImages, onClose }: {
             <button className="raw-toggle" onClick={() => setShowRaw(v => !v)}>
               {showRaw ? '▲' : '▶'} raw JSON
             </button>
-            {showRaw && <pre className="raw-json">{JSON.stringify(tryParse(battle.raw_json), null, 2)}</pre>}
+            {showRaw && <pre className="raw-json">{JSON.stringify(detail ?? tryParse(battle.raw_json), null, 2)}</pre>}
           </section>
         </div>
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// スコアサマリ（モーダル上部）
+// ---------------------------------------------------------------------------
+
+function ScoreSummary({ myTeam, otherTeams, rule }: {
+  myTeam: Team | null
+  otherTeams: Team[]
+  rule: string
+}) {
+  const isPaintRule = rule === 'turf_war' || rule === 'tricolor'
+  const myColor    = colorToHex(myTeam?.color)
+  const teams = [{ team: myTeam, color: myColor }, ...otherTeams.map(t => ({ team: t, color: colorToHex(t.color) }))]
+
+  return (
+    <section className="modal-section score-summary">
+      <div className="score-summary-row">
+        {teams.map((t, i) => {
+          const score = isPaintRule
+            ? (typeof t.team?.result?.paintRatio === 'number' ? `${(t.team!.result!.paintRatio! * 100).toFixed(1)}%` : '—')
+            : (typeof t.team?.result?.score === 'number' ? String(t.team!.result!.score) : '—')
+          return (
+            <div key={i} className="score-summary-team" style={{ borderTop: `4px solid ${t.color ?? 'transparent'}` }}>
+              <div className="score-summary-label">{i === 0 ? '自' : (teams.length > 2 ? `相手${i}` : '相手')}</div>
+              <div className="score-summary-value">{score}</div>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 自分の戦績カード
+// ---------------------------------------------------------------------------
+
+function MyStatsCard({ battle, weaponImages }: {
+  battle: BattleRow
+  weaponImages: Map<string, string>
+}) {
+  return (
+    <section className="modal-section my-stats-card">
+      <h3 className="modal-section-title">自分の戦績</h3>
+      <div className="my-stats-grid">
+        <div className="my-stats-weapon">
+          {weaponImages.get(battle.weapon) && <img src={weaponImages.get(battle.weapon)} alt="" className="weapon-icon-lg" />}
+          <div className="my-stats-weapon-names">
+            <div className="weapon-main">{battle.weapon}</div>
+            {battle.sub_weapon     && <div className="weapon-sub">サブ: {battle.sub_weapon}</div>}
+            {battle.special_weapon && <div className="weapon-sp">SP: {battle.special_weapon}</div>}
+          </div>
+        </div>
+        <div className="my-stats-numbers">
+          <StatItem label="キル"       value={battle.kill} />
+          <StatItem label="アシスト"   value={battle.assist} />
+          <StatItem label="デス"       value={battle.death} />
+          <StatItem label="スペシャル" value={battle.special} />
+          <StatItem label="塗り"       value={battle.inked.toLocaleString()} />
+        </div>
+      </div>
+      {(battle.rank_before || battle.rank_after || battle.x_power) && (
+        <div className="rank-row">
+          {battle.rank_before && <span>ランク: {battle.rank_before}</span>}
+          {battle.rank_after  && <span> → {battle.rank_after}</span>}
+          {battle.x_power     && <span> · Xパワー: {battle.x_power}</span>}
+        </div>
+      )}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// チームパネル（スコアボード 1 チーム分）
+// ---------------------------------------------------------------------------
+
+function TeamPanel({ team, label, highlight, showSignal, weaponImages, abilityImages }: {
+  team: Team
+  label: string
+  highlight?: boolean
+  showSignal: boolean
+  weaponImages: Map<string, string>
+  abilityImages: Map<string, string>
+}) {
+  const color   = colorToHex(team.color)
+  const players = team.players ?? []
+  const totalK  = players.reduce((s, p) => s + (p.result?.kill   ?? 0), 0)
+  const totalD  = players.reduce((s, p) => s + (p.result?.death  ?? 0), 0)
+  const totalA  = players.reduce((s, p) => s + (p.result?.assist ?? 0), 0)
+  const totalSp = players.reduce((s, p) => s + (p.result?.special?? 0), 0)
+  const totalP  = players.reduce((s, p) => s + (p.paint ?? 0), 0)
+  const score   = team.result?.score
+  const paint   = team.result?.paintRatio
+
+  return (
+    <div className={`team-panel${highlight ? ' my-team' : ''}`} style={{ borderLeft: `4px solid ${color ?? 'transparent'}` }}>
+      <div className="team-panel-header">
+        <span className="team-panel-label" style={color ? { color } : undefined}>{label}</span>
+        {typeof score === 'number' && <span className="team-panel-score">{score}</span>}
+        {typeof paint === 'number' && <span className="team-panel-score">{(paint * 100).toFixed(1)}%</span>}
+        <span className="team-panel-totals">
+          {totalK}K / {totalA}A / {totalD}D / SP {totalSp} / 塗り {totalP.toLocaleString()}p
+        </span>
+      </div>
+      <table className="team-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>ネームプレート</th>
+            <th>武器</th>
+            <th>ギア</th>
+            <th>K</th>
+            <th>A</th>
+            <th>D</th>
+            <th>SP</th>
+            <th>塗り</th>
+            {showSignal && <th>信号</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {players.map((p, i) => (
+            <PlayerRow
+              key={i}
+              p={p}
+              showSignal={showSignal}
+              weaponImages={weaponImages}
+              abilityImages={abilityImages}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// プレイヤー行
+// ---------------------------------------------------------------------------
+
+function PlayerRow({ p, showSignal, weaponImages, abilityImages }: {
+  p: Player
+  showSignal: boolean
+  weaponImages: Map<string, string>
+  abilityImages: Map<string, string>
+}) {
+  const wName  = p.weapon?.name ?? ''
+  const crown  = crownType(p)
+  const result = p.result
+
+  return (
+    <tr className={p.isMyself ? 'myself-row' : ''}>
+      <td className="crown-cell">{crown && <span className={`crown-badge crown-${crown}`}>{crown === 'x' ? '👑' : crown}</span>}</td>
+      <td className="splashtag-cell">
+        <div className="splashtag-title">{p.byname ?? ''}</div>
+        <div className="splashtag-name">
+          <span>{p.name ?? ''}</span>
+          {p.nameId && <span className="splashtag-id"> #{p.nameId}</span>}
+        </div>
+      </td>
+      <td className="weapon-col">
+        <span className="weapon-cell">
+          {weaponImages.get(wName) && <img src={weaponImages.get(wName)} alt="" className="weapon-icon" />}
+          <span>{wName}</span>
+        </span>
+      </td>
+      <td className="gear-col">
+        <GearGrid p={p} abilityImages={abilityImages} />
+      </td>
+      <td className="num-col">{result?.kill    ?? '—'}</td>
+      <td className="num-col">{result?.assist  ?? '—'}</td>
+      <td className="num-col">{result?.death   ?? '—'}</td>
+      <td className="num-col">{result?.special ?? '—'}</td>
+      <td className="num-col">{p.paint?.toLocaleString() ?? '—'}</td>
+      {showSignal && <td className="num-col">{result?.noroshiTry ?? '—'}</td>}
+    </tr>
+  )
+}
+
+function crownType(p: Player): 'x' | '100x' | '333x' | null {
+  if (p.festDragonCert === 'DRAGON')        return '100x'
+  if (p.festDragonCert === 'DOUBLE_DRAGON') return '333x'
+  if (p.crown)                              return 'x'
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// ギア 3×4 グリッド
+// ---------------------------------------------------------------------------
+
+function GearGrid({ p, abilityImages }: { p: Player; abilityImages: Map<string, string> }) {
+  const gears = [
+    { gear: p.headGear     },
+    { gear: p.clothingGear },
+    { gear: p.shoesGear    },
+  ]
+  return (
+    <div className="gear-grid">
+      {gears.map(({ gear }, i) => (
+        <div key={i} className="gear-row">
+          <GearSlot ability={gear?.primaryGearPower} abilityImages={abilityImages} primary />
+          {[0, 1, 2].map(idx => (
+            <GearSlot key={idx} ability={gear?.additionalGearPowers?.[idx]} abilityImages={abilityImages} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function GearSlot({ ability, abilityImages, primary }: {
+  ability?: { name?: string; image?: { url?: string } }
+  abilityImages: Map<string, string>
+  primary?: boolean
+}) {
+  const url = ability?.image?.url
+  const key = abilityKeyFromUrl(url)
+  const imgUrl = key ? abilityImages.get(key) : undefined
+  const label  = (key && ABILITY_LABELS[key]) ?? ability?.name ?? ''
+  return (
+    <span className={`gear-slot${primary ? ' primary' : ''}`} title={label}>
+      {imgUrl
+        ? <img src={imgUrl} alt={label} />
+        : <span className="gear-slot-fallback">·</span>}
+    </span>
   )
 }
 
@@ -318,41 +566,6 @@ function StatItem({ label, value }: { label: string; value: number | string }) {
   )
 }
 
-function TeamTable({ title, players, weaponImages, highlight }: {
-  title: string; players: Player[]; weaponImages: Map<string, string>; highlight?: boolean
-}) {
-  return (
-    <div className={`team-table-wrap${highlight ? ' my-team' : ''}`}>
-      <div className="team-label">{title}</div>
-      <table className="team-table">
-        <thead>
-          <tr><th>武器</th><th>K</th><th>D</th><th>A</th><th>Sp</th><th>塗り</th></tr>
-        </thead>
-        <tbody>
-          {players.map((p, i) => {
-            const wName = p.weapon?.name ?? ''
-            return (
-              <tr key={i} className={p.isMyself ? 'myself-row' : ''}>
-                <td>
-                  <span className="weapon-cell">
-                    {weaponImages.get(wName) && <img src={weaponImages.get(wName)} alt="" className="weapon-icon" />}
-                    {wName}
-                  </span>
-                </td>
-                <td>{p.result?.kill    ?? '—'}</td>
-                <td>{p.result?.death   ?? '—'}</td>
-                <td>{p.result?.assist  ?? '—'}</td>
-                <td>{p.result?.special ?? '—'}</td>
-                <td>{p.paint?.toLocaleString() ?? '—'}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
 function LogStatCard({ label, value, valueColor, small }: { label: string; value: string; valueColor?: string; small?: boolean }) {
   return (
     <div className="stat-card">
@@ -365,3 +578,5 @@ function LogStatCard({ label, value, valueColor, small }: { label: string; value
 function tryParse(s: string): unknown {
   try { return JSON.parse(s) } catch { return null }
 }
+// Award is used via VsHistoryDetail.awards
+export type { Award }

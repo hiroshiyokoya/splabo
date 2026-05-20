@@ -38,6 +38,84 @@ export function filtersToRange(filters: Filters): { since: string | null; until:
   return { since: periodToSince(filters.period), until: null }
 }
 
+// ---------------------------------------------------------------------------
+// バトル詳細用の型（my_team / other_teams JSON から復元）
+// ---------------------------------------------------------------------------
+
+export interface Color {
+  r: number
+  g: number
+  b: number
+  a: number
+}
+
+export interface Ability {
+  name?: string
+  image?: { url?: string }
+}
+
+export interface Gear {
+  primaryGearPower?: Ability
+  additionalGearPowers?: Ability[]
+}
+
+export interface PlayerResult {
+  kill?: number
+  death?: number
+  assist?: number
+  special?: number
+  noroshiTry?: number
+}
+
+export interface Player {
+  name?: string
+  byname?: string
+  nameId?: string
+  species?: string
+  isMyself?: boolean
+  paint?: number
+  crown?: boolean
+  festDragonCert?: string
+  weapon?: {
+    name?: string
+    image?: { url?: string }
+    subWeapon?: { name?: string; image?: { url?: string } }
+    specialWeapon?: { name?: string; image?: { url?: string } }
+  }
+  headGear?: Gear
+  clothingGear?: Gear
+  shoesGear?: Gear
+  result?: PlayerResult | null
+}
+
+export interface TeamResult {
+  paintRatio?: number | null
+  score?: number | null
+  noroshi?: number | null
+}
+
+export interface Team {
+  color?: Color
+  result?: TeamResult
+  players?: Player[]
+}
+
+export interface VsHistoryDetail {
+  myTeam?: Team
+  otherTeams?: Team[]
+  judgement?: string
+  knockout?: string
+  awards?: Award[]
+  bankaraMatch?: { earnedUdemaePoint?: number; bankaraPower?: { power?: number } | null }
+  xMatch?: { lastXPower?: number | null }
+  festMatch?: { contribution?: number | null }
+}
+
+export interface Award {
+  name?: string
+  rank?: 'GOLD' | 'SILVER' | string
+}
+
 export interface BattleRow {
   id: string
   played_at: string
