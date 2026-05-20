@@ -10,8 +10,6 @@ interface Props {
 }
 
 export function Settings({ settings, onSave, loginVersion }: Props) {
-  const [draft, setDraft] = useState<AppSettings>(settings)
-  const [saved, setSaved] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
   const [authLoading, setAuthLoading] = useState(false)
   const [fetching, setFetching] = useState(false)
@@ -31,6 +29,18 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
       hour: settings.autoFetchHour,
     }).catch(console.error)
   }, [])
+
+  function update(patch: Partial<AppSettings>) {
+    const next = { ...settings, ...patch }
+    onSave(next)
+    // スケジューラー関連の変更は即 Rust 側へ同期
+    if ('autoFetchEnabled' in patch || 'autoFetchHour' in patch) {
+      invoke('set_scheduler_config', {
+        enabled: next.autoFetchEnabled,
+        hour: next.autoFetchHour,
+      }).catch(console.error)
+    }
+  }
 
   async function handleLogin() {
     setAuthLoading(true)
@@ -81,16 +91,6 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
     }
   }
 
-  function save() {
-    onSave(draft)
-    invoke('set_scheduler_config', {
-      enabled: draft.autoFetchEnabled,
-      hour: draft.autoFetchHour,
-    }).catch(console.error)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
-  }
-
   return (
     <div className="settings-panel">
       <h2>設定</h2>
@@ -134,12 +134,12 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
       </section>
 
       <section className="settings-section">
-        <h3>自動取得</h3>
+        <h3>自動取得（有効時はトレイに常駐）</h3>
         <label className="checkbox-label">
           <input
             type="checkbox"
-            checked={draft.autoFetchEnabled}
-            onChange={(e) => setDraft(d => ({ ...d, autoFetchEnabled: e.target.checked }))}
+            checked={settings.autoFetchEnabled}
+            onChange={(e) => update({ autoFetchEnabled: e.target.checked })}
           />
           毎日自動でバトルデータを取得する
         </label>
@@ -149,9 +149,9 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
             type="number"
             min={0}
             max={23}
-            value={draft.autoFetchHour}
-            onChange={(e) => setDraft(d => ({ ...d, autoFetchHour: Number(e.target.value) }))}
-            disabled={!draft.autoFetchEnabled}
+            value={settings.autoFetchHour}
+            onChange={(e) => update({ autoFetchHour: Number(e.target.value) })}
+            disabled={!settings.autoFetchEnabled}
           />
         </label>
       </section>
@@ -161,8 +161,8 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
         <label>
           プロバイダー
           <select
-            value={draft.ai.provider}
-            onChange={(e) => setDraft(d => ({ ...d, ai: { ...d.ai, provider: e.target.value as 'openai' | 'gemini' } }))}
+            value={settings.ai.provider}
+            onChange={(e) => update({ ai: { ...settings.ai, provider: e.target.value as 'openai' | 'gemini' } })}
           >
             <option value="openai">OpenAI (ChatGPT)</option>
             <option value="gemini">Google Gemini</option>
@@ -172,8 +172,8 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
           APIキー
           <input
             type="password"
-            value={draft.ai.apiKey}
-            onChange={(e) => setDraft(d => ({ ...d, ai: { ...d.ai, apiKey: e.target.value } }))}
+            value={settings.ai.apiKey}
+            onChange={(e) => update({ ai: { ...settings.ai, apiKey: e.target.value } })}
             placeholder="sk-... または AIzaSy..."
           />
         </label>
@@ -181,9 +181,9 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
           モデル
           <input
             type="text"
-            value={draft.ai.model}
-            onChange={(e) => setDraft(d => ({ ...d, ai: { ...d.ai, model: e.target.value } }))}
-            placeholder={draft.ai.provider === 'openai' ? 'gpt-4o-mini' : 'gemini-1.5-flash'}
+            value={settings.ai.model}
+            onChange={(e) => update({ ai: { ...settings.ai, model: e.target.value } })}
+            placeholder={settings.ai.provider === 'openai' ? 'gpt-4o-mini' : 'gemini-1.5-flash'}
           />
         </label>
       </section>
@@ -220,10 +220,6 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
           ))}
         </div>
       </section>
-
-      <button className="btn-primary" onClick={save}>
-        {saved ? '保存しました' : '保存'}
-      </button>
     </div>
   )
 }
