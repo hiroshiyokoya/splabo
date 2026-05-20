@@ -120,6 +120,19 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
     }
   }
 
+  async function handleUploadStatinkOne() {
+    setUploading(true)
+    setUploadResult(null)
+    try {
+      const count = await invoke<number>('upload_to_statink_one')
+      setUploadResult(count > 0 ? '1件アップロードしました（テスト成功）' : '対象バトルなし')
+    } catch (e) {
+      setUploadResult(`エラー: ${String(e)}`)
+    } finally {
+      setUploading(false)
+    }
+  }
+
   async function handleRefreshMasterData() {
     setMasterRefreshing(true)
     setMasterResult(null)
@@ -278,6 +291,13 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
             disabled={uploading || !settings.statink.apiKey}
           >
             {uploading ? 'アップロード中...' : '今すぐアップロード'}
+          </button>
+          <button
+            className="btn-secondary"
+            onClick={handleUploadStatinkOne}
+            disabled={uploading || !settings.statink.apiKey}
+          >
+            1件だけテスト
           </button>
           {uploadResult && (
             <span style={{ fontSize: 13, color: uploadResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>

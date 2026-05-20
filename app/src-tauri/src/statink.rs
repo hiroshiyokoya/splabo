@@ -347,21 +347,40 @@ fn build_payload(detail: &serde_json::Value) -> serde_json::Value {
 }
 
 // ---------------------------------------------------------------------------
+// ヘルパー
+// ---------------------------------------------------------------------------
+
+/// POST レスポンスから stat.ink 内部 UUID を取得する。
+/// X-Battle-ID ヘッダーが最優先。なければ fallback（client_uuid）を返す。
+fn extract_internal_uuid(resp: &reqwest::Response, fallback: &str) -> String {
+    resp.headers()
+        .get("x-battle-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+// ---------------------------------------------------------------------------
 // アップロード
 // ---------------------------------------------------------------------------
 
 /// statink_uuid が未設定のバトル（detail_fetched=1 のみ）を stat.ink へアップロードする。
+/// `limit`: Some(n) のとき最大 n 件だけ処理する（テスト用）。
 /// 返り値: アップロード成功件数。
 pub async fn upload_pending_battles(
     pool: &crate::db::DbPool,
     client: &Client,
     api_key: &str,
+    limit: Option<usize>,
 ) -> Result<usize, String> {
     if api_key.is_empty() {
         return Ok(0);
     }
 
-    let battles = crate::db::get_battles_not_uploaded(pool).await?;
+    let mut battles = crate::db::get_battles_not_uploaded(pool).await?;
+    if let Some(n) = limit {
+        battles.truncate(n);
+    }
     if battles.is_empty() {
         return Ok(0);
     }
@@ -396,23 +415,21 @@ pub async fn upload_pending_battles(
             .await;
 
         match resp {
-            Ok(r) if r.status().is_success() => {
-                let statink_uuid = r
-                    .json::<serde_json::Value>()
-                    .await
-                    .ok()
-                    .and_then(|v| v.get("uuid").and_then(|u| u.as_str()).map(|s| s.to_string()))
-                    .unwrap_or_else(|| uuid.clone());
-                crate::db::mark_statink_uploaded(pool, &battle.id, &statink_uuid).await?;
+            Ok(r) if r.status().as_u16() == 201 => {
+                // 新規・重複どちらも 201。X-Battle-ID ヘッダーに内部 UUID が入っている。
+                let internal_uuid = extract_internal_uuid(&r, &uuid);
+                let found = r.headers().get("x-found")
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s == "?1")  // ?1 = already existed
+                    .unwrap_or(false);
+                if found {
+                    log::info!(
+                        "[stat.ink] スキップ (重複) id={}…",
+                        &battle.id[..battle.id.len().min(20)]
+                    );
+                }
+                crate::db::mark_statink_uploaded(pool, &battle.id, &internal_uuid).await?;
                 uploaded += 1;
-            }
-            Ok(r) if r.status().as_u16() == 422 => {
-                // 重複など → アップロード済みとしてマーク
-                log::info!(
-                    "[stat.ink] スキップ (422/重複) id={}…",
-                    &battle.id[..battle.id.len().min(20)]
-                );
-                crate::db::mark_statink_uploaded(pool, &battle.id, &uuid).await?;
             }
             Ok(r) => {
                 let status = r.status();
