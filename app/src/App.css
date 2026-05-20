@@ -220,7 +220,8 @@ body {
   padding: 7px 10px;
   border-bottom: 1px solid var(--border);
 }
-.battle-table tr:hover td { background: var(--surface2); }
+/* ホバー時の背景は左ストライプ（Win/Lose/Draw 色）を上書きしないように除外 */
+.battle-table tr:hover td:not(.team-color-cell) { background: var(--surface2); }
 
 .weapon-cell {
   display: flex;
@@ -1043,14 +1044,13 @@ body {
   align-items: stretch;
 }
 /* チームカラーで曇りガラスパネル
-   - 数字はパネル中央に絶対配置っぽくセンタリング
-   - 「自」「相手」ラベルは左端に小さく */
+   - ラベルと数字を中央寄せ・近接配置（数字がだいたい中央に来る） */
 .score-summary-team {
   flex: 1;
-  position: relative;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: baseline;
+  gap: 10px;
   padding: 16px 22px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--team-color, #6066aa) 14%, rgba(10, 8, 28, 0.42));
@@ -1059,10 +1059,6 @@ body {
   border: 1px solid color-mix(in srgb, var(--team-color, #6066aa) 50%, transparent);
 }
 .score-summary-label {
-  position: absolute;
-  left: 18px;
-  top: 50%;
-  transform: translateY(-50%);
   font-size: 14px;
   font-weight: 800;
   color: color-mix(in srgb, var(--team-color, #6066aa) 65%, #ffffff);
