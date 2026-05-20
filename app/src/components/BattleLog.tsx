@@ -125,18 +125,6 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
       .finally(() => setLoading(false))
   }, [offset, filters, orderBy, orderAsc, refreshKey])
 
-  // 行ごとのチームカラーを raw_json から抽出してメモ化
-  const teamColors = useMemo(() => {
-    const m = new Map<string, { my?: string; other?: string }>()
-    for (const b of battles) {
-      const d = tryParse(b.raw_json) as VsHistoryDetail | null
-      m.set(b.id, {
-        my:    colorToHex(d?.myTeam?.color),
-        other: colorToHex(d?.otherTeams?.[0]?.color),
-      })
-    }
-    return m
-  }, [battles])
 
   function handleSort(col: OrderBy) {
     setOffset(0)
@@ -188,11 +176,10 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
             </thead>
             <tbody>
               {battles.map((b, idx) => {
-                const color = teamColors.get(b.id)?.my
                 const isKo  = !!b.knockout && b.knockout !== 'NEITHER'
                 return (
                   <tr key={b.id} className={`result-${b.result} clickable-row`} onClick={() => setSelectedIdx(idx)}>
-                    <td className="team-color-cell" style={color ? { background: color } : undefined} />
+                    <td className={`team-color-cell result-stripe--${b.result.toLowerCase()}`} />
                     <td>{new Date(b.played_at).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                     <td>{modeLabel(b.mode)}</td>
                     <td>{ruleLabel(b.rule)}</td>
@@ -430,7 +417,7 @@ function ScoreSummary({ myTeam, otherTeams }: {
     <section className="modal-section score-summary">
       <div className="score-summary-row">
         {teams.map((t, i) => (
-          <div key={i} className="score-summary-team" style={{ borderTop: `4px solid ${t.color ?? 'transparent'}` }}>
+          <div key={i} className="score-summary-team" style={{ '--team-color': t.color ?? '#6066aa' } as React.CSSProperties}>
             <div className="score-summary-label">{i === 0 ? '自' : (teams.length > 2 ? `相手${i}` : '相手')}</div>
             <div className="score-summary-value">{renderScore(t.team)}</div>
           </div>
@@ -503,7 +490,7 @@ function TeamPanel({ team, label, highlight, showSignal, weaponImages, abilityIm
   const paint   = team.result?.paintRatio
 
   return (
-    <div className={`team-panel${highlight ? ' my-team' : ''}`} style={{ borderLeft: `4px solid ${color ?? 'transparent'}` }}>
+    <div className={`team-panel${highlight ? ' my-team' : ''}`} style={{ '--team-color': color ?? '#6066aa' } as React.CSSProperties}>
       <div className="team-panel-header">
         <span className="team-panel-label" style={color ? { color } : undefined}>{label}</span>
         {typeof score === 'number' && <span className="team-panel-score">{score}</span>}

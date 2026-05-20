@@ -487,9 +487,11 @@ body {
   margin-bottom: 12px;
 }
 .stat-item {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
   padding: 8px 14px;
   min-width: 60px;
   text-align: center;
@@ -540,20 +542,18 @@ body {
 .award-badge.silver { border-color: #9ca3af; color: #9ca3af; }
 .award-badge.bronze { border-color: #b45309; color: #b45309; }
 
-/* バトル詳細モーダル：
-   - ::before でステージ画像を薄く（0.14）背景として敷く（元のまま）
-   - modal-panel 自体を geartoon の chip 風に曇りガラス化：
-       半透明 surface + 内側ハイライト + backdrop-filter blur */
+/* バトル詳細モーダル：ステージ画像を背景に敷き、各カードを曇りガラス化
+   - modal-panel 自体は暗い透過ベース（ステージ画像のコンテナ）
+   - ::before でステージ画像を暗めに全面表示
+   - ヘッダーは曇りガラス化（ステージ画像をブラー）
+   - ボディは透明：各カード（score-summary-team / team-panel / stat-item）が
+     それぞれ backdrop-filter で曇りガラス化する */
 .modal-panel--with-stage {
   position: relative;
   isolation: isolate;
-  background: color-mix(in srgb, var(--surface) 70%, transparent);
-  backdrop-filter:         blur(14px) saturate(1.1);
-  -webkit-backdrop-filter: blur(14px) saturate(1.1);
-  border: 1px solid color-mix(in srgb, #ffffff 8%, var(--border));
-  box-shadow:
-    0 8px 40px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background: rgba(10, 8, 24, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
 }
 .modal-panel--with-stage::before {
   content: '';
@@ -562,11 +562,19 @@ body {
   background-image:    var(--stage-bg);
   background-size:     cover;
   background-position: center;
-  opacity: 0.14;
+  filter: brightness(0.42) saturate(0.75);
   pointer-events: none;
   z-index: 0;
+  border-radius: inherit;
 }
 .modal-panel--with-stage > * { position: relative; z-index: 1; }
+.modal-panel--with-stage > .modal-header {
+  background: rgba(10, 8, 24, 0.55);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.modal-panel--with-stage > .modal-body { background: transparent; }
 
 /* raw json */
 .raw-toggle {
@@ -966,6 +974,10 @@ body {
   border-bottom: none;
   background: transparent;
 }
+/* 左ストライプは Win/Lose/Draw カラー */
+.battle-table .result-stripe--win  { background: var(--win); }
+.battle-table .result-stripe--lose { background: var(--lose); }
+.battle-table .result-stripe--draw { background: var(--draw); }
 .ko-badge-inline {
   display: inline-block;
   margin-left: 6px;
@@ -1027,25 +1039,36 @@ body {
 .score-summary { margin-top: -4px; }
 .score-summary-row {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: stretch;
 }
+/* チームカラーで曇りガラスパネル、ラベルを左・大きく表示 */
 .score-summary-team {
   flex: 1;
-  background: var(--surface2);
-  border-radius: 6px;
-  padding: 10px 14px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 22px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--team-color, #6066aa) 22%, rgba(10, 8, 28, 0.65));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid color-mix(in srgb, var(--team-color, #6066aa) 55%, transparent);
 }
 .score-summary-label {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-bottom: 2px;
+  font-size: 28px;
+  font-weight: 800;
+  color: color-mix(in srgb, var(--team-color, #6066aa) 65%, #ffffff);
+  line-height: 1;
+  flex-shrink: 0;
+  letter-spacing: -0.02em;
 }
 .score-summary-value {
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-size: 36px;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1;
+  letter-spacing: 0.01em;
 }
 
 /* my-stats card */
@@ -1068,27 +1091,33 @@ body {
   flex-wrap: wrap;
 }
 
-/* scoreboard: team panel stack */
+/* scoreboard: team panel stack — チームカラー曇りガラス */
 .teams-stack { display: flex; flex-direction: column; gap: 10px; }
 .team-panel {
-  background: var(--surface2);
-  border-radius: 6px;
+  border-radius: 10px;
   overflow: hidden;
+  background: color-mix(in srgb, var(--team-color, #6066aa) 18%, rgba(10, 8, 28, 0.70));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid color-mix(in srgb, var(--team-color, #6066aa) 45%, transparent);
+  border-left: 5px solid color-mix(in srgb, var(--team-color, #6066aa) 85%, transparent);
 }
 .team-panel.my-team {
-  background: color-mix(in srgb, var(--accent) 4%, var(--surface2));
+  background: color-mix(in srgb, var(--team-color, #6066aa) 28%, rgba(10, 8, 28, 0.62));
+  border-left-width: 6px;
 }
 .team-panel-header {
   display: flex;
   align-items: baseline;
   gap: 12px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 12px;
 }
 .team-panel-label {
   font-weight: 700;
   font-size: 13px;
+  color: color-mix(in srgb, var(--team-color, #6066aa) 70%, #ffffff);
 }
 .team-panel-score {
   font-weight: 700;
@@ -1096,7 +1125,7 @@ body {
 }
 .team-panel-totals {
   margin-left: auto;
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.55);
   font-size: 11px;
 }
 
