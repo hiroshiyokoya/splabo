@@ -759,15 +759,6 @@ pub async fn get_battles_team_json(pool: &DbPool) -> Result<Vec<(Option<String>,
     Ok(rows.into_iter().map(|r| (r.get("my_team"), r.get("other_teams"))).collect())
 }
 
-/// 全バトルの awards JSON を返す（メダル画像キャッシュ用）。
-pub async fn get_battles_awards_json(pool: &DbPool) -> Result<Vec<String>, String> {
-    let rows = sqlx::query("SELECT awards FROM battles WHERE awards IS NOT NULL")
-        .fetch_all(pool.as_ref())
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(rows.into_iter().filter_map(|r| r.get::<Option<String>, _>("awards")).collect())
-}
-
 /// battle_players テーブルから sub/special を weapons テーブルに補完する。
 /// 自分の武器だけでなく、同じバトルの味方・敵の武器も対象になる。
 pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, String> {

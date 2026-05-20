@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import type { BattleRow, Filters, Player, Team, VsHistoryDetail, Award } from '../types'
+import type { BattleRow, Filters, Player, Team, VsHistoryDetail } from '../types'
 import { filtersToRange, modeLabel, ruleLabel, resultLabel } from '../types'
 import { ABILITY_LABELS, abilityKeyFromUrl, colorToHex, loadAbilityImages } from '../utils/abilities'
 
@@ -49,6 +49,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
   const [loading, setLoading]                 = useState(true)
   const [weaponImages, setWeaponImages]       = useState<Map<string, string>>(new Map())
   const [abilityImages, setAbilityImages]     = useState<Map<string, string>>(new Map())
+  const [stageImages, setStageImages]         = useState<Map<string, string>>(new Map())
   const [selectedIdx, setSelectedIdx]         = useState<number | null>(null)
 
   // ページ
@@ -70,7 +71,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
     return () => { unlistenPromise.then(fn => fn()) }
   }, [])
 
-  // 武器・アビリティ画像をロード
+  // 武器・アビリティ・ステージ画像をロード
   useEffect(() => {
     invoke<string[]>('db_weapons_used').then(weapons => {
       Promise.all(
@@ -84,6 +85,17 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
       })
     })
     loadAbilityImages().then(setAbilityImages)
+    invoke<{ id: string; name: string }[]>('db_stages_used').then(stages => {
+      Promise.all(
+        stages.map(s =>
+          invoke<string | null>('read_image', { kind: 'stage', name: s.name })
+            .then(url => (url ? ([s.name, url] as [string, string]) : null))
+            .catch(() => null)
+        )
+      ).then(results => {
+        setStageImages(new Map(results.filter((r): r is [string, string] => r !== null)))
+      })
+    })
   }, [refreshKey])
 
   // フィルター変化でページをリセット
@@ -232,6 +244,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
           battle={battles[selectedIdx]}
           weaponImages={weaponImages}
           abilityImages={abilityImages}
+          stageImages={stageImages}
           statinkScreenName={statinkScreenName}
           onClose={() => setSelectedIdx(null)}
           onPrev={selectedIdx > 0 ? () => setSelectedIdx(i => (i !== null ? i - 1 : null)) : undefined}
@@ -261,10 +274,11 @@ function SortTh({ col, label, orderBy, orderAsc, onSort }: {
 // 詳細モーダル
 // ---------------------------------------------------------------------------
 
-function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenName, onClose, onPrev, onNext }: {
+function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, statinkScreenName, onClose, onPrev, onNext }: {
   battle: BattleRow
   weaponImages: Map<string, string>
   abilityImages: Map<string, string>
+  stageImages: Map<string, string>
   statinkScreenName: string | null
   onClose: () => void
   onPrev?: () => void  // 前のバトル（先頭なら undefined）
@@ -287,7 +301,6 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenN
   const detail = useMemo(() => tryParse(battle.raw_json) as VsHistoryDetail | null, [battle.raw_json])
   const myTeam     = detail?.myTeam ?? null
   const otherTeams = detail?.otherTeams ?? []
-  const awards     = detail?.awards ?? []
   const isTricolor = otherTeams.length >= 2
 
   const hasDetail   = battle.my_team !== null
@@ -324,6 +337,13 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenN
         </div>
 
         <div className="modal-body">
+          {(() => {
+            const stageImage = stageImages.get(battle.stage_name ?? battle.stage)
+            return stageImage ? (
+              <img src={stageImage} alt="" className="modal-stage-hero" />
+            ) : null
+          })()}
+
           {!hasDetail && (
             <div className="detail-notice">詳細データ未取得 — 「バトルデータを取得」を実行すると詳細が表示されます</div>
           )}
@@ -331,8 +351,6 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenN
           {hasDetail && (myTeam || otherTeams.length > 0) && (
             <ScoreSummary myTeam={myTeam} otherTeams={otherTeams} rule={battle.rule} />
           )}
-
-          {awards.length > 0 && <AwardsSection awards={awards} />}
 
           <MyStatsCard battle={battle} weaponImages={weaponImages} />
 
@@ -373,45 +391,6 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenN
         </div>
       </div>
     </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// アワード（メダル）
-// ---------------------------------------------------------------------------
-
-function AwardsSection({ awards }: { awards: Award[] }) {
-  const [icons, setIcons] = useState<Map<string, string>>(new Map())
-
-  useEffect(() => {
-    const names = Array.from(new Set(awards.map(a => a.name).filter((n): n is string => !!n)))
-    Promise.all(
-      names.map(name =>
-        invoke<string | null>('read_image', { kind: 'award', name })
-          .then(url => (url ? ([name, url] as [string, string]) : null))
-          .catch(() => null)
-      )
-    ).then(results => {
-      setIcons(new Map(results.filter((r): r is [string, string] => r !== null)))
-    })
-  }, [awards])
-
-  return (
-    <section className="modal-section">
-      <h3 className="modal-section-title">アワード</h3>
-      <div className="awards-list">
-        {awards.map((a, i) => {
-          const rank = (a.rank ?? '').toLowerCase()
-          const icon = a.name ? icons.get(a.name) : undefined
-          return (
-            <span key={i} className={`award-badge ${rank}`}>
-              {icon && <img src={icon} alt="" className="award-icon" />}
-              <span className="award-name">{a.name}</span>
-            </span>
-          )
-        })}
-      </div>
-    </section>
   )
 }
 
