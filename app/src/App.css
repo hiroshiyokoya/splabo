@@ -787,9 +787,9 @@ body {
   color: var(--accent-fg);
   border: 1px solid color-mix(in srgb, var(--accent) 75%, #000);
   border-radius: 8px;
-  padding: 6px 14px;
+  padding: 5px 12px;
   font-family: 'M PLUS Rounded 1c', system-ui, 'Segoe UI', sans-serif;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
