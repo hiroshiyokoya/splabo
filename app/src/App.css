@@ -754,6 +754,8 @@ body {
 .settings-panel h2 { margin-bottom: 20px; }
 .settings-section { margin-bottom: 28px; }
 .settings-section h3 { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
+/* タイトル (h3) 以外の直下要素に視覚的なインデントを付ける */
+.settings-section > *:not(h3) { margin-left: 16px; }
 .settings-section label {
   display: flex;
   flex-direction: column;
