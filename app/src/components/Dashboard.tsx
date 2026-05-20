@@ -140,7 +140,7 @@ export function Dashboard({ filters, aiChart }: Props) {
         <>
           <div className="stat-cards">
             <StatCard label="総バトル数" value={totalBattles.toLocaleString()} />
-            <StatCard label="Win / Lose (Draw)" value={`${totalWins} / ${totalLosses} (${totalDraws})`} small />
+            <StatCard label="Win / Lose (Draw)" value={`${totalWins} / ${totalLosses} (${totalDraws})`} />
             <StatCard
               label="全体勝率"
               value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '—'}

@@ -142,7 +142,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
         <div className="stat-cards" style={{ marginBottom: 12 }}>
           <LogStatCard label="総バトル数"        value={stats.total.toLocaleString()} />
           <LogStatCard label="Win / Lose (Draw)"
-            value={`${stats.wins} / ${stats.total - stats.wins - stats.draws} (${stats.draws})`} small />
+            value={`${stats.wins} / ${stats.total - stats.wins - stats.draws} (${stats.draws})`} />
           <LogStatCard label="全体勝率"          value={stats.total > 0 ? `${(stats.win_rate * 100).toFixed(1)}%` : '—'}
             valueColor={stats.total > 0 ? winRateColor(stats.win_rate) : undefined} />
           <LogStatCard label="平均キル"          value={stats.avg_kill  !== null ? stats.avg_kill.toFixed(2)  : '—'} />
