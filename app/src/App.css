@@ -488,10 +488,10 @@ body {
   margin-bottom: 12px;
 }
 .stat-item {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 8px;
   padding: 8px 14px;
   min-width: 60px;
@@ -1055,10 +1055,10 @@ body {
   gap: 10px;
   padding: 16px 22px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--team-color, #6066aa) 14%, rgba(10, 8, 28, 0.42));
+  background: color-mix(in srgb, var(--team-color, #6066aa) 10%, rgba(10, 8, 28, 0.25));
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border: 1px solid color-mix(in srgb, var(--team-color, #6066aa) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--team-color, #6066aa) 45%, transparent);
 }
 .score-summary-label {
   font-size: 14px;
@@ -1100,14 +1100,14 @@ body {
 .team-panel {
   border-radius: 10px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--team-color, #6066aa) 11%, rgba(10, 8, 28, 0.45));
+  background: color-mix(in srgb, var(--team-color, #6066aa) 7%, rgba(10, 8, 28, 0.28));
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid color-mix(in srgb, var(--team-color, #6066aa) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--team-color, #6066aa) 35%, transparent);
   border-left: 5px solid color-mix(in srgb, var(--team-color, #6066aa) 80%, transparent);
 }
 .team-panel.my-team {
-  background: color-mix(in srgb, var(--team-color, #6066aa) 17%, rgba(10, 8, 28, 0.42));
+  background: color-mix(in srgb, var(--team-color, #6066aa) 13%, rgba(10, 8, 28, 0.25));
   border-left-width: 6px;
 }
 .team-panel-header {
