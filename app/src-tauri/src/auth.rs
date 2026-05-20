@@ -627,6 +627,15 @@ async fn request_f(
         .map_err(|e| format!("znca-api f レスポンス解析失敗: {e}"))
 }
 
+/// session_token が保存済みか（= ログイン済みか）を返す。内部呼び出し用。
+pub fn is_logged_in(app: &AppHandle) -> bool {
+    app.store(STORE_FILE)
+        .ok()
+        .and_then(|store| store.get(STORE_KEY_SESSION_TOKEN))
+        .and_then(|v| v.as_str().map(|s| !s.is_empty()))
+        .unwrap_or(false)
+}
+
 /// session_token が保存済みか（= ログイン済みか）を返す。
 #[tauri::command]
 pub fn check_auth_status(app: AppHandle) -> Result<bool, String> {
