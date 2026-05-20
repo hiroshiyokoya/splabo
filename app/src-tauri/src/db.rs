@@ -783,21 +783,27 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 // stat.ink ID 正規化マイグレーション
 // ---------------------------------------------------------------------------
 
-/// 既存バトルレコードの mode/rule/stage/result を stat.ink ID 形式に変換する。
-/// raw_json から各フィールドを再抽出して UPDATE する。
+/// DB マイグレーションを必要なバージョンまで実行する。
+/// PRAGMA user_version でどこまで完了したかを管理する。
+///
+/// version 1: mode/rule/stage/result を stat.ink ID 形式に変換（初回実装・バグあり）
+/// version 2: mode 判定バグ修正版で全件再処理
 pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
-    // 未移行レコードを検出（result が大文字のものを対象とする）
-    let rows = sqlx::query(
-        "SELECT id, mode, result, raw_json FROM battles
-         WHERE result = 'WIN' OR result = 'LOSE' OR result = 'DRAW'",
-    )
-    .fetch_all(pool.as_ref())
-    .await
-    .map_err(|e| e.to_string())?;
+    let ver_row = sqlx::query("PRAGMA user_version")
+        .fetch_one(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    let current_version: i64 = ver_row.get(0);
 
-    if rows.is_empty() {
-        return Ok(0);
+    if current_version >= 2 {
+        return Ok(0); // 最新バージョンに達している
     }
+
+    // 全件を対象に mode/rule/stage/result を正規化する
+    let rows = sqlx::query("SELECT id, raw_json FROM battles")
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
 
     let mut updated = 0usize;
     for row in &rows {
@@ -806,17 +812,38 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
 
         let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw_json) else { continue };
 
-        // mode
-        let new_mode = if json.get("bankaraMatch").is_some() {
-            let bankara_mode = json
-                .pointer("/bankaraMatch/bankaraMode")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if bankara_mode == "CHALLENGE" { "bankara_challenge" } else { "bankara_open" }
-        } else if json.get("xMatch").is_some() {
-            "x"
+        // mode 判定
+        // 優先順位:
+        //   1. vsMode.mode（vsHistoryDetail の raw_json に含まれる）
+        //   2. bankaraMatch が非 null → bankara
+        //   3. xMatch が非 null → x
+        //   4. それ以外 → regular
+        let vsmode = json.pointer("/vsMode/mode").and_then(|v| v.as_str()).unwrap_or("");
+        let new_mode: &str = if !vsmode.is_empty() {
+            match vsmode {
+                "REGULAR" => "regular",
+                "BANKARA" => {
+                    let bm = json.pointer("/bankaraMatch/bankaraMode")
+                        .and_then(|v| v.as_str()).unwrap_or("");
+                    if bm == "CHALLENGE" { "bankara_challenge" } else { "bankara_open" }
+                }
+                "X_MATCH" => "x",
+                _ => "regular",
+            }
         } else {
-            "regular"
+            // リストクエリの raw_json（vsMode なし）
+            // bankaraMatch / xMatch が null でないことを確認してから判定
+            let has_bankara = json.get("bankaraMatch").map(|v| !v.is_null()).unwrap_or(false);
+            let has_xmatch  = json.get("xMatch").map(|v| !v.is_null()).unwrap_or(false);
+            if has_bankara {
+                let bm = json.pointer("/bankaraMatch/bankaraMode")
+                    .and_then(|v| v.as_str()).unwrap_or("");
+                if bm == "CHALLENGE" { "bankara_challenge" } else { "bankara_open" }
+            } else if has_xmatch {
+                "x"
+            } else {
+                "regular"
+            }
         };
 
         // rule
@@ -827,17 +854,23 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             "LOFT"     => "yagura",
             "GOAL"     => "hoko",
             "CLAM"     => "asari",
-            _          => rule_raw,
+            other      => other,
         };
 
         // stage
         let stage_b64 = json.pointer("/vsStage/id").and_then(|v| v.as_str()).unwrap_or("");
         let new_stage = extract_stage_numeric_id(stage_b64);
-        let new_stage_name = json.pointer("/vsStage/name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let new_stage_name = json.pointer("/vsStage/name")
+            .and_then(|v| v.as_str()).unwrap_or("").to_string();
 
-        // result
-        let old_result: String = row.get("result");
-        let new_result = old_result.to_lowercase();
+        // result（小文字に統一）
+        let result_raw = json.get("judgement").and_then(|v| v.as_str()).unwrap_or("");
+        let new_result = match result_raw {
+            "WIN"                        => "win",
+            "LOSE" | "DEEMED_LOSE"       => "lose",
+            "DRAW" | "EXEMPTED_LOSE"     => "draw",
+            _                            => "lose",
+        };
 
         let _ = sqlx::query(
             "UPDATE battles SET mode=?, rule=?, stage=?, stage_name=?, result=? WHERE id=?",
@@ -846,7 +879,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .bind(new_rule)
         .bind(&new_stage)
         .bind(if new_stage_name.is_empty() { None } else { Some(new_stage_name) })
-        .bind(&new_result)
+        .bind(new_result)
         .bind(&id)
         .execute(pool.as_ref())
         .await;
@@ -854,7 +887,13 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         updated += 1;
     }
 
-    log::info!("migrate_battle_ids: {} 件更新", updated);
+    // マイグレーション完了を記録
+    sqlx::query("PRAGMA user_version = 2")
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    log::info!("migrate_battle_ids v2: {} 件更新", updated);
     Ok(updated)
 }
 
