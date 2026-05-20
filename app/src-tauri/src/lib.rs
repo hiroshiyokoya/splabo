@@ -38,10 +38,17 @@ pub fn run() {
                 let _ = w.set_focus();
             }
         }))
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_deep_link::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .manage(auth::AuthState::default())
         .manage(SchedulerConfig::default())
         .invoke_handler(tauri::generate_handler![
@@ -135,8 +142,14 @@ pub fn run() {
                         if let Some(pool) = handle.try_state::<db::DbPool>() {
                             log::info!("[自動取得] 開始 ({}時)", target_hour);
                             match run_fetch_full(&handle, &pool).await {
-                                Ok((b, d)) => log::info!("[自動取得] 完了 バトル+{b}件 詳細+{d}件"),
-                                Err(e)     => log::error!("[自動取得] 失敗: {e}"),
+                                Ok((b, _)) => {
+                                    log::info!("[自動取得] 完了 バトル+{b}件");
+                                    send_notification(&handle, b);
+                                }
+                                Err(e) => {
+                                    log::error!("[自動取得] 失敗: {e}");
+                                    send_notification_error(&handle);
+                                }
                             }
                         }
                     } else if current_hour != target_hour as u32 {
@@ -247,4 +260,27 @@ fn show_window(app: &AppHandle) {
         let _ = w.unminimize();
         let _ = w.set_focus();
     }
+}
+
+fn send_notification(app: &AppHandle, battles: usize) {
+    use tauri_plugin_notification::NotificationExt;
+    let body = if battles > 0 {
+        format!("バトル +{}件取得しました", battles)
+    } else {
+        "新しいバトルはありませんでした".to_string()
+    };
+    let _ = app.notification()
+        .builder()
+        .title("chartoon")
+        .body(&body)
+        .show();
+}
+
+fn send_notification_error(app: &AppHandle) {
+    use tauri_plugin_notification::NotificationExt;
+    let _ = app.notification()
+        .builder()
+        .title("chartoon")
+        .body("バトルデータの取得に失敗しました")
+        .show();
 }
