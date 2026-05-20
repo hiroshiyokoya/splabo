@@ -19,8 +19,6 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   const [themeId, setThemeId] = useState(getThemeId)
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState(false)
-  const [deleteResult, setDeleteResult] = useState<string | null>(null)
 
   useEffect(() => {
     invoke<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
@@ -93,39 +91,12 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
     }
   }
 
-  async function handleDeleteStatink() {
-    if (!confirm('stat.ink にアップロード済みのバトルを全件削除し、再アップロード可能な状態に戻します。\nよろしいですか？')) return
-    setDeleting(true)
-    setDeleteResult(null)
-    try {
-      const count = await invoke<number>('delete_statink_all')
-      setDeleteResult(count > 0 ? `${count}件削除しました` : '削除対象なし')
-    } catch (e) {
-      setDeleteResult(`エラー: ${String(e)}`)
-    } finally {
-      setDeleting(false)
-    }
-  }
-
   async function handleUploadStatink() {
     setUploading(true)
     setUploadResult(null)
     try {
       const count = await invoke<number>('upload_to_statink')
       setUploadResult(count > 0 ? `${count}件アップロードしました` : '新規アップロードなし')
-    } catch (e) {
-      setUploadResult(`エラー: ${String(e)}`)
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  async function handleUploadStatinkOne() {
-    setUploading(true)
-    setUploadResult(null)
-    try {
-      const count = await invoke<number>('upload_to_statink_one')
-      setUploadResult(count > 0 ? '1件アップロードしました（テスト成功）' : '対象バトルなし')
     } catch (e) {
       setUploadResult(`エラー: ${String(e)}`)
     } finally {
@@ -292,31 +263,9 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
           >
             {uploading ? 'アップロード中...' : '今すぐアップロード'}
           </button>
-          <button
-            className="btn-secondary"
-            onClick={handleUploadStatinkOne}
-            disabled={uploading || !settings.statink.apiKey}
-          >
-            1件だけテスト
-          </button>
           {uploadResult && (
             <span style={{ fontSize: 13, color: uploadResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
               {uploadResult}
-            </span>
-          )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
-          <button
-            className="btn-secondary"
-            onClick={handleDeleteStatink}
-            disabled={deleting || !settings.statink.apiKey}
-            style={{ color: 'var(--lose)' }}
-          >
-            {deleting ? '削除中...' : 'アップロード済みを全件削除（再アップロード用）'}
-          </button>
-          {deleteResult && (
-            <span style={{ fontSize: 13, color: deleteResult.startsWith('エラー') ? 'var(--lose)' : 'var(--text-muted)' }}>
-              {deleteResult}
             </span>
           )}
         </div>
