@@ -286,3 +286,10 @@ export interface BattleStats {
   avg_kill: number | null
   avg_death: number | null
 }
+
+/** 平均キル / 平均デスから集計キルレシオを文字列で返す。null・D=0 を考慮。 */
+export function avgKillRatio(avgKill: number | null, avgDeath: number | null): string {
+  if (avgKill === null || avgDeath === null) return '—'
+  if (avgDeath === 0) return '∞'
+  return (avgKill / avgDeath).toFixed(2)
+}

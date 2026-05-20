@@ -6,7 +6,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
 import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats } from '../types'
-import { filtersToRange, stageAbbr, modeLabel, ruleLabel } from '../types'
+import { filtersToRange, stageAbbr, modeLabel, ruleLabel, avgKillRatio } from '../types'
 
 const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
@@ -148,6 +148,7 @@ export function Dashboard({ filters, aiChart }: Props) {
             />
             <StatCard label="平均キル" value={stats?.avg_kill  != null ? stats.avg_kill.toFixed(2)  : '—'} />
             <StatCard label="平均デス" value={stats?.avg_death != null ? stats.avg_death.toFixed(2) : '—'} />
+            <StatCard label="キルレシオ" value={avgKillRatio(stats?.avg_kill ?? null, stats?.avg_death ?? null)} />
             <StatCard label="使用武器数" value={summary.by_weapon.length.toString()} />
           </div>
 

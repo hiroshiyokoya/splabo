@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import type { BattleRow, BattleStats, Filters, Player, Team, VsHistoryDetail, Award } from '../types'
-import { filtersToRange, modeLabel, ruleLabel, resultLabel } from '../types'
+import { filtersToRange, modeLabel, ruleLabel, resultLabel, avgKillRatio } from '../types'
 import { ABILITY_LABELS, abilityKeyFromUrl, colorToHex, loadAbilityImages } from '../utils/abilities'
 
 const PAGE_SIZE = 50
@@ -20,6 +20,7 @@ function killRatio(kill: number, death: number): string {
   if (death === 0) return '∞'
   return (kill / death).toFixed(2)
 }
+
 type OrderBy = 'played_at' | 'kill' | 'assist' | 'death' | 'special' | 'inked' | 'kill_ratio'
 
 // ---------------------------------------------------------------------------
@@ -147,6 +148,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
             valueColor={stats.total > 0 ? winRateColor(stats.win_rate) : undefined} />
           <LogStatCard label="平均キル"          value={stats.avg_kill  !== null ? stats.avg_kill.toFixed(2)  : '—'} />
           <LogStatCard label="平均デス"          value={stats.avg_death !== null ? stats.avg_death.toFixed(2) : '—'} />
+          <LogStatCard label="キルレシオ"        value={avgKillRatio(stats.avg_kill, stats.avg_death)} />
           <LogStatCard label="使用武器数"        value={stats.weapon_count.toString()} />
         </div>
       )}
