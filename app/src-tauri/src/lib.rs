@@ -252,12 +252,12 @@ fn set_statink_config(config: State<'_, StatinkConfig>, auto_upload: bool, api_k
 
 /// stat.ink の screen_name を既存アップロード済みバトルから逆引きする。
 /// アップロード履歴が無い・API エラー時は None。
+/// `apiKey` を JS から直接渡すため、`Settings` 画面を開かなくても起動直後から呼べる。
 #[tauri::command]
 async fn detect_statink_screen_name(
-    config: State<'_, StatinkConfig>,
+    api_key: String,
     db: State<'_, db::DbPool>,
 ) -> Result<Option<String>, String> {
-    let api_key = config.0.lock().unwrap().1.clone();
     if api_key.is_empty() {
         return Ok(None);
     }

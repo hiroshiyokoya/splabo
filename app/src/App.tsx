@@ -85,7 +85,7 @@ export default function App() {
   useEffect(() => {
     if (settings.statink.screenName) return
     if (!settings.statink.apiKey) return
-    invoke<string | null>('detect_statink_screen_name').then(name => {
+    invoke<string | null>('detect_statink_screen_name', { apiKey: settings.statink.apiKey }).then(name => {
       if (!name) return
       setSettings(prev => {
         if (prev.statink.screenName === name) return prev
