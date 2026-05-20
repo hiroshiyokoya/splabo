@@ -92,6 +92,88 @@ fn derive_uuid(battle_id: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// チームメンバー変換ヘルパー
+// ---------------------------------------------------------------------------
+
+/// SplatNet3 プレイヤー配列 JSON → stat.ink team_members 配列。
+fn build_team_members(players_json: &str, weapon_map: &HashMap<String, String>) -> serde_json::Value {
+    let Ok(players) = serde_json::from_str::<serde_json::Value>(players_json) else {
+        return serde_json::json!([]);
+    };
+    let Some(arr) = players.as_array() else {
+        return serde_json::json!([]);
+    };
+
+    let members: Vec<serde_json::Value> = arr
+        .iter()
+        .map(|p| {
+            let is_myself = p.get("isMyself").and_then(|v| v.as_bool()).unwrap_or(false);
+            let weapon_name = p.pointer("/weapon/name").and_then(|v| v.as_str()).unwrap_or("");
+            let weapon_key = weapon_map
+                .get(weapon_name)
+                .cloned()
+                .unwrap_or_else(|| weapon_name.to_string());
+            let kill    = p.pointer("/result/kill")   .and_then(|v| v.as_i64()).unwrap_or(0);
+            let death   = p.pointer("/result/death")  .and_then(|v| v.as_i64()).unwrap_or(0);
+            let assist  = p.pointer("/result/assist") .and_then(|v| v.as_i64()).unwrap_or(0);
+            let special = p.pointer("/result/special").and_then(|v| v.as_i64()).unwrap_or(0);
+            let inked   = p.get("paint").and_then(|v| v.as_i64()).unwrap_or(0);
+
+            serde_json::json!({
+                "me":            is_myself,
+                "weapon":        weapon_key,
+                "kill":          kill,
+                "assist":        assist,
+                "kill_or_assist": kill + assist,
+                "death":         death,
+                "special":       special,
+                "inked":         if inked > 0 { serde_json::json!(inked) } else { serde_json::Value::Null },
+            })
+        })
+        .collect();
+
+    serde_json::json!(members)
+}
+
+/// SplatNet3 otherTeams JSON → stat.ink their_team_members 配列（最初のチームを使用）。
+fn build_their_team_members(other_teams_json: &str, weapon_map: &HashMap<String, String>) -> serde_json::Value {
+    let Ok(teams) = serde_json::from_str::<serde_json::Value>(other_teams_json) else {
+        return serde_json::json!([]);
+    };
+    let players_json = teams
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|team| team.get("players"))
+        .map(|v| v.to_string())
+        .unwrap_or_default();
+
+    if players_json.is_empty() {
+        return serde_json::json!([]);
+    }
+    build_team_members(&players_json, weapon_map)
+}
+
+/// SplatNet3 awards JSON → stat.ink medals 配列（名前のみ）。
+fn build_medals(awards_json: &str) -> serde_json::Value {
+    let Ok(awards) = serde_json::from_str::<serde_json::Value>(awards_json) else {
+        return serde_json::Value::Null;
+    };
+    let Some(arr) = awards.as_array() else {
+        return serde_json::Value::Null;
+    };
+    let names: Vec<serde_json::Value> = arr
+        .iter()
+        .filter_map(|a| a.get("name").and_then(|v| v.as_str()).map(|s| serde_json::json!(s)))
+        .collect();
+
+    if names.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::json!(names)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // アップロード
 // ---------------------------------------------------------------------------
 
@@ -154,6 +236,12 @@ pub async fn upload_pending_battles(
             0
         };
 
+        // knockout: SplatNet3 "WIN"/"LOSE" → stat.ink true（KO決着）、null → false
+        let knockout_val = match battle.knockout.as_deref() {
+            Some("WIN") | Some("LOSE") => serde_json::json!(true),
+            _ => serde_json::json!(false),
+        };
+
         let mut payload = serde_json::json!({
             "uuid":    uuid,
             "lobby":   map_mode(&battle.mode),
@@ -161,17 +249,51 @@ pub async fn upload_pending_battles(
             "stage":   stage_key,
             "weapon":  weapon_key,
             "result":  battle.result,
+            "knockout": knockout_val,
             "inked":   if battle.inked    > 0 { serde_json::json!(battle.inked)    } else { serde_json::Value::Null },
             "duration": if battle.duration > 0 { serde_json::json!(battle.duration) } else { serde_json::Value::Null },
             "start_at": if start_ts > 0 { serde_json::json!(start_ts) } else { serde_json::Value::Null },
             "end_at":   if end_ts   > 0 { serde_json::json!(end_ts)   } else { serde_json::Value::Null },
+            "agent":         "chartoon",
+            "agent_version": env!("CARGO_PKG_VERSION"),
+            "automated":     true,
         });
 
         if has_detail {
-            payload["kill"]    = serde_json::json!(battle.kill);
-            payload["assist"]  = serde_json::json!(battle.assist);
-            payload["death"]   = serde_json::json!(battle.death);
-            payload["special"] = serde_json::json!(battle.special);
+            payload["kill"]          = serde_json::json!(battle.kill);
+            payload["assist"]        = serde_json::json!(battle.assist);
+            payload["kill_or_assist"] = serde_json::json!(battle.kill + battle.assist);
+            payload["death"]         = serde_json::json!(battle.death);
+            payload["special"]       = serde_json::json!(battle.special);
+        }
+
+        // X パワー
+        if let Some(xp) = battle.x_power {
+            payload["x_power_after"] = serde_json::json!(xp);
+        }
+
+        // メダル（アワード）
+        if let Some(ref awards_json) = battle.awards {
+            let medals = build_medals(awards_json);
+            if !medals.is_null() {
+                payload["medals"] = medals;
+            }
+        }
+
+        // 味方チーム
+        if let Some(ref my_team_json) = battle.my_team {
+            let members = build_team_members(my_team_json, &weapon_map);
+            if members.as_array().map(|a| !a.is_empty()).unwrap_or(false) {
+                payload["our_team_members"] = members;
+            }
+        }
+
+        // 相手チーム
+        if let Some(ref other_teams_json) = battle.other_teams {
+            let members = build_their_team_members(other_teams_json, &weapon_map);
+            if members.as_array().map(|a| !a.is_empty()).unwrap_or(false) {
+                payload["their_team_members"] = members;
+            }
         }
 
         let resp = client
