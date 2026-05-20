@@ -70,6 +70,14 @@ body {
 .nav-item:hover { color: var(--text); background: var(--surface2); }
 .nav-item.active { color: var(--accent); background: var(--surface2); border-left: 2px solid var(--accent); }
 
+.sidebar-last-fetched {
+  margin-top: auto;
+  padding: 12px 16px 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 .content {
   flex: 1;
   overflow-y: auto;
