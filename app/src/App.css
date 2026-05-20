@@ -777,11 +777,13 @@ body {
 /* ── Common ── */
 .btn-primary {
   background: var(--accent);
-  color: #fff;
+  /* 明るいライム背景には白だとコントラスト不足。ベース背景色（紺寄り）の濃い色を載せる。 */
+  color: var(--bg);
   border: none;
   border-radius: 6px;
   padding: 8px 18px;
   font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s;
