@@ -33,7 +33,7 @@ function winRateLevel(rate: number): 'hi' | 'mid' | 'lo' {
   return 'lo'
 }
 
-type SortBy = 'total' | 'win_rate'
+type SortBy = 'total' | 'wins' | 'win_rate'
 
 interface Props {
   filters: Filters
@@ -112,7 +112,7 @@ export function Dashboard({ filters, aiChart }: Props) {
       ) : (
         <>
           <div className="stat-cards">
-            <StatCard label="総試合数" value={totalBattles.toLocaleString()} />
+            <StatCard label="総バトル数" value={totalBattles.toLocaleString()} />
             <StatCard
               label="全体勝率"
               value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '—'}
@@ -123,19 +123,19 @@ export function Dashboard({ filters, aiChart }: Props) {
           </div>
 
           <div className="chart-grid">
-            <ChartCard title="武器別 勝率 & 試合数" sortBy={weaponSort} onSortChange={setWeaponSort}>
+            <ChartCard title="武器別 勝率 & バトル数" sortBy={weaponSort} onSortChange={setWeaponSort}>
               <WinRateChart data={sorted(summary.by_weapon.slice(0, 14), weaponSort)} height={260} images={weaponImages} hoverImageSize={64} />
             </ChartCard>
 
-            <ChartCard title="ステージ別 勝率 & 試合数" sortBy={stageSort} onSortChange={setStageSort}>
+            <ChartCard title="ステージ別 勝率 & バトル数" sortBy={stageSort} onSortChange={setStageSort}>
               <WinRateChart data={sorted(summary.by_stage.slice(0, 14), stageSort)} height={260} images={new Map()} nameTransform={stageAbbr} tickAngle={30} />
             </ChartCard>
 
-            <ChartCard title="ルール別 勝率 & 試合数" sortBy={ruleSort} onSortChange={setRuleSort}>
+            <ChartCard title="ルール別 勝率 & バトル数" sortBy={ruleSort} onSortChange={setRuleSort}>
               <WinRateChart data={sorted(summary.by_rule, ruleSort)} height={220} images={new Map()} nameTransform={ruleLabel} />
             </ChartCard>
 
-            <ChartCard title="モード別 勝率 & 試合数" sortBy={modeSort} onSortChange={setModeSort}>
+            <ChartCard title="モード別 勝率 & バトル数" sortBy={modeSort} onSortChange={setModeSort}>
               <WinRateChart data={sorted(summary.by_mode, modeSort)} height={220} images={new Map()} nameTransform={modeLabel} />
             </ChartCard>
 
@@ -302,7 +302,7 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
             return (
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, padding: '6px 10px' }}>
                 <div style={{ color: 'var(--text)', fontWeight: 700, marginBottom: 4 }}>{displayLabel}</div>
-                <div style={{ color: 'var(--text)' }}>試合数: {entry.total}</div>
+                <div style={{ color: 'var(--text)' }}>バトル数: {entry.total}</div>
                 <div style={{ color: COLOR_WIN }}>勝ち: {entry.wins}</div>
                 <div style={{ color: COLOR_LOSE }}>負け: {entry.total - entry.wins - entry.draws}</div>
                 {entry.draws > 0 && <div style={{ color: COLOR_DRAW }}>引き分け: {entry.draws}</div>}
@@ -369,7 +369,11 @@ function ChartCard({
             <button
               className={`chart-sort-btn${sortBy === 'total' ? ' active' : ''}`}
               onClick={() => onSortChange('total')}
-            >試合数</button>
+            >バトル数</button>
+            <button
+              className={`chart-sort-btn${sortBy === 'wins' ? ' active' : ''}`}
+              onClick={() => onSortChange('wins')}
+            >勝数</button>
             <button
               className={`chart-sort-btn${sortBy === 'win_rate' ? ' active' : ''}`}
               onClick={() => onSortChange('win_rate')}

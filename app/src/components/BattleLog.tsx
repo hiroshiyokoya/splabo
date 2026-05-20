@@ -140,7 +140,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
 
       {stats && (
         <div className="stat-cards" style={{ marginBottom: 12 }}>
-          <LogStatCard label="総試合数"        value={stats.total.toLocaleString()} />
+          <LogStatCard label="総バトル数"      value={stats.total.toLocaleString()} />
           <LogStatCard label="全体勝率"        value={stats.total > 0 ? `${(stats.win_rate * 100).toFixed(1)}%` : '—'}
             valueColor={stats.total > 0 ? winRateColor(stats.win_rate) : undefined} />
           <LogStatCard label="Win / Lose (Draw)"
