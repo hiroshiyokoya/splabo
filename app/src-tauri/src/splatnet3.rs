@@ -463,6 +463,9 @@ pub async fn fetch_all_battles_paginated(
             page += 1;
             total += inserted;
 
+            let (has_next, next_cursor) = extract_page_info(&resp, data_key);
+
+            log::info!("[全件取得] {mode_label} p{page}: +{inserted}件 hasNextPage={has_next}");
             let _ = app.emit("fetch_all_progress", FetchAllProgress {
                 mode:          mode_label.to_string(),
                 page,
@@ -471,17 +474,10 @@ pub async fn fetch_all_battles_paginated(
                 done:          false,
             });
 
-            // このページに新規データがなければ以降は全て既存 → 打ち切り
-            if inserted == 0 {
-                log::info!("[全件取得] {mode_label} p{page}: 新規なし → 終了");
-                break;
-            }
-
-            let (has_next, next_cursor) = extract_page_info(&resp, data_key);
             if !has_next {
-                log::info!("[全件取得] {mode_label} p{page}: 最終ページ");
                 break;
             }
+            // 新規0件でも次ページがある場合は継続（古いデータが存在する可能性）
             cursor = next_cursor;
         }
     }
