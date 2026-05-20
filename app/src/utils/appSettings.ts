@@ -11,7 +11,7 @@ export const THEMES: Theme[] = [
   {
     id: 'dark',
     label: 'ダーク (デフォルト)',
-    dot: '#7c3aed',
+    dot: '#c8f030',
     vars: {},
   },
   {
@@ -46,15 +46,18 @@ export const THEMES: Theme[] = [
   },
 ]
 
+// CSS の :root と同期しておくこと（App.css）。
+// JS 起動時に applyTheme() で上書き適用されるため、CSS だけ変えても反映されない。
 const BASE_VARS: Record<string, string> = {
-  '--bg': '#0f0f13',
-  '--surface': '#1a1a24',
-  '--surface2': '#22222f',
-  '--border': '#2e2e40',
-  '--accent': '#7c3aed',
-  '--accent-hover': '#6d28d9',
-  '--text': '#e5e7eb',
-  '--text-muted': '#6b7280',
+  '--bg':            '#1a1a1e',
+  '--surface':       '#17172a',
+  '--surface2':      '#20203a',
+  '--border':        '#2a2a45',
+  '--accent':        '#c8f030',
+  '--accent-hover':  '#9dc024',
+  '--accent2':       '#ff7621',
+  '--text':          '#eeeef8',
+  '--text-muted':    '#6060a0',
 }
 
 export function applyTheme(themeId: string): void {
