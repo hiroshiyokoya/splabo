@@ -133,7 +133,7 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
           SplatNet3 から最新のバトル結果・詳細データを取得します。
         </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="settings-subitem" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button className="btn-primary" onClick={handleFetchFull} disabled={fetching}>
             {fetching ? '取得中...' : 'バトルデータを取得'}
           </button>
