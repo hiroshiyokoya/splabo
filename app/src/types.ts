@@ -143,6 +143,7 @@ export interface BattleRow {
   awards: string | null
   my_team: string | null
   other_teams: string | null
+  statink_uuid: string | null
 }
 
 export interface SummaryEntry {

@@ -898,6 +898,33 @@ body {
   vertical-align: middle;
 }
 
+/* stat.ink upload marker (table row) */
+.statink-mark {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-decoration: none;
+  vertical-align: middle;
+}
+.statink-mark:hover { color: var(--accent); }
+
+/* stat.ink upload badge (modal header) */
+.statink-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  text-decoration: none;
+  margin-left: auto;
+}
+.statink-badge:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* ── Battle Detail Modal: redesign ── */
 .modal-panel { max-width: 980px; }
 

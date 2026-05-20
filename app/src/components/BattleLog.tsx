@@ -178,6 +178,16 @@ export function BattleLog({ filters }: Props) {
                     <td className={`result-cell ${b.result.toLowerCase()}`}>
                       {resultLabel(b.result)}
                       {isKo && <span className="ko-badge-inline">KO</span>}
+                      {b.statink_uuid && (
+                        <a
+                          href={`https://stat.ink/api/v3/battle/${b.statink_uuid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="statink-mark"
+                          title="stat.ink にアップロード済み（クリックで該当バトル JSON を開く）"
+                          onClick={e => e.stopPropagation()}
+                        >↗</a>
+                      )}
                     </td>
                     <td>{b.kill}</td>
                     <td>{b.assist}</td>
@@ -265,6 +275,15 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, onClose }: {
             {isKo && <span className="ko-badge">KO</span>}
             <span>{modeLabel(battle.mode)} / {ruleLabel(battle.rule)}</span>
             <span className="modal-stage">{battle.stage_name ?? battle.stage}</span>
+            {battle.statink_uuid && (
+              <a
+                href={`https://stat.ink/api/v3/battle/${battle.statink_uuid}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="statink-badge"
+                title={`stat.ink にアップロード済み (ID: ${battle.statink_uuid})`}
+              >stat.ink ↗</a>
+            )}
           </div>
           <div className="modal-meta">
             {new Date(battle.played_at).toLocaleString('ja-JP')}
