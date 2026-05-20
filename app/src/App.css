@@ -1042,25 +1042,31 @@ body {
   gap: 10px;
   align-items: stretch;
 }
-/* チームカラーで曇りガラスパネル、ラベルを左・大きく表示 */
+/* チームカラーで曇りガラスパネル
+   - 数字はパネル中央に絶対配置っぽくセンタリング
+   - 「自」「相手」ラベルは左端に小さく */
 .score-summary-team {
   flex: 1;
+  position: relative;
   display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 16px;
   padding: 16px 22px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--team-color, #6066aa) 22%, rgba(10, 8, 28, 0.65));
+  background: color-mix(in srgb, var(--team-color, #6066aa) 14%, rgba(10, 8, 28, 0.42));
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border: 1px solid color-mix(in srgb, var(--team-color, #6066aa) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--team-color, #6066aa) 50%, transparent);
 }
 .score-summary-label {
-  font-size: 28px;
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
   font-weight: 800;
   color: color-mix(in srgb, var(--team-color, #6066aa) 65%, #ffffff);
   line-height: 1;
-  flex-shrink: 0;
   letter-spacing: -0.02em;
 }
 .score-summary-value {
@@ -1096,14 +1102,14 @@ body {
 .team-panel {
   border-radius: 10px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--team-color, #6066aa) 18%, rgba(10, 8, 28, 0.70));
+  background: color-mix(in srgb, var(--team-color, #6066aa) 11%, rgba(10, 8, 28, 0.45));
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid color-mix(in srgb, var(--team-color, #6066aa) 45%, transparent);
-  border-left: 5px solid color-mix(in srgb, var(--team-color, #6066aa) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--team-color, #6066aa) 40%, transparent);
+  border-left: 5px solid color-mix(in srgb, var(--team-color, #6066aa) 80%, transparent);
 }
 .team-panel.my-team {
-  background: color-mix(in srgb, var(--team-color, #6066aa) 28%, rgba(10, 8, 28, 0.62));
+  background: color-mix(in srgb, var(--team-color, #6066aa) 17%, rgba(10, 8, 28, 0.42));
   border-left-width: 6px;
 }
 .team-panel-header {
