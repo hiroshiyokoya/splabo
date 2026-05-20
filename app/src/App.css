@@ -977,18 +977,26 @@ body {
   border-bottom: none;
   background: transparent;
   position: relative;
-  transition: box-shadow 0.12s ease;
 }
-/* 左ストライプは Win/Lose/Draw カラー。
-   --stripe-color に色を入れておき、ホバー時に box-shadow で右へ伸ばす。 */
-.battle-table .result-stripe--win  { background: var(--win);  --stripe-color: var(--win); }
-.battle-table .result-stripe--lose { background: var(--lose); --stripe-color: var(--lose); }
-.battle-table .result-stripe--draw { background: var(--draw); --stripe-color: var(--draw); }
-/* ホバー時にストライプを太く（4px → 実質 8px、box-shadow で右隣に染み出す） */
-.battle-table tr:hover .team-color-cell {
-  z-index: 1;
-  box-shadow: 4px 0 0 0 var(--stripe-color);
+/* ストライプは ::after で描画する。
+   テーブルセルの paint order により box-shadow は隣セルの背景に隠れるが、
+   ::after はセル content layer に属し、絶対配置で隣セル上に染み出せる。 */
+.battle-table .team-color-cell::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 4px;
+  background: var(--stripe-color, transparent);
+  pointer-events: none;
+  transition: width 0.15s ease;
 }
+.battle-table .result-stripe--win  { --stripe-color: var(--win); }
+.battle-table .result-stripe--lose { --stripe-color: var(--lose); }
+.battle-table .result-stripe--draw { --stripe-color: var(--draw); }
+/* ホバー時にストライプを 4px → 8px に */
+.battle-table tr:hover .team-color-cell::after { width: 8px; }
 .ko-badge-inline {
   display: inline-block;
   margin-left: 6px;
