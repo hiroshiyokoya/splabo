@@ -107,6 +107,14 @@ pub fn run() {
                 match db::init_db(&handle).await {
                     Ok(pool) => {
                         handle.manage(pool);
+                        // 既存レコードを stat.ink ID 形式に移行
+                        if let Some(pool) = handle.try_state::<db::DbPool>() {
+                            match db::migrate_battle_ids(&pool).await {
+                                Ok(n) if n > 0 => log::info!("[移行] mode/rule/stage/result を正規化 {n}件"),
+                                Ok(_) => {},
+                                Err(e) => log::warn!("[移行] 失敗: {e}"),
+                            }
+                        }
                         // DB 準備完了後に起動時フェッチ（未ログインならスキップ）
                         if let Some(pool) = handle.try_state::<db::DbPool>() {
                             if auth::is_logged_in(&handle) {

@@ -44,8 +44,9 @@ export interface BattleRow {
   mode: string
   rule: string
   stage: string
+  stage_name: string | null
   weapon: string
-  result: 'WIN' | 'LOSE' | 'DRAW'
+  result: 'win' | 'lose' | 'draw'
   kill: number
   death: number
   assist: number
@@ -114,13 +115,21 @@ const STAGE_ABBR_OVERRIDE: Record<string, string> = {
   '海女美術大学':              '海女美',
 }
 
+/** ステージ表示名を省略形にする（stage_name 等のフルネームを渡す）。 */
 export function stageAbbr(name: string): string {
+  if (!name) return ''
   if (STAGE_ABBR_OVERRIDE[name]) return STAGE_ABBR_OVERRIDE[name]
   const m = name.match(/^[゠-ヿ]+/)
   return m ? m[0] : name
 }
 
 const MODE_LABELS: Record<string, string> = {
+  // 新形式（stat.ink ID）
+  'regular':           'ナワバリ',
+  'bankara_challenge': 'バンカラ(挑戦)',
+  'bankara_open':      'バンカラ(開放)',
+  'x':                 'Xマッチ',
+  // 旧形式（後方互換）
   'BANKARA':  'バンカラ',
   'REGULAR':  'ナワバリ',
   'XMATCH':   'Xマッチ',
@@ -128,14 +137,26 @@ const MODE_LABELS: Record<string, string> = {
   'PRIVATE':  'プライベート',
 }
 
+export const RULE_LABELS: Record<string, string> = {
+  'turf_war': 'ナワバリバトル',
+  'area':     'ガチエリア',
+  'yagura':   'ガチヤグラ',
+  'hoko':     'ガチホコバトル',
+  'asari':    'ガチアサリ',
+}
+
 export function modeLabel(mode: string): string {
   return MODE_LABELS[mode] ?? mode
 }
 
+export function ruleLabel(rule: string): string {
+  return RULE_LABELS[rule] ?? rule
+}
+
 export function resultLabel(result: string): string {
-  if (result === 'WIN')  return 'Win'
-  if (result === 'LOSE') return 'Lose'
-  if (result === 'DRAW') return 'Draw'
+  if (result === 'win'  || result === 'WIN')  return 'Win'
+  if (result === 'lose' || result === 'LOSE') return 'Lose'
+  if (result === 'draw' || result === 'DRAW') return 'Draw'
   return result
 }
 

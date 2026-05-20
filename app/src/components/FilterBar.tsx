@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { Filters, Period, WeaponRecord } from '../types'
-import { modeLabel, resultLabel } from '../types'
+import { modeLabel, ruleLabel, resultLabel, RULE_LABELS } from '../types'
 
-const MODES   = ['REGULAR', 'BANKARA', 'XMATCH']
-const RULES   = ['ナワバリバトル', 'ガチエリア', 'ガチヤグラ', 'ガチホコバトル', 'ガチアサリ']
-const RESULTS = ['WIN', 'LOSE', 'DRAW']
+const MODES   = ['regular', 'bankara_challenge', 'bankara_open', 'x']
+const RULES   = Object.keys(RULE_LABELS)   // ['turf_war', 'area', 'yagura', 'hoko', 'asari']
+const RESULTS = ['win', 'lose', 'draw']
+
+interface StageInfo { id: string; name: string }
 const PERIODS: { id: Period; label: string }[] = [
   { id: 'all',    label: '全期間' },
   { id: '30d',    label: '直近30日' },
@@ -22,7 +24,7 @@ export function FilterBar({ filters, onChange }: Props) {
   const [weaponList,      setWeaponList]      = useState<WeaponRecord[]>([])
   const [weaponImages,    setWeaponImages]    = useState<Map<string, string>>(new Map())
   const [pickerOpen,      setPickerOpen]      = useState(false)
-  const [stageList,       setStageList]       = useState<string[]>([])
+  const [stageList,       setStageList]       = useState<StageInfo[]>([])
   const [stagePickerOpen, setStagePickerOpen] = useState(false)
 
   useEffect(() => {
@@ -39,7 +41,7 @@ export function FilterBar({ filters, onChange }: Props) {
         setWeaponImages(new Map(results.filter((r): r is [string, string] => r !== null)))
       })
     })
-    invoke<string[]>('db_stages_used').then(setStageList).catch(() => {})
+    invoke<StageInfo[]>('db_stages_used').then(setStageList).catch(() => {})
   }, [])
 
   function patch<K extends keyof Filters>(key: K, val: Filters[K]) {
@@ -108,7 +110,7 @@ export function FilterBar({ filters, onChange }: Props) {
               key={r}
               className={`filter-btn${filters.rule === r ? ' active' : ''}`}
               onClick={() => toggle('rule', r)}
-            >{r}</button>
+            >{ruleLabel(r)}</button>
           ))}
         </FilterGroup>
       </div>
@@ -144,10 +146,10 @@ export function FilterBar({ filters, onChange }: Props) {
             open={stagePickerOpen}
             onToggleOpen={() => setStagePickerOpen(v => !v)}
             onClose={() => setStagePickerOpen(false)}
-            onToggleStage={s => {
-              const next = filters.stage.includes(s)
-                ? filters.stage.filter(x => x !== s)
-                : [...filters.stage, s]
+            onToggleStage={id => {
+              const next = filters.stage.includes(id)
+                ? filters.stage.filter(x => x !== id)
+                : [...filters.stage, id]
               patch('stage', next)
             }}
             onClear={() => patch('stage', [])}
@@ -157,7 +159,7 @@ export function FilterBar({ filters, onChange }: Props) {
           {RESULTS.map(r => (
             <button
               key={r}
-              className={`filter-btn result-btn-${r.toLowerCase()}${filters.result === r ? ' active' : ''}`}
+              className={`filter-btn result-btn-${r}${filters.result === r ? ' active' : ''}`}
               onClick={() => toggle('result', r)}
             >{resultLabel(r)}</button>
           ))}
@@ -271,12 +273,12 @@ function WeaponPicker({
 function StagePicker({
   stageList, selected, open, onToggleOpen, onClose, onToggleStage, onClear,
 }: {
-  stageList: string[]
+  stageList: StageInfo[]
   selected: string[]
   open: boolean
   onToggleOpen: () => void
   onClose: () => void
-  onToggleStage: (s: string) => void
+  onToggleStage: (id: string) => void
   onClear: () => void
 }) {
   const wrapRef = useOutsideClose(open, onClose)
@@ -296,12 +298,12 @@ function StagePicker({
           <div className="weapon-picker-divider" />
           {stageList.map(s => (
             <button
-              key={s}
-              className={`weapon-picker-item${selected.includes(s) ? ' active' : ''}`}
-              onClick={() => onToggleStage(s)}
+              key={s.id}
+              className={`weapon-picker-item${selected.includes(s.id) ? ' active' : ''}`}
+              onClick={() => onToggleStage(s.id)}
             >
-              <span className="stage-check">{selected.includes(s) ? '✓' : ' '}</span>
-              {s}
+              <span className="stage-check">{selected.includes(s.id) ? '✓' : ' '}</span>
+              {s.name}
             </button>
           ))}
         </div>
