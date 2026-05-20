@@ -114,6 +114,7 @@ export interface VsHistoryDetail {
 export interface Award {
   name?: string
   rank?: 'GOLD' | 'SILVER' | string
+  image?: { url?: string }
 }
 
 export interface BattleRow {

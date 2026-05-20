@@ -497,14 +497,19 @@ body {
 .myself-row td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 
 /* awards */
-.awards-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.awards-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .award-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
-  padding: 3px 10px;
+  padding: 4px 10px 4px 6px;
   border-radius: 20px;
   background: var(--surface2);
   border: 1px solid var(--border);
 }
+.award-icon { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
+.award-name { line-height: 1; }
 .award-badge.gold   { border-color: #f59e0b; color: #f59e0b; }
 .award-badge.silver { border-color: #9ca3af; color: #9ca3af; }
 .award-badge.bronze { border-color: #b45309; color: #b45309; }

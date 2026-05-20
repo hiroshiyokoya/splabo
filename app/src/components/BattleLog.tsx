@@ -274,6 +274,8 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, onClose }: {
             <ScoreSummary myTeam={myTeam} otherTeams={otherTeams} rule={battle.rule} />
           )}
 
+          {awards.length > 0 && <AwardsSection awards={awards} />}
+
           <MyStatsCard battle={battle} weaponImages={weaponImages} />
 
           {hasDetail && (myTeam || otherTeams.length > 0) && (
@@ -304,17 +306,6 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, onClose }: {
             </section>
           )}
 
-          {awards.length > 0 && (
-            <section className="modal-section">
-              <h3 className="modal-section-title">アワード</h3>
-              <div className="awards-list">
-                {awards.map((a, i) => (
-                  <span key={i} className={`award-badge ${(a.rank ?? '').toLowerCase()}`}>{a.name}</span>
-                ))}
-              </div>
-            </section>
-          )}
-
           <section className="modal-section">
             <button className="raw-toggle" onClick={() => setShowRaw(v => !v)}>
               {showRaw ? '▲' : '▶'} raw JSON
@@ -324,6 +315,45 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, onClose }: {
         </div>
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// アワード（メダル）
+// ---------------------------------------------------------------------------
+
+function AwardsSection({ awards }: { awards: Award[] }) {
+  const [icons, setIcons] = useState<Map<string, string>>(new Map())
+
+  useEffect(() => {
+    const names = Array.from(new Set(awards.map(a => a.name).filter((n): n is string => !!n)))
+    Promise.all(
+      names.map(name =>
+        invoke<string | null>('read_image', { kind: 'award', name })
+          .then(url => (url ? ([name, url] as [string, string]) : null))
+          .catch(() => null)
+      )
+    ).then(results => {
+      setIcons(new Map(results.filter((r): r is [string, string] => r !== null)))
+    })
+  }, [awards])
+
+  return (
+    <section className="modal-section">
+      <h3 className="modal-section-title">アワード</h3>
+      <div className="awards-list">
+        {awards.map((a, i) => {
+          const rank = (a.rank ?? '').toLowerCase()
+          const icon = a.name ? icons.get(a.name) : undefined
+          return (
+            <span key={i} className={`award-badge ${rank}`}>
+              {icon && <img src={icon} alt="" className="award-icon" />}
+              <span className="award-name">{a.name}</span>
+            </span>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
@@ -583,5 +613,3 @@ function LogStatCard({ label, value, valueColor, small }: { label: string; value
 function tryParse(s: string): unknown {
   try { return JSON.parse(s) } catch { return null }
 }
-// Award is used via VsHistoryDetail.awards
-export type { Award }
