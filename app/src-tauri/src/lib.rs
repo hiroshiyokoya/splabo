@@ -225,7 +225,7 @@ async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usiz
             (v.0, v.1.clone())
         };
         if auto_upload && !api_key.is_empty() {
-            match statink::upload_pending_battles(db, &client, &api_key, None).await {
+            match statink::upload_pending_battles(db, &client, &api_key, None, Some(app)).await {
                 Ok(n)  => n,
                 Err(e) => { log::warn!("[stat.ink] 自動アップロード失敗: {e}"); 0 }
             }
@@ -268,6 +268,7 @@ async fn delete_statink_all(
 /// 未アップロードのバトルを stat.ink へアップロードする（手動・全件）。
 #[tauri::command]
 async fn upload_to_statink(
+    app: AppHandle,
     config: State<'_, StatinkConfig>,
     db: State<'_, db::DbPool>,
 ) -> Result<usize, String> {
@@ -278,12 +279,13 @@ async fn upload_to_statink(
     let client = reqwest::Client::builder()
         .build()
         .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
-    statink::upload_pending_battles(&db, &client, &api_key, None).await
+    statink::upload_pending_battles(&db, &client, &api_key, None, Some(&app)).await
 }
 
 /// 未アップロードのバトルを stat.ink へ 1 件だけアップロードする（テスト用）。
 #[tauri::command]
 async fn upload_to_statink_one(
+    app: AppHandle,
     config: State<'_, StatinkConfig>,
     db: State<'_, db::DbPool>,
 ) -> Result<usize, String> {
@@ -294,7 +296,7 @@ async fn upload_to_statink_one(
     let client = reqwest::Client::builder()
         .build()
         .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
-    statink::upload_pending_battles(&db, &client, &api_key, Some(1)).await
+    statink::upload_pending_battles(&db, &client, &api_key, Some(1), Some(&app)).await
 }
 
 /// HistoryRecordQuery で武器マスター（名前・カテゴリ・画像）を取得して DB に保存し、

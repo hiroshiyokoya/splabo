@@ -26,9 +26,17 @@ type OrderBy = 'played_at' | 'kill' | 'assist' | 'death' | 'special' | 'inked' |
 
 interface Props {
   filters: Filters
+  statinkScreenName: string | null
 }
 
-export function BattleLog({ filters }: Props) {
+/** stat.ink バトル詳細 URL を構築。screen_name があれば公開ページ、無ければ API JSON にフォールバック。 */
+function statinkBattleUrl(uuid: string, screenName: string | null): string {
+  return screenName
+    ? `https://stat.ink/@${screenName}/spl3/${uuid}`
+    : `https://stat.ink/api/v3/battle/${uuid}`
+}
+
+export function BattleLog({ filters, statinkScreenName }: Props) {
   const [battles, setBattles]                 = useState<BattleRow[]>([])
   const [total, setTotal]                     = useState(0)
   const [loading, setLoading]                 = useState(true)
@@ -180,11 +188,11 @@ export function BattleLog({ filters }: Props) {
                       {isKo && <span className="ko-badge-inline">KO</span>}
                       {b.statink_uuid && (
                         <a
-                          href={`https://stat.ink/api/v3/battle/${b.statink_uuid}`}
+                          href={statinkBattleUrl(b.statink_uuid, statinkScreenName)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="statink-mark"
-                          title="stat.ink にアップロード済み（クリックで該当バトル JSON を開く）"
+                          title="stat.ink にアップロード済み"
                           onClick={e => e.stopPropagation()}
                         >↗</a>
                       )}
@@ -214,6 +222,7 @@ export function BattleLog({ filters }: Props) {
           battle={selected}
           weaponImages={weaponImages}
           abilityImages={abilityImages}
+          statinkScreenName={statinkScreenName}
           onClose={() => setSelected(null)}
         />
       )}
@@ -240,10 +249,11 @@ function SortTh({ col, label, orderBy, orderAsc, onSort }: {
 // 詳細モーダル
 // ---------------------------------------------------------------------------
 
-function BattleDetailModal({ battle, weaponImages, abilityImages, onClose }: {
+function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenName, onClose }: {
   battle: BattleRow
   weaponImages: Map<string, string>
   abilityImages: Map<string, string>
+  statinkScreenName: string | null
   onClose: () => void
 }) {
   const [showRaw, setShowRaw] = useState(false)
@@ -277,7 +287,7 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, onClose }: {
             <span className="modal-stage">{battle.stage_name ?? battle.stage}</span>
             {battle.statink_uuid && (
               <a
-                href={`https://stat.ink/api/v3/battle/${battle.statink_uuid}`}
+                href={statinkBattleUrl(battle.statink_uuid, statinkScreenName)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="statink-badge"

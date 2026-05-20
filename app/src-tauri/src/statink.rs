@@ -6,6 +6,7 @@
 //! デコードした数値 ID（stat.ink のエイリアスとして受理される）をそのまま送る。
 
 use reqwest::Client;
+use tauri::{AppHandle, Emitter};
 
 /// stat.ink への HTTP リクエストに付与する User-Agent。
 const USER_AGENT: &str = concat!("chartoon/", env!("CARGO_PKG_VERSION"));
@@ -411,6 +412,17 @@ fn extract_internal_uuid(resp: &reqwest::Response, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_string())
 }
 
+/// POST レスポンスの Location ヘッダから screen_name を抽出する。
+/// `https://stat.ink/@<screen_name>/spl3/<uuid>` 形式を想定。
+fn extract_screen_name(resp: &reqwest::Response) -> Option<String> {
+    let location = resp.headers().get("location")?.to_str().ok()?;
+    // `@` 以降 `/` までを screen_name とする
+    let start = location.find("/@")? + 2;
+    let rest  = &location[start..];
+    let end   = rest.find('/')?;
+    Some(rest[..end].to_string())
+}
+
 // ---------------------------------------------------------------------------
 // アップロード
 // ---------------------------------------------------------------------------
@@ -423,6 +435,7 @@ pub async fn upload_pending_battles(
     client: &Client,
     api_key: &str,
     limit: Option<usize>,
+    app: Option<&AppHandle>,
 ) -> Result<usize, String> {
     if api_key.is_empty() {
         return Ok(0);
@@ -437,6 +450,7 @@ pub async fn upload_pending_battles(
     }
 
     let mut uploaded = 0usize;
+    let mut screen_name_emitted = false;
 
     for battle in &battles {
         // raw_json は detail_fetched 後は vsHistoryDetail の内容
@@ -479,6 +493,16 @@ pub async fn upload_pending_battles(
                         &battle.id[..battle.id.len().min(20)]
                     );
                 }
+
+                // Location ヘッダから screen_name を抽出し、本セッション中で 1 度だけ通知する。
+                if !screen_name_emitted {
+                    if let (Some(app), Some(name)) = (app, extract_screen_name(&r)) {
+                        let _ = app.emit("statink_screen_name_detected", &name);
+                        log::info!("[stat.ink] screen_name 取得: {name}");
+                        screen_name_emitted = true;
+                    }
+                }
+
                 crate::db::mark_statink_uploaded(pool, &battle.id, &internal_uuid).await?;
                 uploaded += 1;
             }

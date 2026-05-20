@@ -182,6 +182,7 @@ export interface AiSettings {
 export interface StatinkSettings {
   apiKey: string
   autoUpload: boolean
+  screenName: string | null
 }
 
 export interface AppSettings {

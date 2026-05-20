@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   ai: { provider: 'openai', apiKey: '', model: '' },
   autoFetchEnabled: false,
   autoFetchHour: 4,
-  statink: { apiKey: '', autoUpload: false },
+  statink: { apiKey: '', autoUpload: false, screenName: null },
 }
 
 const SETTINGS_KEY     = 'chartoon:settings'
@@ -63,6 +63,20 @@ export default function App() {
       const now = new Date().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
       setLastFetchedAt(now)
       localStorage.setItem(LAST_FETCHED_KEY, now)
+    })
+    return () => { unlistenPromise.then(fn => fn()) }
+  }, [])
+
+  // stat.ink の screen_name を初回アップロード時に自動取得して設定に保存
+  useEffect(() => {
+    const unlistenPromise = listen<string>('statink_screen_name_detected', (event) => {
+      const name = event.payload
+      setSettings(prev => {
+        if (prev.statink.screenName === name) return prev
+        const next = { ...prev, statink: { ...prev.statink, screenName: name } }
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(next))
+        return next
+      })
     })
     return () => { unlistenPromise.then(fn => fn()) }
   }, [])
@@ -111,7 +125,7 @@ export default function App() {
           <FilterBar filters={filters} onChange={setFilters} />
         )}
         {tab === 'dashboard' && <Dashboard filters={filters} aiChart={aiChart} />}
-        {tab === 'battles'   && <BattleLog filters={filters} />}
+        {tab === 'battles'   && <BattleLog filters={filters} statinkScreenName={settings.statink.screenName} />}
         {tab === 'weapons'   && <WeaponBook />}
         {tab === 'ai' && <AiAnalysis settings={settings} onChartReady={handleAiChart} />}
         {tab === 'settings' && <Settings settings={settings} onSave={saveSettings} loginVersion={loginVersion} />}
