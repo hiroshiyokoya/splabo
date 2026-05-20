@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
 import type { AppSettings } from '../types'
 import { THEMES, saveTheme, getThemeId } from '../utils/appSettings'
 
@@ -17,8 +16,6 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   const [authLoading, setAuthLoading] = useState(false)
   const [masterRefreshing, setMasterRefreshing] = useState(false)
   const [masterResult, setMasterResult] = useState<string | null>(null)
-  const [fullFetching, setFullFetching] = useState(false)
-  const [fullProgress, setFullProgress] = useState<string | null>(null)
   const [themeId, setThemeId] = useState(getThemeId)
 
   useEffect(() => {
@@ -45,30 +42,6 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
       console.error('ログアウト失敗:', e)
     } finally {
       setAuthLoading(false)
-    }
-  }
-
-  async function handleFetchAllBattles() {
-    setFullFetching(true)
-    setFullProgress('取得開始...')
-    const unlisten = await listen<{ mode: string; page: number; page_inserted: number; total: number; done: boolean }>(
-      'fetch_all_progress',
-      ({ payload: p }) => {
-        if (p.done) {
-          setFullProgress(`完了 — 合計 ${p.total} 件取得`)
-          setFullFetching(false)
-        } else {
-          setFullProgress(`${p.mode} p${p.page}: +${p.page_inserted} 件 (累計 ${p.total} 件)`)
-        }
-      }
-    )
-    try {
-      await invoke<number>('fetch_all_battles')
-    } catch (e) {
-      setFullProgress(`エラー: ${String(e)}`)
-      setFullFetching(false)
-    } finally {
-      unlisten()
     }
   }
 
@@ -169,23 +142,6 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
             disabled={!draft.autoFetchEnabled}
           />
         </label>
-      </section>
-
-      <section className="settings-section">
-        <h3>全バトル履歴取得</h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
-          SplatNet3 の全ページを遡って過去バトルデータを取得します。初回や長期間未取得のときに使用してください。
-        </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="btn-secondary" onClick={handleFetchAllBattles} disabled={fullFetching}>
-            {fullFetching ? '取得中...' : '全バトルを取得'}
-          </button>
-          {fullProgress && (
-            <span style={{ fontSize: 13, color: fullProgress.startsWith('エラー') ? 'var(--lose)' : 'var(--text-muted)' }}>
-              {fullProgress}
-            </span>
-          )}
-        </div>
       </section>
 
       <section className="settings-section">

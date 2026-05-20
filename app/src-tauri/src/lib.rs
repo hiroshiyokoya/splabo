@@ -45,7 +45,6 @@ pub fn run() {
             db::backfill_battle_players,
             images::read_image,
             fetch_battles,
-            fetch_all_battles,
             fetch_battle_details,
             fetch_weapons,
         ])
@@ -99,24 +98,6 @@ async fn fetch_battles(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
         .build()
         .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
     splatnet3::fetch_and_store_battles(
-        &db,
-        &result.bullet_token,
-        &result.country,
-        &result.language,
-        &client,
-        &app,
-    )
-    .await
-}
-
-/// 全ページを辿ってバトル履歴を全件取得する。進捗は "fetch_all_progress" イベントで通知。
-#[tauri::command]
-async fn fetch_all_battles(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usize, String> {
-    let result = nxapi::nxapi_get_bullet_token(&app).await?;
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
-    splatnet3::fetch_all_battles_paginated(
         &db,
         &result.bullet_token,
         &result.country,
