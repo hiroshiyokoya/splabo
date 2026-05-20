@@ -12,6 +12,12 @@ function winRateColor(rate: number): string {
   if (rate >= 0.45) return '#f59e0b'
   return '#ef4444'
 }
+
+/** キルレ表示。D=0 のときは ∞、それ以外は K/D を小数 2 桁で。 */
+function killRatio(kill: number, death: number): string {
+  if (death === 0) return '∞'
+  return (kill / death).toFixed(2)
+}
 type OrderBy = 'played_at' | 'kill' | 'death' | 'special' | 'inked'
 
 // ---------------------------------------------------------------------------
@@ -147,6 +153,7 @@ export function BattleLog({ filters }: Props) {
                 <SortTh col="kill"    label="K"        orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
                 <th>A</th>
                 <SortTh col="death"   label="D"        orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <th>K/D</th>
                 <SortTh col="special" label="SP"       orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
                 <SortTh col="inked"   label="塗り"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
               </tr>
@@ -175,6 +182,7 @@ export function BattleLog({ filters }: Props) {
                     <td>{b.kill}</td>
                     <td>{b.assist}</td>
                     <td>{b.death}</td>
+                    <td>{killRatio(b.kill, b.death)}</td>
                     <td>{b.special}</td>
                     <td>{b.inked.toLocaleString()}</td>
                   </tr>
