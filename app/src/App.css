@@ -1,16 +1,18 @@
 :root {
-  --bg: #0f0f13;
-  --surface: #1a1a24;
-  --surface2: #22222f;
-  --border: #2e2e40;
-  --accent: #7c3aed;
-  --accent-hover: #6d28d9;
-  --text: #e5e7eb;
-  --text-muted: #6b7280;
-  --win: #22c55e;
-  --lose: #ef4444;
-  --draw: #f59e0b;
-  --sidebar-w: 180px;
+  /* geartoon と揃えた基本配色（青寄りの紺ベース + ライム アクセント）。 */
+  --bg:            #1a1a1e;
+  --surface:       #17172a;
+  --surface2:      #20203a;
+  --border:        #2a2a45;
+  --accent:        #c8f030;
+  --accent-hover:  #9dc024;
+  --accent2:       #ff7621;
+  --text:          #eeeef8;
+  --text-muted:    #6060a0;
+  --win:           #22c55e;
+  --lose:          #ef4444;
+  --draw:          #f59e0b;
+  --sidebar-w:     180px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -41,11 +43,12 @@ body {
 }
 
 .logo {
-  font-size: 18px;
+  font-family: 'Fredoka', system-ui, 'Segoe UI', Roboto, sans-serif;
+  font-size: 22px;
   font-weight: 700;
   color: var(--accent);
   padding: 0 16px 20px;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.02em;
   background: none;
   border: none;
   cursor: pointer;
