@@ -14,6 +14,8 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   const [saved, setSaved] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
   const [authLoading, setAuthLoading] = useState(false)
+  const [fetching, setFetching] = useState(false)
+  const [fetchResult, setFetchResult] = useState<string | null>(null)
   const [masterRefreshing, setMasterRefreshing] = useState(false)
   const [masterResult, setMasterResult] = useState<string | null>(null)
   const [themeId, setThemeId] = useState(getThemeId)
@@ -21,6 +23,14 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   useEffect(() => {
     invoke<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
   }, [loginVersion])
+
+  // 起動時にスケジューラー設定を Rust 側へ同期
+  useEffect(() => {
+    invoke('set_scheduler_config', {
+      enabled: settings.autoFetchEnabled,
+      hour: settings.autoFetchHour,
+    }).catch(console.error)
+  }, [])
 
   async function handleLogin() {
     setAuthLoading(true)
@@ -45,6 +55,19 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
     }
   }
 
+  async function handleFetchFull() {
+    setFetching(true)
+    setFetchResult(null)
+    try {
+      const [battles, details] = await invoke<[number, number]>('fetch_battles_full')
+      setFetchResult(`バトル +${battles}件 / 詳細 +${details}件`)
+    } catch (e) {
+      setFetchResult(`エラー: ${String(e)}`)
+    } finally {
+      setFetching(false)
+    }
+  }
+
   async function handleRefreshMasterData() {
     setMasterRefreshing(true)
     setMasterResult(null)
@@ -60,6 +83,10 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
 
   function save() {
     onSave(draft)
+    invoke('set_scheduler_config', {
+      enabled: draft.autoFetchEnabled,
+      hour: draft.autoFetchHour,
+    }).catch(console.error)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -90,6 +117,46 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
       </section>
 
       <section className="settings-section">
+        <h3>バトルデータ取得</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+          SplatNet3 から最新のバトル結果・詳細データを取得します。
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button className="btn-primary" onClick={handleFetchFull} disabled={fetching}>
+            {fetching ? '取得中...' : 'バトルデータを取得'}
+          </button>
+          {fetchResult && (
+            <span style={{ fontSize: 13, color: fetchResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
+              {fetchResult}
+            </span>
+          )}
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h3>自動取得</h3>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={draft.autoFetchEnabled}
+            onChange={(e) => setDraft(d => ({ ...d, autoFetchEnabled: e.target.checked }))}
+          />
+          毎日自動でバトルデータを取得する
+        </label>
+        <label>
+          取得時刻（時）
+          <input
+            type="number"
+            min={0}
+            max={23}
+            value={draft.autoFetchHour}
+            onChange={(e) => setDraft(d => ({ ...d, autoFetchHour: Number(e.target.value) }))}
+            disabled={!draft.autoFetchEnabled}
+          />
+        </label>
+      </section>
+
+      <section className="settings-section">
         <h3>AI API</h3>
         <label>
           プロバイダー
@@ -117,29 +184,6 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
             value={draft.ai.model}
             onChange={(e) => setDraft(d => ({ ...d, ai: { ...d.ai, model: e.target.value } }))}
             placeholder={draft.ai.provider === 'openai' ? 'gpt-4o-mini' : 'gemini-1.5-flash'}
-          />
-        </label>
-      </section>
-
-      <section className="settings-section">
-        <h3>自動取得</h3>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={draft.autoFetchEnabled}
-            onChange={(e) => setDraft(d => ({ ...d, autoFetchEnabled: e.target.checked }))}
-          />
-          毎日自動でバトルデータを取得する
-        </label>
-        <label>
-          取得時刻（時）
-          <input
-            type="number"
-            min={0}
-            max={23}
-            value={draft.autoFetchHour}
-            onChange={(e) => setDraft(d => ({ ...d, autoFetchHour: Number(e.target.value) }))}
-            disabled={!draft.autoFetchEnabled}
           />
         </label>
       </section>

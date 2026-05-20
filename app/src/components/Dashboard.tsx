@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import {
   BarChart, Bar, LineChart, Line, ScatterChart, Scatter,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
@@ -28,10 +29,6 @@ export function Dashboard({ filters, aiChart }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [fetching, setFetching] = useState(false)
-  const [fetchingDetails, setFetchingDetails] = useState(false)
-  const [fetchResult, setFetchResult] = useState<string | null>(null)
-  const [fetchError, setFetchError] = useState<string | null>(null)
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
   const [weaponSort, setWeaponSort] = useState<SortBy>('total')
   const [stageSort, setStageSort] = useState<SortBy>('total')
@@ -55,6 +52,12 @@ export function Dashboard({ filters, aiChart }: Props) {
       .finally(() => setLoading(false))
   }, [refreshKey, filters])
 
+  // fetch_complete イベントでデータを自動リフレッシュ
+  useEffect(() => {
+    const unlistenPromise = listen('fetch_complete', () => setRefreshKey(k => k + 1))
+    return () => { unlistenPromise.then(fn => fn()) }
+  }, [])
+
   // Load weapon images once
   useEffect(() => {
     invoke<string[]>('db_weapons_used').then(weapons => {
@@ -70,38 +73,6 @@ export function Dashboard({ filters, aiChart }: Props) {
     }).catch(() => {})
   }, [])
 
-  async function handleFetch() {
-    setFetching(true)
-    setFetchResult(null)
-    setFetchError(null)
-    try {
-      const count = await invoke<number>('fetch_battles')
-      setFetchResult(`${count}件取得しました`)
-      setRefreshKey(k => k + 1)
-      invoke('fetch_weapons').catch(console.error)
-    } catch (e) {
-      setFetchError(String(e))
-    } finally {
-      setFetching(false)
-    }
-  }
-
-  async function handleFetchDetails() {
-    setFetchingDetails(true)
-    setFetchResult(null)
-    setFetchError(null)
-    try {
-      const count = await invoke<number>('fetch_battle_details')
-      setFetchResult(`詳細データ ${count}件更新しました`)
-      setRefreshKey(k => k + 1)
-      invoke('fetch_weapons').catch(console.error)
-    } catch (e) {
-      setFetchError(String(e))
-    } finally {
-      setFetchingDetails(false)
-    }
-  }
-
   const totalBattles = summary?.by_mode.reduce((s, e) => s + e.total, 0) ?? 0
   const totalWins    = summary?.by_mode.reduce((s, e) => s + e.wins,  0) ?? 0
   const totalDraws   = summary?.by_mode.reduce((s, e) => s + e.draws, 0) ?? 0
@@ -116,20 +87,7 @@ export function Dashboard({ filters, aiChart }: Props) {
     <div className="dashboard">
       <div className="dashboard-header">
         <h2>ダッシュボード</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {fetchResult && (
-            <span style={{ color: 'var(--win)', fontSize: 13 }}>{fetchResult}</span>
-          )}
-          <button className="btn-secondary" onClick={handleFetchDetails} disabled={fetchingDetails || fetching}>
-            {fetchingDetails ? '取得中...' : '詳細データを取得'}
-          </button>
-          <button className="btn-primary" onClick={handleFetch} disabled={fetching || fetchingDetails}>
-            {fetching ? '取得中...' : 'バトルデータを取得'}
-          </button>
-        </div>
       </div>
-
-      {fetchError && <div className="error-box">{fetchError}</div>}
 
       {loading ? (
         <div className="loading">読み込み中...</div>

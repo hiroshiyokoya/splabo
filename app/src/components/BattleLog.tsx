@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import type { BattleRow, Filters } from '../types'
 import { filtersToRange, stageAbbr, modeLabel, resultLabel } from '../types'
 
@@ -52,42 +53,13 @@ export function BattleLog({ filters }: Props) {
   const [stats, setStats] = useState<{ total: number; wins: number; draws: number; win_rate: number; weapon_count: number } | null>(null)
 
   // データ取得
-  const [refreshKey, setRefreshKey]         = useState(0)
-  const [fetching, setFetching]             = useState(false)
-  const [fetchingDetails, setFetchingDetails] = useState(false)
-  const [fetchResult, setFetchResult]       = useState<string | null>(null)
-  const [fetchError, setFetchError]         = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  async function handleFetch() {
-    setFetching(true)
-    setFetchResult(null)
-    setFetchError(null)
-    try {
-      const count = await invoke<number>('fetch_battles')
-      setFetchResult(`${count}件取得しました`)
-      setRefreshKey(k => k + 1)
-      invoke('fetch_weapons').catch(console.error)
-    } catch (e) {
-      setFetchError(String(e))
-    } finally {
-      setFetching(false)
-    }
-  }
-
-  async function handleFetchDetails() {
-    setFetchingDetails(true)
-    setFetchResult(null)
-    setFetchError(null)
-    try {
-      const count = await invoke<number>('fetch_battle_details')
-      setFetchResult(`詳細データ ${count}件更新しました`)
-      setRefreshKey(k => k + 1)
-    } catch (e) {
-      setFetchError(String(e))
-    } finally {
-      setFetchingDetails(false)
-    }
-  }
+  // fetch_complete イベントでデータを自動リフレッシュ
+  useEffect(() => {
+    const unlistenPromise = listen('fetch_complete', () => setRefreshKey(k => k + 1))
+    return () => { unlistenPromise.then(fn => fn()) }
+  }, [])
 
   // 武器アイコンをロード（テーブル行・モーダル用）
   useEffect(() => {
@@ -141,16 +113,6 @@ export function BattleLog({ filters }: Props) {
     <div className="battle-log">
       <div className="log-header">
         <h2>バトルログ</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
-          {fetchResult && <span style={{ color: 'var(--win)', fontSize: 13 }}>{fetchResult}</span>}
-          {fetchError  && <span style={{ color: 'var(--lose)', fontSize: 13 }}>{fetchError}</span>}
-          <button className="btn-secondary" onClick={handleFetchDetails} disabled={fetchingDetails || fetching}>
-            {fetchingDetails ? '取得中...' : '詳細データを取得'}
-          </button>
-          <button className="btn-primary" onClick={handleFetch} disabled={fetching || fetchingDetails}>
-            {fetching ? '取得中...' : 'バトルデータを取得'}
-          </button>
-        </div>
       </div>
 
       {stats && (
