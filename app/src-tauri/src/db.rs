@@ -347,16 +347,15 @@ pub async fn insert_battle_players(pool: &DbPool, players: &[BattlePlayerRow]) -
     Ok(())
 }
 
-/// 詳細取得済みで battle_players 未登録のバトルをバックフィルする。
-#[tauri::command]
-pub async fn backfill_battle_players(db: tauri::State<'_, DbPool>) -> Result<usize, String> {
+/// 詳細取得済みで battle_players 未登録のバトルをバックフィルする（内部実装）。
+pub async fn backfill_battle_players_inner(pool: &DbPool) -> Result<usize, String> {
     let rows = sqlx::query(
         "SELECT id, my_team, other_teams FROM battles
          WHERE detail_fetched = 1
            AND (my_team IS NOT NULL OR other_teams IS NOT NULL)
            AND id NOT IN (SELECT DISTINCT battle_id FROM battle_players)",
     )
-    .fetch_all(db.as_ref())
+    .fetch_all(pool.as_ref())
     .await
     .map_err(|e| e.to_string())?;
 
@@ -367,9 +366,15 @@ pub async fn backfill_battle_players(db: tauri::State<'_, DbPool>) -> Result<usi
         let other_teams: Option<String> = row.get("other_teams");
         let players = parse_players_from_json(&battle_id, my_team.as_deref(), other_teams.as_deref());
         count += players.len();
-        insert_battle_players(&*db, &players).await?;
+        insert_battle_players(pool, &players).await?;
     }
     Ok(count)
+}
+
+/// 詳細取得済みで battle_players 未登録のバトルをバックフィルする。
+#[tauri::command]
+pub async fn backfill_battle_players(db: tauri::State<'_, DbPool>) -> Result<usize, String> {
+    backfill_battle_players_inner(&db).await
 }
 
 // ---------------------------------------------------------------------------
