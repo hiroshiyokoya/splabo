@@ -145,7 +145,7 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
         </div>
       </section>
 
-      <section className="settings-section">
+      <section className="settings-section settings-section--sub">
         <h3>自動取得（有効時はトレイに常駐）</h3>
         <label className="checkbox-label">
           <input
