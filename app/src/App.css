@@ -540,9 +540,14 @@ body {
 .award-badge.silver { border-color: #9ca3af; color: #9ca3af; }
 .award-badge.bronze { border-color: #b45309; color: #b45309; }
 
-/* バトル詳細モーダルの背景にステージ画像を薄く敷く。
-   ::before で画像レイヤーを作り opacity で薄く、本文は z-index で上に。 */
-.modal-panel--with-stage { position: relative; isolation: isolate; }
+/* バトル詳細モーダルにステージ画像を背景として表示し、本文を曇りガラスで透かす。
+   - ::before: ステージ画像をパネル全体に背景描画（やや暗めに）
+   - header / body: 半透明 surface + backdrop-filter blur で frosted-glass 風に */
+.modal-panel--with-stage {
+  position: relative;
+  isolation: isolate;
+  background: var(--bg); /* 画像が読み込めない場合のフォールバック */
+}
 .modal-panel--with-stage::before {
   content: '';
   position: absolute;
@@ -550,11 +555,20 @@ body {
   background-image:    var(--stage-bg);
   background-size:     cover;
   background-position: center;
-  opacity: 0.14;
-  pointer-events: none;
+  filter: brightness(0.65) saturate(0.9);
   z-index: 0;
 }
-.modal-panel--with-stage > * { position: relative; z-index: 1; }
+.modal-panel--with-stage > .modal-header,
+.modal-panel--with-stage > .modal-body {
+  position: relative;
+  z-index: 1;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  backdrop-filter:         blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+}
+.modal-panel--with-stage > .modal-header {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
 
 /* raw json */
 .raw-toggle {
