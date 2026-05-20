@@ -25,9 +25,14 @@ async fn graphql_request(
     country: &str,
     language: &str,
     hash: &str,
+    cursor: Option<&str>,
 ) -> Result<serde_json::Value, String> {
+    let variables = match cursor {
+        Some(c) => serde_json::json!({ "after": c }),
+        None    => serde_json::json!({}),
+    };
     let body = serde_json::json!({
-        "variables": {},
+        "variables": variables,
         "extensions": {
             "persistedQuery": {
                 "version": 1,
@@ -341,7 +346,7 @@ pub async fn fetch_and_store_battles(
 
     // --- レギュラー ---
     let regular_resp =
-        graphql_request(client, bullet_token, country, language, HASH_REGULAR).await?;
+        graphql_request(client, bullet_token, country, language, HASH_REGULAR, None).await?;
     let regular_nodes = extract_battle_nodes(&regular_resp);
     let regular_rows: Vec<BattleRow> = regular_nodes
         .iter()
@@ -351,7 +356,7 @@ pub async fn fetch_and_store_battles(
 
     // --- バンカラ ---
     let bankara_resp =
-        graphql_request(client, bullet_token, country, language, HASH_BANKARA).await?;
+        graphql_request(client, bullet_token, country, language, HASH_BANKARA, None).await?;
     let bankara_nodes = extract_battle_nodes(&bankara_resp);
     let bankara_rows: Vec<BattleRow> = bankara_nodes
         .iter()
@@ -361,7 +366,7 @@ pub async fn fetch_and_store_battles(
 
     // --- Xマッチ ---
     let xmatch_resp =
-        graphql_request(client, bullet_token, country, language, HASH_XMATCH).await?;
+        graphql_request(client, bullet_token, country, language, HASH_XMATCH, None).await?;
     let xmatch_nodes = extract_battle_nodes(&xmatch_resp);
     let xmatch_rows: Vec<BattleRow> = xmatch_nodes
         .iter()
@@ -382,6 +387,110 @@ pub async fn fetch_and_store_battles(
     }
 
     Ok(total_inserted)
+}
+
+/// レスポンスから特定モードの pageInfo（hasNextPage, endCursor）を取得する。
+fn extract_page_info(resp: &serde_json::Value, data_key: &str) -> (bool, Option<String>) {
+    let base = format!("/data/{data_key}/historyGroups/pageInfo");
+    let has_next = resp.pointer(&format!("{base}/hasNextPage"))
+        .and_then(|v| v.as_bool()).unwrap_or(false);
+    let cursor = resp.pointer(&format!("{base}/endCursor"))
+        .and_then(|v| v.as_str()).map(|s| s.to_string());
+    (has_next, cursor)
+}
+
+/// レスポンスから特定モードのバトルノードを抽出する。
+fn extract_mode_nodes<'a>(resp: &'a serde_json::Value, data_key: &str) -> Vec<&'a serde_json::Value> {
+    let mut nodes = Vec::new();
+    if let Some(groups) = resp.pointer(&format!("/data/{data_key}/historyGroups/nodes"))
+        .and_then(|v| v.as_array())
+    {
+        for group in groups {
+            if let Some(details) = group.pointer("/historyDetails/nodes").and_then(|v| v.as_array()) {
+                nodes.extend(details.iter());
+            }
+        }
+    }
+    nodes
+}
+
+/// 進捗イベントのペイロード。
+#[derive(serde::Serialize, Clone)]
+pub struct FetchAllProgress {
+    pub mode:          String,
+    pub page:          usize,
+    pub page_inserted: usize,
+    pub total:         usize,
+    pub done:          bool,
+}
+
+/// レギュラー・バンカラ・Xマッチの全ページを辿ってバトル履歴を全件取得する。
+/// 各ページ間に 600ms のインターバルを挟む（レート制限対策）。
+/// DB に既存レコードのみのページに達した時点でそのモードを終了する。
+/// 進捗は Tauri イベント "fetch_all_progress" で通知する。
+pub async fn fetch_all_battles_paginated(
+    pool:         &DbPool,
+    bullet_token: &str,
+    country:      &str,
+    language:     &str,
+    client:       &reqwest::Client,
+    app:          &tauri::AppHandle,
+) -> Result<usize, String> {
+    use tauri::Emitter;
+
+    let fetched_at = chrono::Utc::now().to_rfc3339();
+    let mut total = 0usize;
+
+    let modes: &[(&str, &str, &str, fn(&serde_json::Value, &str) -> BattleRow)] = &[
+        ("レギュラー", HASH_REGULAR, "regularBattleHistories", parse_regular_node),
+        ("バンカラ",   HASH_BANKARA, "bankaraBattleHistories",  parse_bankara_node),
+        ("Xマッチ",    HASH_XMATCH,  "xBattleHistories",        parse_xmatch_node),
+    ];
+
+    for &(mode_label, hash, data_key, parser) in modes {
+        let mut cursor: Option<String> = None;
+        let mut page = 0usize;
+
+        loop {
+            if page > 0 {
+                tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+            }
+
+            let resp = graphql_request(client, bullet_token, country, language, hash, cursor.as_deref()).await?;
+            let nodes = extract_mode_nodes(&resp, data_key);
+            let rows: Vec<BattleRow> = nodes.iter().map(|n| parser(n, &fetched_at)).collect();
+            let inserted = crate::db::insert_battles(pool, rows).await?;
+            page += 1;
+            total += inserted;
+
+            let _ = app.emit("fetch_all_progress", FetchAllProgress {
+                mode:          mode_label.to_string(),
+                page,
+                page_inserted: inserted,
+                total,
+                done:          false,
+            });
+
+            // このページに新規データがなければ以降は全て既存 → 打ち切り
+            if inserted == 0 {
+                log::info!("[全件取得] {mode_label} p{page}: 新規なし → 終了");
+                break;
+            }
+
+            let (has_next, next_cursor) = extract_page_info(&resp, data_key);
+            if !has_next {
+                log::info!("[全件取得] {mode_label} p{page}: 最終ページ");
+                break;
+            }
+            cursor = next_cursor;
+        }
+    }
+
+    let _ = app.emit("fetch_all_progress", FetchAllProgress {
+        mode: String::new(), page: 0, page_inserted: 0, total, done: true,
+    });
+
+    Ok(total)
 }
 
 /// 詳細クエリ（vsResultId 指定）を発行し、レスポンスを返す。
@@ -525,7 +634,7 @@ pub async fn fetch_and_store_weapons(
     client: &reqwest::Client,
     app: &tauri::AppHandle,
 ) -> Result<usize, String> {
-    let resp = graphql_request(client, bullet_token, country, language, HASH_WEAPONS).await?;
+    let resp = graphql_request(client, bullet_token, country, language, HASH_WEAPONS, None).await?;
 
     // weaponHistories は edges/node カーソルページネーション形式。全シーズンをフラットに処理する。
     let edges = resp
