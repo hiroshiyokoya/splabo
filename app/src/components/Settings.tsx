@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import type { AppSettings } from '../types'
 import { THEMES, saveTheme, getThemeId } from '../utils/appSettings'
 
@@ -234,7 +235,11 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
       <section className="settings-section">
         <h3>stat.ink 連携</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
-          <a href="https://stat.ink" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>stat.ink</a>
+          <a
+            href="https://stat.ink"
+            onClick={e => { e.preventDefault(); openUrl('https://stat.ink').catch(console.error) }}
+            style={{ color: 'var(--accent)', cursor: 'pointer' }}
+          >stat.ink</a>
           {' '}のプロフィールページから API キーを取得してください。
         </p>
         <label>

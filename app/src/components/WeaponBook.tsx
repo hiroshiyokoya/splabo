@@ -176,7 +176,8 @@ function WeaponCard({ weapon, image, subImage, spImage }: {
   subImage: string | null
   spImage: string | null
 }) {
-  const winRate = weapon.total > 0 ? weapon.wins / weapon.total : null
+  const decisive = weapon.total - weapon.draws
+  const winRate = decisive > 0 ? weapon.wins / decisive : null
 
   return (
     <div className="weapon-card">

@@ -4,6 +4,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 
+pub mod abilities;
 pub mod auth;
 pub mod crypto;
 pub mod db;
@@ -89,6 +90,7 @@ pub fn run() {
             upload_to_statink,
             upload_to_statink_one,
             delete_statink_all,
+            detect_statink_screen_name,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -214,6 +216,8 @@ async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usiz
 
     db::populate_weapons_from_battles(db).await?;
     splatnet3::cache_sub_special_images(db, app, &client).await?;
+    splatnet3::cache_ability_images(db, app, &client).await?;
+    splatnet3::cache_award_images(db, app, &client).await?;
 
     // stat.ink 自動アップロード（設定が有効かつ API キーがある場合のみ）
     let uploaded = if let Some(sc) = app.try_state::<StatinkConfig>() {
@@ -222,7 +226,7 @@ async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usiz
             (v.0, v.1.clone())
         };
         if auto_upload && !api_key.is_empty() {
-            match statink::upload_pending_battles(db, &client, &api_key, None).await {
+            match statink::upload_pending_battles(db, &client, &api_key, None, Some(app)).await {
                 Ok(n)  => n,
                 Err(e) => { log::warn!("[stat.ink] 自動アップロード失敗: {e}"); 0 }
             }
@@ -246,6 +250,23 @@ fn set_statink_config(config: State<'_, StatinkConfig>, auto_upload: bool, api_k
     log::info!("[stat.ink] 設定更新: auto_upload={auto_upload}");
 }
 
+/// stat.ink の screen_name を既存アップロード済みバトルから逆引きする。
+/// アップロード履歴が無い・API エラー時は None。
+/// `apiKey` を JS から直接渡すため、`Settings` 画面を開かなくても起動直後から呼べる。
+#[tauri::command]
+async fn detect_statink_screen_name(
+    api_key: String,
+    db: State<'_, db::DbPool>,
+) -> Result<Option<String>, String> {
+    if api_key.is_empty() {
+        return Ok(None);
+    }
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    statink::fetch_screen_name(&db, &client, &api_key).await
+}
+
 /// stat.ink にアップロード済みのバトルを全件削除して statink_uuid をリセットする（再アップロード用）。
 #[tauri::command]
 async fn delete_statink_all(
@@ -265,6 +286,7 @@ async fn delete_statink_all(
 /// 未アップロードのバトルを stat.ink へアップロードする（手動・全件）。
 #[tauri::command]
 async fn upload_to_statink(
+    app: AppHandle,
     config: State<'_, StatinkConfig>,
     db: State<'_, db::DbPool>,
 ) -> Result<usize, String> {
@@ -275,12 +297,13 @@ async fn upload_to_statink(
     let client = reqwest::Client::builder()
         .build()
         .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
-    statink::upload_pending_battles(&db, &client, &api_key, None).await
+    statink::upload_pending_battles(&db, &client, &api_key, None, Some(&app)).await
 }
 
 /// 未アップロードのバトルを stat.ink へ 1 件だけアップロードする（テスト用）。
 #[tauri::command]
 async fn upload_to_statink_one(
+    app: AppHandle,
     config: State<'_, StatinkConfig>,
     db: State<'_, db::DbPool>,
 ) -> Result<usize, String> {
@@ -291,7 +314,7 @@ async fn upload_to_statink_one(
     let client = reqwest::Client::builder()
         .build()
         .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
-    statink::upload_pending_battles(&db, &client, &api_key, Some(1)).await
+    statink::upload_pending_battles(&db, &client, &api_key, Some(1), Some(&app)).await
 }
 
 /// HistoryRecordQuery で武器マスター（名前・カテゴリ・画像）を取得して DB に保存し、
@@ -314,6 +337,8 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
     db::backfill_battle_players_inner(&db).await?;
     db::populate_weapons_from_battles(&db).await?;
     splatnet3::cache_sub_special_images(&db, &app, &client).await?;
+    splatnet3::cache_ability_images(&db, &app, &client).await?;
+    splatnet3::cache_award_images(&db, &app, &client).await?;
     Ok(count)
 }
 

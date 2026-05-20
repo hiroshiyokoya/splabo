@@ -77,7 +77,8 @@ export function Dashboard({ filters, aiChart }: Props) {
   const totalWins    = summary?.by_mode.reduce((s, e) => s + e.wins,  0) ?? 0
   const totalDraws   = summary?.by_mode.reduce((s, e) => s + e.draws, 0) ?? 0
   const totalLosses  = totalBattles - totalWins - totalDraws
-  const overallWinRate = totalBattles > 0 ? totalWins / totalBattles : null
+  const decisiveBattles = totalBattles - totalDraws
+  const overallWinRate  = decisiveBattles > 0 ? totalWins / decisiveBattles : null
 
   function sorted(data: SummaryEntry[], by: SortBy): SummaryEntry[] {
     return [...data].sort((a, b) => b[by] - a[by])

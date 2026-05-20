@@ -139,6 +139,7 @@ pub struct WeaponRecord {
     pub special_weapon_image: Option<String>,
     pub total: i64,
     pub wins: i64,
+    pub draws: i64,
 }
 
 // ---------------------------------------------------------------------------
@@ -446,11 +447,12 @@ pub async fn db_battle_stats(
     let wins: i64         = row.get("wins");
     let draws: i64        = row.get("draws");
     let weapon_count: i64 = row.get("weapon_count");
+    let decisive          = total - draws;
     Ok(serde_json::json!({
         "total": total,
         "wins": wins,
         "draws": draws,
-        "win_rate": if total > 0 { wins as f64 / total as f64 } else { 0.0 },
+        "win_rate": if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 },
         "weapon_count": weapon_count,
     }))
 }
@@ -506,12 +508,16 @@ pub async fn db_list_battles(
     order_asc: Option<bool>,        // JS: orderAsc
 ) -> Result<Vec<BattleRow>, String> {
     let mode = normalize_mode_filter(mode);
-    let order_col = match order_by.as_deref() {
-        Some("kill")    => "kill",
-        Some("death")   => "death",
-        Some("special") => "special",
-        Some("inked")   => "inked",
-        _               => "played_at",
+    // kill_ratio は death=0 のとき大きなセンチネルに置換することで
+    // DESC で上端 / ASC で下端 に配置（フロント側 ∞ 表示と整合）。
+    let order_expr: &str = match order_by.as_deref() {
+        Some("kill")       => "kill",
+        Some("assist")     => "assist",
+        Some("death")      => "death",
+        Some("special")    => "special",
+        Some("inked")      => "inked",
+        Some("kill_ratio") => "COALESCE(CAST(kill AS REAL) / NULLIF(death, 0), 999999.0)",
+        _                  => "played_at",
     };
     let order_dir = if order_asc.unwrap_or(false) { "ASC" } else { "DESC" };
     let sql = format!(
@@ -528,7 +534,7 @@ pub async fn db_list_battles(
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)
-         ORDER BY {order_col} {order_dir} LIMIT ? OFFSET ?"
+         ORDER BY {order_expr} {order_dir} LIMIT ? OFFSET ?"
     );
     let rows = sqlx::query_as::<_, BattleRow>(&sql)
         .bind(&since).bind(&since)
@@ -658,6 +664,7 @@ pub async fn db_summary(
             let total: i64 = r.get("total");
             let wins: i64  = r.get("wins");
             let draws: i64 = r.get("draws");
+            let decisive   = total - draws;
             let name: String = if use_display_name {
                 r.try_get("display_name").unwrap_or_else(|_| r.get::<String, _>("name"))
             } else {
@@ -668,7 +675,7 @@ pub async fn db_summary(
                 "total": total,
                 "wins": wins,
                 "draws": draws,
-                "win_rate": if total > 0 { wins as f64 / total as f64 } else { 0.0 }
+                "win_rate": if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 }
             })
         }).collect()
     }
@@ -743,6 +750,15 @@ pub async fn get_battles_team_json(pool: &DbPool) -> Result<Vec<(Option<String>,
     .await
     .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(|r| (r.get("my_team"), r.get("other_teams"))).collect())
+}
+
+/// 全バトルの awards JSON を返す（メダル画像キャッシュ用）。
+pub async fn get_battles_awards_json(pool: &DbPool) -> Result<Vec<String>, String> {
+    let rows = sqlx::query("SELECT awards FROM battles WHERE awards IS NOT NULL")
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().filter_map(|r| r.get::<Option<String>, _>("awards")).collect())
 }
 
 /// battle_players テーブルから sub/special を weapons テーブルに補完する。
@@ -1008,7 +1024,8 @@ pub async fn db_list_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<WeaponR
         "SELECT w.name, w.category, w.sub_weapon, w.special_weapon,
                 w.sub_weapon_image, w.special_weapon_image,
                 COUNT(b.id) as total,
-                COALESCE(SUM(CASE WHEN b.result='win' THEN 1 ELSE 0 END), 0) as wins
+                COALESCE(SUM(CASE WHEN b.result='win'  THEN 1 ELSE 0 END), 0) as wins,
+                COALESCE(SUM(CASE WHEN b.result='draw' THEN 1 ELSE 0 END), 0) as draws
          FROM weapons w
          LEFT JOIN battles b ON b.weapon = w.name
          GROUP BY w.name

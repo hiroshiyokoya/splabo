@@ -497,14 +497,19 @@ body {
 .myself-row td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 
 /* awards */
-.awards-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.awards-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .award-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
-  padding: 3px 10px;
+  padding: 4px 10px 4px 6px;
   border-radius: 20px;
   background: var(--surface2);
   border: 1px solid var(--border);
 }
+.award-icon { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
+.award-name { line-height: 1; }
 .award-badge.gold   { border-color: #f59e0b; color: #f59e0b; }
 .award-badge.silver { border-color: #9ca3af; color: #9ca3af; }
 .award-badge.bronze { border-color: #b45309; color: #b45309; }
@@ -872,3 +877,212 @@ body {
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
+
+/* ── Battle Log table: team color stripe / KO inline ── */
+.battle-table .team-color-th  { width: 4px; padding: 0; }
+.battle-table .team-color-cell {
+  width: 4px;
+  padding: 0;
+  border-bottom: none;
+  background: transparent;
+}
+.ko-badge-inline {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+  vertical-align: middle;
+}
+
+/* stat.ink upload column (table rightmost) */
+.battle-table .statink-col-th,
+.battle-table .statink-col-cell {
+  width: 32px;
+  text-align: center;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.battle-table .statink-col-th {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.statink-mark {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--win);
+  cursor: pointer;
+  line-height: 1;
+}
+.statink-mark:hover { color: var(--accent); filter: brightness(1.2); }
+
+/* stat.ink upload badge (modal header) */
+.statink-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-left: auto;
+}
+.statink-badge:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Battle Detail Modal: redesign ── */
+.modal-panel { max-width: 980px; }
+
+/* score summary */
+.score-summary { margin-top: -4px; }
+.score-summary-row {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+.score-summary-team {
+  flex: 1;
+  background: var(--surface2);
+  border-radius: 6px;
+  padding: 10px 14px;
+  text-align: center;
+}
+.score-summary-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+.score-summary-value {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* my-stats card */
+.my-stats-grid {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.my-stats-weapon {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 200px;
+}
+.my-stats-weapon-names { display: flex; flex-direction: column; gap: 2px; }
+.my-stats-numbers {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* scoreboard: team panel stack */
+.teams-stack { display: flex; flex-direction: column; gap: 10px; }
+.team-panel {
+  background: var(--surface2);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.team-panel.my-team {
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface2));
+}
+.team-panel-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.team-panel-label {
+  font-weight: 700;
+  font-size: 13px;
+}
+.team-panel-score {
+  font-weight: 700;
+  font-size: 16px;
+}
+.team-panel-totals {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* team-panel inner table reuses .team-table styles */
+.team-panel .team-table { font-size: 11px; }
+.team-panel .team-table th,
+.team-panel .team-table td { padding: 5px 6px; }
+.team-panel .team-table .num-col { text-align: right; min-width: 28px; }
+.team-panel .team-table .weapon-col { min-width: 110px; }
+.team-panel .team-table .gear-col   { min-width: 156px; }
+
+/* crown */
+.crown-cell { width: 18px; padding-right: 0 !important; }
+.crown-badge {
+  font-size: 11px;
+  line-height: 1;
+}
+.crown-badge.crown-x    { color: #fbbf24; }
+.crown-badge.crown-100x { color: #f59e0b; font-weight: 700; }
+.crown-badge.crown-333x { color: #ef4444; font-weight: 700; }
+
+/* splashtag */
+.splashtag-cell { min-width: 130px; max-width: 180px; }
+.splashtag-title {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.splashtag-name {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.splashtag-id { color: var(--text-muted); font-size: 10px; }
+
+/* gear grid (3 rows × 4 slots) */
+.gear-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gear-row {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+.gear-slot {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.gear-slot.primary {
+  width: 26px;
+  height: 26px;
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+.gear-slot img { width: 100%; height: 100%; object-fit: contain; }
+.gear-slot-fallback { color: var(--text-muted); font-size: 10px; }
+
