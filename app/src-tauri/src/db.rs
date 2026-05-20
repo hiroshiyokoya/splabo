@@ -280,7 +280,7 @@ pub fn parse_players_from_json(
                         weapon,
                         sub_weapon:     p.pointer("/weapon/subWeapon/name").and_then(|v| v.as_str()).map(|s| s.to_string()),
                         special_weapon: p.pointer("/weapon/specialWeapon/name").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                        kill:    stat_i64(res, "kill"),
+                        kill:    stat_i64(res, "kill") - stat_i64(res, "assist"),
                         death:   stat_i64(res, "death"),
                         assist:  stat_i64(res, "assist"),
                         special: stat_i64(res, "special"),
@@ -798,17 +798,18 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 2 {
+    if current_version >= 3 {
         return Ok(0); // 最新バージョンに達している
     }
 
-    // 全件を対象に mode/rule/stage/result を正規化する
+    let mut updated = 0usize;
+
+    // version 2 未適用なら mode/rule/stage/result を正規化する
+    if current_version < 2 {
     let rows = sqlx::query("SELECT id, raw_json FROM battles")
         .fetch_all(pool.as_ref())
         .await
         .map_err(|e| e.to_string())?;
-
-    let mut updated = 0usize;
     for row in &rows {
         let id:       String = row.get("id");
         let raw_json: String = row.get("raw_json");
@@ -890,13 +891,40 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         updated += 1;
     }
 
-    // マイグレーション完了を記録
+    // v2 マイグレーション完了を記録
     sqlx::query("PRAGMA user_version = 2")
         .execute(pool.as_ref())
         .await
         .map_err(|e| e.to_string())?;
 
-    log::info!("migrate_battle_ids v2: {} 件更新", updated);
+    log::info!("migrate v2: mode/rule/stage/result 正規化 {} 件", updated);
+    } // end if current_version < 2
+
+    // version 3: Nintendo の result["kill"] は kill+assist（kill_or_assist）であり、
+    //            実キル数は kill_or_assist - assist。既存レコードを修正する。
+    if current_version < 3 {
+        sqlx::query(
+            "UPDATE battles SET kill = kill - assist WHERE detail_fetched = 1 AND assist > 0 AND kill >= assist",
+        )
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+        sqlx::query(
+            "UPDATE battle_players SET kill = kill - assist WHERE assist > 0 AND kill >= assist",
+        )
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+        sqlx::query("PRAGMA user_version = 3")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        log::info!("migrate v3: kill カウント（kill_or_assist → 実キル）修正完了");
+    }
+
     Ok(updated)
 }
 
@@ -914,6 +942,7 @@ pub async fn get_battles_not_uploaded(pool: &DbPool) -> Result<Vec<BattleRow>, S
                 statink_uuid
          FROM battles
          WHERE statink_uuid IS NULL
+           AND detail_fetched = 1
          ORDER BY played_at ASC",
     )
     .fetch_all(pool.as_ref())

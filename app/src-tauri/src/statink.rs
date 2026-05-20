@@ -1,183 +1,356 @@
 //! stat.ink API v3 へのバトルデータアップロード。
+//!
+//! s3s (https://github.com/frozenpandaman/s3s) の prepare_battle_result / set_scoreboard を参考に、
+//! vsHistoryDetail の raw_json から直接ペイロードを構築する。
+//! 武器・ステージは stat.ink API への逆引きを行わず、Nintendo の base64 ID を
+//! デコードした数値 ID（stat.ink のエイリアスとして受理される）をそのまま送る。
 
 use reqwest::Client;
-use std::collections::HashMap;
 
-const STATINK_API: &str = "https://stat.ink/api/v3";
+// s3s と同じ UUID5 名前空間。同一バトルで s3s と UUID が一致するため stat.ink 側で重複排除される。
+const S3S_NAMESPACE_BYTES: [u8; 16] = [
+    0xb3, 0xa2, 0xdb, 0xf5,
+    0x2c, 0x09,
+    0x47, 0x92,
+    0xb7, 0x8c,
+    0x00, 0xb5, 0x48, 0xb7, 0x0a, 0xeb,
+];
 
 // ---------------------------------------------------------------------------
-// マッピング
+// base64 ID デコード
 // ---------------------------------------------------------------------------
 
-/// ルールスラグ（chartoon）→ stat.ink ルールキー
-fn map_rule(rule: &str) -> &str {
-    match rule {
-        "turf_war" => "nawabari",
-        "area"     => "area",
-        "yagura"   => "yagura",
-        "hoko"     => "hoko",
-        "asari"    => "asari",
-        _          => rule,
-    }
+/// Nintendo の base64 エンコード ID をデコードしてプレフィックスを除去する。
+/// `VsStage-10` → `10`（数値）、`VsHistoryDetail-u-...` → そのまま文字列。
+fn b64d(b64str: &str) -> String {
+    use base64::Engine;
+    let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(b64str) else {
+        return b64str.to_string();
+    };
+    let Ok(s) = String::from_utf8(bytes) else {
+        return b64str.to_string();
+    };
+    s
 }
 
-/// モード（chartoon）→ stat.ink lobby キー
-fn map_mode(mode: &str) -> &str {
-    match mode {
-        "x"                 => "xmatch",
-        "regular"           => "regular",
-        "bankara_challenge" => "bankara_challenge",
-        "bankara_open"      => "bankara_open",
-        _                   => mode,
+/// base64 ID をデコードして stat.ink に渡す値（数値 or 文字列）を返す。
+fn decode_id(b64str: &str) -> serde_json::Value {
+    let s = b64d(b64str);
+    // 既知プレフィックスを除去
+    for prefix in &["Weapon-", "VsStage-", "VsMode-", "VsRule-"] {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            if let Ok(n) = rest.parse::<i64>() {
+                return serde_json::json!(n);
+            }
+        }
     }
+    // VsHistoryDetail など文字列のまま返すもの
+    serde_json::json!(s)
 }
 
 // ---------------------------------------------------------------------------
-// stat.ink マスターデータ取得
+// UUID 生成（s3s と同一ロジック）
 // ---------------------------------------------------------------------------
 
-/// stat.ink から `ja_JP 名 → key` のマップを取得する（武器またはステージ）。
-async fn fetch_name_key_map(client: &Client, endpoint: &str) -> HashMap<String, String> {
-    let url = format!("{STATINK_API}/{endpoint}");
-    let Ok(resp) = client
-        .get(&url)
-        .header("User-Agent", "chartoon/0.1")
-        .send()
-        .await
-    else {
-        return HashMap::new();
+/// バトル ID の base64 から UUID v5 を生成する（s3s と同一）。
+fn battle_uuid(battle_id_b64: &str) -> String {
+    let full_id = b64d(battle_id_b64);
+    // 末尾 52 文字: "YYYYMMDDTHHMMSS_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+    let suffix = if full_id.len() >= 52 {
+        &full_id[full_id.len() - 52..]
+    } else {
+        &full_id
     };
+    let namespace = uuid::Uuid::from_bytes(S3S_NAMESPACE_BYTES);
+    uuid::Uuid::new_v5(&namespace, suffix.as_bytes()).to_string()
+}
 
-    if !resp.status().is_success() {
-        return HashMap::new();
+// ---------------------------------------------------------------------------
+// RGBA → hex
+// ---------------------------------------------------------------------------
+
+fn rgba_to_hex(color: &serde_json::Value) -> Option<String> {
+    let r = (color.get("r")?.as_f64()? * 255.0) as u8;
+    let g = (color.get("g")?.as_f64()? * 255.0) as u8;
+    let b = (color.get("b")?.as_f64()? * 255.0) as u8;
+    let a = (color.get("a")?.as_f64()? * 255.0) as u8;
+    Some(format!("{r:02x}{g:02x}{b:02x}{a:02x}"))
+}
+
+// ---------------------------------------------------------------------------
+// プレイヤー構造体の構築（s3s の set_scoreboard に相当）
+// ---------------------------------------------------------------------------
+
+fn build_player(player: &serde_json::Value, rank_in_team: usize) -> serde_json::Value {
+    let is_myself = player.get("isMyself").and_then(|v| v.as_bool()).unwrap_or(false);
+    let weapon_b64 = player.pointer("/weapon/id").and_then(|v| v.as_str()).unwrap_or("");
+    let inked = player.get("paint").and_then(|v| v.as_i64()).unwrap_or(0);
+
+    let mut p = serde_json::json!({
+        "me":           if is_myself { "yes" } else { "no" },
+        "weapon":       decode_id(weapon_b64),
+        "inked":        if inked > 0 { serde_json::json!(inked) } else { serde_json::Value::Null },
+        "rank_in_team": rank_in_team,
+    });
+
+    if let Some(name) = player.get("name").and_then(|v| v.as_str()) {
+        p["name"] = serde_json::json!(name);
+    }
+    if let Some(byname) = player.get("byname").and_then(|v| v.as_str()) {
+        p["splashtag_title"] = serde_json::json!(byname);
+    }
+    if let Some(name_id) = player.get("nameId").and_then(|v| v.as_str()) {
+        p["number"] = serde_json::json!(name_id);
+    }
+    if let Some(species) = player.get("species").and_then(|v| v.as_str()) {
+        p["species"] = serde_json::json!(species.to_lowercase());
     }
 
-    let Ok(items) = resp.json::<serde_json::Value>().await else {
-        return HashMap::new();
-    };
+    match player.get("result") {
+        Some(result) if !result.is_null() => {
+            // Nintendo の result["kill"] は kill+assist（kill_or_assist）
+            let kill_or_assist = result.get("kill").and_then(|v| v.as_i64()).unwrap_or(0);
+            let assist         = result.get("assist").and_then(|v| v.as_i64()).unwrap_or(0);
+            p["kill_or_assist"] = serde_json::json!(kill_or_assist);
+            p["assist"]         = serde_json::json!(assist);
+            p["kill"]           = serde_json::json!(kill_or_assist - assist);
+            p["death"]          = serde_json::json!(result.get("death").and_then(|v| v.as_i64()).unwrap_or(0));
+            p["special"]        = serde_json::json!(result.get("special").and_then(|v| v.as_i64()).unwrap_or(0));
+            p["disconnected"]   = serde_json::json!("no");
+        }
+        _ => {
+            p["disconnected"] = serde_json::json!("yes");
+        }
+    }
 
-    items
-        .as_array()
+    p
+}
+
+fn build_team_players(players_val: Option<&serde_json::Value>) -> Vec<serde_json::Value> {
+    players_val
+        .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|item| {
-                    let key  = item.get("key")?.as_str()?.to_string();
-                    let name = item.pointer("/name/ja_JP")?.as_str()?.to_string();
-                    Some((name, key))
-                })
+                .enumerate()
+                .map(|(i, p)| build_player(p, i + 1))
                 .collect()
         })
         .unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------
-// UUID 生成
+// メインのペイロード構築（s3s の prepare_battle_result に相当）
 // ---------------------------------------------------------------------------
 
-/// バトル ID から冪等な UUID v4 形式文字列を生成する。
-fn derive_uuid(battle_id: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(b"chartoon-statink-uuid:");
-    h.update(battle_id.as_bytes());
-    let d = h.finalize();
-    format!(
-        "{:08x}-{:04x}-4{:03x}-{:04x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        u32::from_be_bytes([d[0], d[1], d[2], d[3]]),
-        u16::from_be_bytes([d[4], d[5]]),
-        u16::from_be_bytes([d[6], d[7]]) & 0x0fff,
-        (u16::from_be_bytes([d[8], d[9]]) & 0x3fff) | 0x8000,
-        d[10], d[11], d[12], d[13], d[14], d[15],
-    )
-}
+/// vsHistoryDetail JSON から stat.ink POST ペイロードを構築する。
+fn build_payload(detail: &serde_json::Value) -> serde_json::Value {
+    let mut payload = serde_json::json!({});
 
-// ---------------------------------------------------------------------------
-// チームメンバー変換ヘルパー
-// ---------------------------------------------------------------------------
-
-/// SplatNet3 プレイヤー配列 JSON → stat.ink team_members 配列。
-fn build_team_members(players_json: &str, weapon_map: &HashMap<String, String>) -> serde_json::Value {
-    let Ok(players) = serde_json::from_str::<serde_json::Value>(players_json) else {
-        return serde_json::json!([]);
-    };
-    let Some(arr) = players.as_array() else {
-        return serde_json::json!([]);
-    };
-
-    let members: Vec<serde_json::Value> = arr
-        .iter()
-        .map(|p| {
-            let is_myself = p.get("isMyself").and_then(|v| v.as_bool()).unwrap_or(false);
-            let weapon_name = p.pointer("/weapon/name").and_then(|v| v.as_str()).unwrap_or("");
-            let weapon_key = weapon_map
-                .get(weapon_name)
-                .cloned()
-                .unwrap_or_else(|| weapon_name.to_string());
-            let kill    = p.pointer("/result/kill")   .and_then(|v| v.as_i64()).unwrap_or(0);
-            let death   = p.pointer("/result/death")  .and_then(|v| v.as_i64()).unwrap_or(0);
-            let assist  = p.pointer("/result/assist") .and_then(|v| v.as_i64()).unwrap_or(0);
-            let special = p.pointer("/result/special").and_then(|v| v.as_i64()).unwrap_or(0);
-            let inked   = p.get("paint").and_then(|v| v.as_i64()).unwrap_or(0);
-
-            serde_json::json!({
-                "me":            is_myself,
-                "weapon":        weapon_key,
-                "kill":          kill,
-                "assist":        assist,
-                "kill_or_assist": kill + assist,
-                "death":         death,
-                "special":       special,
-                "inked":         if inked > 0 { serde_json::json!(inked) } else { serde_json::Value::Null },
-            })
-        })
-        .collect();
-
-    serde_json::json!(members)
-}
-
-/// SplatNet3 otherTeams JSON → stat.ink their_team_members 配列（最初のチームを使用）。
-fn build_their_team_members(other_teams_json: &str, weapon_map: &HashMap<String, String>) -> serde_json::Value {
-    let Ok(teams) = serde_json::from_str::<serde_json::Value>(other_teams_json) else {
-        return serde_json::json!([]);
-    };
-    let players_json = teams
-        .as_array()
-        .and_then(|arr| arr.first())
-        .and_then(|team| team.get("players"))
-        .map(|v| v.to_string())
-        .unwrap_or_default();
-
-    if players_json.is_empty() {
-        return serde_json::json!([]);
+    // --- UUID ---
+    if let Some(id_b64) = detail.get("id").and_then(|v| v.as_str()) {
+        payload["uuid"] = serde_json::json!(battle_uuid(id_b64));
     }
-    build_team_members(&players_json, weapon_map)
-}
 
-/// SplatNet3 awards JSON → stat.ink medals 配列（名前のみ）。
-fn build_medals(awards_json: &str) -> serde_json::Value {
-    let Ok(awards) = serde_json::from_str::<serde_json::Value>(awards_json) else {
-        return serde_json::Value::Null;
-    };
-    let Some(arr) = awards.as_array() else {
-        return serde_json::Value::Null;
-    };
-    let names: Vec<serde_json::Value> = arr
-        .iter()
-        .filter_map(|a| a.get("name").and_then(|v| v.as_str()).map(|s| serde_json::json!(s)))
-        .collect();
+    // --- Lobby ---
+    let mode = detail.pointer("/vsMode/mode").and_then(|v| v.as_str()).unwrap_or("");
+    payload["lobby"] = serde_json::json!(match mode {
+        "REGULAR" => "regular",
+        "BANKARA" => {
+            let bm = detail.pointer("/bankaraMatch/mode").and_then(|v| v.as_str()).unwrap_or("");
+            if bm == "CHALLENGE" { "bankara_challenge" } else { "bankara_open" }
+        }
+        "X_MATCH" => "xmatch",
+        "PRIVATE" => "private",
+        "FEST" => {
+            // VsMode ID: 6=tricolor/open 7=pro 8=open
+            let mode_id_b64 = detail.pointer("/vsMode/id").and_then(|v| v.as_str()).unwrap_or("");
+            let mode_id = b64d(mode_id_b64).replace("VsMode-", "").parse::<i64>().unwrap_or(0);
+            if mode_id == 7 { "splatfest_challenge" } else { "splatfest_open" }
+        }
+        "LEAGUE" => "event",
+        other => other,
+    });
 
-    if names.is_empty() {
-        serde_json::Value::Null
+    // --- Rule ---
+    let rule_raw = detail.pointer("/vsRule/rule").and_then(|v| v.as_str()).unwrap_or("");
+    let rule_slug = match rule_raw {
+        "TURF_WAR"  => "nawabari",
+        "AREA"      => "area",
+        "LOFT"      => "yagura",
+        "GOAL"      => "hoko",
+        "CLAM"      => "asari",
+        "TRI_COLOR" => "tricolor",
+        other       => other,
+    };
+    payload["rule"] = serde_json::json!(rule_slug);
+
+    // --- Stage ---
+    let stage_b64 = detail.pointer("/vsStage/id").and_then(|v| v.as_str()).unwrap_or("");
+    payload["stage"] = decode_id(stage_b64);
+
+    // --- 自分のスタッツ ---
+    if let Some(players) = detail.pointer("/myTeam/players").and_then(|v| v.as_array()) {
+        for (i, player) in players.iter().enumerate() {
+            if player.get("isMyself").and_then(|v| v.as_bool()).unwrap_or(false) {
+                let weapon_b64 = player.pointer("/weapon/id").and_then(|v| v.as_str()).unwrap_or("");
+                payload["weapon"]       = decode_id(weapon_b64);
+                payload["inked"]        = serde_json::json!(player.get("paint").and_then(|v| v.as_i64()).unwrap_or(0));
+                payload["rank_in_team"] = serde_json::json!(i + 1);
+                if let Some(species) = player.get("species").and_then(|v| v.as_str()) {
+                    payload["species"] = serde_json::json!(species.to_lowercase());
+                }
+                if let Some(result) = player.get("result") {
+                    if !result.is_null() {
+                        let koa    = result.get("kill")   .and_then(|v| v.as_i64()).unwrap_or(0);
+                        let assist = result.get("assist") .and_then(|v| v.as_i64()).unwrap_or(0);
+                        payload["kill_or_assist"] = serde_json::json!(koa);
+                        payload["assist"]         = serde_json::json!(assist);
+                        payload["kill"]           = serde_json::json!(koa - assist);
+                        payload["death"]          = serde_json::json!(result.get("death")  .and_then(|v| v.as_i64()).unwrap_or(0));
+                        payload["special"]        = serde_json::json!(result.get("special").and_then(|v| v.as_i64()).unwrap_or(0));
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    // --- チーム合計塗りポイント ---
+    let sum_paint = |path: &str| -> i64 {
+        detail.pointer(path)
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().map(|p| p.get("paint").and_then(|v| v.as_i64()).unwrap_or(0)).sum())
+            .unwrap_or(0)
+    };
+    let our_inked   = sum_paint("/myTeam/players");
+    let their_inked = sum_paint("/otherTeams/0/players");
+    if our_inked   > 0 { payload["our_team_inked"]   = serde_json::json!(our_inked); }
+    if their_inked > 0 { payload["their_team_inked"] = serde_json::json!(their_inked); }
+
+    // --- 勝敗 ---
+    payload["result"] = serde_json::json!(match detail.get("judgement").and_then(|v| v.as_str()).unwrap_or("") {
+        "WIN"                    => "win",
+        "LOSE" | "DEEMED_LOSE"   => "lose",
+        "EXEMPTED_LOSE"          => "exempted_lose",
+        "DRAW"                   => "draw",
+        _                        => "lose",
+    });
+
+    // --- ルール別スコア ---
+    if rule_slug == "nawabari" || rule_slug == "tricolor" {
+        // ナワバリ: 塗り占有率
+        if let Some(r) = detail.pointer("/myTeam/result/paintRatio").and_then(|v| v.as_f64()) {
+            payload["our_team_percent"] = serde_json::json!((r * 1000.0).round() / 10.0);
+        }
+        if let Some(r) = detail.pointer("/otherTeams/0/result/paintRatio").and_then(|v| v.as_f64()) {
+            payload["their_team_percent"] = serde_json::json!((r * 1000.0).round() / 10.0);
+        }
     } else {
-        serde_json::json!(names)
+        // ガチマ: KO有無・カウント
+        let knockout_raw = detail.get("knockout").and_then(|v| v.as_str()).unwrap_or("NEITHER");
+        payload["knockout"] = serde_json::json!(
+            if knockout_raw != "NEITHER" && !knockout_raw.is_empty() { "yes" } else { "no" }
+        );
+        if let Some(s) = detail.pointer("/myTeam/result/score").and_then(|v| v.as_i64()) {
+            payload["our_team_count"] = serde_json::json!(s);
+        }
+        if let Some(s) = detail.pointer("/otherTeams/0/result/score").and_then(|v| v.as_i64()) {
+            payload["their_team_count"] = serde_json::json!(s);
+        }
     }
+
+    // --- 時刻 ---
+    if let Some(played_time) = detail.get("playedTime").and_then(|v| v.as_str()) {
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(played_time) {
+            let start_ts = dt.timestamp();
+            payload["start_at"] = serde_json::json!(start_ts);
+            let duration = detail.get("duration").and_then(|v| v.as_i64()).unwrap_or(0);
+            if duration > 0 {
+                payload["end_at"] = serde_json::json!(start_ts + duration);
+            }
+        }
+    }
+
+    // --- チームカラー ---
+    if let Some(color) = detail.pointer("/myTeam/color") {
+        if let Some(hex) = rgba_to_hex(color) {
+            payload["our_team_color"] = serde_json::json!(hex);
+        }
+    }
+    if let Some(color) = detail.pointer("/otherTeams/0/color") {
+        if let Some(hex) = rgba_to_hex(color) {
+            payload["their_team_color"] = serde_json::json!(hex);
+        }
+    }
+
+    // --- スコアボード ---
+    let our_players   = build_team_players(detail.pointer("/myTeam/players"));
+    let their_players = build_team_players(detail.pointer("/otherTeams/0/players"));
+    if !our_players.is_empty()   { payload["our_team_players"]   = serde_json::json!(our_players); }
+    if !their_players.is_empty() { payload["their_team_players"] = serde_json::json!(their_players); }
+
+    // トリカラー
+    if rule_slug == "tricolor" {
+        if let Some(color) = detail.pointer("/otherTeams/1/color") {
+            if let Some(hex) = rgba_to_hex(color) {
+                payload["third_team_color"] = serde_json::json!(hex);
+            }
+        }
+        let third_players = build_team_players(detail.pointer("/otherTeams/1/players"));
+        if !third_players.is_empty() { payload["third_team_players"] = serde_json::json!(third_players); }
+
+        if let Some(r) = detail.pointer("/otherTeams/1/result/paintRatio").and_then(|v| v.as_f64()) {
+            payload["third_team_percent"] = serde_json::json!((r * 1000.0).round() / 10.0);
+        }
+        let third_inked: i64 = detail.pointer("/otherTeams/1/players")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().map(|p| p.get("paint").and_then(|v| v.as_i64()).unwrap_or(0)).sum())
+            .unwrap_or(0);
+        if third_inked > 0 { payload["third_team_inked"] = serde_json::json!(third_inked); }
+    }
+
+    // --- バンカラ追加情報 ---
+    if mode == "BANKARA" {
+        if let Some(exp) = detail.pointer("/bankaraMatch/earnedUdemaePoint").and_then(|v| v.as_i64()) {
+            payload["rank_exp_change"] = serde_json::json!(exp);
+        }
+        if let Some(power) = detail.pointer("/bankaraMatch/bankaraPower/power").and_then(|v| v.as_f64()) {
+            payload["bankara_power_after"] = serde_json::json!(power);
+        } else if let Some(power) = detail.pointer("/bankaraMatch/weaponPower").and_then(|v| v.as_f64()) {
+            payload["series_weapon_power_after"] = serde_json::json!(power);
+        }
+    }
+
+    // --- X マッチ ---
+    if mode == "X_MATCH" {
+        if let Some(power) = detail.pointer("/xMatch/lastXPower").and_then(|v| v.as_f64()) {
+            payload["x_power_after"] = serde_json::json!(power);
+        }
+    }
+
+    // --- メダル ---
+    if let Some(awards) = detail.get("awards").and_then(|v| v.as_array()) {
+        let medals: Vec<serde_json::Value> = awards.iter()
+            .filter_map(|a| a.get("name").and_then(|v| v.as_str()).map(|s| serde_json::json!(s)))
+            .collect();
+        if !medals.is_empty() {
+            payload["medals"] = serde_json::json!(medals);
+        }
+    }
+
+    // --- エージェント情報 ---
+    payload["agent"]         = serde_json::json!("chartoon");
+    payload["agent_version"] = serde_json::json!(env!("CARGO_PKG_VERSION"));
+    payload["automated"]     = serde_json::json!(true);
+
+    payload
 }
 
 // ---------------------------------------------------------------------------
 // アップロード
 // ---------------------------------------------------------------------------
 
-/// statink_uuid が未設定のバトルを stat.ink へアップロードする。
+/// statink_uuid が未設定のバトル（detail_fetched=1 のみ）を stat.ink へアップロードする。
 /// 返り値: アップロード成功件数。
 pub async fn upload_pending_battles(
     pool: &crate::db::DbPool,
@@ -188,17 +361,6 @@ pub async fn upload_pending_battles(
         return Ok(0);
     }
 
-    // マスターデータ取得（武器・ステージの ja_JP → key マップ）
-    let weapon_map = fetch_name_key_map(client, "weapon").await;
-    let stage_map  = fetch_name_key_map(client, "stage").await;
-
-    if weapon_map.is_empty() {
-        log::warn!("[stat.ink] 武器マスター取得失敗。武器キーにフォールバックします");
-    }
-    if stage_map.is_empty() {
-        log::warn!("[stat.ink] ステージマスター取得失敗。ステージキーにフォールバックします");
-    }
-
     let battles = crate::db::get_battles_not_uploaded(pool).await?;
     if battles.is_empty() {
         return Ok(0);
@@ -207,97 +369,25 @@ pub async fn upload_pending_battles(
     let mut uploaded = 0usize;
 
     for battle in &battles {
-        let uuid = derive_uuid(&battle.id);
-
-        // 武器キー: ja_JP 名 → stat.ink key（取得失敗時は日本語名をそのまま）
-        let weapon_key = weapon_map
-            .get(&battle.weapon)
-            .cloned()
-            .unwrap_or_else(|| battle.weapon.clone());
-
-        // ステージキー: stage_name(ja_JP) → stat.ink key
-        let stage_key = battle
-            .stage_name
-            .as_deref()
-            .and_then(|n| stage_map.get(n))
-            .cloned()
-            .unwrap_or_else(|| battle.stage.clone());
-
-        // kill/death は detail_fetched 後でないと 0 → 両方 0 なら null 扱い
-        let has_detail = battle.kill > 0 || battle.death > 0;
-
-        // played_at (ISO 8601) → Unix タイムスタンプ
-        let start_ts = chrono::DateTime::parse_from_rfc3339(&battle.played_at)
-            .map(|dt| dt.timestamp())
-            .unwrap_or(0);
-        let end_ts = if battle.duration > 0 && start_ts > 0 {
-            start_ts + battle.duration as i64
-        } else {
-            0
+        // raw_json は detail_fetched 後は vsHistoryDetail の内容
+        let detail: serde_json::Value = match serde_json::from_str(&battle.raw_json) {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!("[stat.ink] raw_json パース失敗 id={}: {e}", &battle.id[..battle.id.len().min(20)]);
+                continue;
+            }
         };
 
-        // knockout: SplatNet3 "WIN"/"LOSE" → stat.ink true（KO決着）、null → false
-        let knockout_val = match battle.knockout.as_deref() {
-            Some("WIN") | Some("LOSE") => serde_json::json!(true),
-            _ => serde_json::json!(false),
-        };
+        let payload = build_payload(&detail);
 
-        let mut payload = serde_json::json!({
-            "uuid":    uuid,
-            "lobby":   map_mode(&battle.mode),
-            "rule":    map_rule(&battle.rule),
-            "stage":   stage_key,
-            "weapon":  weapon_key,
-            "result":  battle.result,
-            "knockout": knockout_val,
-            "inked":   if battle.inked    > 0 { serde_json::json!(battle.inked)    } else { serde_json::Value::Null },
-            "duration": if battle.duration > 0 { serde_json::json!(battle.duration) } else { serde_json::Value::Null },
-            "start_at": if start_ts > 0 { serde_json::json!(start_ts) } else { serde_json::Value::Null },
-            "end_at":   if end_ts   > 0 { serde_json::json!(end_ts)   } else { serde_json::Value::Null },
-            "agent":         "chartoon",
-            "agent_version": env!("CARGO_PKG_VERSION"),
-            "automated":     true,
-        });
-
-        if has_detail {
-            payload["kill"]          = serde_json::json!(battle.kill);
-            payload["assist"]        = serde_json::json!(battle.assist);
-            payload["kill_or_assist"] = serde_json::json!(battle.kill + battle.assist);
-            payload["death"]         = serde_json::json!(battle.death);
-            payload["special"]       = serde_json::json!(battle.special);
-        }
-
-        // X パワー
-        if let Some(xp) = battle.x_power {
-            payload["x_power_after"] = serde_json::json!(xp);
-        }
-
-        // メダル（アワード）
-        if let Some(ref awards_json) = battle.awards {
-            let medals = build_medals(awards_json);
-            if !medals.is_null() {
-                payload["medals"] = medals;
-            }
-        }
-
-        // 味方チーム
-        if let Some(ref my_team_json) = battle.my_team {
-            let members = build_team_members(my_team_json, &weapon_map);
-            if members.as_array().map(|a| !a.is_empty()).unwrap_or(false) {
-                payload["our_team_members"] = members;
-            }
-        }
-
-        // 相手チーム
-        if let Some(ref other_teams_json) = battle.other_teams {
-            let members = build_their_team_members(other_teams_json, &weapon_map);
-            if members.as_array().map(|a| !a.is_empty()).unwrap_or(false) {
-                payload["their_team_members"] = members;
-            }
+        let uuid = payload["uuid"].as_str().unwrap_or("").to_string();
+        if uuid.is_empty() {
+            log::warn!("[stat.ink] UUID 生成失敗、スキップ: id={}", &battle.id[..battle.id.len().min(20)]);
+            continue;
         }
 
         let resp = client
-            .post(format!("{STATINK_API}/battle"))
+            .post("https://stat.ink/api/v3/battle")
             .header("Authorization", format!("Bearer {api_key}"))
             .header("Content-Type", "application/json")
             .header("User-Agent", "chartoon/0.1")
@@ -307,7 +397,6 @@ pub async fn upload_pending_battles(
 
         match resp {
             Ok(r) if r.status().is_success() => {
-                // レスポンスの uuid を保存（なければ生成した uuid を使用）
                 let statink_uuid = r
                     .json::<serde_json::Value>()
                     .await
@@ -318,9 +407,9 @@ pub async fn upload_pending_battles(
                 uploaded += 1;
             }
             Ok(r) if r.status().as_u16() == 422 => {
-                // バリデーションエラー（重複など）→ アップロード済みとしてマーク
-                log::warn!(
-                    "[stat.ink] スキップ (422) id={}…",
+                // 重複など → アップロード済みとしてマーク
+                log::info!(
+                    "[stat.ink] スキップ (422/重複) id={}…",
                     &battle.id[..battle.id.len().min(20)]
                 );
                 crate::db::mark_statink_uploaded(pool, &battle.id, &uuid).await?;
@@ -333,7 +422,7 @@ pub async fn upload_pending_battles(
             }
             Err(e) => {
                 log::warn!("[stat.ink] 通信エラー: {e}");
-                break; // 接続エラーなら以降もスキップ
+                break;
             }
         }
     }

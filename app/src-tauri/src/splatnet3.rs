@@ -488,9 +488,11 @@ pub async fn fetch_and_update_details(
                 })
             });
         let myself_result = myself.and_then(|p| p.get("result"));
-        let kill    = myself_result.and_then(|r| r.get("kill")).and_then(|v| v.as_i64()).unwrap_or(0);
-        let death   = myself_result.and_then(|r| r.get("death")).and_then(|v| v.as_i64()).unwrap_or(0);
+        // Nintendo の result["kill"] は kill+assist（kill_or_assist）なので実キルに変換する
+        let kill_or_assist = myself_result.and_then(|r| r.get("kill")).and_then(|v| v.as_i64()).unwrap_or(0);
         let assist  = myself_result.and_then(|r| r.get("assist")).and_then(|v| v.as_i64()).unwrap_or(0);
+        let kill    = kill_or_assist - assist;
+        let death   = myself_result.and_then(|r| r.get("death")).and_then(|v| v.as_i64()).unwrap_or(0);
         let special = myself_result.and_then(|r| r.get("special")).and_then(|v| v.as_i64()).unwrap_or(0);
         let inked   = myself.and_then(|p| p.get("paint")).and_then(|v| v.as_i64()).unwrap_or(0);
 
