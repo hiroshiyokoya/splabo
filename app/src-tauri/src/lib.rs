@@ -87,6 +87,7 @@ pub fn run() {
             set_scheduler_config,
             set_statink_config,
             upload_to_statink,
+            delete_statink_all,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -242,6 +243,22 @@ async fn fetch_battles_full(app: AppHandle, db: State<'_, db::DbPool>) -> Result
 fn set_statink_config(config: State<'_, StatinkConfig>, auto_upload: bool, api_key: String) {
     *config.0.lock().unwrap() = (auto_upload, api_key);
     log::info!("[stat.ink] 設定更新: auto_upload={auto_upload}");
+}
+
+/// stat.ink にアップロード済みのバトルを全件削除して statink_uuid をリセットする（再アップロード用）。
+#[tauri::command]
+async fn delete_statink_all(
+    config: State<'_, StatinkConfig>,
+    db: State<'_, db::DbPool>,
+) -> Result<usize, String> {
+    let api_key = config.0.lock().unwrap().1.clone();
+    if api_key.is_empty() {
+        return Err("stat.ink API キーが設定されていません".to_string());
+    }
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    statink::delete_all_uploaded_battles(&db, &client, &api_key).await
 }
 
 /// 未アップロードのバトルを stat.ink へアップロードする（手動）。

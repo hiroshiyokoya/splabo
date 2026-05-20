@@ -430,3 +430,60 @@ pub async fn upload_pending_battles(
     log::info!("[stat.ink] {} 件アップロード完了 (対象 {} 件)", uploaded, battles.len());
     Ok(uploaded)
 }
+
+// ---------------------------------------------------------------------------
+// 削除
+// ---------------------------------------------------------------------------
+
+/// stat.ink にアップロード済みのバトルを全件削除し、DB の statink_uuid をリセットする。
+/// 返り値: 削除成功件数。
+pub async fn delete_all_uploaded_battles(
+    pool: &crate::db::DbPool,
+    client: &Client,
+    api_key: &str,
+) -> Result<usize, String> {
+    if api_key.is_empty() {
+        return Err("stat.ink API キーが設定されていません".to_string());
+    }
+
+    let battles = crate::db::get_battles_uploaded(pool).await?;
+    if battles.is_empty() {
+        return Ok(0);
+    }
+
+    let mut deleted = 0usize;
+
+    for (battle_id, statink_uuid) in &battles {
+        let url = format!("https://stat.ink/api/v3/battle/{statink_uuid}");
+        let resp = client
+            .delete(&url)
+            .header("Authorization", format!("Bearer {api_key}"))
+            .header("User-Agent", "chartoon/0.1")
+            .send()
+            .await;
+
+        match resp {
+            Ok(r) if r.status().as_u16() == 204 => {
+                crate::db::reset_statink_uuid(pool, battle_id).await?;
+                deleted += 1;
+            }
+            Ok(r) if r.status().as_u16() == 404 => {
+                // stat.ink 上にない（手動で削除済みなど）→ DB のみリセット
+                crate::db::reset_statink_uuid(pool, battle_id).await?;
+                deleted += 1;
+            }
+            Ok(r) => {
+                let status = r.status();
+                let body = r.text().await.unwrap_or_default();
+                log::warn!("[stat.ink] 削除失敗: uuid={statink_uuid} status={status} body={}", &body[..body.len().min(200)]);
+            }
+            Err(e) => {
+                log::warn!("[stat.ink] 削除通信エラー: {e}");
+                break;
+            }
+        }
+    }
+
+    log::info!("[stat.ink] {} 件削除完了 (対象 {} 件)", deleted, battles.len());
+    Ok(deleted)
+}

@@ -19,6 +19,8 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   const [themeId, setThemeId] = useState(getThemeId)
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteResult, setDeleteResult] = useState<string | null>(null)
 
   useEffect(() => {
     invoke<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
@@ -88,6 +90,20 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
       setFetchResult(`エラー: ${String(e)}`)
     } finally {
       setFetching(false)
+    }
+  }
+
+  async function handleDeleteStatink() {
+    if (!confirm('stat.ink にアップロード済みのバトルを全件削除し、再アップロード可能な状態に戻します。\nよろしいですか？')) return
+    setDeleting(true)
+    setDeleteResult(null)
+    try {
+      const count = await invoke<number>('delete_statink_all')
+      setDeleteResult(count > 0 ? `${count}件削除しました` : '削除対象なし')
+    } catch (e) {
+      setDeleteResult(`エラー: ${String(e)}`)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -266,6 +282,21 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
           {uploadResult && (
             <span style={{ fontSize: 13, color: uploadResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
               {uploadResult}
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+          <button
+            className="btn-secondary"
+            onClick={handleDeleteStatink}
+            disabled={deleting || !settings.statink.apiKey}
+            style={{ color: 'var(--lose)' }}
+          >
+            {deleting ? '削除中...' : 'アップロード済みを全件削除（再アップロード用）'}
+          </button>
+          {deleteResult && (
+            <span style={{ fontSize: 13, color: deleteResult.startsWith('エラー') ? 'var(--lose)' : 'var(--text-muted)' }}>
+              {deleteResult}
             </span>
           )}
         </div>

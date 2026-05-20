@@ -951,6 +951,25 @@ pub async fn get_battles_not_uploaded(pool: &DbPool) -> Result<Vec<BattleRow>, S
     Ok(rows)
 }
 
+/// statink_uuid が設定済みのバトル一覧を返す（id, statink_uuid のペア）。
+pub async fn get_battles_uploaded(pool: &DbPool) -> Result<Vec<(String, String)>, String> {
+    let rows = sqlx::query("SELECT id, statink_uuid FROM battles WHERE statink_uuid IS NOT NULL ORDER BY played_at ASC")
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|r| (r.get::<String, _>("id"), r.get::<String, _>("statink_uuid"))).collect())
+}
+
+/// バトルの statink_uuid を NULL にリセットする（削除後の再アップロード用）。
+pub async fn reset_statink_uuid(pool: &DbPool, id: &str) -> Result<(), String> {
+    sqlx::query("UPDATE battles SET statink_uuid = NULL WHERE id = ?")
+        .bind(id)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// バトルを stat.ink アップロード済みとしてマークする。
 pub async fn mark_statink_uploaded(pool: &DbPool, id: &str, uuid: &str) -> Result<(), String> {
     sqlx::query("UPDATE battles SET statink_uuid=? WHERE id=?")
