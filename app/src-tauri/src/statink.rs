@@ -524,6 +524,44 @@ pub async fn upload_pending_battles(
 }
 
 // ---------------------------------------------------------------------------
+// screen_name 逆引き（既存バトルから）
+// ---------------------------------------------------------------------------
+
+/// 既存のアップロード済みバトル 1 件を使い、stat.ink から自分の screen_name を取得する。
+/// `GET /api/v3/battle/<uuid>` のレスポンス JSON の `user.screen_name` を読む。
+/// 該当バトルが無い場合・API エラー時は `Ok(None)`。
+pub async fn fetch_screen_name(
+    pool: &crate::db::DbPool,
+    client: &Client,
+    api_key: &str,
+) -> Result<Option<String>, String> {
+    if api_key.is_empty() {
+        return Ok(None);
+    }
+    let uploaded = crate::db::get_battles_uploaded(pool).await?;
+    let Some((_, statink_uuid)) = uploaded.first() else {
+        return Ok(None);
+    };
+
+    let url = format!("https://stat.ink/api/v3/battle/{statink_uuid}");
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("User-Agent", USER_AGENT)
+        .send()
+        .await
+        .map_err(|e| format!("stat.ink 通信エラー: {e}"))?;
+
+    if !resp.status().is_success() {
+        log::warn!("[stat.ink] screen_name 取得失敗: status={}", resp.status());
+        return Ok(None);
+    }
+
+    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(body.pointer("/user/screen_name").and_then(|v| v.as_str()).map(|s| s.to_string()))
+}
+
+// ---------------------------------------------------------------------------
 // 削除
 // ---------------------------------------------------------------------------
 

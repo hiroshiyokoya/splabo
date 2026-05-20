@@ -81,6 +81,21 @@ export default function App() {
     return () => { unlistenPromise.then(fn => fn()) }
   }, [])
 
+  // 起動時、screen_name が未取得 & API キーありなら既存アップロード済みバトルから逆引き
+  useEffect(() => {
+    if (settings.statink.screenName) return
+    if (!settings.statink.apiKey) return
+    invoke<string | null>('detect_statink_screen_name').then(name => {
+      if (!name) return
+      setSettings(prev => {
+        if (prev.statink.screenName === name) return prev
+        const next = { ...prev, statink: { ...prev.statink, screenName: name } }
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(next))
+        return next
+      })
+    }).catch(console.error)
+  }, [settings.statink.apiKey])
+
   useEffect(() => {
     const unlistenPromise = listen<string>('deep-link-received', async (event) => {
       const url = event.payload

@@ -90,6 +90,7 @@ pub fn run() {
             upload_to_statink,
             upload_to_statink_one,
             delete_statink_all,
+            detect_statink_screen_name,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -247,6 +248,23 @@ async fn fetch_battles_full(app: AppHandle, db: State<'_, db::DbPool>) -> Result
 fn set_statink_config(config: State<'_, StatinkConfig>, auto_upload: bool, api_key: String) {
     *config.0.lock().unwrap() = (auto_upload, api_key);
     log::info!("[stat.ink] 設定更新: auto_upload={auto_upload}");
+}
+
+/// stat.ink の screen_name を既存アップロード済みバトルから逆引きする。
+/// アップロード履歴が無い・API エラー時は None。
+#[tauri::command]
+async fn detect_statink_screen_name(
+    config: State<'_, StatinkConfig>,
+    db: State<'_, db::DbPool>,
+) -> Result<Option<String>, String> {
+    let api_key = config.0.lock().unwrap().1.clone();
+    if api_key.is_empty() {
+        return Ok(None);
+    }
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    statink::fetch_screen_name(&db, &client, &api_key).await
 }
 
 /// stat.ink にアップロード済みのバトルを全件削除して statink_uuid をリセットする（再アップロード用）。
