@@ -7,6 +7,9 @@
 
 use reqwest::Client;
 
+/// stat.ink への HTTP リクエストに付与する User-Agent。
+const USER_AGENT: &str = concat!("chartoon/", env!("CARGO_PKG_VERSION"));
+
 // s3s と同じ UUID5 名前空間。同一バトルで s3s と UUID が一致するため stat.ink 側で重複排除される。
 const S3S_NAMESPACE_BYTES: [u8; 16] = [
     0xb3, 0xa2, 0xdb, 0xf5,
@@ -504,7 +507,7 @@ pub async fn upload_pending_battles(
             .post("https://stat.ink/api/v3/battle")
             .header("Authorization", format!("Bearer {api_key}"))
             .header("Content-Type", "application/json")
-            .header("User-Agent", "chartoon/0.1")
+            .header("User-Agent", USER_AGENT)
             .json(&payload)
             .send()
             .await;
@@ -570,7 +573,7 @@ pub async fn delete_all_uploaded_battles(
         let resp = client
             .delete(&url)
             .header("Authorization", format!("Bearer {api_key}"))
-            .header("User-Agent", "chartoon/0.1")
+            .header("User-Agent", USER_AGENT)
             .send()
             .await;
 
