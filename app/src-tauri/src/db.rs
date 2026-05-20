@@ -749,7 +749,8 @@ pub async fn db_list_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<WeaponR
          FROM weapons w
          LEFT JOIN battles b ON b.weapon = w.name
          GROUP BY w.name
-         ORDER BY w.category, total DESC, w.name",
+         ORDER BY CASE WHEN w.category = '' OR w.category IS NULL THEN 1 ELSE 0 END,
+                  w.category, total DESC, w.name",
     )
     .fetch_all(db.as_ref())
     .await
