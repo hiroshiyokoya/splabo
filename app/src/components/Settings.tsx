@@ -155,7 +155,7 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
           />
           毎日自動でバトルデータを取得する
         </label>
-        <label>
+        <label className="settings-subitem">
           取得時刻（時）
           <input
             type="number"

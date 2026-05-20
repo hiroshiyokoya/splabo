@@ -756,6 +756,8 @@ body {
 .settings-section h3 { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
 /* タイトル (h3) 以外の直下要素に視覚的なインデントを付ける */
 .settings-section > *:not(h3) { margin-left: 16px; }
+/* チェックボックスに従属する設定項目はもう一段下げる */
+.settings-section > .settings-subitem { margin-left: 32px; }
 .settings-section label {
   display: flex;
   flex-direction: column;
