@@ -14,9 +14,10 @@ pub mod splatnet3;
 pub mod statink;
 
 /// スケジューラー設定（フロントエンドから set_scheduler_config で更新される）
-pub struct SchedulerConfig(pub std::sync::Mutex<(bool, u8)>);
+/// (enabled, interval_min) — interval_min は分単位（15, 30, 60, 120, 360, 720, 1440 等）
+pub struct SchedulerConfig(pub std::sync::Mutex<(bool, u32)>);
 impl Default for SchedulerConfig {
-    fn default() -> Self { Self(std::sync::Mutex::new((false, 4))) }
+    fn default() -> Self { Self(std::sync::Mutex::new((false, 1440))) }  // デフォルト 24h
 }
 
 /// stat.ink 設定（フロントエンドから set_statink_config で更新される）
@@ -149,31 +150,38 @@ pub fn run() {
                 }
             });
 
-            // 自動取得スケジューラー
+            // 自動取得スケジューラー（インターバル方式・切りのいい時刻で発火）
+            // 起動タイミングに依存せず「壁時計の minute_of_day % interval == 0」を満たす分に発火。
+            // 例: interval=15 なら 0,15,30,45 分、interval=360 なら 0:00/6:00/12:00/18:00。
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                let mut last_run_hour: Option<u32> = None;
+                let mut last_fired_at: Option<chrono::DateTime<chrono::Local>> = None;
                 loop {
                     tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
 
-                    let (enabled, target_hour) = {
+                    let (enabled, interval_min) = {
                         let config = handle.state::<SchedulerConfig>();
                         let v = *config.0.lock().unwrap();
                         v
                     };
 
-                    if !enabled || !auth::is_logged_in(&handle) {
-                        last_run_hour = None;
+                    if !enabled || interval_min == 0 || !auth::is_logged_in(&handle) {
                         continue;
                     }
 
                     use chrono::Timelike;
-                    let current_hour = chrono::Local::now().hour();
+                    let now = chrono::Local::now();
+                    let minutes_today: u32 = now.hour() * 60 + now.minute();
+                    let is_boundary    = minutes_today % interval_min == 0;
+                    let recently_fired = last_fired_at
+                        .map(|t| (now - t).num_seconds() < 90)
+                        .unwrap_or(false);
 
-                    if current_hour == target_hour as u32 && last_run_hour != Some(current_hour) {
-                        last_run_hour = Some(current_hour);
+                    if is_boundary && !recently_fired {
+                        last_fired_at = Some(now);
                         if let Some(pool) = handle.try_state::<db::DbPool>() {
-                            log::info!("[自動取得] 開始 ({}時)", target_hour);
+                            log::info!("[自動取得] 開始 ({:02}:{:02}, 間隔 {} 分)",
+                                now.hour(), now.minute(), interval_min);
                             match run_fetch_full(&handle, &pool).await {
                                 Ok((b, _, u)) => {
                                     log::info!("[自動取得] 完了 バトル+{b}件 stat.ink+{u}件");
@@ -185,8 +193,6 @@ pub fn run() {
                                 }
                             }
                         }
-                    } else if current_hour != target_hour as u32 {
-                        last_run_hour = None;
                     }
                 }
             });
@@ -345,10 +351,11 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
 }
 
 /// スケジューラー設定を更新する。フロントエンドが設定変更時に呼び出す。
+/// `interval_min` は実行間隔（分）。`minute_of_day % interval_min == 0` を満たす分に発火する。
 #[tauri::command]
-fn set_scheduler_config(config: State<'_, SchedulerConfig>, enabled: bool, hour: u8) {
-    *config.0.lock().unwrap() = (enabled, hour);
-    log::info!("[スケジューラー] 設定更新: enabled={enabled} hour={hour}");
+fn set_scheduler_config(config: State<'_, SchedulerConfig>, enabled: bool, interval_min: u32) {
+    *config.0.lock().unwrap() = (enabled, interval_min);
+    log::info!("[スケジューラー] 設定更新: enabled={enabled} interval={interval_min}min");
 }
 
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {

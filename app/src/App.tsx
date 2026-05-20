@@ -18,7 +18,7 @@ initAppSettings()
 const DEFAULT_SETTINGS: AppSettings = {
   ai: { provider: 'openai', apiKey: '', model: '' },
   autoFetchEnabled: false,
-  autoFetchHour: 4,
+  autoFetchIntervalMin: 1440, // 24h
   statink: { apiKey: '', autoUpload: false, screenName: null },
 }
 

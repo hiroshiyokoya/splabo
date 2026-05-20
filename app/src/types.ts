@@ -204,7 +204,8 @@ export interface StatinkSettings {
 export interface AppSettings {
   ai: AiSettings
   autoFetchEnabled: boolean
-  autoFetchHour: number
+  /** 自動取得の実行間隔（分）。例: 15, 30, 60, 120, 360, 720, 1440 */
+  autoFetchIntervalMin: number
   statink: StatinkSettings
 }
 

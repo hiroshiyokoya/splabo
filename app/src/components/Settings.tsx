@@ -27,7 +27,7 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   useEffect(() => {
     invoke('set_scheduler_config', {
       enabled: settings.autoFetchEnabled,
-      hour: settings.autoFetchHour,
+      intervalMin: settings.autoFetchIntervalMin,
     }).catch(console.error)
     invoke('set_statink_config', {
       autoUpload: settings.statink.autoUpload,
@@ -39,10 +39,10 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
     const next = { ...settings, ...patch }
     onSave(next)
     // スケジューラー関連の変更は即 Rust 側へ同期
-    if ('autoFetchEnabled' in patch || 'autoFetchHour' in patch) {
+    if ('autoFetchEnabled' in patch || 'autoFetchIntervalMin' in patch) {
       invoke('set_scheduler_config', {
         enabled: next.autoFetchEnabled,
-        hour: next.autoFetchHour,
+        intervalMin: next.autoFetchIntervalMin,
       }).catch(console.error)
     }
     // stat.ink 設定の変更も即 Rust 側へ同期
@@ -153,18 +153,23 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
             checked={settings.autoFetchEnabled}
             onChange={(e) => update({ autoFetchEnabled: e.target.checked })}
           />
-          毎日自動でバトルデータを取得する
+          自動でバトルデータを取得する
         </label>
-        <label className="settings-subitem">
-          取得時刻（時）
-          <input
-            type="number"
-            min={0}
-            max={23}
-            value={settings.autoFetchHour}
-            onChange={(e) => update({ autoFetchHour: Number(e.target.value) })}
+        <label>
+          取得間隔
+          <select
+            value={settings.autoFetchIntervalMin}
+            onChange={(e) => update({ autoFetchIntervalMin: Number(e.target.value) })}
             disabled={!settings.autoFetchEnabled}
-          />
+          >
+            <option value={15}>15分ごと</option>
+            <option value={30}>30分ごと</option>
+            <option value={60}>1時間ごと</option>
+            <option value={120}>2時間ごと</option>
+            <option value={360}>6時間ごと</option>
+            <option value={720}>12時間ごと</option>
+            <option value={1440}>24時間ごと</option>
+          </select>
         </label>
       </section>
 
