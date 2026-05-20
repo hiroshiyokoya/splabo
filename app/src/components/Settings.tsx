@@ -169,38 +169,6 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
       </section>
 
       <section className="settings-section">
-        <h3>AI API</h3>
-        <label>
-          プロバイダー
-          <select
-            value={settings.ai.provider}
-            onChange={(e) => update({ ai: { ...settings.ai, provider: e.target.value as 'openai' | 'gemini' } })}
-          >
-            <option value="openai">OpenAI (ChatGPT)</option>
-            <option value="gemini">Google Gemini</option>
-          </select>
-        </label>
-        <label>
-          APIキー
-          <input
-            type="password"
-            value={settings.ai.apiKey}
-            onChange={(e) => update({ ai: { ...settings.ai, apiKey: e.target.value } })}
-            placeholder="sk-... または AIzaSy..."
-          />
-        </label>
-        <label>
-          モデル
-          <input
-            type="text"
-            value={settings.ai.model}
-            onChange={(e) => update({ ai: { ...settings.ai, model: e.target.value } })}
-            placeholder={settings.ai.provider === 'openai' ? 'gpt-4o-mini' : 'gemini-1.5-flash'}
-          />
-        </label>
-      </section>
-
-      <section className="settings-section">
         <h3>stat.ink 連携</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
           <a
@@ -242,6 +210,38 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
             </span>
           )}
         </div>
+      </section>
+
+      <section className="settings-section">
+        <h3>AI API</h3>
+        <label>
+          プロバイダー
+          <select
+            value={settings.ai.provider}
+            onChange={(e) => update({ ai: { ...settings.ai, provider: e.target.value as 'openai' | 'gemini' } })}
+          >
+            <option value="openai">OpenAI (ChatGPT)</option>
+            <option value="gemini">Google Gemini</option>
+          </select>
+        </label>
+        <label>
+          APIキー
+          <input
+            type="password"
+            value={settings.ai.apiKey}
+            onChange={(e) => update({ ai: { ...settings.ai, apiKey: e.target.value } })}
+            placeholder="sk-... または AIzaSy..."
+          />
+        </label>
+        <label>
+          モデル
+          <input
+            type="text"
+            value={settings.ai.model}
+            onChange={(e) => update({ ai: { ...settings.ai, model: e.target.value } })}
+            placeholder={settings.ai.provider === 'openai' ? 'gpt-4o-mini' : 'gemini-1.5-flash'}
+          />
+        </label>
       </section>
 
       <section className="settings-section">
