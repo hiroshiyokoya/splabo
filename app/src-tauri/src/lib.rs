@@ -4,6 +4,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 
+pub mod abilities;
 pub mod auth;
 pub mod crypto;
 pub mod db;
@@ -214,6 +215,7 @@ async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usiz
 
     db::populate_weapons_from_battles(db).await?;
     splatnet3::cache_sub_special_images(db, app, &client).await?;
+    splatnet3::cache_ability_images(db, app, &client).await?;
 
     // stat.ink 自動アップロード（設定が有効かつ API キーがある場合のみ）
     let uploaded = if let Some(sc) = app.try_state::<StatinkConfig>() {
@@ -314,6 +316,7 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
     db::backfill_battle_players_inner(&db).await?;
     db::populate_weapons_from_battles(&db).await?;
     splatnet3::cache_sub_special_images(&db, &app, &client).await?;
+    splatnet3::cache_ability_images(&db, &app, &client).await?;
     Ok(count)
 }
 
