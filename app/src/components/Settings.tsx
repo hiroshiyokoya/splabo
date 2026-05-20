@@ -59,8 +59,8 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
     setFetching(true)
     setFetchResult(null)
     try {
-      const [battles, details] = await invoke<[number, number]>('fetch_battles_full')
-      setFetchResult(`バトル +${battles}件 / 詳細 +${details}件`)
+      const [battles] = await invoke<[number, number]>('fetch_battles_full')
+      setFetchResult(`バトル +${battles}件`)
     } catch (e) {
       setFetchResult(`エラー: ${String(e)}`)
     } finally {

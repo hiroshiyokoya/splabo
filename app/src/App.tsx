@@ -21,7 +21,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoFetchHour: 4,
 }
 
-const SETTINGS_KEY = 'chartoon:settings'
+const SETTINGS_KEY     = 'chartoon:settings'
+const LAST_FETCHED_KEY = 'chartoon:lastFetchedAt'
 
 function loadSettings(): AppSettings {
   try {
@@ -39,6 +40,18 @@ export default function App() {
   const [loginVersion, setLoginVersion] = useState(0)
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
   const [showAbout, setShowAbout] = useState(false)
+  const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(
+    () => localStorage.getItem(LAST_FETCHED_KEY)
+  )
+
+  useEffect(() => {
+    const unlistenPromise = listen('fetch_complete', () => {
+      const now = new Date().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      setLastFetchedAt(now)
+      localStorage.setItem(LAST_FETCHED_KEY, now)
+    })
+    return () => { unlistenPromise.then(fn => fn()) }
+  }, [])
 
   useEffect(() => {
     const unlistenPromise = listen<string>('deep-link-received', async (event) => {
@@ -74,6 +87,9 @@ export default function App() {
         <NavItem id="ai"        label="AI分析"         active={tab} onClick={setTab} />
         <NavItem id="weapons"   label="武器図鑑"       active={tab} onClick={setTab} />
         <NavItem id="settings"  label="設定"           active={tab} onClick={setTab} />
+        <div className="sidebar-last-fetched">
+          {lastFetchedAt ? `取得 ${lastFetchedAt}` : '未取得'}
+        </div>
       </nav>
 
       <main className="content">
