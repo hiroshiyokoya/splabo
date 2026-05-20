@@ -44,6 +44,13 @@ export default function App() {
     () => localStorage.getItem(LAST_FETCHED_KEY)
   )
 
+  // 認証完了後にデータ取得を実行
+  useEffect(() => {
+    if (loginVersion > 0) {
+      invoke('fetch_battles_full').catch(console.error)
+    }
+  }, [loginVersion])
+
   useEffect(() => {
     const unlistenPromise = listen('fetch_complete', () => {
       const now = new Date().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })

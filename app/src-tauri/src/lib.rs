@@ -86,11 +86,21 @@ pub fn run() {
                 });
             }
 
-            // DB初期化
+            // DB初期化 → 完了後に起動時フェッチを1回実行
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 match db::init_db(&handle).await {
-                    Ok(pool) => { handle.manage(pool); }
+                    Ok(pool) => {
+                        handle.manage(pool);
+                        // DB 準備完了後に起動時フェッチ（未ログインなら無視）
+                        if let Some(pool) = handle.try_state::<db::DbPool>() {
+                            log::info!("[起動時取得] 開始");
+                            match run_fetch_full(&handle, &pool).await {
+                                Ok((b, d)) => log::info!("[起動時取得] 完了 バトル+{b}件 詳細+{d}件"),
+                                Err(e)     => log::info!("[起動時取得] スキップ: {e}"),
+                            }
+                        }
+                    }
                     Err(e) => log::error!("DB初期化失敗: {e}"),
                 }
             });
