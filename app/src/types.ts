@@ -126,8 +126,9 @@ export function stageAbbr(name: string): string {
 const MODE_LABELS: Record<string, string> = {
   // 新形式（stat.ink ID）
   'regular':           'ナワバリ',
-  'bankara_challenge': 'バンカラ(挑戦)',
-  'bankara_open':      'バンカラ(開放)',
+  'bankara':           'バンカラ',           // フィルター・ダッシュボード用
+  'bankara_challenge': 'バンカラ(チャレンジ)', // バトルログ行表示用
+  'bankara_open':      'バンカラ(オープン)',   // バトルログ行表示用
   'x':                 'Xマッチ',
   // 旧形式（後方互換）
   'BANKARA':  'バンカラ',

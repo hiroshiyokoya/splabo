@@ -382,6 +382,23 @@ pub async fn backfill_battle_players(db: tauri::State<'_, DbPool>) -> Result<usi
 }
 
 // ---------------------------------------------------------------------------
+// フィルターヘルパー
+// ---------------------------------------------------------------------------
+
+/// モードフィルターを正規化する。
+/// 'bankara' は 'bankara_challenge|bankara_open' に展開し、
+/// instr パイプフィルターでどちらにもマッチさせる。
+fn normalize_mode_filter(mode: Option<String>) -> Option<String> {
+    mode.map(|m| {
+        if m == "bankara" {
+            "bankara_challenge|bankara_open".to_string()
+        } else {
+            m
+        }
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Tauri コマンド
 // ---------------------------------------------------------------------------
 
@@ -396,6 +413,7 @@ pub async fn db_battle_stats(
     weapon: Option<String>,
     stage: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    let mode = normalize_mode_filter(mode);
     let row = sqlx::query(
         "SELECT
             COUNT(*) as total,
@@ -405,7 +423,7 @@ pub async fn db_battle_stats(
          FROM battles
          WHERE (? IS NULL OR played_at >= ?)
            AND (? IS NULL OR played_at <= ?)
-           AND (? IS NULL OR mode = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || mode || '|') > 0)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
@@ -446,11 +464,12 @@ pub async fn db_battle_count(
     weapon: Option<String>,
     stage: Option<String>,
 ) -> Result<i64, String> {
+    let mode = normalize_mode_filter(mode);
     let row = sqlx::query(
         "SELECT COUNT(*) as cnt FROM battles
          WHERE (? IS NULL OR played_at >= ?)
            AND (? IS NULL OR played_at <= ?)
-           AND (? IS NULL OR mode = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || mode || '|') > 0)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
@@ -484,6 +503,7 @@ pub async fn db_list_battles(
     order_by: Option<String>,       // JS: orderBy
     order_asc: Option<bool>,        // JS: orderAsc
 ) -> Result<Vec<BattleRow>, String> {
+    let mode = normalize_mode_filter(mode);
     let order_col = match order_by.as_deref() {
         Some("kill")    => "kill",
         Some("death")   => "death",
@@ -500,7 +520,7 @@ pub async fn db_list_battles(
          FROM battles
          WHERE (? IS NULL OR played_at >= ?)
            AND (? IS NULL OR played_at <= ?)
-           AND (? IS NULL OR mode = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || mode || '|') > 0)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
@@ -562,10 +582,11 @@ pub async fn db_summary(
     weapon: Option<String>,
     stage: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    let mode = normalize_mode_filter(mode);
     let filter_where =
         "(? IS NULL OR played_at >= ?)
            AND (? IS NULL OR played_at <= ?)
-           AND (? IS NULL OR mode = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || mode || '|') > 0)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
@@ -594,10 +615,14 @@ pub async fn db_summary(
     .map_err(|e| e.to_string())?;
 
     let by_mode = bind_filters!(sqlx::query(&format!(
-        "SELECT mode as name, COUNT(*) as total,
+        "SELECT
+                CASE WHEN mode LIKE 'bankara%' THEN 'bankara' ELSE mode END as name,
+                COUNT(*) as total,
                 SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
                 SUM(CASE WHEN result='draw' THEN 1 ELSE 0 END) as draws
-         FROM battles WHERE {filter_where} GROUP BY mode ORDER BY total DESC"
+         FROM battles WHERE {filter_where}
+         GROUP BY CASE WHEN mode LIKE 'bankara%' THEN 'bankara' ELSE mode END
+         ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
     .await
