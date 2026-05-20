@@ -412,9 +412,10 @@ function TeamPanel({ team, label, highlight, showSignal, weaponImages, abilityIm
 }) {
   const color   = colorToHex(team.color)
   const players = team.players ?? []
-  const totalK  = players.reduce((s, p) => s + (p.result?.kill   ?? 0), 0)
-  const totalD  = players.reduce((s, p) => s + (p.result?.death  ?? 0), 0)
+  // Nintendo の result.kill は kill+assist なので、純粋K に補正して合計を計算する。
   const totalA  = players.reduce((s, p) => s + (p.result?.assist ?? 0), 0)
+  const totalK  = players.reduce((s, p) => s + ((p.result?.kill ?? 0) - (p.result?.assist ?? 0)), 0)
+  const totalD  = players.reduce((s, p) => s + (p.result?.death  ?? 0), 0)
   const totalSp = players.reduce((s, p) => s + (p.result?.special?? 0), 0)
   const totalP  = players.reduce((s, p) => s + (p.paint ?? 0), 0)
   const score   = team.result?.score
@@ -475,6 +476,10 @@ function PlayerRow({ p, showSignal, weaponImages, abilityImages }: {
   const crown  = crownType(p)
   const result = p.result
 
+  // Nintendo の result.kill は kill+assist なので、純粋K に補正して表示を統一する。
+  const assist  = result?.assist ?? 0
+  const pureK   = result ? (result.kill ?? 0) - assist : null
+
   return (
     <tr className={p.isMyself ? 'myself-row' : ''}>
       <td className="crown-cell">{crown && <span className={`crown-badge crown-${crown}`}>{crown === 'x' ? '👑' : crown}</span>}</td>
@@ -494,7 +499,7 @@ function PlayerRow({ p, showSignal, weaponImages, abilityImages }: {
       <td className="gear-col">
         <GearGrid p={p} abilityImages={abilityImages} />
       </td>
-      <td className="num-col">{result?.kill    ?? '—'}</td>
+      <td className="num-col">{pureK ?? '—'}</td>
       <td className="num-col">{result?.assist  ?? '—'}</td>
       <td className="num-col">{result?.death   ?? '—'}</td>
       <td className="num-col">{result?.special ?? '—'}</td>
