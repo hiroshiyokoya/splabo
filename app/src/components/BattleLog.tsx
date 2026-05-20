@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import type { BattleRow, Filters, Player, Team, VsHistoryDetail, Award } from '../types'
 import { filtersToRange, modeLabel, ruleLabel, resultLabel } from '../types'
 import { ABILITY_LABELS, abilityKeyFromUrl, colorToHex, loadAbilityImages } from '../utils/abilities'
@@ -34,6 +35,11 @@ function statinkBattleUrl(uuid: string, screenName: string | null): string {
   return screenName
     ? `https://stat.ink/@${screenName}/spl3/${uuid}`
     : `https://stat.ink/api/v3/battle/${uuid}`
+}
+
+/** 規定ブラウザで URL を開く（Tauri webview 内に開かない）。 */
+function openExternal(url: string) {
+  openUrl(url).catch(console.error)
 }
 
 export function BattleLog({ filters, statinkScreenName }: Props) {
@@ -164,6 +170,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
                 <SortTh col="kill_ratio" label="キルレ" orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
                 <SortTh col="special"    label="SP"    orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
                 <SortTh col="inked"      label="塗り"  orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <th className="statink-col-th" title="stat.ink アップロード済み">stat</th>
               </tr>
             </thead>
             <tbody>
@@ -186,16 +193,6 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
                     <td className={`result-cell ${b.result.toLowerCase()}`}>
                       {resultLabel(b.result)}
                       {isKo && <span className="ko-badge-inline">KO</span>}
-                      {b.statink_uuid && (
-                        <a
-                          href={statinkBattleUrl(b.statink_uuid, statinkScreenName)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="statink-mark"
-                          title="stat.ink にアップロード済み"
-                          onClick={e => e.stopPropagation()}
-                        >↗</a>
-                      )}
                     </td>
                     <td>{b.kill}</td>
                     <td>{b.assist}</td>
@@ -203,6 +200,18 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
                     <td>{killRatio(b.kill, b.death)}</td>
                     <td>{b.special}</td>
                     <td>{b.inked.toLocaleString()}</td>
+                    <td className="statink-col-cell">
+                      {b.statink_uuid && (
+                        <button
+                          className="statink-mark"
+                          title="stat.ink で開く"
+                          onClick={e => {
+                            e.stopPropagation()
+                            openExternal(statinkBattleUrl(b.statink_uuid!, statinkScreenName))
+                          }}
+                        >✓</button>
+                      )}
+                    </td>
                   </tr>
                 )
               })}
@@ -286,13 +295,11 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenN
             <span>{modeLabel(battle.mode)} / {ruleLabel(battle.rule)}</span>
             <span className="modal-stage">{battle.stage_name ?? battle.stage}</span>
             {battle.statink_uuid && (
-              <a
-                href={statinkBattleUrl(battle.statink_uuid, statinkScreenName)}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
                 className="statink-badge"
-                title={`stat.ink にアップロード済み (ID: ${battle.statink_uuid})`}
-              >stat.ink ↗</a>
+                title={`stat.ink で開く (ID: ${battle.statink_uuid})`}
+                onClick={() => openExternal(statinkBattleUrl(battle.statink_uuid!, statinkScreenName))}
+              >stat.ink ✓</button>
             )}
           </div>
           <div className="modal-meta">

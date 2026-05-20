@@ -898,16 +898,30 @@ body {
   vertical-align: middle;
 }
 
-/* stat.ink upload marker (table row) */
-.statink-mark {
-  display: inline-block;
-  margin-left: 6px;
-  font-size: 11px;
-  color: var(--text-muted);
-  text-decoration: none;
-  vertical-align: middle;
+/* stat.ink upload column (table rightmost) */
+.battle-table .statink-col-th,
+.battle-table .statink-col-cell {
+  width: 32px;
+  text-align: center;
+  padding-left: 4px;
+  padding-right: 4px;
 }
-.statink-mark:hover { color: var(--accent); }
+.battle-table .statink-col-th {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.statink-mark {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--win);
+  cursor: pointer;
+  line-height: 1;
+}
+.statink-mark:hover { color: var(--accent); filter: brightness(1.2); }
 
 /* stat.ink upload badge (modal header) */
 .statink-badge {
@@ -916,8 +930,9 @@ body {
   padding: 2px 8px;
   border-radius: 4px;
   border: 1px solid var(--border);
+  background: none;
   color: var(--text-muted);
-  text-decoration: none;
+  cursor: pointer;
   margin-left: auto;
 }
 .statink-badge:hover {
