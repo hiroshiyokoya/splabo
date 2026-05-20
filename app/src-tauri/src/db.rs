@@ -139,6 +139,7 @@ pub struct WeaponRecord {
     pub special_weapon_image: Option<String>,
     pub total: i64,
     pub wins: i64,
+    pub draws: i64,
 }
 
 // ---------------------------------------------------------------------------
@@ -446,11 +447,12 @@ pub async fn db_battle_stats(
     let wins: i64         = row.get("wins");
     let draws: i64        = row.get("draws");
     let weapon_count: i64 = row.get("weapon_count");
+    let decisive          = total - draws;
     Ok(serde_json::json!({
         "total": total,
         "wins": wins,
         "draws": draws,
-        "win_rate": if total > 0 { wins as f64 / total as f64 } else { 0.0 },
+        "win_rate": if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 },
         "weapon_count": weapon_count,
     }))
 }
@@ -662,6 +664,7 @@ pub async fn db_summary(
             let total: i64 = r.get("total");
             let wins: i64  = r.get("wins");
             let draws: i64 = r.get("draws");
+            let decisive   = total - draws;
             let name: String = if use_display_name {
                 r.try_get("display_name").unwrap_or_else(|_| r.get::<String, _>("name"))
             } else {
@@ -672,7 +675,7 @@ pub async fn db_summary(
                 "total": total,
                 "wins": wins,
                 "draws": draws,
-                "win_rate": if total > 0 { wins as f64 / total as f64 } else { 0.0 }
+                "win_rate": if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 }
             })
         }).collect()
     }
@@ -1021,7 +1024,8 @@ pub async fn db_list_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<WeaponR
         "SELECT w.name, w.category, w.sub_weapon, w.special_weapon,
                 w.sub_weapon_image, w.special_weapon_image,
                 COUNT(b.id) as total,
-                COALESCE(SUM(CASE WHEN b.result='win' THEN 1 ELSE 0 END), 0) as wins
+                COALESCE(SUM(CASE WHEN b.result='win'  THEN 1 ELSE 0 END), 0) as wins,
+                COALESCE(SUM(CASE WHEN b.result='draw' THEN 1 ELSE 0 END), 0) as draws
          FROM weapons w
          LEFT JOIN battles b ON b.weapon = w.name
          GROUP BY w.name

@@ -169,6 +169,7 @@ export interface WeaponRecord {
   special_weapon_image: string | null
   total: number
   wins: number
+  draws: number
 }
 
 export interface AiSettings {
