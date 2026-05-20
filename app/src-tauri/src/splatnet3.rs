@@ -145,6 +145,7 @@ fn parse_regular_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
         awards: None,
         my_team: None,
         other_teams: None,
+        statink_uuid: None,
     }
 }
 
@@ -196,6 +197,7 @@ fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
         awards: None,
         my_team: None,
         other_teams: None,
+        statink_uuid: None,
     }
 }
 
@@ -240,6 +242,7 @@ fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
         awards: None,
         my_team: None,
         other_teams: None,
+        statink_uuid: None,
     }
 }
 

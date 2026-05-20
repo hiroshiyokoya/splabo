@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   ai: { provider: 'openai', apiKey: '', model: '' },
   autoFetchEnabled: false,
   autoFetchHour: 4,
+  statink: { apiKey: '', autoUpload: false },
 }
 
 const SETTINGS_KEY     = 'chartoon:settings'
@@ -27,7 +28,13 @@ const LAST_FETCHED_KEY = 'chartoon:lastFetchedAt'
 function loadSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
-    return raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS
+    if (!raw) return DEFAULT_SETTINGS
+    const saved = JSON.parse(raw)
+    return {
+      ...DEFAULT_SETTINGS,
+      ...saved,
+      statink: { ...DEFAULT_SETTINGS.statink, ...(saved.statink ?? {}) },
+    }
   } catch {
     return DEFAULT_SETTINGS
   }

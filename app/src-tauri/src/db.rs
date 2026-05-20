@@ -33,6 +33,7 @@ pub async fn init_db(app: &AppHandle) -> Result<DbPool, String> {
         "ALTER TABLE battles ADD COLUMN my_team        TEXT",
         "ALTER TABLE battles ADD COLUMN other_teams    TEXT",
         "ALTER TABLE battles ADD COLUMN stage_name     TEXT",
+        "ALTER TABLE battles ADD COLUMN statink_uuid  TEXT",
         "ALTER TABLE weapons ADD COLUMN sub_weapon_image     TEXT",
         "ALTER TABLE weapons ADD COLUMN special_weapon_image TEXT",
     ] {
@@ -125,6 +126,7 @@ pub struct BattleRow {
     pub awards: Option<String>,
     pub my_team: Option<String>,
     pub other_teams: Option<String>,
+    pub statink_uuid: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -516,7 +518,8 @@ pub async fn db_list_battles(
         "SELECT id, played_at, mode, rule, stage, stage_name, weapon, result,
                 kill, death, assist, special, inked, duration,
                 rank_before, rank_after, x_power, raw_json, fetched_at,
-                knockout, sub_weapon, special_weapon, awards, my_team, other_teams
+                knockout, sub_weapon, special_weapon, awards, my_team, other_teams,
+                statink_uuid
          FROM battles
          WHERE (? IS NULL OR played_at >= ?)
            AND (? IS NULL OR played_at <= ?)
@@ -895,6 +898,39 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
 
     log::info!("migrate_battle_ids v2: {} 件更新", updated);
     Ok(updated)
+}
+
+// ---------------------------------------------------------------------------
+// stat.ink アップロード管理
+// ---------------------------------------------------------------------------
+
+/// statink_uuid が未設定のバトル一覧を返す（古い順）。
+pub async fn get_battles_not_uploaded(pool: &DbPool) -> Result<Vec<BattleRow>, String> {
+    let rows = sqlx::query_as::<_, BattleRow>(
+        "SELECT id, played_at, mode, rule, stage, stage_name, weapon, result,
+                kill, death, assist, special, inked, duration,
+                rank_before, rank_after, x_power, raw_json, fetched_at,
+                knockout, sub_weapon, special_weapon, awards, my_team, other_teams,
+                statink_uuid
+         FROM battles
+         WHERE statink_uuid IS NULL
+         ORDER BY played_at ASC",
+    )
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+/// バトルを stat.ink アップロード済みとしてマークする。
+pub async fn mark_statink_uploaded(pool: &DbPool, id: &str, uuid: &str) -> Result<(), String> {
+    sqlx::query("UPDATE battles SET statink_uuid=? WHERE id=?")
+        .bind(uuid)
+        .bind(id)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// ステージ ID（base64 エンコード "VsStage-N"）から数値部分を抽出する。

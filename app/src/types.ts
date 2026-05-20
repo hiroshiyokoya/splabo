@@ -98,10 +98,16 @@ export interface AiSettings {
   model: string
 }
 
+export interface StatinkSettings {
+  apiKey: string
+  autoUpload: boolean
+}
+
 export interface AppSettings {
   ai: AiSettings
   autoFetchEnabled: boolean
   autoFetchHour: number
+  statink: StatinkSettings
 }
 
 const STAGE_ABBR_OVERRIDE: Record<string, string> = {
