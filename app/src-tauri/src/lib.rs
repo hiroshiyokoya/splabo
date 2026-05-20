@@ -139,14 +139,19 @@ async fn fetch_battle_details(app: AppHandle, db: State<'_, db::DbPool>) -> Resu
     let client = reqwest::Client::builder()
         .build()
         .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
-    splatnet3::fetch_and_update_details(
+    let updated = splatnet3::fetch_and_update_details(
         &db,
         &result.bullet_token,
         &result.country,
         &result.language,
         &client,
     )
-    .await
+    .await?;
+
+    db::populate_weapons_from_battles(&db).await?;
+    splatnet3::cache_sub_special_images(&db, &app, &client).await?;
+
+    Ok(updated)
 }
 
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
