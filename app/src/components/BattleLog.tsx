@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { BattleRow, Filters, Player, Team, VsHistoryDetail, Award } from '../types'
-import { filtersToRange, stageAbbr, modeLabel, ruleLabel, resultLabel } from '../types'
+import { filtersToRange, modeLabel, ruleLabel, resultLabel } from '../types'
 import { ABILITY_LABELS, abilityKeyFromUrl, colorToHex, loadAbilityImages } from '../utils/abilities'
 
 const PAGE_SIZE = 50
@@ -161,7 +161,7 @@ export function BattleLog({ filters }: Props) {
                     <td>{new Date(b.played_at).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                     <td>{modeLabel(b.mode)}</td>
                     <td>{ruleLabel(b.rule)}</td>
-                    <td>{stageAbbr(b.stage_name ?? b.stage)}</td>
+                    <td>{b.stage_name ?? b.stage}</td>
                     <td>
                       <span className="weapon-cell">
                         {weaponImages.get(b.weapon) && <img src={weaponImages.get(b.weapon)} alt="" className="weapon-icon" />}
@@ -256,7 +256,7 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, onClose }: {
             <span className={`result-badge ${battle.result.toLowerCase()}`}>{resultLabel(battle.result)}</span>
             {isKo && <span className="ko-badge">KO</span>}
             <span>{modeLabel(battle.mode)} / {ruleLabel(battle.rule)}</span>
-            <span className="modal-stage">{stageAbbr(battle.stage_name ?? battle.stage)}</span>
+            <span className="modal-stage">{battle.stage_name ?? battle.stage}</span>
           </div>
           <div className="modal-meta">
             {new Date(battle.played_at).toLocaleString('ja-JP')}
