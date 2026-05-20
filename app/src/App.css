@@ -776,19 +776,21 @@ body {
 
 /* ── Common ── */
 .btn-primary {
-  background: var(--accent);
-  /* 明るいライム背景には白だとコントラスト不足。ベース背景色（紺寄り）の濃い色を載せる。 */
-  color: var(--bg);
+  /* オレンジ (accent2) 背景 + 白文字。Splatoon らしさとライムのアクセントとの色対比を出す。 */
+  background: var(--accent2);
+  color: #fff;
   border: none;
   border-radius: 6px;
   padding: 8px 18px;
+  font-family: 'M PLUS Rounded 1c', system-ui, 'Segoe UI', sans-serif;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s;
+  transition: background 0.15s, transform 0.05s;
 }
-.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:hover { background: #e0651a; /* accent2 を少し濃く */ }
+.btn-primary:active { transform: translateY(1px); }
 .btn-primary:disabled { opacity: 0.5; cursor: default; }
 
 .btn-secondary {
