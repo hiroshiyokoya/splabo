@@ -4,9 +4,9 @@ import type { WeaponRecord } from '../types'
 
 // Dashboard.winRateColor と同期。
 function winRateColor(rate: number): string {
-  if (rate >= 0.55) return '#c8f030'
-  if (rate >= 0.45) return '#ff7621'
-  return '#ec4899'
+  if (rate >= 0.55) return '#34d399'
+  if (rate >= 0.45) return '#fb923c'
+  return '#f472b6'
 }
 
 export function WeaponBook() {

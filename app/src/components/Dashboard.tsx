@@ -12,12 +12,25 @@ const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
 const COLOR_DRAW = '#9ca3af'
 
-// 勝率の閾値色。緑/赤は積み上げバー(勝/負)と同じなので、
-// ライム/オレンジ/ピンクに振って 1 つのグラフ内で色衝突しないようにする。
+// 勝率の閾値色。勝/負の緑/赤との衝突を避けつつ、
+// まぶしくならないよう少しトーンを抑える。
+//   ≥55% : emerald-400（緑＋青み、ライムの代わり）
+//   45-55% : orange-400（落ち着いた橙）
+//   <45% : pink-400（柔らかいピンク）
+const WIN_RATE_HI  = '#34d399'
+const WIN_RATE_MID = '#fb923c'
+const WIN_RATE_LO  = '#f472b6'
+
 function winRateColor(rate: number): string {
-  if (rate >= 0.55) return '#c8f030' // accent (lime)
-  if (rate >= 0.45) return '#ff7621' // accent2 (orange)
-  return '#ec4899'                   // pink/rose
+  if (rate >= 0.55) return WIN_RATE_HI
+  if (rate >= 0.45) return WIN_RATE_MID
+  return WIN_RATE_LO
+}
+
+function winRateLevel(rate: number): 'hi' | 'mid' | 'lo' {
+  if (rate >= 0.55) return 'hi'
+  if (rate >= 0.45) return 'mid'
+  return 'lo'
 }
 
 type SortBy = 'total' | 'win_rate'
@@ -123,7 +136,7 @@ export function Dashboard({ filters, aiChart }: Props) {
             </ChartCard>
 
             <ChartCard title="モード別 勝率 & 試合数" sortBy={modeSort} onSortChange={setModeSort}>
-              <WinRateChart data={sorted(summary.by_mode, modeSort)} height={180} images={new Map()} nameTransform={modeLabel} />
+              <WinRateChart data={sorted(summary.by_mode, modeSort)} height={220} images={new Map()} nameTransform={modeLabel} />
             </ChartCard>
 
             {aiChart && (
@@ -226,6 +239,18 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
     return activeIndex === null || activeIndex === i ? 1 : 0.35
   }
 
+  // バーごとに上→下のグラデーション。上端で 95%、下端で 50% の不透明度。
+  // SVG gradient ID はチャート間で衝突しないよう React useId を使うのが安全だが、
+  // 1 ページに複数置いてもブラウザ的には問題ない（同一定義のため）。
+  const gradients: { id: string; color: string }[] = [
+    { id: 'grad-win',      color: COLOR_WIN  },
+    { id: 'grad-lose',     color: COLOR_LOSE },
+    { id: 'grad-draw',     color: COLOR_DRAW },
+    { id: 'grad-rate-hi',  color: WIN_RATE_HI  },
+    { id: 'grad-rate-mid', color: WIN_RATE_MID },
+    { id: 'grad-rate-lo',  color: WIN_RATE_LO  },
+  ]
+
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart
@@ -233,6 +258,14 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
         margin={{ top: 4, right: 8, left: 0, bottom: hasImages ? 8 : 4 }}
         onMouseLeave={() => setActiveIndex(null)}
       >
+        <defs>
+          {gradients.map(g => (
+            <linearGradient key={g.id} id={g.id} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stopColor={g.color} stopOpacity="0.95" />
+              <stop offset="100%" stopColor={g.color} stopOpacity="0.5"  />
+            </linearGradient>
+          ))}
+        </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
         <XAxis
           dataKey="name"
@@ -281,23 +314,24 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
         <Bar yAxisId="left" dataKey="wins" stackId="s" maxBarSize={32} activeBar={false}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
         >
-          {chartData.map((_, i) => <Cell key={i} fill={COLOR_WIN} fillOpacity={cellOpacity(i)} />)}
+          {chartData.map((_, i) => <Cell key={i} fill="url(#grad-win)" fillOpacity={cellOpacity(i)} />)}
         </Bar>
         <Bar yAxisId="left" dataKey="losses" stackId="s" maxBarSize={32} activeBar={false}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
         >
-          {chartData.map((_, i) => <Cell key={i} fill={COLOR_LOSE} fillOpacity={cellOpacity(i)} />)}
+          {chartData.map((_, i) => <Cell key={i} fill="url(#grad-lose)" fillOpacity={cellOpacity(i)} />)}
         </Bar>
         <Bar yAxisId="left" dataKey="draws" stackId="s" maxBarSize={32} activeBar={false}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
         >
-          {chartData.map((_, i) => <Cell key={i} fill={COLOR_DRAW} fillOpacity={cellOpacity(i)} />)}
+          {chartData.map((_, i) => <Cell key={i} fill="url(#grad-draw)" fillOpacity={cellOpacity(i)} />)}
         </Bar>
         <Bar yAxisId="right" dataKey="win_rate" name="win_rate" maxBarSize={32} activeBar={false}
+          radius={[4, 4, 0, 0]}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
         >
           {chartData.map((entry, i) => (
-            <Cell key={i} fill={winRateColor(entry.win_rate)} fillOpacity={cellOpacity(i)} />
+            <Cell key={i} fill={`url(#grad-rate-${winRateLevel(entry.win_rate)})`} fillOpacity={cellOpacity(i)} />
           ))}
         </Bar>
       </BarChart>
