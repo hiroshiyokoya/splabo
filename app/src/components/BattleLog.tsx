@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import type { BattleRow, Filters, Player, Team, VsHistoryDetail } from '../types'
+import type { BattleRow, Filters, Player, Team, VsHistoryDetail, Award } from '../types'
 import { filtersToRange, modeLabel, ruleLabel, resultLabel } from '../types'
 import { ABILITY_LABELS, abilityKeyFromUrl, colorToHex, loadAbilityImages } from '../utils/abilities'
 
@@ -301,6 +301,7 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
   const detail = useMemo(() => tryParse(battle.raw_json) as VsHistoryDetail | null, [battle.raw_json])
   const myTeam     = detail?.myTeam ?? null
   const otherTeams = detail?.otherTeams ?? []
+  const awards: Award[] = detail?.awards ?? []
   const isTricolor = otherTeams.length >= 2
 
   const hasDetail   = battle.my_team !== null
@@ -348,6 +349,17 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
 
           {hasDetail && (myTeam || otherTeams.length > 0) && (
             <ScoreSummary myTeam={myTeam} otherTeams={otherTeams} rule={battle.rule} />
+          )}
+
+          {awards.length > 0 && (
+            <section className="modal-section">
+              <h3 className="modal-section-title">アワード</h3>
+              <div className="awards-list">
+                {awards.map((a, i) => (
+                  <span key={i} className={`award-badge ${(a.rank ?? '').toLowerCase()}`}>{a.name}</span>
+                ))}
+              </div>
+            </section>
           )}
 
           <MyStatsCard battle={battle} weaponImages={weaponImages} />

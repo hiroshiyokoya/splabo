@@ -527,6 +527,19 @@ body {
 .team-table tr:last-child td { border-bottom: none; }
 .myself-row td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 
+/* awards (テキストのみ。API が画像 URL を返さないため、名前 + rank 色のバッジ表示) */
+.awards-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.award-badge {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+}
+.award-badge.gold   { border-color: #f59e0b; color: #f59e0b; }
+.award-badge.silver { border-color: #9ca3af; color: #9ca3af; }
+.award-badge.bronze { border-color: #b45309; color: #b45309; }
+
 /* バトル詳細モーダルの背景にステージ画像を薄く敷く。
    ::before で画像レイヤーを作り opacity で薄く、本文は z-index で上に。 */
 .modal-panel--with-stage { position: relative; isolation: isolate; }
