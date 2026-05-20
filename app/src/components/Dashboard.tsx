@@ -5,7 +5,7 @@ import {
   BarChart, Bar, LineChart, Line, ScatterChart, Scatter,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
-import type { Summary, SummaryEntry, ChartSpec, Filters } from '../types'
+import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats } from '../types'
 import { filtersToRange, stageAbbr, modeLabel, ruleLabel } from '../types'
 
 const COLOR_WIN  = '#22c55e'
@@ -64,6 +64,7 @@ interface Props {
 
 export function Dashboard({ filters, aiChart }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null)
+  const [stats, setStats]     = useState<BattleStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
@@ -75,7 +76,7 @@ export function Dashboard({ filters, aiChart }: Props) {
   useEffect(() => {
     const { since, until } = filtersToRange(filters)
     setLoading(true)
-    invoke<Summary>('db_summary', {
+    const filterArgs = {
       since,
       until,
       mode: filters.mode,
@@ -83,8 +84,12 @@ export function Dashboard({ filters, aiChart }: Props) {
       resultFilter: filters.result,
       weapon: filters.weapon.length > 0 ? filters.weapon.join('|') : null,
       stage: filters.stage.length > 0 ? filters.stage.join('|') : null,
-    })
-      .then(setSummary)
+    }
+    Promise.all([
+      invoke<Summary>('db_summary', filterArgs),
+      invoke<BattleStats>('db_battle_stats', filterArgs),
+    ])
+      .then(([s, st]) => { setSummary(s); setStats(st) })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [refreshKey, filters])
@@ -135,12 +140,14 @@ export function Dashboard({ filters, aiChart }: Props) {
         <>
           <div className="stat-cards">
             <StatCard label="総バトル数" value={totalBattles.toLocaleString()} />
+            <StatCard label="Win / Lose (Draw)" value={`${totalWins} / ${totalLosses} (${totalDraws})`} small />
             <StatCard
               label="全体勝率"
               value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '—'}
               valueColor={overallWinRate !== null ? winRateColor(overallWinRate) : undefined}
             />
-            <StatCard label="Win / Lose (Draw)" value={`${totalWins} / ${totalLosses} (${totalDraws})`} />
+            <StatCard label="平均キル" value={stats?.avg_kill  != null ? stats.avg_kill.toFixed(2)  : '—'} />
+            <StatCard label="平均デス" value={stats?.avg_death != null ? stats.avg_death.toFixed(2) : '—'} />
             <StatCard label="使用武器数" value={summary.by_weapon.length.toString()} />
           </div>
 

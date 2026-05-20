@@ -169,8 +169,8 @@ body {
 /* ── Stat Cards ── */
 .stat-cards {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
   margin-bottom: 20px;
 }
 .stat-card {

@@ -274,3 +274,15 @@ export interface ChartSpec {
   yKey: string
   colorKey?: string
 }
+
+/** db_battle_stats の返り値型。
+ *  avg_kill / avg_death は detail_fetched=1 のバトルのみで集計。詳細未取得しかない場合は null。 */
+export interface BattleStats {
+  total: number
+  wins: number
+  draws: number
+  win_rate: number
+  weapon_count: number
+  avg_kill: number | null
+  avg_death: number | null
+}
