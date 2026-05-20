@@ -308,9 +308,14 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
   const durationMin = Math.floor(battle.duration / 60)
   const durationSec = battle.duration % 60
 
+  const stageImage = stageImages.get(battle.stage_name ?? battle.stage)
+  const panelStyle = stageImage
+    ? ({ ['--stage-bg' as string]: `url("${stageImage}")` } as React.CSSProperties)
+    : undefined
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-panel" onClick={e => e.stopPropagation()}>
+      <div className="modal-panel modal-panel--with-stage" style={panelStyle} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title">
             <span className={`result-badge ${battle.result.toLowerCase()}`}>{resultLabel(battle.result)}</span>
@@ -337,13 +342,6 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
         </div>
 
         <div className="modal-body">
-          {(() => {
-            const stageImage = stageImages.get(battle.stage_name ?? battle.stage)
-            return stageImage ? (
-              <img src={stageImage} alt="" className="modal-stage-hero" />
-            ) : null
-          })()}
-
           {!hasDetail && (
             <div className="detail-notice">詳細データ未取得 — 「バトルデータを取得」を実行すると詳細が表示されます</div>
           )}
@@ -398,29 +396,33 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
 // スコアサマリ（モーダル上部）
 // ---------------------------------------------------------------------------
 
-function ScoreSummary({ myTeam, otherTeams, rule }: {
+function ScoreSummary({ myTeam, otherTeams }: {
   myTeam: Team | null
   otherTeams: Team[]
   rule: string
 }) {
-  const isPaintRule = rule === 'turf_war' || rule === 'tricolor'
-  const myColor    = colorToHex(myTeam?.color)
-  const teams = [{ team: myTeam, color: myColor }, ...otherTeams.map(t => ({ team: t, color: colorToHex(t.color) }))]
+  const myColor = colorToHex(myTeam?.color)
+  const teams   = [{ team: myTeam, color: myColor }, ...otherTeams.map(t => ({ team: t, color: colorToHex(t.color) }))]
+
+  // ルール文字列に依存せず、result の値で何を表示するか決める：
+  // paintRatio が数値なら 塗り%、なければ score を数値表示。result 自体が null（中断・切断バトル等）なら '—'。
+  function renderScore(team: Team | null): string {
+    const r = team?.result
+    if (r == null) return '—'
+    if (typeof r.paintRatio === 'number') return `${(r.paintRatio * 100).toFixed(1)}%`
+    if (typeof r.score      === 'number') return String(r.score)
+    return '—'
+  }
 
   return (
     <section className="modal-section score-summary">
       <div className="score-summary-row">
-        {teams.map((t, i) => {
-          const score = isPaintRule
-            ? (typeof t.team?.result?.paintRatio === 'number' ? `${(t.team!.result!.paintRatio! * 100).toFixed(1)}%` : '—')
-            : (typeof t.team?.result?.score === 'number' ? String(t.team!.result!.score) : '—')
-          return (
-            <div key={i} className="score-summary-team" style={{ borderTop: `4px solid ${t.color ?? 'transparent'}` }}>
-              <div className="score-summary-label">{i === 0 ? '自' : (teams.length > 2 ? `相手${i}` : '相手')}</div>
-              <div className="score-summary-value">{score}</div>
-            </div>
-          )
-        })}
+        {teams.map((t, i) => (
+          <div key={i} className="score-summary-team" style={{ borderTop: `4px solid ${t.color ?? 'transparent'}` }}>
+            <div className="score-summary-label">{i === 0 ? '自' : (teams.length > 2 ? `相手${i}` : '相手')}</div>
+            <div className="score-summary-value">{renderScore(t.team)}</div>
+          </div>
+        ))}
       </div>
     </section>
   )
