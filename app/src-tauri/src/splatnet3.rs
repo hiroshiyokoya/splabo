@@ -25,9 +25,14 @@ async fn graphql_request(
     country: &str,
     language: &str,
     hash: &str,
+    cursor: Option<&str>,
 ) -> Result<serde_json::Value, String> {
+    let variables = match cursor {
+        Some(c) => serde_json::json!({ "after": c }),
+        None    => serde_json::json!({}),
+    };
     let body = serde_json::json!({
-        "variables": {},
+        "variables": variables,
         "extensions": {
             "persistedQuery": {
                 "version": 1,
@@ -341,7 +346,7 @@ pub async fn fetch_and_store_battles(
 
     // --- レギュラー ---
     let regular_resp =
-        graphql_request(client, bullet_token, country, language, HASH_REGULAR).await?;
+        graphql_request(client, bullet_token, country, language, HASH_REGULAR, None).await?;
     let regular_nodes = extract_battle_nodes(&regular_resp);
     let regular_rows: Vec<BattleRow> = regular_nodes
         .iter()
@@ -351,7 +356,7 @@ pub async fn fetch_and_store_battles(
 
     // --- バンカラ ---
     let bankara_resp =
-        graphql_request(client, bullet_token, country, language, HASH_BANKARA).await?;
+        graphql_request(client, bullet_token, country, language, HASH_BANKARA, None).await?;
     let bankara_nodes = extract_battle_nodes(&bankara_resp);
     let bankara_rows: Vec<BattleRow> = bankara_nodes
         .iter()
@@ -361,7 +366,7 @@ pub async fn fetch_and_store_battles(
 
     // --- Xマッチ ---
     let xmatch_resp =
-        graphql_request(client, bullet_token, country, language, HASH_XMATCH).await?;
+        graphql_request(client, bullet_token, country, language, HASH_XMATCH, None).await?;
     let xmatch_nodes = extract_battle_nodes(&xmatch_resp);
     let xmatch_rows: Vec<BattleRow> = xmatch_nodes
         .iter()
@@ -525,7 +530,7 @@ pub async fn fetch_and_store_weapons(
     client: &reqwest::Client,
     app: &tauri::AppHandle,
 ) -> Result<usize, String> {
-    let resp = graphql_request(client, bullet_token, country, language, HASH_WEAPONS).await?;
+    let resp = graphql_request(client, bullet_token, country, language, HASH_WEAPONS, None).await?;
 
     // weaponHistories は edges/node カーソルページネーション形式。全シーズンをフラットに処理する。
     let edges = resp
