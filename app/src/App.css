@@ -18,8 +18,9 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: system-ui, 'Segoe UI', Roboto, 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
   font-size: 14px;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ── Layout ── */
@@ -45,7 +46,14 @@ body {
   color: var(--accent);
   padding: 0 16px 20px;
   letter-spacing: 0.05em;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: opacity 0.15s;
 }
+.logo:hover { opacity: 0.8; }
 
 .nav-item {
   display: block;
@@ -88,12 +96,34 @@ body {
   border-radius: 8px;
   padding: 16px;
 }
+.chart-card svg { overflow: visible; }
+.chart-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
 .chart-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-muted);
-  margin-bottom: 12px;
 }
+.chart-sort-btns {
+  display: flex;
+  gap: 4px;
+}
+.chart-sort-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.chart-sort-btn:hover { color: var(--text); }
+.chart-sort-btn.active { color: var(--accent); border-color: var(--accent); }
 .tooltip-box {
   background: var(--surface2);
   border: 1px solid var(--border);
@@ -149,6 +179,7 @@ body {
   color: var(--text);
   line-height: 1;
 }
+.stat-value--small { font-size: 15px; }
 
 /* ── Battle Log ── */
 .battle-log { max-width: 1100px; }
@@ -298,6 +329,17 @@ body {
 .weapon-picker-item:hover { background: var(--surface2); }
 .weapon-picker-item.active { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
 .weapon-picker-divider { height: 1px; background: var(--border); margin: 4px 0; }
+.stage-check { display: inline-block; width: 16px; font-size: 11px; color: var(--accent); flex-shrink: 0; }
+.weapon-category-header {
+  display: flex; align-items: center; gap: 4px;
+  width: 100%; padding: 5px 10px;
+  background: var(--surface); border: none; color: var(--text-muted);
+  font-size: 11px; font-weight: 700; text-align: left; cursor: pointer;
+  letter-spacing: 0.04em;
+}
+.weapon-category-header:hover { background: var(--surface2); color: var(--text); }
+.category-count { margin-left: auto; font-weight: 400; font-size: 10px; color: var(--text-muted); }
+.weapon-picker-item--indent { padding-left: 24px; }
 
 /* ── Sortable Headers ── */
 .sortable-th {
@@ -611,15 +653,20 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
-.weapon-card-overlay {
-  position: absolute;
-  width: 30%;
-  height: 30%;
+.weapon-card-sub-sp {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+.weapon-sub-sp-icon {
+  width: 18px;
+  height: 18px;
   object-fit: contain;
   filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
 }
-.weapon-card-overlay--sp  { top: 0;    right: 0; }
-.weapon-card-overlay--sub { bottom: 0; right: 0; }
+.weapon-sub-sp-icon--sp { width: 22px; height: 22px; }
 .weapon-card-stats {
   display: flex;
   gap: 8px;
@@ -727,4 +774,93 @@ body {
   color: var(--text-muted);
   padding: 40px;
   text-align: center;
+}
+
+/* ── Custom Date Range ── */
+.custom-date-range {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.custom-date-sep { font-size: 11px; color: var(--text-muted); }
+.custom-date-input {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  padding: 2px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.custom-date-input:focus { outline: 1px solid var(--accent); }
+
+/* ── Theme Selector ── */
+.theme-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s;
+  max-width: 260px;
+}
+.theme-option:hover { border-color: var(--text-muted); }
+.theme-option.active { border-color: var(--accent); color: var(--accent); }
+.theme-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── About Dialog ── */
+.about-panel {
+  max-width: 420px !important;
+}
+.about-body {
+  align-items: center;
+  text-align: center;
+  gap: 12px !important;
+}
+.about-logo {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+}
+.about-version {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.about-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  max-width: 300px;
+}
+.about-links { display: flex; gap: 12px; }
+.about-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+}
+.about-link:hover { text-decoration: underline; }
+.about-notice {
+  font-size: 11px;
+  color: var(--text-muted);
+  max-width: 300px;
+  line-height: 1.5;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
 }

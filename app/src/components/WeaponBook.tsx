@@ -95,10 +95,6 @@ export function WeaponBook() {
       </div>
 
       <div className="category-tabs">
-        <button
-          className={`category-tab${category === null ? ' active' : ''}`}
-          onClick={() => setCategory(null)}
-        >全て</button>
         {categories.map(c => (
           <button
             key={c}
@@ -189,13 +185,13 @@ function WeaponCard({ weapon, image, subImage, spImage }: {
           ? <img src={image} alt={weapon.name} className="weapon-card-icon" />
           : <div className="weapon-card-icon weapon-card-icon--placeholder" />
         }
-        {spImage && (
-          <img src={spImage} alt={weapon.special_weapon ?? ''} className="weapon-card-overlay weapon-card-overlay--sp" title={weapon.special_weapon ?? ''} />
-        )}
-        {subImage && (
-          <img src={subImage} alt={weapon.sub_weapon ?? ''} className="weapon-card-overlay weapon-card-overlay--sub" title={weapon.sub_weapon ?? ''} />
-        )}
       </div>
+      {(spImage || subImage) && (
+        <div className="weapon-card-sub-sp">
+          {spImage && <img src={spImage} alt={weapon.special_weapon ?? ''} className="weapon-sub-sp-icon weapon-sub-sp-icon--sp" title={weapon.special_weapon ?? ''} />}
+          {subImage && <img src={subImage} alt={weapon.sub_weapon ?? ''} className="weapon-sub-sp-icon" title={weapon.sub_weapon ?? ''} />}
+        </div>
+      )}
       <div className="weapon-card-name" title={weapon.name}>{weapon.name}</div>
       {weapon.total > 0 ? (
         <div className="weapon-card-stats">

@@ -7,9 +7,13 @@ import { FilterBar } from './components/FilterBar'
 import { WeaponBook } from './components/WeaponBook'
 import { AiAnalysis } from './components/AiAnalysis'
 import { Settings } from './components/Settings'
+import { About } from './components/About'
 import type { Tab, AppSettings, ChartSpec, Filters } from './types'
 import { DEFAULT_FILTERS } from './types'
+import { initAppSettings } from './utils/appSettings'
 import './App.css'
+
+initAppSettings()
 
 const DEFAULT_SETTINGS: AppSettings = {
   ai: { provider: 'openai', apiKey: '', model: '' },
@@ -34,6 +38,7 @@ export default function App() {
   const [aiChart, setAiChart] = useState<ChartSpec | null>(null)
   const [loginVersion, setLoginVersion] = useState(0)
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
+  const [showAbout, setShowAbout] = useState(false)
 
   useEffect(() => {
     const unlistenPromise = listen<string>('deep-link-received', async (event) => {
@@ -63,11 +68,11 @@ export default function App() {
   return (
     <div className="app">
       <nav className="sidebar">
-        <div className="logo">chartoon</div>
+        <button className="logo" onClick={() => setShowAbout(true)}>chartoon</button>
         <NavItem id="dashboard" label="ダッシュボード" active={tab} onClick={setTab} />
         <NavItem id="battles"   label="バトルログ"     active={tab} onClick={setTab} />
-        <NavItem id="weapons"   label="武器図鑑"       active={tab} onClick={setTab} />
         <NavItem id="ai"        label="AI分析"         active={tab} onClick={setTab} />
+        <NavItem id="weapons"   label="武器図鑑"       active={tab} onClick={setTab} />
         <NavItem id="settings"  label="設定"           active={tab} onClick={setTab} />
       </nav>
 
@@ -81,6 +86,8 @@ export default function App() {
         {tab === 'ai' && <AiAnalysis settings={settings} onChartReady={handleAiChart} />}
         {tab === 'settings' && <Settings settings={settings} onSave={saveSettings} loginVersion={loginVersion} />}
       </main>
+
+      {showAbout && <About onClose={() => setShowAbout(false)} />}
     </div>
   )
 }

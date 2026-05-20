@@ -576,7 +576,28 @@ pub async fn fetch_and_store_weapons(
                     }
                 }
 
-                crate::db::upsert_weapon(pool, name, &category, None, None).await?;
+                let sub_name = w_node.pointer("/weapon/subWeapon/name").and_then(|v| v.as_str());
+                let sub_url  = w_node.pointer("/weapon/subWeapon/image/url").and_then(|v| v.as_str());
+                if let (Some(sname), Some(surl)) = (sub_name, sub_url) {
+                    if let Err(e) = crate::images::download_and_cache(app, client, "sub_weapon", sname, surl).await {
+                        log::warn!("サブウェポン画像キャッシュ失敗 ({sname}): {e}");
+                    }
+                }
+
+                let sp_name = w_node.pointer("/weapon/specialWeapon/name").and_then(|v| v.as_str());
+                let sp_url  = w_node.pointer("/weapon/specialWeapon/image/url").and_then(|v| v.as_str());
+                if let (Some(sname), Some(surl)) = (sp_name, sp_url) {
+                    if let Err(e) = crate::images::download_and_cache(app, client, "special_weapon", sname, surl).await {
+                        log::warn!("スペシャルウェポン画像キャッシュ失敗 ({sname}): {e}");
+                    }
+                }
+
+                crate::db::upsert_weapon(pool, name, &category, sub_name, sp_name).await?;
+                if sub_name.is_some() || sp_name.is_some() {
+                    if let Err(e) = crate::db::update_weapon_sub_special_images(pool, name, sub_name, sp_name).await {
+                        log::warn!("武器画像URL更新失敗 ({name}): {e}");
+                    }
+                }
                 count += 1;
             }
         }
@@ -665,8 +686,10 @@ fn collect_image_targets<'a>(
     let mut targets = Vec::new();
     for node in nodes {
         for (kind, name_ptr, url_ptr) in [
-            ("weapon", "/player/weapon/name", "/player/weapon/image/url"),
-            ("stage", "/vsStage/name", "/vsStage/image/url"),
+            ("weapon",          "/player/weapon/name",                    "/player/weapon/image/url"),
+            ("sub_weapon",      "/player/weapon/subWeapon/name",          "/player/weapon/subWeapon/image/url"),
+            ("special_weapon",  "/player/weapon/specialWeapon/name",      "/player/weapon/specialWeapon/image/url"),
+            ("stage",           "/vsStage/name",                          "/vsStage/image/url"),
         ] {
             if let (Some(name), Some(url)) = (
                 node.pointer(name_ptr).and_then(|v| v.as_str()),

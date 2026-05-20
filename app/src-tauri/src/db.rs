@@ -347,16 +347,15 @@ pub async fn insert_battle_players(pool: &DbPool, players: &[BattlePlayerRow]) -
     Ok(())
 }
 
-/// 詳細取得済みで battle_players 未登録のバトルをバックフィルする。
-#[tauri::command]
-pub async fn backfill_battle_players(db: tauri::State<'_, DbPool>) -> Result<usize, String> {
+/// 詳細取得済みで battle_players 未登録のバトルをバックフィルする（内部実装）。
+pub async fn backfill_battle_players_inner(pool: &DbPool) -> Result<usize, String> {
     let rows = sqlx::query(
         "SELECT id, my_team, other_teams FROM battles
          WHERE detail_fetched = 1
            AND (my_team IS NOT NULL OR other_teams IS NOT NULL)
            AND id NOT IN (SELECT DISTINCT battle_id FROM battle_players)",
     )
-    .fetch_all(db.as_ref())
+    .fetch_all(pool.as_ref())
     .await
     .map_err(|e| e.to_string())?;
 
@@ -367,9 +366,15 @@ pub async fn backfill_battle_players(db: tauri::State<'_, DbPool>) -> Result<usi
         let other_teams: Option<String> = row.get("other_teams");
         let players = parse_players_from_json(&battle_id, my_team.as_deref(), other_teams.as_deref());
         count += players.len();
-        insert_battle_players(&*db, &players).await?;
+        insert_battle_players(pool, &players).await?;
     }
     Ok(count)
+}
+
+/// 詳細取得済みで battle_players 未登録のバトルをバックフィルする。
+#[tauri::command]
+pub async fn backfill_battle_players(db: tauri::State<'_, DbPool>) -> Result<usize, String> {
+    backfill_battle_players_inner(&db).await
 }
 
 // ---------------------------------------------------------------------------
@@ -380,38 +385,47 @@ pub async fn backfill_battle_players(db: tauri::State<'_, DbPool>) -> Result<usi
 pub async fn db_battle_stats(
     db: tauri::State<'_, DbPool>,
     since: Option<String>,
+    until: Option<String>,
     mode: Option<String>,
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
     weapon: Option<String>,
+    stage: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let row = sqlx::query(
         "SELECT
             COUNT(*) as total,
-            SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws,
             COUNT(DISTINCT weapon) as weapon_count
          FROM battles
          WHERE (? IS NULL OR played_at >= ?)
+           AND (? IS NULL OR played_at <= ?)
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR weapon = ?)",
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)",
     )
     .bind(&since).bind(&since)
+    .bind(&until).bind(&until)
     .bind(&mode).bind(&mode)
     .bind(&rule).bind(&rule)
     .bind(&result_filter).bind(&result_filter)
     .bind(&weapon).bind(&weapon)
+    .bind(&stage).bind(&stage)
     .fetch_one(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;
 
-    let total: i64 = row.get("total");
-    let wins: i64  = row.get("wins");
+    let total: i64        = row.get("total");
+    let wins: i64         = row.get("wins");
+    let draws: i64        = row.get("draws");
     let weapon_count: i64 = row.get("weapon_count");
     Ok(serde_json::json!({
         "total": total,
         "wins": wins,
+        "draws": draws,
         "win_rate": if total > 0 { wins as f64 / total as f64 } else { 0.0 },
         "weapon_count": weapon_count,
     }))
@@ -421,24 +435,30 @@ pub async fn db_battle_stats(
 pub async fn db_battle_count(
     db: tauri::State<'_, DbPool>,
     since: Option<String>,
+    until: Option<String>,
     mode: Option<String>,
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
     weapon: Option<String>,
+    stage: Option<String>,
 ) -> Result<i64, String> {
     let row = sqlx::query(
         "SELECT COUNT(*) as cnt FROM battles
          WHERE (? IS NULL OR played_at >= ?)
+           AND (? IS NULL OR played_at <= ?)
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR weapon = ?)",
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)",
     )
     .bind(&since).bind(&since)
+    .bind(&until).bind(&until)
     .bind(&mode).bind(&mode)
     .bind(&rule).bind(&rule)
     .bind(&result_filter).bind(&result_filter)
     .bind(&weapon).bind(&weapon)
+    .bind(&stage).bind(&stage)
     .fetch_one(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;
@@ -451,18 +471,21 @@ pub async fn db_list_battles(
     limit: i64,
     offset: i64,
     since: Option<String>,
+    until: Option<String>,
     mode: Option<String>,
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
     weapon: Option<String>,
+    stage: Option<String>,
     order_by: Option<String>,       // JS: orderBy
     order_asc: Option<bool>,        // JS: orderAsc
 ) -> Result<Vec<BattleRow>, String> {
     let order_col = match order_by.as_deref() {
-        Some("kill")  => "kill",
-        Some("death") => "death",
-        Some("inked") => "inked",
-        _             => "played_at",
+        Some("kill")    => "kill",
+        Some("death")   => "death",
+        Some("special") => "special",
+        Some("inked")   => "inked",
+        _               => "played_at",
     };
     let order_dir = if order_asc.unwrap_or(false) { "ASC" } else { "DESC" };
     let sql = format!(
@@ -472,24 +495,40 @@ pub async fn db_list_battles(
                 knockout, sub_weapon, special_weapon, awards, my_team, other_teams
          FROM battles
          WHERE (? IS NULL OR played_at >= ?)
+           AND (? IS NULL OR played_at <= ?)
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR weapon = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)
          ORDER BY {order_col} {order_dir} LIMIT ? OFFSET ?"
     );
     let rows = sqlx::query_as::<_, BattleRow>(&sql)
         .bind(&since).bind(&since)
+        .bind(&until).bind(&until)
         .bind(&mode).bind(&mode)
         .bind(&rule).bind(&rule)
         .bind(&result_filter).bind(&result_filter)
         .bind(&weapon).bind(&weapon)
+        .bind(&stage).bind(&stage)
         .bind(limit)
         .bind(offset)
         .fetch_all(db.as_ref())
         .await
         .map_err(|e| e.to_string())?;
     Ok(rows)
+}
+
+/// 使用済みステージの一覧を試合数の多い順で返す。
+#[tauri::command]
+pub async fn db_stages_used(db: tauri::State<'_, DbPool>) -> Result<Vec<String>, String> {
+    let rows = sqlx::query(
+        "SELECT stage FROM battles GROUP BY stage ORDER BY COUNT(*) DESC",
+    )
+    .fetch_all(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|r| r.get::<String, _>("stage")).collect())
 }
 
 /// 使用済み武器の一覧を試合数の多い順で返す。
@@ -508,31 +547,38 @@ pub async fn db_weapons_used(db: tauri::State<'_, DbPool>) -> Result<Vec<String>
 pub async fn db_summary(
     db: tauri::State<'_, DbPool>,
     since: Option<String>,
+    until: Option<String>,
     mode: Option<String>,
     rule: Option<String>,
     result_filter: Option<String>,  // JS: resultFilter
     weapon: Option<String>,
+    stage: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let filter_where =
         "(? IS NULL OR played_at >= ?)
+           AND (? IS NULL OR played_at <= ?)
            AND (? IS NULL OR mode = ?)
            AND (? IS NULL OR rule = ?)
            AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR weapon = ?)";
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)";
 
     macro_rules! bind_filters {
         ($q:expr) => {
             $q.bind(&since).bind(&since)
+              .bind(&until).bind(&until)
               .bind(&mode).bind(&mode)
               .bind(&rule).bind(&rule)
               .bind(&result_filter).bind(&result_filter)
               .bind(&weapon).bind(&weapon)
+              .bind(&stage).bind(&stage)
         };
     }
 
     let by_weapon = bind_filters!(sqlx::query(&format!(
         "SELECT weapon as name, COUNT(*) as total,
-                SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins
+                SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws
          FROM battles WHERE {filter_where} GROUP BY weapon ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
@@ -541,7 +587,8 @@ pub async fn db_summary(
 
     let by_mode = bind_filters!(sqlx::query(&format!(
         "SELECT mode as name, COUNT(*) as total,
-                SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins
+                SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws
          FROM battles WHERE {filter_where} GROUP BY mode ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
@@ -550,7 +597,8 @@ pub async fn db_summary(
 
     let by_stage = bind_filters!(sqlx::query(&format!(
         "SELECT stage as name, COUNT(*) as total,
-                SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins
+                SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws
          FROM battles WHERE {filter_where} GROUP BY stage ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
@@ -559,7 +607,8 @@ pub async fn db_summary(
 
     let by_rule = bind_filters!(sqlx::query(&format!(
         "SELECT rule as name, COUNT(*) as total,
-                SUM(CASE WHEN result='WIN' THEN 1 ELSE 0 END) as wins
+                SUM(CASE WHEN result='WIN'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result='DRAW' THEN 1 ELSE 0 END) as draws
          FROM battles WHERE {filter_where} GROUP BY rule ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
@@ -569,11 +618,13 @@ pub async fn db_summary(
     fn to_json(rows: Vec<sqlx::sqlite::SqliteRow>) -> Vec<serde_json::Value> {
         rows.into_iter().map(|r| {
             let total: i64 = r.get("total");
-            let wins: i64 = r.get("wins");
+            let wins: i64  = r.get("wins");
+            let draws: i64 = r.get("draws");
             serde_json::json!({
                 "name": r.get::<String, _>("name"),
                 "total": total,
                 "wins": wins,
+                "draws": draws,
                 "win_rate": if total > 0 { wins as f64 / total as f64 } else { 0.0 }
             })
         }).collect()
@@ -698,7 +749,8 @@ pub async fn db_list_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<WeaponR
          FROM weapons w
          LEFT JOIN battles b ON b.weapon = w.name
          GROUP BY w.name
-         ORDER BY w.category, total DESC, w.name",
+         ORDER BY CASE WHEN w.category = '' OR w.category IS NULL THEN 1 ELSE 0 END,
+                  w.category, total DESC, w.name",
     )
     .fetch_all(db.as_ref())
     .await

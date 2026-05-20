@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { BattleRow, Filters } from '../types'
-import { periodToSince } from '../types'
+import { filtersToRange, stageAbbr, modeLabel, resultLabel } from '../types'
 
 const PAGE_SIZE = 50
 
@@ -10,7 +10,7 @@ function winRateColor(rate: number): string {
   if (rate >= 0.45) return '#f59e0b'
   return '#ef4444'
 }
-type OrderBy = 'played_at' | 'kill' | 'death' | 'inked'
+type OrderBy = 'played_at' | 'kill' | 'death' | 'special' | 'inked'
 
 // ---------------------------------------------------------------------------
 // 型（詳細モーダル用）
@@ -49,7 +49,45 @@ export function BattleLog({ filters }: Props) {
   const [orderAsc, setOrderAsc] = useState(false)
 
   // 集計
-  const [stats, setStats] = useState<{ total: number; wins: number; win_rate: number; weapon_count: number } | null>(null)
+  const [stats, setStats] = useState<{ total: number; wins: number; draws: number; win_rate: number; weapon_count: number } | null>(null)
+
+  // データ取得
+  const [refreshKey, setRefreshKey]         = useState(0)
+  const [fetching, setFetching]             = useState(false)
+  const [fetchingDetails, setFetchingDetails] = useState(false)
+  const [fetchResult, setFetchResult]       = useState<string | null>(null)
+  const [fetchError, setFetchError]         = useState<string | null>(null)
+
+  async function handleFetch() {
+    setFetching(true)
+    setFetchResult(null)
+    setFetchError(null)
+    try {
+      const count = await invoke<number>('fetch_battles')
+      setFetchResult(`${count}件取得しました`)
+      setRefreshKey(k => k + 1)
+      invoke('fetch_weapons').catch(console.error)
+    } catch (e) {
+      setFetchError(String(e))
+    } finally {
+      setFetching(false)
+    }
+  }
+
+  async function handleFetchDetails() {
+    setFetchingDetails(true)
+    setFetchResult(null)
+    setFetchError(null)
+    try {
+      const count = await invoke<number>('fetch_battle_details')
+      setFetchResult(`詳細データ ${count}件更新しました`)
+      setRefreshKey(k => k + 1)
+    } catch (e) {
+      setFetchError(String(e))
+    } finally {
+      setFetchingDetails(false)
+    }
+  }
 
   // 武器アイコンをロード（テーブル行・モーダル用）
   useEffect(() => {
@@ -66,29 +104,32 @@ export function BattleLog({ filters }: Props) {
     })
   }, [])
 
-  // フィルター・ソート・ページ変化でバトル再取得
+  // フィルター変化でページをリセット
   useEffect(() => {
     setOffset(0)
   }, [filters])
 
   useEffect(() => {
     setLoading(true)
+    const { since, until } = filtersToRange(filters)
     const filterArgs = {
-      since: periodToSince(filters.period),
+      since,
+      until,
       mode: filters.mode,
       rule: filters.rule,
       resultFilter: filters.result,
-      weapon: filters.weapon,
+      weapon: filters.weapon.length > 0 ? filters.weapon.join('|') : null,
+      stage: filters.stage.length > 0 ? filters.stage.join('|') : null,
     }
     Promise.all([
       invoke<BattleRow[]>('db_list_battles', { limit: PAGE_SIZE, offset, ...filterArgs, orderBy, orderAsc }),
       invoke<number>('db_battle_count', filterArgs),
-      invoke<{ total: number; wins: number; win_rate: number; weapon_count: number }>('db_battle_stats', filterArgs),
+      invoke<{ total: number; wins: number; draws: number; win_rate: number; weapon_count: number }>('db_battle_stats', filterArgs),
     ])
       .then(([rows, count, s]) => { setBattles(rows); setTotal(count); setStats(s) })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [offset, filters, orderBy, orderAsc])
+  }, [offset, filters, orderBy, orderAsc, refreshKey])
 
   function handleSort(col: OrderBy) {
     setOffset(0)
@@ -100,14 +141,25 @@ export function BattleLog({ filters }: Props) {
     <div className="battle-log">
       <div className="log-header">
         <h2>バトルログ</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
+          {fetchResult && <span style={{ color: 'var(--win)', fontSize: 13 }}>{fetchResult}</span>}
+          {fetchError  && <span style={{ color: 'var(--lose)', fontSize: 13 }}>{fetchError}</span>}
+          <button className="btn-secondary" onClick={handleFetchDetails} disabled={fetchingDetails || fetching}>
+            {fetchingDetails ? '取得中...' : '詳細データを取得'}
+          </button>
+          <button className="btn-primary" onClick={handleFetch} disabled={fetching || fetchingDetails}>
+            {fetching ? '取得中...' : 'バトルデータを取得'}
+          </button>
+        </div>
       </div>
 
       {stats && (
         <div className="stat-cards" style={{ marginBottom: 12 }}>
-          <LogStatCard label="総試合数"   value={stats.total.toLocaleString()} />
-          <LogStatCard label="全体勝率"   value={stats.total > 0 ? `${(stats.win_rate * 100).toFixed(1)}%` : '—'}
+          <LogStatCard label="総試合数"        value={stats.total.toLocaleString()} />
+          <LogStatCard label="全体勝率"        value={stats.total > 0 ? `${(stats.win_rate * 100).toFixed(1)}%` : '—'}
             valueColor={stats.total > 0 ? winRateColor(stats.win_rate) : undefined} />
-          <LogStatCard label="勝利数"     value={stats.wins.toLocaleString()} />
+          <LogStatCard label="Win / Lose (Draw)"
+            value={`${stats.wins} / ${stats.total - stats.wins - stats.draws} (${stats.draws})`} />
           <LogStatCard label="使用武器数" value={stats.weapon_count.toString()} />
         </div>
       )}
@@ -127,7 +179,9 @@ export function BattleLog({ filters }: Props) {
                 <th>ステージ</th>
                 <th>武器</th>
                 <th>結果</th>
-                <SortTh col="kill"      label="K/D/A"  orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <SortTh col="kill"    label="キル"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <SortTh col="death"   label="デス"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <SortTh col="special" label="スペシャル" orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
                 <SortTh col="inked"     label="塗り"   orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
               </tr>
             </thead>
@@ -135,17 +189,19 @@ export function BattleLog({ filters }: Props) {
               {battles.map(b => (
                 <tr key={b.id} className={`result-${b.result.toLowerCase()} clickable-row`} onClick={() => setSelected(b)}>
                   <td>{new Date(b.played_at).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
-                  <td>{b.mode}</td>
+                  <td>{modeLabel(b.mode)}</td>
                   <td>{b.rule}</td>
-                  <td>{b.stage}</td>
+                  <td>{stageAbbr(b.stage)}</td>
                   <td>
                     <span className="weapon-cell">
                       {weaponImages.get(b.weapon) && <img src={weaponImages.get(b.weapon)} alt="" className="weapon-icon" />}
                       {b.weapon}
                     </span>
                   </td>
-                  <td className={`result-cell ${b.result.toLowerCase()}`}>{b.result}</td>
-                  <td>{b.kill}/{b.death}/{b.assist}</td>
+                  <td className={`result-cell ${b.result.toLowerCase()}`}>{resultLabel(b.result)}</td>
+                  <td>{b.kill}{b.assist > 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.85em' }}> ({b.assist})</span>}</td>
+                  <td>{b.death}</td>
+                  <td>{b.special}</td>
                   <td>{b.inked.toLocaleString()}</td>
                 </tr>
               ))}
@@ -209,10 +265,10 @@ function BattleDetailModal({ battle, weaponImages, onClose }: {
       <div className="modal-panel" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title">
-            <span className={`result-badge ${battle.result.toLowerCase()}`}>{battle.result}</span>
+            <span className={`result-badge ${battle.result.toLowerCase()}`}>{resultLabel(battle.result)}</span>
             {battle.knockout && battle.knockout !== 'NEITHER' && <span className="ko-badge">KO</span>}
-            <span>{battle.mode} / {battle.rule}</span>
-            <span className="modal-stage">{battle.stage}</span>
+            <span>{modeLabel(battle.mode)} / {battle.rule}</span>
+            <span className="modal-stage">{stageAbbr(battle.stage)}</span>
           </div>
           <div className="modal-meta">
             {new Date(battle.played_at).toLocaleString('ja-JP')}
@@ -335,11 +391,11 @@ function TeamTable({ title, players, weaponImages, highlight }: {
   )
 }
 
-function LogStatCard({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
+function LogStatCard({ label, value, valueColor, small }: { label: string; value: string; valueColor?: string; small?: boolean }) {
   return (
     <div className="stat-card">
       <div className="stat-label">{label}</div>
-      <div className="stat-value" style={valueColor ? { color: valueColor } : undefined}>{value}</div>
+      <div className={`stat-value${small ? ' stat-value--small' : ''}`} style={valueColor ? { color: valueColor } : undefined}>{value}</div>
     </div>
   )
 }

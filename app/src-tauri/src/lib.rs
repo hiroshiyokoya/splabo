@@ -39,6 +39,7 @@ pub fn run() {
             db::db_battle_count,
             db::db_list_battles,
             db::db_weapons_used,
+            db::db_stages_used,
             db::db_summary,
             db::db_list_weapons,
             db::backfill_battle_players,
@@ -124,6 +125,8 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
         &app,
     )
     .await?;
+    // 詳細取得済みで battle_players 未登録のバトルをバックフィル
+    db::backfill_battle_players_inner(&db).await?;
     // battle_players から sub/special を補完（category は上書きしない）
     db::populate_weapons_from_battles(&db).await?;
     // バトルデータからサブ・スペシャル画像をキャッシュ
@@ -138,14 +141,19 @@ async fn fetch_battle_details(app: AppHandle, db: State<'_, db::DbPool>) -> Resu
     let client = reqwest::Client::builder()
         .build()
         .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
-    splatnet3::fetch_and_update_details(
+    let updated = splatnet3::fetch_and_update_details(
         &db,
         &result.bullet_token,
         &result.country,
         &result.language,
         &client,
     )
-    .await
+    .await?;
+
+    db::populate_weapons_from_battles(&db).await?;
+    splatnet3::cache_sub_special_images(&db, &app, &client).await?;
+
+    Ok(updated)
 }
 
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
