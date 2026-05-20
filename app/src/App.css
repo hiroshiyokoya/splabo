@@ -569,10 +569,12 @@ body {
   border-radius: inherit;
 }
 .modal-panel--with-stage > * { position: relative; z-index: 1; }
+/* ヘッダー/ボディは「パネル」ではないのでぼかさない・色も乗せない。
+   ステージ画像（::before の brightness 0.42）の上に直接乗る。
+   各カード（score-summary-team / team-panel / stat-item）だけが
+   backdrop-filter でぼかし、曇りガラスを表現する。 */
 .modal-panel--with-stage > .modal-header {
-  background: rgba(10, 8, 24, 0.55);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  background: transparent;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 .modal-panel--with-stage > .modal-body { background: transparent; }
