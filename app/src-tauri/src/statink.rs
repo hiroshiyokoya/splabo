@@ -82,13 +82,12 @@ fn derive_uuid(battle_id: &str) -> String {
     h.update(battle_id.as_bytes());
     let d = h.finalize();
     format!(
-        "{:08x}-{:04x}-4{:03x}-{:04x}-{:06x}{:06x}",
+        "{:08x}-{:04x}-4{:03x}-{:04x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
         u32::from_be_bytes([d[0], d[1], d[2], d[3]]),
         u16::from_be_bytes([d[4], d[5]]),
         u16::from_be_bytes([d[6], d[7]]) & 0x0fff,
         (u16::from_be_bytes([d[8], d[9]]) & 0x3fff) | 0x8000,
-        u32::from_be_bytes([d[10], d[11], d[12], d[13]]),
-        u32::from_be_bytes([d[14], d[15], d[16], d[17]]),
+        d[10], d[11], d[12], d[13], d[14], d[15],
     )
 }
 
@@ -145,6 +144,16 @@ pub async fn upload_pending_battles(
         // kill/death は detail_fetched 後でないと 0 → 両方 0 なら null 扱い
         let has_detail = battle.kill > 0 || battle.death > 0;
 
+        // played_at (ISO 8601) → Unix タイムスタンプ
+        let start_ts = chrono::DateTime::parse_from_rfc3339(&battle.played_at)
+            .map(|dt| dt.timestamp())
+            .unwrap_or(0);
+        let end_ts = if battle.duration > 0 && start_ts > 0 {
+            start_ts + battle.duration as i64
+        } else {
+            0
+        };
+
         let mut payload = serde_json::json!({
             "uuid":    uuid,
             "lobby":   map_mode(&battle.mode),
@@ -154,7 +163,8 @@ pub async fn upload_pending_battles(
             "result":  battle.result,
             "inked":   if battle.inked    > 0 { serde_json::json!(battle.inked)    } else { serde_json::Value::Null },
             "duration": if battle.duration > 0 { serde_json::json!(battle.duration) } else { serde_json::Value::Null },
-            "start_at": battle.played_at,
+            "start_at": if start_ts > 0 { serde_json::json!(start_ts) } else { serde_json::Value::Null },
+            "end_at":   if end_ts   > 0 { serde_json::json!(end_ts)   } else { serde_json::Value::Null },
         });
 
         if has_detail {
@@ -194,7 +204,10 @@ pub async fn upload_pending_battles(
                 crate::db::mark_statink_uploaded(pool, &battle.id, &uuid).await?;
             }
             Ok(r) => {
-                log::warn!("[stat.ink] アップロード失敗: status={}", r.status());
+                let status = r.status();
+                let body = r.text().await.unwrap_or_default();
+                let snippet = &body[..body.len().min(500)];
+                log::warn!("[stat.ink] アップロード失敗: status={status} body={snippet}");
             }
             Err(e) => {
                 log::warn!("[stat.ink] 通信エラー: {e}");
