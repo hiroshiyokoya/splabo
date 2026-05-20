@@ -1,6 +1,21 @@
 export type Tab = 'dashboard' | 'battles' | 'weapons' | 'ai' | 'settings'
 
-export type Period = 'all' | '30d' | '7d' | 'custom'
+export type Period = 'all' | 'current_season' | '30d' | '7d' | 'custom'
+
+/** Splatoon 3 シーズンの開始日 (YYYY-MM-DD) を返す。
+ *  シーズンは 3/6/9/12 月の 1 日始まりの 3 ヶ月サイクル。 */
+export function currentSeasonStart(now: Date = new Date()): string {
+  const month = now.getMonth() // 0-indexed
+  let year = now.getFullYear()
+  let startMonth: number
+  if      (month >= 11) startMonth = 11      // Dec → Dec
+  else if (month >=  8) startMonth =  8      // Sep–Nov → Sep
+  else if (month >=  5) startMonth =  5      // Jun–Aug → Jun
+  else if (month >=  2) startMonth =  2      // Mar–May → Mar
+  else { startMonth = 11; year -= 1 }        // Jan–Feb → 前年 12 月
+  const m = String(startMonth + 1).padStart(2, '0')
+  return `${year}-${m}-01`
+}
 
 export interface Filters {
   period: Period
@@ -26,6 +41,7 @@ export const DEFAULT_FILTERS: Filters = {
 
 export function periodToSince(period: Period): string | null {
   if (period === 'all' || period === 'custom') return null
+  if (period === 'current_season') return currentSeasonStart()
   const d = new Date()
   d.setDate(d.getDate() - (period === '30d' ? 30 : 7))
   return d.toISOString().slice(0, 10)

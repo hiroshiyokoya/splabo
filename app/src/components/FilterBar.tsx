@@ -9,10 +9,11 @@ const RESULTS = ['win', 'lose', 'draw']
 
 interface StageInfo { id: string; name: string }
 const PERIODS: { id: Period; label: string }[] = [
-  { id: 'all',    label: '全期間' },
-  { id: '30d',    label: '直近30日' },
-  { id: '7d',     label: '直近7日' },
-  { id: 'custom', label: 'カスタム' },
+  { id: 'all',            label: '全期間' },
+  { id: 'current_season', label: '今シーズン' },
+  { id: '30d',            label: '直近30日' },
+  { id: '7d',             label: '直近7日' },
+  { id: 'custom',         label: 'カスタム' },
 ]
 
 interface Props {

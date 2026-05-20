@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { WeaponRecord } from '../types'
 
+// Dashboard.winRateColor と同期。
 function winRateColor(rate: number): string {
-  if (rate >= 0.55) return '#22c55e'
-  if (rate >= 0.45) return '#f59e0b'
-  return '#ef4444'
+  if (rate >= 0.55) return '#c8f030'
+  if (rate >= 0.45) return '#ff7621'
+  return '#ec4899'
 }
 
 export function WeaponBook() {

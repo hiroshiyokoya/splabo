@@ -8,10 +8,11 @@ import { ABILITY_LABELS, abilityKeyFromUrl, colorToHex, loadAbilityImages } from
 
 const PAGE_SIZE = 50
 
+// Dashboard.winRateColor と同期。緑/赤は勝/負と衝突するためライム/オレンジ/ピンクに。
 function winRateColor(rate: number): string {
-  if (rate >= 0.55) return '#22c55e'
-  if (rate >= 0.45) return '#f59e0b'
-  return '#ef4444'
+  if (rate >= 0.55) return '#c8f030'
+  if (rate >= 0.45) return '#ff7621'
+  return '#ec4899'
 }
 
 /** キルレ表示。D=0 のときは ∞、それ以外は K/D を小数 2 桁で。 */

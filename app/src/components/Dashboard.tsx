@@ -12,10 +12,12 @@ const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
 const COLOR_DRAW = '#9ca3af'
 
+// 勝率の閾値色。緑/赤は積み上げバー(勝/負)と同じなので、
+// ライム/オレンジ/ピンクに振って 1 つのグラフ内で色衝突しないようにする。
 function winRateColor(rate: number): string {
-  if (rate >= 0.55) return '#22c55e'
-  if (rate >= 0.45) return '#f59e0b'
-  return '#ef4444'
+  if (rate >= 0.55) return '#c8f030' // accent (lime)
+  if (rate >= 0.45) return '#ff7621' // accent2 (orange)
+  return '#ec4899'                   // pink/rose
 }
 
 type SortBy = 'total' | 'win_rate'
