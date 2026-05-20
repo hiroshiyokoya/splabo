@@ -45,8 +45,16 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                let enabled = window.app_handle()
+                    .try_state::<SchedulerConfig>()
+                    .map(|c| c.0.lock().unwrap().0)
+                    .unwrap_or(false);
+                if enabled {
+                    api.prevent_close();
+                    let _ = window.hide();
+                } else {
+                    window.app_handle().exit(0);
+                }
             }
         })
         .manage(auth::AuthState::default())
