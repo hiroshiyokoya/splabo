@@ -18,7 +18,7 @@ function killRatio(kill: number, death: number): string {
   if (death === 0) return '∞'
   return (kill / death).toFixed(2)
 }
-type OrderBy = 'played_at' | 'kill' | 'death' | 'special' | 'inked' | 'kill_ratio'
+type OrderBy = 'played_at' | 'kill' | 'assist' | 'death' | 'special' | 'inked' | 'kill_ratio'
 
 // ---------------------------------------------------------------------------
 // メインコンポーネント
@@ -151,7 +151,7 @@ export function BattleLog({ filters }: Props) {
                 <th>武器</th>
                 <th>結果</th>
                 <SortTh col="kill"       label="K"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
-                <th>A</th>
+                <SortTh col="assist"     label="A"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
                 <SortTh col="death"      label="D"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
                 <SortTh col="kill_ratio" label="キルレ" orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
                 <SortTh col="special"    label="SP"    orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />

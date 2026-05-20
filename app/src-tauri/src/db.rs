@@ -510,6 +510,7 @@ pub async fn db_list_battles(
     // DESC で上端 / ASC で下端 に配置（フロント側 ∞ 表示と整合）。
     let order_expr: &str = match order_by.as_deref() {
         Some("kill")       => "kill",
+        Some("assist")     => "assist",
         Some("death")      => "death",
         Some("special")    => "special",
         Some("inked")      => "inked",
