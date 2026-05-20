@@ -506,12 +506,15 @@ pub async fn db_list_battles(
     order_asc: Option<bool>,        // JS: orderAsc
 ) -> Result<Vec<BattleRow>, String> {
     let mode = normalize_mode_filter(mode);
-    let order_col = match order_by.as_deref() {
-        Some("kill")    => "kill",
-        Some("death")   => "death",
-        Some("special") => "special",
-        Some("inked")   => "inked",
-        _               => "played_at",
+    // kill_ratio は death=0 のとき大きなセンチネルに置換することで
+    // DESC で上端 / ASC で下端 に配置（フロント側 ∞ 表示と整合）。
+    let order_expr: &str = match order_by.as_deref() {
+        Some("kill")       => "kill",
+        Some("death")      => "death",
+        Some("special")    => "special",
+        Some("inked")      => "inked",
+        Some("kill_ratio") => "COALESCE(CAST(kill AS REAL) / NULLIF(death, 0), 999999.0)",
+        _                  => "played_at",
     };
     let order_dir = if order_asc.unwrap_or(false) { "ASC" } else { "DESC" };
     let sql = format!(
@@ -528,7 +531,7 @@ pub async fn db_list_battles(
            AND (? IS NULL OR result = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)
-         ORDER BY {order_col} {order_dir} LIMIT ? OFFSET ?"
+         ORDER BY {order_expr} {order_dir} LIMIT ? OFFSET ?"
     );
     let rows = sqlx::query_as::<_, BattleRow>(&sql)
         .bind(&since).bind(&since)
