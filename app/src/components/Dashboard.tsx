@@ -33,6 +33,28 @@ function winRateLevel(rate: number): 'hi' | 'mid' | 'lo' {
   return 'lo'
 }
 
+// 積み上げバーで「最上段のセグメントだけ上端を角丸」にする shape。
+// Recharts の radius={[r,r,0,0]} を全 stack に付けると各セグメントが
+// 個別に丸まって境目に変な凹みが出るため、shape で制御する。
+// 並び（下→上）: wins → losses → draws。
+function stackTopRoundedShape(props: any) {
+  const { x, y, width, height, fill, fillOpacity, payload, dataKey } = props
+  if (height <= 0) return null
+  const isTop =
+    (dataKey === 'draws'  && payload.draws  > 0) ||
+    (dataKey === 'losses' && payload.draws === 0 && payload.losses > 0) ||
+    (dataKey === 'wins'   && payload.draws === 0 && payload.losses === 0 && payload.wins > 0)
+  const r = isTop ? Math.min(4, height / 2, width / 2) : 0
+  if (r === 0) {
+    return <rect x={x} y={y} width={width} height={height} fill={fill} fillOpacity={fillOpacity} />
+  }
+  const d =
+    `M ${x},${y + r} Q ${x},${y} ${x + r},${y} ` +
+    `L ${x + width - r},${y} Q ${x + width},${y} ${x + width},${y + r} ` +
+    `L ${x + width},${y + height} L ${x},${y + height} Z`
+  return <path d={d} fill={fill} fillOpacity={fillOpacity} />
+}
+
 type SortBy = 'total' | 'wins' | 'win_rate'
 
 interface Props {
@@ -312,16 +334,19 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
           }}
         />
         <Bar yAxisId="left" dataKey="wins" stackId="s" maxBarSize={32} activeBar={false}
+          shape={stackTopRoundedShape}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
         >
           {chartData.map((_, i) => <Cell key={i} fill="url(#grad-win)" fillOpacity={cellOpacity(i)} />)}
         </Bar>
         <Bar yAxisId="left" dataKey="losses" stackId="s" maxBarSize={32} activeBar={false}
+          shape={stackTopRoundedShape}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
         >
           {chartData.map((_, i) => <Cell key={i} fill="url(#grad-lose)" fillOpacity={cellOpacity(i)} />)}
         </Bar>
         <Bar yAxisId="left" dataKey="draws" stackId="s" maxBarSize={32} activeBar={false}
+          shape={stackTopRoundedShape}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
         >
           {chartData.map((_, i) => <Cell key={i} fill="url(#grad-draw)" fillOpacity={cellOpacity(i)} />)}
