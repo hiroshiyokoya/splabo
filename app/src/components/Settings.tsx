@@ -134,7 +134,7 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
       </section>
 
       <section className="settings-section">
-        <h3>自動取得</h3>
+        <h3>自動取得（有効時はトレイに常駐）</h3>
         <label className="checkbox-label">
           <input
             type="checkbox"
@@ -154,11 +154,6 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
             disabled={!settings.autoFetchEnabled}
           />
         </label>
-        {settings.autoFetchEnabled && (
-          <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 8 }}>
-            自動取得が有効なとき、ウィンドウを閉じてもアプリはトレイに常駐します。
-          </p>
-        )}
       </section>
 
       <section className="settings-section">
