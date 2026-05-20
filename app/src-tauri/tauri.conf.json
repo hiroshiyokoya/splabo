@@ -19,10 +19,6 @@
         "minHeight": 600
       }
     ],
-    "trayIcon": {
-      "id": "main",
-      "iconPath": "icons/32x32.png"
-    },
     "security": {
       "csp": null
     }
