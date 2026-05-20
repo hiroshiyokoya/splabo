@@ -22,8 +22,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   statink: { apiKey: '', autoUpload: false, screenName: null },
 }
 
-const SETTINGS_KEY     = 'chartoon:settings'
-const LAST_FETCHED_KEY = 'chartoon:lastFetchedAt'
+const SETTINGS_KEY         = 'chartoon:settings'
+const LAST_FETCHED_KEY     = 'chartoon:lastFetchedAt'
+const LAST_WEAPONS_FETCH_K = 'chartoon:lastWeaponsFetchAt'
+/** 武器マスターを再取得するインターバル（ミリ秒）。24 時間。 */
+const WEAPONS_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000
 
 function loadSettings(): AppSettings {
   try {
@@ -95,6 +98,19 @@ export default function App() {
       })
     }).catch(console.error)
   }, [settings.statink.apiKey])
+
+  // 起動時に武器マスターの自動チェック。前回取得から 24h 経過していれば裏で再取得。
+  // 失敗してもサイレント（UI ブロックしない）。
+  useEffect(() => {
+    const last = Number(localStorage.getItem(LAST_WEAPONS_FETCH_K) ?? 0)
+    if (Date.now() - last < WEAPONS_FETCH_INTERVAL_MS) return
+    invoke<number>('fetch_weapons')
+      .then(count => {
+        localStorage.setItem(LAST_WEAPONS_FETCH_K, String(Date.now()))
+        console.log(`[startup] 武器マスター ${count} 件取得`)
+      })
+      .catch(err => console.warn('[startup] 武器マスター取得失敗:', err))
+  }, [loginVersion])
 
   useEffect(() => {
     const unlistenPromise = listen<string>('deep-link-received', async (event) => {
