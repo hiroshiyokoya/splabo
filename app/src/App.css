@@ -398,8 +398,8 @@ body {
   padding-right: 140px;  /* 右上の前/次・close ボタン領域を確保 */
   flex-wrap: wrap;
 }
-.modal-title-text { font-size: 14px; font-weight: 600; }
-.modal-stage { color: var(--text-muted); font-weight: 400; }
+.modal-title-text { font-size: 18px; font-weight: 600; }
+.modal-stage { font-size: 18px; color: var(--text-muted); font-weight: 400; }
 .modal-meta {
   font-size: 12px;
   font-weight: 400;
