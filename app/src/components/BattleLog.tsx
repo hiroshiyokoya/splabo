@@ -315,14 +315,14 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
           <span className="modal-meta">
             {new Date(battle.played_at).toLocaleString('ja-JP')}
             {battle.duration > 0 && <> · {durationMin}:{String(durationSec).padStart(2, '0')}</>}
+            {battle.statink_uuid && (
+              <button
+                className="statink-badge"
+                title={`stat.ink で開く (ID: ${battle.statink_uuid})`}
+                onClick={() => openExternal(statinkBattleUrl(battle.statink_uuid!, statinkScreenName))}
+              >stat.ink ✓</button>
+            )}
           </span>
-          {battle.statink_uuid && (
-            <button
-              className="statink-badge"
-              title={`stat.ink で開く (ID: ${battle.statink_uuid})`}
-              onClick={() => openExternal(statinkBattleUrl(battle.statink_uuid!, statinkScreenName))}
-            >stat.ink ✓</button>
-          )}
           <div className="modal-nav">
             <button className="modal-nav-btn" onClick={onPrev} disabled={!onPrev} title="前のバトル (←)">‹ 前</button>
             <button className="modal-nav-btn" onClick={onNext} disabled={!onNext} title="次のバトル (→)">次 ›</button>
