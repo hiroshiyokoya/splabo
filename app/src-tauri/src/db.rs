@@ -193,7 +193,7 @@ pub async fn get_battles_without_detail(pool: &DbPool) -> Result<Vec<String>, St
 }
 
 /// バトル詳細データをすべて更新し detail_fetched=1 にする。
-/// rule もここで詳細クエリ由来の値で上書きする（リスト取り込み時の
+/// rule / mode もここで詳細クエリ由来の値で上書きする（リスト取り込み時の
 /// 取りこぼし・誤分類を救済するため）。
 #[allow(clippy::too_many_arguments)]
 pub async fn update_battle_detail(
@@ -206,6 +206,7 @@ pub async fn update_battle_detail(
     inked: i64,
     raw_json: &str,
     rule: &str,
+    mode: &str,
     knockout: Option<&str>,
     sub_weapon: Option<&str>,
     special_weapon: Option<&str>,
@@ -215,7 +216,7 @@ pub async fn update_battle_detail(
 ) -> Result<(), String> {
     sqlx::query(
         "UPDATE battles SET kill=?, death=?, assist=?, special=?, inked=?,
-                            raw_json=?, rule=?, detail_fetched=1,
+                            raw_json=?, rule=?, mode=?, detail_fetched=1,
                             knockout=?, sub_weapon=?, special_weapon=?,
                             awards=?, my_team=?, other_teams=?
          WHERE id=?",
@@ -227,6 +228,7 @@ pub async fn update_battle_detail(
     .bind(inked)
     .bind(raw_json)
     .bind(rule)
+    .bind(mode)
     .bind(knockout)
     .bind(sub_weapon)
     .bind(special_weapon)
@@ -819,7 +821,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 4 {
+    if current_version >= 5 {
         return Ok(0); // 最新バージョンに達している
     }
 
@@ -848,7 +850,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             match vsmode {
                 "REGULAR" => "regular",
                 "BANKARA" => {
-                    let bm = json.pointer("/bankaraMatch/bankaraMode")
+                    let bm = json.pointer("/bankaraMatch/mode")
                         .and_then(|v| v.as_str()).unwrap_or("");
                     if bm == "CHALLENGE" { "bankara_challenge" } else { "bankara_open" }
                 }
@@ -991,6 +993,68 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             .map_err(|e| e.to_string())?;
 
         log::info!("migrate v4: rule を raw_json から再パース、{} 件修正", fixed);
+    }
+
+    // version 5: bankaraMatch.mode のパス間違い（旧 bankaraMatch/bankaraMode）で
+    //            バンカラが全部 bankara_open に倒れていた問題の修復。
+    //            全バトルの raw_json から正しいパスで mode を再パースする（冪等）。
+    if current_version < 5 {
+        let rows = sqlx::query("SELECT id, raw_json, mode FROM battles")
+            .fetch_all(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let mut fixed = 0usize;
+        for row in &rows {
+            let id:        String = row.get("id");
+            let raw_json:  String = row.get("raw_json");
+            let cur_mode:  String = row.get("mode");
+
+            let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw_json) else { continue };
+
+            // 詳細クエリ（vsMode あり）/ リストクエリ（vsMode なし）両対応
+            let vsmode = json.pointer("/vsMode/mode").and_then(|v| v.as_str()).unwrap_or("");
+            let new_mode: &str = if !vsmode.is_empty() {
+                match vsmode {
+                    "REGULAR" => "regular",
+                    "BANKARA" => {
+                        let bm = json.pointer("/bankaraMatch/mode")
+                            .and_then(|v| v.as_str()).unwrap_or("");
+                        if bm == "CHALLENGE" { "bankara_challenge" } else { "bankara_open" }
+                    }
+                    "X_MATCH" => "x",
+                    _ => continue,
+                }
+            } else {
+                let has_bankara = json.get("bankaraMatch").map(|v| !v.is_null()).unwrap_or(false);
+                let has_xmatch  = json.get("xMatch").map(|v| !v.is_null()).unwrap_or(false);
+                if has_bankara {
+                    let bm = json.pointer("/bankaraMatch/mode")
+                        .and_then(|v| v.as_str()).unwrap_or("");
+                    if bm == "CHALLENGE" { "bankara_challenge" } else { "bankara_open" }
+                } else if has_xmatch {
+                    "x"
+                } else {
+                    "regular"
+                }
+            };
+
+            if cur_mode != new_mode {
+                let _ = sqlx::query("UPDATE battles SET mode=? WHERE id=?")
+                    .bind(new_mode)
+                    .bind(&id)
+                    .execute(pool.as_ref())
+                    .await;
+                fixed += 1;
+            }
+        }
+
+        sqlx::query("PRAGMA user_version = 5")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        log::info!("migrate v5: mode を raw_json から再パース、{} 件修正", fixed);
     }
 
     Ok(updated)
