@@ -303,6 +303,10 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenN
             {isKo && <span className="ko-badge">KO</span>}
             <span>{modeLabel(battle.mode)} / {ruleLabel(battle.rule)}</span>
             <span className="modal-stage">{battle.stage_name ?? battle.stage}</span>
+          </div>
+          <div className="modal-meta">
+            {new Date(battle.played_at).toLocaleString('ja-JP')}
+            {battle.duration > 0 && <span> · {durationMin}:{String(durationSec).padStart(2, '0')}</span>}
             {battle.statink_uuid && (
               <button
                 className="statink-badge"
@@ -310,10 +314,6 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenN
                 onClick={() => openExternal(statinkBattleUrl(battle.statink_uuid!, statinkScreenName))}
               >stat.ink ✓</button>
             )}
-          </div>
-          <div className="modal-meta">
-            {new Date(battle.played_at).toLocaleString('ja-JP')}
-            {battle.duration > 0 && <span> · {durationMin}:{String(durationSec).padStart(2, '0')}</span>}
           </div>
           <div className="modal-nav">
             <button className="modal-nav-btn" onClick={onPrev} disabled={!onPrev} title="前のバトル (←)">‹ 前</button>
