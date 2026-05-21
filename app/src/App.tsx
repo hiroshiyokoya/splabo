@@ -147,7 +147,7 @@ export default function App() {
         <NavItem id="weapons"   label="武器図鑑"       active={tab} onClick={setTab} />
         <NavItem id="settings"  label="設定"           active={tab} onClick={setTab} />
         <div className="sidebar-last-fetched">
-          {lastFetchedAt ? `取得 ${lastFetchedAt}` : '未取得'}
+          {lastFetchedAt ? `データ最終更新日時: ${lastFetchedAt}` : '未取得'}
         </div>
       </nav>
 

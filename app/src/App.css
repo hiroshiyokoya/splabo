@@ -9,7 +9,7 @@
   --accent-fg:     #2e0a4f; /* accent (ライム) の上に載せる文字色（補色寄りの濃紫） */
   --accent2:       #ff7621;
   --text:          #eeeef8;
-  --text-muted:    #6060a0;
+  --text-muted:    #9b9bd0;
   --win:           #22c55e;
   --lose:          #ef4444;
   --draw:          #f59e0b;
@@ -169,7 +169,7 @@ body {
 /* ── Stat Cards ── */
 .stat-cards {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 10px;
   margin-bottom: 20px;
 }

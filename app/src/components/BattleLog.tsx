@@ -149,7 +149,6 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
           <LogStatCard label="平均キル"          value={stats.avg_kill  !== null ? stats.avg_kill.toFixed(2)  : '—'} />
           <LogStatCard label="平均デス"          value={stats.avg_death !== null ? stats.avg_death.toFixed(2) : '—'} />
           <LogStatCard label="キルレシオ"        value={avgKillRatio(stats.avg_kill, stats.avg_death)} />
-          <LogStatCard label="使用武器数"        value={stats.weapon_count.toString()} />
         </div>
       )}
 
