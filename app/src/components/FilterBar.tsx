@@ -52,8 +52,9 @@ export function FilterBar({ filters, onChange }: Props) {
     patch(key, filters[key] === val ? null : val)
   }
 
-  // モードとルールには論理的な関係がある（レギュラー ⇔ ナワバリ、
-  // バンカラ/Xマッチ ⇔ ガチ系）。片方を選択するともう片方を自動調整する。
+  // モードとルールに不整合な組み合わせが生まれたら、もう片方を解除する。
+  // 自動セット（レギュラー → ナワバリ等）はしない。
+  const GACHI_RULES = ['area', 'yagura', 'hoko', 'asari']
   function toggleMode(m: string) {
     // 同じ値を再クリックなら解除（連動なし）
     if (filters.mode === m) {
@@ -61,10 +62,10 @@ export function FilterBar({ filters, onChange }: Props) {
       return
     }
     let nextRule = filters.rule
-    if (m === 'regular') {
-      nextRule = 'turf_war'                                 // レギュラー → ナワバリ
+    if (m === 'regular' && GACHI_RULES.includes(filters.rule ?? '')) {
+      nextRule = null              // レギュラー選択 → ガチ系ルール解除
     } else if ((m === 'bankara' || m === 'x') && filters.rule === 'turf_war') {
-      nextRule = null                                       // ガチ系モードに切替時、ナワバリは外す
+      nextRule = null              // ガチ系モード選択 → ナワバリ解除
     }
     onChange({ ...filters, mode: m, rule: nextRule })
   }
@@ -74,10 +75,10 @@ export function FilterBar({ filters, onChange }: Props) {
       return
     }
     let nextMode = filters.mode
-    if (r === 'turf_war') {
-      nextMode = 'regular'                                  // ナワバリ → レギュラー
-    } else if (['area', 'yagura', 'hoko', 'asari'].includes(r) && filters.mode === 'regular') {
-      nextMode = null                                       // ガチ系ルールに切替時、レギュラーは外す
+    if (r === 'turf_war' && (filters.mode === 'bankara' || filters.mode === 'x')) {
+      nextMode = null              // ナワバリ選択 → バンカラ/Xマッチ解除
+    } else if (GACHI_RULES.includes(r) && filters.mode === 'regular') {
+      nextMode = null              // ガチ系ルール選択 → レギュラー解除
     }
     onChange({ ...filters, rule: r, mode: nextMode })
   }
