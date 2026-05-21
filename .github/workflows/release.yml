@@ -1,0 +1,145 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ── Step 1: ドラフトリリースを作成 ─────────────────────────────
+  create-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create-release.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION_NUM="${VERSION#v}"
+          BODY=$(awk "/^## \[${VERSION_NUM}\]/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md)
+          if [ -z "$BODY" ]; then
+            BODY="詳細は [CHANGELOG](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md) を参照してください。"
+          fi
+          # イシュー番号 (#xx) をリリースノートから除去
+          BODY=$(echo "$BODY" | sed 's/ (#[0-9]*[0-9])//g')
+          # インストール手順フッターを追加（VERSION をバージョン番号で置換）
+          FOOTER=$(sed "s/VERSION/${VERSION_NUM}/g" .github/release-footer.md)
+
+          echo "body<<ENDOFBODY" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "$FOOTER" >> $GITHUB_OUTPUT
+          echo "ENDOFBODY" >> $GITHUB_OUTPUT
+
+      - name: Create draft release
+        id: create-release
+        run: |
+          PAYLOAD=$(jq -n \
+            --arg tag "${{ github.ref_name }}" \
+            --arg name "chartoon ${{ github.ref_name }}" \
+            --arg body "${{ steps.changelog.outputs.body }}" \
+            '{tag_name: $tag, name: $name, body: $body, draft: true, prerelease: false}')
+          release_id=$(gh api repos/${{ github.repository }}/releases \
+            -X POST \
+            --input - <<< "$PAYLOAD" \
+            --jq '.id')
+          echo "release_id=$release_id" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Step 2: 各プラットフォームでビルド & アップロード ────────────
+  build:
+    needs: create-release
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            sidecar-build: build:win
+
+          - platform: macos-latest
+            sidecar-build: build:mac-arm
+            rust-target: aarch64-apple-darwin
+            tauri-args: --target aarch64-apple-darwin
+
+          # Linux は動作未検証のため一時的に無効化
+          # - platform: ubuntu-22.04
+          #   sidecar-build: build:linux
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # git タグ（例: v0.2.0）からバージョンを取り出して tauri.conf.json と Cargo.toml に書き込む
+      - name: Sync version with git tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node -e "
+            const fs = require('fs');
+            const path = 'app/src-tauri/tauri.conf.json';
+            const conf = JSON.parse(fs.readFileSync(path, 'utf8'));
+            conf.version = '${VERSION}';
+            fs.writeFileSync(path, JSON.stringify(conf, null, 2) + '\n');
+            console.log('tauri.conf.json version:', conf.version);
+          "
+          # Cargo.toml の [package] セクションの version を更新
+          node -e "
+            const fs = require('fs');
+            const path = 'app/src-tauri/Cargo.toml';
+            const src = fs.readFileSync(path, 'utf8');
+            const updated = src.replace(/^version = \"[^\"]*\"/m, 'version = \"${VERSION}\"');
+            fs.writeFileSync(path, updated);
+            console.log('Cargo.toml updated');
+          "
+
+      # Linux: Tauri が必要とするシステムライブラリ
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      # nxapi-wrapper サイドカーをビルド
+      - name: Build nxapi-wrapper sidecar
+        working-directory: tools/nxapi-wrapper
+        run: |
+          npm ci
+          npm run ${{ matrix.sidecar-build }}
+
+      # macOS: クロスコンパイル用 Rust ターゲットを追加
+      - name: Add Rust target
+        if: matrix.rust-target != ''
+        run: rustup target add ${{ matrix.rust-target }}
+
+      # フロントエンド依存関係をインストール
+      - name: Install app dependencies
+        working-directory: app
+        run: npm ci
+
+      # Tauri ビルド & リリースへアップロード
+      - name: Build and upload
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: './app'
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          args: ${{ matrix.tauri-args }}
