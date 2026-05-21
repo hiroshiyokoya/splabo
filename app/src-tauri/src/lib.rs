@@ -97,6 +97,8 @@ pub fn run() {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
                         .level(log::LevelFilter::Info)
+                        // ログのタイムスタンプを OS のローカルタイムに（デフォルトは UTC）
+                        .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
                         .build(),
                 )?;
             }
