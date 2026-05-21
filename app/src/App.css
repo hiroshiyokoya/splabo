@@ -412,6 +412,27 @@ body {
   padding: 4px;
 }
 .modal-close:hover { color: var(--text); }
+
+/* 詳細モーダル：前後バトルナビ。close ボタンの左に並ぶ */
+.modal-nav {
+  position: absolute;
+  top: 10px;
+  right: 44px;
+  display: flex;
+  gap: 6px;
+}
+.modal-nav-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-muted);
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.modal-nav-btn:hover:not(:disabled) { color: var(--text); border-color: var(--text-muted); }
+.modal-nav-btn:disabled { opacity: 0.35; cursor: default; }
 .modal-body {
   padding: 16px 20px;
   overflow-y: auto;

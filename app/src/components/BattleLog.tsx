@@ -48,7 +48,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
   const [loading, setLoading]                 = useState(true)
   const [weaponImages, setWeaponImages]       = useState<Map<string, string>>(new Map())
   const [abilityImages, setAbilityImages]     = useState<Map<string, string>>(new Map())
-  const [selected, setSelected]               = useState<BattleRow | null>(null)
+  const [selectedIdx, setSelectedIdx]         = useState<number | null>(null)
 
   // ページ
   const [offset, setOffset] = useState(0)
@@ -174,11 +174,11 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
               </tr>
             </thead>
             <tbody>
-              {battles.map(b => {
+              {battles.map((b, idx) => {
                 const color = teamColors.get(b.id)?.my
                 const isKo  = !!b.knockout && b.knockout !== 'NEITHER'
                 return (
-                  <tr key={b.id} className={`result-${b.result} clickable-row`} onClick={() => setSelected(b)}>
+                  <tr key={b.id} className={`result-${b.result} clickable-row`} onClick={() => setSelectedIdx(idx)}>
                     <td className="team-color-cell" style={color ? { background: color } : undefined} />
                     <td>{new Date(b.played_at).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                     <td>{modeLabel(b.mode)}</td>
@@ -226,13 +226,15 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
         </>
       )}
 
-      {selected && (
+      {selectedIdx !== null && battles[selectedIdx] && (
         <BattleDetailModal
-          battle={selected}
+          battle={battles[selectedIdx]}
           weaponImages={weaponImages}
           abilityImages={abilityImages}
           statinkScreenName={statinkScreenName}
-          onClose={() => setSelected(null)}
+          onClose={() => setSelectedIdx(null)}
+          onPrev={selectedIdx > 0 ? () => setSelectedIdx(i => (i !== null ? i - 1 : null)) : undefined}
+          onNext={selectedIdx < battles.length - 1 ? () => setSelectedIdx(i => (i !== null ? i + 1 : null)) : undefined}
         />
       )}
     </div>
@@ -258,16 +260,23 @@ function SortTh({ col, label, orderBy, orderAsc, onSort }: {
 // 詳細モーダル
 // ---------------------------------------------------------------------------
 
-function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenName, onClose }: {
+function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenName, onClose, onPrev, onNext }: {
   battle: BattleRow
   weaponImages: Map<string, string>
   abilityImages: Map<string, string>
   statinkScreenName: string | null
   onClose: () => void
+  onPrev?: () => void  // 前のバトル（先頭なら undefined）
+  onNext?: () => void  // 次のバトル（末尾なら undefined）
 }) {
   const [showRaw, setShowRaw] = useState(false)
 
-  const handleKey = useCallback((e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }, [onClose])
+  // ESC で閉じる、←/→ で前後移動
+  const handleKey = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') onClose()
+    else if (e.key === 'ArrowLeft'  && onPrev) onPrev()
+    else if (e.key === 'ArrowRight' && onNext) onNext()
+  }, [onClose, onPrev, onNext])
   useEffect(() => {
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
@@ -305,6 +314,10 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenN
           <div className="modal-meta">
             {new Date(battle.played_at).toLocaleString('ja-JP')}
             {battle.duration > 0 && <span> · {durationMin}:{String(durationSec).padStart(2, '0')}</span>}
+          </div>
+          <div className="modal-nav">
+            <button className="modal-nav-btn" onClick={onPrev} disabled={!onPrev} title="前のバトル (←)">‹ 前</button>
+            <button className="modal-nav-btn" onClick={onNext} disabled={!onNext} title="次のバトル (→)">次 ›</button>
           </div>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
