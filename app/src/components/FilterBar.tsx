@@ -52,6 +52,37 @@ export function FilterBar({ filters, onChange }: Props) {
     patch(key, filters[key] === val ? null : val)
   }
 
+  // モードとルールに不整合な組み合わせが生まれたら、もう片方を解除する。
+  // 自動セット（レギュラー → ナワバリ等）はしない。
+  const GACHI_RULES = ['area', 'yagura', 'hoko', 'asari']
+  function toggleMode(m: string) {
+    // 同じ値を再クリックなら解除（連動なし）
+    if (filters.mode === m) {
+      onChange({ ...filters, mode: null })
+      return
+    }
+    let nextRule = filters.rule
+    if (m === 'regular' && GACHI_RULES.includes(filters.rule ?? '')) {
+      nextRule = null              // レギュラー選択 → ガチ系ルール解除
+    } else if ((m === 'bankara' || m === 'x') && filters.rule === 'turf_war') {
+      nextRule = null              // ガチ系モード選択 → ナワバリ解除
+    }
+    onChange({ ...filters, mode: m, rule: nextRule })
+  }
+  function toggleRule(r: string) {
+    if (filters.rule === r) {
+      onChange({ ...filters, rule: null })
+      return
+    }
+    let nextMode = filters.mode
+    if (r === 'turf_war' && (filters.mode === 'bankara' || filters.mode === 'x')) {
+      nextMode = null              // ナワバリ選択 → バンカラ/Xマッチ解除
+    } else if (GACHI_RULES.includes(r) && filters.mode === 'regular') {
+      nextMode = null              // ガチ系ルール選択 → レギュラー解除
+    }
+    onChange({ ...filters, rule: r, mode: nextMode })
+  }
+
   function reset() {
     onChange({ period: 'all', mode: null, rule: null, result: null, weapon: [], stage: [], customFrom: null, customTo: null })
     setPickerOpen(false)
@@ -98,7 +129,7 @@ export function FilterBar({ filters, onChange }: Props) {
             <button
               key={m}
               className={`filter-btn${filters.mode === m ? ' active' : ''}`}
-              onClick={() => toggle('mode', m)}
+              onClick={() => toggleMode(m)}
             >{modeLabel(m)}</button>
           ))}
         </FilterGroup>
@@ -109,7 +140,7 @@ export function FilterBar({ filters, onChange }: Props) {
             <button
               key={r}
               className={`filter-btn${filters.rule === r ? ' active' : ''}`}
-              onClick={() => toggle('rule', r)}
+              onClick={() => toggleRule(r)}
             >{ruleLabel(r)}</button>
           ))}
         </FilterGroup>
