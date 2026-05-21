@@ -166,8 +166,10 @@ fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
     let result = parse_judgement(node);
     let duration = i64_val(node, "duration");
 
+    // SplatNet3 GraphQL の正しいフィールド名は bankaraMatch.mode
+    // （以前は bankaraMatch.bankaraMode と参照していて常に空文字 → 全部 open に倒れていた）
     let bankara_mode = node
-        .pointer("/bankaraMatch/bankaraMode")
+        .pointer("/bankaraMatch/mode")
         .and_then(|x| x.as_str())
         .unwrap_or("");
     let mode = if bankara_mode == "CHALLENGE" { "bankara_challenge" } else { "bankara_open" };
@@ -511,13 +513,30 @@ pub async fn fetch_and_update_details(
         let my_team = detail.pointer("/myTeam/players").map(|v| v.to_string());
         let other_teams = detail.get("otherTeams").map(|v| v.to_string());
 
-        // 詳細クエリ由来の rule で上書き（リスト取り込み時の取りこぼし救済）
+        // 詳細クエリ由来の rule / mode で上書き（リスト取り込み時の取りこぼし救済）
         let rule_raw = detail.pointer("/vsRule/rule").and_then(|v| v.as_str()).unwrap_or("");
         let rule = rule_to_slug(rule_raw);
+
+        let vsmode_raw = detail.pointer("/vsMode/mode").and_then(|v| v.as_str()).unwrap_or("");
+        let mode: String = match vsmode_raw {
+            "REGULAR" => "regular".to_string(),
+            "BANKARA" => {
+                let bm = detail.pointer("/bankaraMatch/mode")
+                    .and_then(|v| v.as_str()).unwrap_or("");
+                if bm == "CHALLENGE" { "bankara_challenge".to_string() } else { "bankara_open".to_string() }
+            }
+            "X_MATCH" => "x".to_string(),
+            ""        => String::new(),
+            other     => {
+                log::warn!("未知の vsMode/mode: {} (id={})", other, id);
+                other.to_lowercase()
+            }
+        };
 
         if let Err(e) = crate::db::update_battle_detail(
             pool, id, kill, death, assist, special, inked, &detail.to_string(),
             &rule,
+            &mode,
             knockout.as_deref(),
             sub_weapon.as_deref(),
             special_weapon.as_deref(),
