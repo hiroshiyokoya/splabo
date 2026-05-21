@@ -308,23 +308,21 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-panel modal-panel--with-stage" style={panelStyle} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <div className="modal-title">
-            <span className={`result-badge ${battle.result.toLowerCase()}`}>{resultLabel(battle.result)}</span>
-            {isKo && <span className="ko-badge">KO</span>}
-            <span>{modeLabel(battle.mode)} / {ruleLabel(battle.rule)}</span>
-            <span className="modal-stage">{battle.stage_name ?? battle.stage}</span>
-          </div>
-          <div className="modal-meta">
+          <span className={`result-badge ${battle.result.toLowerCase()}`}>{resultLabel(battle.result)}</span>
+          {isKo && <span className="ko-badge">KO</span>}
+          <span className="modal-title-text">{modeLabel(battle.mode)} / {ruleLabel(battle.rule)}</span>
+          <span className="modal-stage">{battle.stage_name ?? battle.stage}</span>
+          <span className="modal-meta">
             {new Date(battle.played_at).toLocaleString('ja-JP')}
-            {battle.duration > 0 && <span> · {durationMin}:{String(durationSec).padStart(2, '0')}</span>}
-            {battle.statink_uuid && (
-              <button
-                className="statink-badge"
-                title={`stat.ink で開く (ID: ${battle.statink_uuid})`}
-                onClick={() => openExternal(statinkBattleUrl(battle.statink_uuid!, statinkScreenName))}
-              >stat.ink ✓</button>
-            )}
-          </div>
+            {battle.duration > 0 && <> · {durationMin}:{String(durationSec).padStart(2, '0')}</>}
+          </span>
+          {battle.statink_uuid && (
+            <button
+              className="statink-badge"
+              title={`stat.ink で開く (ID: ${battle.statink_uuid})`}
+              onClick={() => openExternal(statinkBattleUrl(battle.statink_uuid!, statinkScreenName))}
+            >stat.ink ✓</button>
+          )}
           <div className="modal-nav">
             <button className="modal-nav-btn" onClick={onPrev} disabled={!onPrev} title="前のバトル (←)">‹ 前</button>
             <button className="modal-nav-btn" onClick={onNext} disabled={!onNext} title="次のバトル (→)">次 ›</button>
