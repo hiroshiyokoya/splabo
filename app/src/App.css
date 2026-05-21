@@ -399,7 +399,7 @@ body {
   flex-wrap: wrap;
 }
 .modal-title-text { font-size: 18px; font-weight: 600; }
-.modal-stage      { font-size: 18px; color: var(--text-muted); font-weight: 600; }
+.modal-stage      { font-size: 16px; color: var(--text-muted); font-weight: 600; }
 .modal-meta {
   font-size: 14px;                 /* 12 → 14 */
   font-weight: 400;
