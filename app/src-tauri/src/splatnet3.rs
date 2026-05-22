@@ -789,11 +789,23 @@ pub async fn cache_ability_images(
     // 他のアビリティ URL のハッシュ部分を empty ハッシュに差し替えて DL を試みる。
     if !seen.contains_key(crate::abilities::EMPTY_SLOT_KEY) {
         const EMPTY_HASH: &str = "dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91";
-        if let Some(sample_url) = seen.values().next() {
-            if let Some(empty_url) = replace_sha256_in_url(sample_url, EMPTY_HASH) {
-                seen.insert(crate::abilities::EMPTY_SLOT_KEY, empty_url);
+        match seen.values().next() {
+            Some(sample_url) => {
+                match replace_sha256_in_url(sample_url, EMPTY_HASH) {
+                    Some(empty_url) => {
+                        log::info!("empty 画像 URL を推測組立: {}", empty_url);
+                        seen.insert(crate::abilities::EMPTY_SLOT_KEY, empty_url);
+                    }
+                    None => log::warn!(
+                        "empty 画像 URL の組立失敗（サンプル URL から 64桁 hex が見つからず）: {}",
+                        sample_url
+                    ),
+                }
             }
+            None => log::warn!("empty 画像 URL の組立スキップ（サンプル URL なし。バトル詳細が未取得？）"),
         }
+    } else {
+        log::info!("empty 画像 URL は既に seen に存在");
     }
 
     for (key, url) in &seen {
