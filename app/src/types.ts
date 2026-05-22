@@ -190,7 +190,7 @@ export interface WeaponRecord {
 }
 
 export interface AiSettings {
-  provider: 'openai' | 'gemini'
+  provider: 'openai' | 'gemini' | 'anthropic' | 'grok'
   apiKey: string
   model: string
 }

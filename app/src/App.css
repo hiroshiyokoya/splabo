@@ -796,6 +796,7 @@ body {
 .settings-panel h2 { margin-bottom: 20px; }
 .settings-section { margin-bottom: 28px; }
 .settings-section h3 { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
+.settings-note { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
 /* タイトル (h3) 以外の直下要素に視覚的なインデントを付ける */
 .settings-section > *:not(h3) { margin-left: 16px; }
 /* チェックボックスに従属する設定項目はもう一段下げる */
