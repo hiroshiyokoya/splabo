@@ -600,26 +600,35 @@ function GearGrid({ p, abilityImages }: { p: Player; abilityImages: Map<string, 
       {gears.map(({ gear }, i) => (
         <div key={i} className="gear-row">
           <GearSlot ability={gear?.primaryGearPower} abilityImages={abilityImages} primary />
-          {[0, 1, 2].map(idx => (
-            <GearSlot key={idx} ability={gear?.additionalGearPowers?.[idx]} abilityImages={abilityImages} />
-          ))}
+          {[0, 1, 2].map(idx => {
+            const ab = gear?.additionalGearPowers?.[idx]
+            // ★0/★1 のサブスロット未解放（API レスポンスで配列要素が存在しない）は
+            // 「アキ」として扱い、empty アイコン（既にキャッシュ済み）を表示する。
+            return (
+              <GearSlot key={idx} ability={ab} abilityImages={abilityImages} isEmpty={!ab} />
+            )
+          })}
         </div>
       ))}
     </div>
   )
 }
 
-function GearSlot({ ability, abilityImages, primary }: {
+function GearSlot({ ability, abilityImages, primary, isEmpty }: {
   ability?: { name?: string; image?: { url?: string } }
   abilityImages: Map<string, string>
   primary?: boolean
+  isEmpty?: boolean
 }) {
-  const url = ability?.image?.url
-  const key = abilityKeyFromUrl(url)
+  const url    = ability?.image?.url
+  const key    = isEmpty ? 'empty' : abilityKeyFromUrl(url)
   const imgUrl = key ? abilityImages.get(key) : undefined
-  const label  = (key && ABILITY_LABELS[key]) ?? ability?.name ?? ''
+  const label  = isEmpty ? 'アキ' : ((key && ABILITY_LABELS[key]) ?? ability?.name ?? '')
   return (
-    <span className={`gear-slot${primary ? ' primary' : ''}`} title={label}>
+    <span
+      className={`gear-slot${primary ? ' primary' : ''}${isEmpty ? ' empty' : ''}`}
+      title={label}
+    >
       {imgUrl
         ? <img src={imgUrl} alt={label} />
         : <span className="gear-slot-fallback">·</span>}
