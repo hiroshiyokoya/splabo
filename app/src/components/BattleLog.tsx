@@ -85,12 +85,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
         setWeaponImages(new Map(results.filter((r): r is [string, string] => r !== null)))
       })
     })
-    loadAbilityImages().then(map => {
-      // 診断ログ：empty が含まれているかと、全キー一覧
-      console.log('[abilityImages] keys =', Array.from(map.keys()))
-      console.log('[abilityImages] empty present =', map.has('empty'), 'value head =', map.get('empty')?.slice(0, 40))
-      setAbilityImages(map)
-    })
+    loadAbilityImages().then(setAbilityImages)
     invoke<{ id: string; name: string }[]>('db_stages_used').then(stages => {
       Promise.all(
         stages.map(s =>
@@ -607,11 +602,10 @@ function GearGrid({ p, abilityImages }: { p: Player; abilityImages: Map<string, 
           <GearSlot ability={gear?.primaryGearPower} abilityImages={abilityImages} primary />
           {[0, 1, 2].map(idx => {
             const ab = gear?.additionalGearPowers?.[idx]
-            // ★0/★1 のサブスロット未解放（API レスポンスで配列要素が存在しない）は
-            // 「アキ」として扱い、empty アイコン（既にキャッシュ済み）を表示する。
-            return (
-              <GearSlot key={idx} ability={ab} abilityImages={abilityImages} isEmpty={!ab} />
-            )
+            // ab が undefined  → スロット未解放（locked）。★0/★1 で配列に要素が無い
+            // ab が empty URL  → 解放済みだが未装着（アキ）。abilityKeyFromUrl で 'empty' を解決して画像表示
+            // ab が通常アビリティ → 通常表示
+            return <GearSlot key={idx} ability={ab} abilityImages={abilityImages} isLocked={!ab} />
           })}
         </div>
       ))}
@@ -619,24 +613,24 @@ function GearGrid({ p, abilityImages }: { p: Player; abilityImages: Map<string, 
   )
 }
 
-function GearSlot({ ability, abilityImages, primary, isEmpty }: {
+function GearSlot({ ability, abilityImages, primary, isLocked }: {
   ability?: { name?: string; image?: { url?: string } }
   abilityImages: Map<string, string>
   primary?: boolean
-  isEmpty?: boolean
+  isLocked?: boolean
 }) {
   const url    = ability?.image?.url
-  const key    = isEmpty ? 'empty' : abilityKeyFromUrl(url)
+  const key    = abilityKeyFromUrl(url)
   const imgUrl = key ? abilityImages.get(key) : undefined
-  const label  = isEmpty ? 'アキ' : ((key && ABILITY_LABELS[key]) ?? ability?.name ?? '')
+  const label  = isLocked ? '未解放' : ((key && ABILITY_LABELS[key]) ?? ability?.name ?? '')
   return (
     <span
-      className={`gear-slot${primary ? ' primary' : ''}${isEmpty ? ' empty' : ''}`}
+      className={`gear-slot${primary ? ' primary' : ''}${isLocked ? ' locked' : ''}`}
       title={label}
     >
       {imgUrl
         ? <img src={imgUrl} alt={label} />
-        : <span className="gear-slot-fallback">{isEmpty ? '?' : '·'}</span>}
+        : <span className="gear-slot-fallback">·</span>}
     </span>
   )
 }

@@ -783,65 +783,13 @@ pub async fn cache_ability_images(
         }
     }
 
-    // SplatNet3 のバトル詳細クエリは未解放スロット（アキ）を additionalGearPowers に
-    // 含めないため、empty 画像 URL は通常レスポンスから拾えない。
-    // URL 構造は `<...>/<sha256>_0.png` 形式でハッシュ部分以外はアビリティ間で共通なので、
-    // 他のアビリティ URL のハッシュ部分を empty ハッシュに差し替えて DL を試みる。
-    if !seen.contains_key(crate::abilities::EMPTY_SLOT_KEY) {
-        const EMPTY_HASH: &str = "dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91";
-        match seen.values().next() {
-            Some(sample_url) => {
-                match replace_sha256_in_url(sample_url, EMPTY_HASH) {
-                    Some(empty_url) => {
-                        log::info!("empty 画像 URL を推測組立: {}", empty_url);
-                        seen.insert(crate::abilities::EMPTY_SLOT_KEY, empty_url);
-                    }
-                    None => log::warn!(
-                        "empty 画像 URL の組立失敗（サンプル URL から 64桁 hex が見つからず）: {}",
-                        sample_url
-                    ),
-                }
-            }
-            None => log::warn!("empty 画像 URL の組立スキップ（サンプル URL なし。バトル詳細が未取得？）"),
-        }
-    } else {
-        log::info!("empty 画像 URL は既に seen に存在");
-    }
-
     for (key, url) in &seen {
         if let Err(e) = crate::images::download_and_cache(app, client, "ability", key, url).await {
             log::warn!("アビリティ画像キャッシュ失敗 ({key}): {e}");
         }
     }
 
-    // 結果検証：empty.gti が実際にディスク上に存在するかログ出力
-    if let Some((path, exists)) = crate::images::check_image(app, "ability", crate::abilities::EMPTY_SLOT_KEY) {
-        log::info!(
-            "empty 画像ファイル: {} {}",
-            path.display(),
-            if exists { "存在 ✓" } else { "なし ✗" }
-        );
-    }
-
     Ok(())
-}
-
-/// URL の中の最初の連続 64 桁 小文字 hex を `new_hash` に置換する。
-/// 見つからない場合は None。
-fn replace_sha256_in_url(url: &str, new_hash: &str) -> Option<String> {
-    let bytes = url.as_bytes();
-    if bytes.len() < 64 { return None; }
-    for i in 0..=bytes.len() - 64 {
-        let slice = &bytes[i..i + 64];
-        if slice.iter().all(|&b| (b'0'..=b'9').contains(&b) || (b'a'..=b'f').contains(&b)) {
-            let mut out = String::with_capacity(url.len());
-            out.push_str(&url[..i]);
-            out.push_str(new_hash);
-            out.push_str(&url[i + 64..]);
-            return Some(out);
-        }
-    }
-    None
 }
 
 /// バトルノード一覧から武器・ステージの画像 URL を収集する（重複なし）。
