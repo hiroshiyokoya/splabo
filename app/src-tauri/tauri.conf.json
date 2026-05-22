@@ -14,9 +14,9 @@
       {
         "title": "chartoon",
         "width": 1280,
-        "height": 800,
+        "height": 960,
         "minWidth": 900,
-        "minHeight": 600
+        "minHeight": 700
       }
     ],
     "security": {
