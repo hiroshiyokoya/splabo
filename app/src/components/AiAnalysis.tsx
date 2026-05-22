@@ -95,7 +95,7 @@ dataはサマリーデータから計算してください。JSONのみ返し、
   if (settings.ai.provider === 'openai') {
     return callOpenAi(settings.ai.apiKey, settings.ai.model || 'gpt-4o-mini', systemPrompt, userMessage)
   } else {
-    return callGemini(settings.ai.apiKey, settings.ai.model || 'gemini-1.5-flash', systemPrompt, userMessage)
+    return callGemini(settings.ai.apiKey, settings.ai.model || 'gemini-2.5-flash', systemPrompt, userMessage)
   }
 }
 
@@ -115,7 +115,7 @@ async function callOpenAi(apiKey: string, model: string, system: string, user: s
       ],
     }),
   })
-  if (!res.ok) throw new Error(`OpenAI API error: ${res.status}`)
+  if (!res.ok) throw new Error(`OpenAI API error: ${res.status} ${await safeBodyText(res)}`)
   const json = await res.json()
   return JSON.parse(json.choices[0].message.content) as ChartSpec
 }
@@ -131,7 +131,17 @@ async function callGemini(apiKey: string, model: string, system: string, user: s
       generationConfig: { response_mime_type: 'application/json' },
     }),
   })
-  if (!res.ok) throw new Error(`Gemini API error: ${res.status}`)
+  if (!res.ok) throw new Error(`Gemini API error: ${res.status} ${await safeBodyText(res)}`)
   const json = await res.json()
   return JSON.parse(json.candidates[0].content.parts[0].text) as ChartSpec
+}
+
+/** エラーレスポンス本文を安全に取り出す。失敗時は空文字。長すぎる場合は切る。 */
+async function safeBodyText(res: Response): Promise<string> {
+  try {
+    const text = await res.text()
+    return text.length > 500 ? text.slice(0, 500) + '…' : text
+  } catch {
+    return ''
+  }
 }
