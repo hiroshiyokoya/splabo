@@ -85,7 +85,12 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
         setWeaponImages(new Map(results.filter((r): r is [string, string] => r !== null)))
       })
     })
-    loadAbilityImages().then(setAbilityImages)
+    loadAbilityImages().then(map => {
+      // 診断ログ：empty が含まれているかと、全キー一覧
+      console.log('[abilityImages] keys =', Array.from(map.keys()))
+      console.log('[abilityImages] empty present =', map.has('empty'), 'value head =', map.get('empty')?.slice(0, 40))
+      setAbilityImages(map)
+    })
     invoke<{ id: string; name: string }[]>('db_stages_used').then(stages => {
       Promise.all(
         stages.map(s =>
