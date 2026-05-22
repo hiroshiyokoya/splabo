@@ -9,10 +9,11 @@ const RESULTS = ['win', 'lose', 'draw']
 
 interface StageInfo { id: string; name: string }
 const PERIODS: { id: Period; label: string }[] = [
-  { id: 'all',    label: '全期間' },
-  { id: '30d',    label: '直近30日' },
-  { id: '7d',     label: '直近7日' },
-  { id: 'custom', label: 'カスタム' },
+  { id: 'all',            label: '全期間' },
+  { id: 'current_season', label: '今シーズン' },
+  { id: '30d',            label: '直近30日' },
+  { id: '7d',             label: '直近7日' },
+  { id: 'custom',         label: 'カスタム' },
 ]
 
 interface Props {
@@ -54,7 +55,8 @@ export function FilterBar({ filters, onChange }: Props) {
 
   // モードとルールに不整合な組み合わせが生まれたら、もう片方を解除する。
   // 自動セット（レギュラー → ナワバリ等）はしない。
-  const GACHI_RULES = ['area', 'yagura', 'hoko', 'asari']
+  const GACHI_RULES   = ['area', 'yagura', 'hoko', 'asari']
+  const BANKARA_MODES = ['bankara', 'bankara_challenge', 'bankara_open']
   function toggleMode(m: string) {
     // 同じ値を再クリックなら解除（連動なし）
     if (filters.mode === m) {
@@ -69,14 +71,26 @@ export function FilterBar({ filters, onChange }: Props) {
     }
     onChange({ ...filters, mode: m, rule: nextRule })
   }
+  // バンカラボタンは 4 状態を循環：
+  //   非選択 → bankara（両方）→ bankara_challenge → bankara_open → 非選択
+  function cycleBankara() {
+    const next: string | null =
+      filters.mode === 'bankara'           ? 'bankara_challenge' :
+      filters.mode === 'bankara_challenge' ? 'bankara_open' :
+      filters.mode === 'bankara_open'      ? null :
+      /* 非選択 or 他モード */              'bankara'
+    // バンカラ系を選ぶ場合、ナワバリは外す（既存連動と整合）
+    const nextRule = (next !== null && filters.rule === 'turf_war') ? null : filters.rule
+    onChange({ ...filters, mode: next, rule: nextRule })
+  }
   function toggleRule(r: string) {
     if (filters.rule === r) {
       onChange({ ...filters, rule: null })
       return
     }
     let nextMode = filters.mode
-    if (r === 'turf_war' && (filters.mode === 'bankara' || filters.mode === 'x')) {
-      nextMode = null              // ナワバリ選択 → バンカラ/Xマッチ解除
+    if (r === 'turf_war' && (BANKARA_MODES.includes(filters.mode ?? '') || filters.mode === 'x')) {
+      nextMode = null              // ナワバリ選択 → バンカラ系/Xマッチ解除
     } else if (GACHI_RULES.includes(r) && filters.mode === 'regular') {
       nextMode = null              // ガチ系ルール選択 → レギュラー解除
     }
@@ -125,13 +139,27 @@ export function FilterBar({ filters, onChange }: Props) {
           )}
         </FilterGroup>
         <FilterGroup label="モード">
-          {MODES.map(m => (
-            <button
-              key={m}
-              className={`filter-btn${filters.mode === m ? ' active' : ''}`}
-              onClick={() => toggleMode(m)}
-            >{modeLabel(m)}</button>
-          ))}
+          {MODES.map(m => {
+            if (m === 'bankara') {
+              // バンカラは 4 状態循環ボタン：非選択 → 両方 → チャレンジ → オープン → 非選択
+              const isActive = BANKARA_MODES.includes(filters.mode ?? '')
+              const label    = isActive ? modeLabel(filters.mode!) : 'バンカラ'
+              return (
+                <button
+                  key={m}
+                  className={`filter-btn${isActive ? ' active' : ''}`}
+                  onClick={cycleBankara}
+                >{label}</button>
+              )
+            }
+            return (
+              <button
+                key={m}
+                className={`filter-btn${filters.mode === m ? ' active' : ''}`}
+                onClick={() => toggleMode(m)}
+              >{modeLabel(m)}</button>
+            )
+          })}
         </FilterGroup>
       </div>
       <div className="filter-row">

@@ -792,36 +792,6 @@ pub async fn cache_ability_images(
     Ok(())
 }
 
-/// 保存済みバトルの awards JSON からメダル画像をキャッシュする。
-/// 画像名はメダル名（`name`）。
-pub async fn cache_award_images(
-    pool: &crate::db::DbPool,
-    app: &tauri::AppHandle,
-    client: &reqwest::Client,
-) -> Result<(), String> {
-    let awards_json_list = crate::db::get_battles_awards_json(pool).await?;
-
-    let mut seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-
-    for awards_json in &awards_json_list {
-        let Ok(arr) = serde_json::from_str::<serde_json::Value>(awards_json) else { continue };
-        let Some(list) = arr.as_array() else { continue };
-        for a in list {
-            let Some(name) = a.get("name").and_then(|v| v.as_str()) else { continue };
-            let Some(url)  = a.pointer("/image/url").and_then(|v| v.as_str()) else { continue };
-            seen.entry(name.to_string()).or_insert_with(|| url.to_string());
-        }
-    }
-
-    for (name, url) in &seen {
-        if let Err(e) = crate::images::download_and_cache(app, client, "award", name, url).await {
-            log::warn!("アワード画像キャッシュ失敗 ({name}): {e}");
-        }
-    }
-
-    Ok(())
-}
-
 /// バトルノード一覧から武器・ステージの画像 URL を収集する（重複なし）。
 fn collect_image_targets<'a>(
     nodes: impl Iterator<Item = &'a serde_json::Value>,

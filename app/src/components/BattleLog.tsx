@@ -2,16 +2,17 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import type { BattleRow, Filters, Player, Team, VsHistoryDetail, Award } from '../types'
-import { filtersToRange, modeLabel, ruleLabel, resultLabel } from '../types'
+import type { BattleRow, BattleStats, Filters, Player, Team, VsHistoryDetail, Award } from '../types'
+import { filtersToRange, modeLabel, ruleLabel, resultLabel, avgKillRatio } from '../types'
 import { ABILITY_LABELS, abilityKeyFromUrl, colorToHex, loadAbilityImages } from '../utils/abilities'
 
 const PAGE_SIZE = 50
 
+// Dashboard.winRateColor と同期。緑/赤は勝/負と衝突するため emerald/orange/pink。
 function winRateColor(rate: number): string {
-  if (rate >= 0.55) return '#22c55e'
-  if (rate >= 0.45) return '#f59e0b'
-  return '#ef4444'
+  if (rate >= 0.55) return '#34d399'
+  if (rate >= 0.45) return '#fb923c'
+  return '#f472b6'
 }
 
 /** キルレ表示。D=0 のときは ∞、それ以外は K/D を小数 2 桁で。 */
@@ -19,6 +20,7 @@ function killRatio(kill: number, death: number): string {
   if (death === 0) return '∞'
   return (kill / death).toFixed(2)
 }
+
 type OrderBy = 'played_at' | 'kill' | 'assist' | 'death' | 'special' | 'inked' | 'kill_ratio'
 
 // ---------------------------------------------------------------------------
@@ -48,6 +50,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
   const [loading, setLoading]                 = useState(true)
   const [weaponImages, setWeaponImages]       = useState<Map<string, string>>(new Map())
   const [abilityImages, setAbilityImages]     = useState<Map<string, string>>(new Map())
+  const [stageImages, setStageImages]         = useState<Map<string, string>>(new Map())
   const [selectedIdx, setSelectedIdx]         = useState<number | null>(null)
 
   // ページ
@@ -58,7 +61,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
   const [orderAsc, setOrderAsc] = useState(false)
 
   // 集計
-  const [stats, setStats] = useState<{ total: number; wins: number; draws: number; win_rate: number; weapon_count: number } | null>(null)
+  const [stats, setStats] = useState<BattleStats | null>(null)
 
   // データ取得
   const [refreshKey, setRefreshKey] = useState(0)
@@ -69,7 +72,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
     return () => { unlistenPromise.then(fn => fn()) }
   }, [])
 
-  // 武器・アビリティ画像をロード
+  // 武器・アビリティ・ステージ画像をロード
   useEffect(() => {
     invoke<string[]>('db_weapons_used').then(weapons => {
       Promise.all(
@@ -83,6 +86,17 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
       })
     })
     loadAbilityImages().then(setAbilityImages)
+    invoke<{ id: string; name: string }[]>('db_stages_used').then(stages => {
+      Promise.all(
+        stages.map(s =>
+          invoke<string | null>('read_image', { kind: 'stage', name: s.name })
+            .then(url => (url ? ([s.name, url] as [string, string]) : null))
+            .catch(() => null)
+        )
+      ).then(results => {
+        setStageImages(new Map(results.filter((r): r is [string, string] => r !== null)))
+      })
+    })
   }, [refreshKey])
 
   // フィルター変化でページをリセット
@@ -105,25 +119,13 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
     Promise.all([
       invoke<BattleRow[]>('db_list_battles', { limit: PAGE_SIZE, offset, ...filterArgs, orderBy, orderAsc }),
       invoke<number>('db_battle_count', filterArgs),
-      invoke<{ total: number; wins: number; draws: number; win_rate: number; weapon_count: number }>('db_battle_stats', filterArgs),
+      invoke<BattleStats>('db_battle_stats', filterArgs),
     ])
       .then(([rows, count, s]) => { setBattles(rows); setTotal(count); setStats(s) })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [offset, filters, orderBy, orderAsc, refreshKey])
 
-  // 行ごとのチームカラーを raw_json から抽出してメモ化
-  const teamColors = useMemo(() => {
-    const m = new Map<string, { my?: string; other?: string }>()
-    for (const b of battles) {
-      const d = tryParse(b.raw_json) as VsHistoryDetail | null
-      m.set(b.id, {
-        my:    colorToHex(d?.myTeam?.color),
-        other: colorToHex(d?.otherTeams?.[0]?.color),
-      })
-    }
-    return m
-  }, [battles])
 
   function handleSort(col: OrderBy) {
     setOffset(0)
@@ -139,12 +141,14 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
 
       {stats && (
         <div className="stat-cards" style={{ marginBottom: 12 }}>
-          <LogStatCard label="総試合数"        value={stats.total.toLocaleString()} />
-          <LogStatCard label="全体勝率"        value={stats.total > 0 ? `${(stats.win_rate * 100).toFixed(1)}%` : '—'}
-            valueColor={stats.total > 0 ? winRateColor(stats.win_rate) : undefined} />
+          <LogStatCard label="総バトル数"        value={stats.total.toLocaleString()} />
           <LogStatCard label="Win / Lose (Draw)"
             value={`${stats.wins} / ${stats.total - stats.wins - stats.draws} (${stats.draws})`} />
-          <LogStatCard label="使用武器数" value={stats.weapon_count.toString()} />
+          <LogStatCard label="全体勝率"          value={stats.total > 0 ? `${(stats.win_rate * 100).toFixed(1)}%` : '—'}
+            valueColor={stats.total > 0 ? winRateColor(stats.win_rate) : undefined} />
+          <LogStatCard label="平均キル"          value={stats.avg_kill  !== null ? stats.avg_kill.toFixed(2)  : '—'} />
+          <LogStatCard label="平均デス"          value={stats.avg_death !== null ? stats.avg_death.toFixed(2) : '—'} />
+          <LogStatCard label="キルレシオ"        value={avgKillRatio(stats.avg_kill, stats.avg_death)} />
         </div>
       )}
 
@@ -175,11 +179,10 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
             </thead>
             <tbody>
               {battles.map((b, idx) => {
-                const color = teamColors.get(b.id)?.my
                 const isKo  = !!b.knockout && b.knockout !== 'NEITHER'
                 return (
                   <tr key={b.id} className={`result-${b.result} clickable-row`} onClick={() => setSelectedIdx(idx)}>
-                    <td className="team-color-cell" style={color ? { background: color } : undefined} />
+                    <td className={`team-color-cell result-stripe--${b.result.toLowerCase()}`} />
                     <td>{new Date(b.played_at).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                     <td>{modeLabel(b.mode)}</td>
                     <td>{ruleLabel(b.rule)}</td>
@@ -231,6 +234,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
           battle={battles[selectedIdx]}
           weaponImages={weaponImages}
           abilityImages={abilityImages}
+          stageImages={stageImages}
           statinkScreenName={statinkScreenName}
           onClose={() => setSelectedIdx(null)}
           onPrev={selectedIdx > 0 ? () => setSelectedIdx(i => (i !== null ? i - 1 : null)) : undefined}
@@ -260,10 +264,11 @@ function SortTh({ col, label, orderBy, orderAsc, onSort }: {
 // 詳細モーダル
 // ---------------------------------------------------------------------------
 
-function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenName, onClose, onPrev, onNext }: {
+function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, statinkScreenName, onClose, onPrev, onNext }: {
   battle: BattleRow
   weaponImages: Map<string, string>
   abilityImages: Map<string, string>
+  stageImages: Map<string, string>
   statinkScreenName: string | null
   onClose: () => void
   onPrev?: () => void  // 前のバトル（先頭なら undefined）
@@ -286,7 +291,7 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenN
   const detail = useMemo(() => tryParse(battle.raw_json) as VsHistoryDetail | null, [battle.raw_json])
   const myTeam     = detail?.myTeam ?? null
   const otherTeams = detail?.otherTeams ?? []
-  const awards     = detail?.awards ?? []
+  const awards: Award[] = detail?.awards ?? []
   const isTricolor = otherTeams.length >= 2
 
   const hasDetail   = battle.my_team !== null
@@ -294,19 +299,22 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenN
   const durationMin = Math.floor(battle.duration / 60)
   const durationSec = battle.duration % 60
 
+  const stageImage = stageImages.get(battle.stage_name ?? battle.stage)
+  const panelStyle = stageImage
+    ? ({ ['--stage-bg' as string]: `url("${stageImage}")` } as React.CSSProperties)
+    : undefined
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-panel" onClick={e => e.stopPropagation()}>
+      <div className="modal-panel modal-panel--with-stage" style={panelStyle} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <div className="modal-title">
-            <span className={`result-badge ${battle.result.toLowerCase()}`}>{resultLabel(battle.result)}</span>
-            {isKo && <span className="ko-badge">KO</span>}
-            <span>{modeLabel(battle.mode)} / {ruleLabel(battle.rule)}</span>
-            <span className="modal-stage">{battle.stage_name ?? battle.stage}</span>
-          </div>
-          <div className="modal-meta">
+          <span className={`result-badge ${battle.result.toLowerCase()}`}>{resultLabel(battle.result)}</span>
+          {isKo && <span className="ko-badge">KO</span>}
+          <span className="modal-title-text">{modeLabel(battle.mode)} / {ruleLabel(battle.rule)}</span>
+          <span className="modal-stage">{battle.stage_name ?? battle.stage}</span>
+          <span className="modal-meta">
             {new Date(battle.played_at).toLocaleString('ja-JP')}
-            {battle.duration > 0 && <span> · {durationMin}:{String(durationSec).padStart(2, '0')}</span>}
+            {battle.duration > 0 && <> · {durationMin}:{String(durationSec).padStart(2, '0')}</>}
             {battle.statink_uuid && (
               <button
                 className="statink-badge"
@@ -314,7 +322,7 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenN
                 onClick={() => openExternal(statinkBattleUrl(battle.statink_uuid!, statinkScreenName))}
               >stat.ink ✓</button>
             )}
-          </div>
+          </span>
           <div className="modal-nav">
             <button className="modal-nav-btn" onClick={onPrev} disabled={!onPrev} title="前のバトル (←)">‹ 前</button>
             <button className="modal-nav-btn" onClick={onNext} disabled={!onNext} title="次のバトル (→)">次 ›</button>
@@ -331,7 +339,16 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenN
             <ScoreSummary myTeam={myTeam} otherTeams={otherTeams} rule={battle.rule} />
           )}
 
-          {awards.length > 0 && <AwardsSection awards={awards} />}
+          {awards.length > 0 && (
+            <section className="modal-section">
+              <h3 className="modal-section-title">アワード</h3>
+              <div className="awards-list">
+                {awards.map((a, i) => (
+                  <span key={i} className={`award-badge ${(a.rank ?? '').toLowerCase()}`}>{a.name}</span>
+                ))}
+              </div>
+            </section>
+          )}
 
           <MyStatsCard battle={battle} weaponImages={weaponImages} />
 
@@ -376,71 +393,36 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, statinkScreenN
 }
 
 // ---------------------------------------------------------------------------
-// アワード（メダル）
-// ---------------------------------------------------------------------------
-
-function AwardsSection({ awards }: { awards: Award[] }) {
-  const [icons, setIcons] = useState<Map<string, string>>(new Map())
-
-  useEffect(() => {
-    const names = Array.from(new Set(awards.map(a => a.name).filter((n): n is string => !!n)))
-    Promise.all(
-      names.map(name =>
-        invoke<string | null>('read_image', { kind: 'award', name })
-          .then(url => (url ? ([name, url] as [string, string]) : null))
-          .catch(() => null)
-      )
-    ).then(results => {
-      setIcons(new Map(results.filter((r): r is [string, string] => r !== null)))
-    })
-  }, [awards])
-
-  return (
-    <section className="modal-section">
-      <h3 className="modal-section-title">アワード</h3>
-      <div className="awards-list">
-        {awards.map((a, i) => {
-          const rank = (a.rank ?? '').toLowerCase()
-          const icon = a.name ? icons.get(a.name) : undefined
-          return (
-            <span key={i} className={`award-badge ${rank}`}>
-              {icon && <img src={icon} alt="" className="award-icon" />}
-              <span className="award-name">{a.name}</span>
-            </span>
-          )
-        })}
-      </div>
-    </section>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // スコアサマリ（モーダル上部）
 // ---------------------------------------------------------------------------
 
-function ScoreSummary({ myTeam, otherTeams, rule }: {
+function ScoreSummary({ myTeam, otherTeams }: {
   myTeam: Team | null
   otherTeams: Team[]
   rule: string
 }) {
-  const isPaintRule = rule === 'turf_war' || rule === 'tricolor'
-  const myColor    = colorToHex(myTeam?.color)
-  const teams = [{ team: myTeam, color: myColor }, ...otherTeams.map(t => ({ team: t, color: colorToHex(t.color) }))]
+  const myColor = colorToHex(myTeam?.color)
+  const teams   = [{ team: myTeam, color: myColor }, ...otherTeams.map(t => ({ team: t, color: colorToHex(t.color) }))]
+
+  // ルール文字列に依存せず、result の値で何を表示するか決める：
+  // paintRatio が数値なら 塗り%、なければ score を数値表示。result 自体が null（中断・切断バトル等）なら '—'。
+  function renderScore(team: Team | null): string {
+    const r = team?.result
+    if (r == null) return '—'
+    if (typeof r.paintRatio === 'number') return `${(r.paintRatio * 100).toFixed(1)}%`
+    if (typeof r.score      === 'number') return String(r.score)
+    return '—'
+  }
 
   return (
     <section className="modal-section score-summary">
       <div className="score-summary-row">
-        {teams.map((t, i) => {
-          const score = isPaintRule
-            ? (typeof t.team?.result?.paintRatio === 'number' ? `${(t.team!.result!.paintRatio! * 100).toFixed(1)}%` : '—')
-            : (typeof t.team?.result?.score === 'number' ? String(t.team!.result!.score) : '—')
-          return (
-            <div key={i} className="score-summary-team" style={{ borderTop: `4px solid ${t.color ?? 'transparent'}` }}>
-              <div className="score-summary-label">{i === 0 ? '自' : (teams.length > 2 ? `相手${i}` : '相手')}</div>
-              <div className="score-summary-value">{score}</div>
-            </div>
-          )
-        })}
+        {teams.map((t, i) => (
+          <div key={i} className="score-summary-team" style={{ '--team-color': t.color ?? '#6066aa' } as React.CSSProperties}>
+            <div className="score-summary-label">{i === 0 ? '自' : (teams.length > 2 ? `相手${i}` : '相手')}</div>
+            <div className="score-summary-value">{renderScore(t.team)}</div>
+          </div>
+        ))}
       </div>
     </section>
   )
@@ -509,7 +491,7 @@ function TeamPanel({ team, label, highlight, showSignal, weaponImages, abilityIm
   const paint   = team.result?.paintRatio
 
   return (
-    <div className={`team-panel${highlight ? ' my-team' : ''}`} style={{ borderLeft: `4px solid ${color ?? 'transparent'}` }}>
+    <div className={`team-panel${highlight ? ' my-team' : ''}`} style={{ '--team-color': color ?? '#6066aa' } as React.CSSProperties}>
       <div className="team-panel-header">
         <span className="team-panel-label" style={color ? { color } : undefined}>{label}</span>
         {typeof score === 'number' && <span className="team-panel-score">{score}</span>}
@@ -618,26 +600,34 @@ function GearGrid({ p, abilityImages }: { p: Player; abilityImages: Map<string, 
       {gears.map(({ gear }, i) => (
         <div key={i} className="gear-row">
           <GearSlot ability={gear?.primaryGearPower} abilityImages={abilityImages} primary />
-          {[0, 1, 2].map(idx => (
-            <GearSlot key={idx} ability={gear?.additionalGearPowers?.[idx]} abilityImages={abilityImages} />
-          ))}
+          {[0, 1, 2].map(idx => {
+            const ab = gear?.additionalGearPowers?.[idx]
+            // ab が undefined  → スロット未解放（locked）。★0/★1 で配列に要素が無い
+            // ab が empty URL  → 解放済みだが未装着（アキ）。abilityKeyFromUrl で 'empty' を解決して画像表示
+            // ab が通常アビリティ → 通常表示
+            return <GearSlot key={idx} ability={ab} abilityImages={abilityImages} isLocked={!ab} />
+          })}
         </div>
       ))}
     </div>
   )
 }
 
-function GearSlot({ ability, abilityImages, primary }: {
+function GearSlot({ ability, abilityImages, primary, isLocked }: {
   ability?: { name?: string; image?: { url?: string } }
   abilityImages: Map<string, string>
   primary?: boolean
+  isLocked?: boolean
 }) {
-  const url = ability?.image?.url
-  const key = abilityKeyFromUrl(url)
+  const url    = ability?.image?.url
+  const key    = abilityKeyFromUrl(url)
   const imgUrl = key ? abilityImages.get(key) : undefined
-  const label  = (key && ABILITY_LABELS[key]) ?? ability?.name ?? ''
+  const label  = isLocked ? '未解放' : ((key && ABILITY_LABELS[key]) ?? ability?.name ?? '')
   return (
-    <span className={`gear-slot${primary ? ' primary' : ''}`} title={label}>
+    <span
+      className={`gear-slot${primary ? ' primary' : ''}${isLocked ? ' locked' : ''}`}
+      title={label}
+    >
       {imgUrl
         ? <img src={imgUrl} alt={label} />
         : <span className="gear-slot-fallback">·</span>}

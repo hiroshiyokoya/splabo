@@ -5,20 +5,57 @@ import {
   BarChart, Bar, LineChart, Line, ScatterChart, Scatter,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
-import type { Summary, SummaryEntry, ChartSpec, Filters } from '../types'
-import { filtersToRange, stageAbbr, modeLabel, ruleLabel } from '../types'
+import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats } from '../types'
+import { filtersToRange, stageAbbr, modeLabel, ruleLabel, avgKillRatio } from '../types'
 
 const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
 const COLOR_DRAW = '#9ca3af'
 
+// 勝率の閾値色。勝/負の緑/赤との衝突を避けつつ、
+// まぶしくならないよう少しトーンを抑える。
+//   ≥55% : emerald-400（緑＋青み、ライムの代わり）
+//   45-55% : orange-400（落ち着いた橙）
+//   <45% : pink-400（柔らかいピンク）
+const WIN_RATE_HI  = '#34d399'
+const WIN_RATE_MID = '#fb923c'
+const WIN_RATE_LO  = '#f472b6'
+
 function winRateColor(rate: number): string {
-  if (rate >= 0.55) return '#22c55e'
-  if (rate >= 0.45) return '#f59e0b'
-  return '#ef4444'
+  if (rate >= 0.55) return WIN_RATE_HI
+  if (rate >= 0.45) return WIN_RATE_MID
+  return WIN_RATE_LO
 }
 
-type SortBy = 'total' | 'win_rate'
+function winRateLevel(rate: number): 'hi' | 'mid' | 'lo' {
+  if (rate >= 0.55) return 'hi'
+  if (rate >= 0.45) return 'mid'
+  return 'lo'
+}
+
+// 積み上げバーで「最上段のセグメントだけ上端を角丸」にする shape。
+// Recharts の radius={[r,r,0,0]} を全 stack に付けると各セグメントが
+// 個別に丸まって境目に変な凹みが出るため、shape で制御する。
+// 並び（下→上）: wins → losses → draws。
+function stackTopRoundedShape(props: any) {
+  const { x, y, width, height, fill, fillOpacity, payload, dataKey } = props
+  if (height <= 0) return null
+  const isTop =
+    (dataKey === 'draws'  && payload.draws  > 0) ||
+    (dataKey === 'losses' && payload.draws === 0 && payload.losses > 0) ||
+    (dataKey === 'wins'   && payload.draws === 0 && payload.losses === 0 && payload.wins > 0)
+  const r = isTop ? Math.min(4, height / 2, width / 2) : 0
+  if (r === 0) {
+    return <rect x={x} y={y} width={width} height={height} fill={fill} fillOpacity={fillOpacity} />
+  }
+  const d =
+    `M ${x},${y + r} Q ${x},${y} ${x + r},${y} ` +
+    `L ${x + width - r},${y} Q ${x + width},${y} ${x + width},${y + r} ` +
+    `L ${x + width},${y + height} L ${x},${y + height} Z`
+  return <path d={d} fill={fill} fillOpacity={fillOpacity} />
+}
+
+type SortBy = 'total' | 'wins' | 'win_rate'
 
 interface Props {
   filters: Filters
@@ -27,6 +64,7 @@ interface Props {
 
 export function Dashboard({ filters, aiChart }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null)
+  const [stats, setStats]     = useState<BattleStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
@@ -38,7 +76,7 @@ export function Dashboard({ filters, aiChart }: Props) {
   useEffect(() => {
     const { since, until } = filtersToRange(filters)
     setLoading(true)
-    invoke<Summary>('db_summary', {
+    const filterArgs = {
       since,
       until,
       mode: filters.mode,
@@ -46,8 +84,12 @@ export function Dashboard({ filters, aiChart }: Props) {
       resultFilter: filters.result,
       weapon: filters.weapon.length > 0 ? filters.weapon.join('|') : null,
       stage: filters.stage.length > 0 ? filters.stage.join('|') : null,
-    })
-      .then(setSummary)
+    }
+    Promise.all([
+      invoke<Summary>('db_summary', filterArgs),
+      invoke<BattleStats>('db_battle_stats', filterArgs),
+    ])
+      .then(([s, st]) => { setSummary(s); setStats(st) })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [refreshKey, filters])
@@ -97,31 +139,33 @@ export function Dashboard({ filters, aiChart }: Props) {
       ) : (
         <>
           <div className="stat-cards">
-            <StatCard label="総試合数" value={totalBattles.toLocaleString()} />
+            <StatCard label="総バトル数" value={totalBattles.toLocaleString()} />
+            <StatCard label="Win / Lose (Draw)" value={`${totalWins} / ${totalLosses} (${totalDraws})`} />
             <StatCard
               label="全体勝率"
               value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '—'}
               valueColor={overallWinRate !== null ? winRateColor(overallWinRate) : undefined}
             />
-            <StatCard label="Win / Lose (Draw)" value={`${totalWins} / ${totalLosses} (${totalDraws})`} />
-            <StatCard label="使用武器数" value={summary.by_weapon.length.toString()} />
+            <StatCard label="平均キル" value={stats?.avg_kill  != null ? stats.avg_kill.toFixed(2)  : '—'} />
+            <StatCard label="平均デス" value={stats?.avg_death != null ? stats.avg_death.toFixed(2) : '—'} />
+            <StatCard label="キルレシオ" value={avgKillRatio(stats?.avg_kill ?? null, stats?.avg_death ?? null)} />
           </div>
 
           <div className="chart-grid">
-            <ChartCard title="武器別 勝率 & 試合数" sortBy={weaponSort} onSortChange={setWeaponSort}>
+            <ChartCard title="武器別 バトル数 & 勝率" sortBy={weaponSort} onSortChange={setWeaponSort}>
               <WinRateChart data={sorted(summary.by_weapon.slice(0, 14), weaponSort)} height={260} images={weaponImages} hoverImageSize={64} />
             </ChartCard>
 
-            <ChartCard title="ステージ別 勝率 & 試合数" sortBy={stageSort} onSortChange={setStageSort}>
+            <ChartCard title="ステージ別 バトル数 & 勝率" sortBy={stageSort} onSortChange={setStageSort}>
               <WinRateChart data={sorted(summary.by_stage.slice(0, 14), stageSort)} height={260} images={new Map()} nameTransform={stageAbbr} tickAngle={30} />
             </ChartCard>
 
-            <ChartCard title="ルール別 勝率 & 試合数" sortBy={ruleSort} onSortChange={setRuleSort}>
+            <ChartCard title="ルール別 バトル数 & 勝率" sortBy={ruleSort} onSortChange={setRuleSort}>
               <WinRateChart data={sorted(summary.by_rule, ruleSort)} height={220} images={new Map()} nameTransform={ruleLabel} />
             </ChartCard>
 
-            <ChartCard title="モード別 勝率 & 試合数" sortBy={modeSort} onSortChange={setModeSort}>
-              <WinRateChart data={sorted(summary.by_mode, modeSort)} height={180} images={new Map()} nameTransform={modeLabel} />
+            <ChartCard title="モード別 バトル数 & 勝率" sortBy={modeSort} onSortChange={setModeSort}>
+              <WinRateChart data={sorted(summary.by_mode, modeSort)} height={220} images={new Map()} nameTransform={modeLabel} />
             </ChartCard>
 
             {aiChart && (
@@ -224,6 +268,18 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
     return activeIndex === null || activeIndex === i ? 1 : 0.35
   }
 
+  // バーごとに上→下のグラデーション。上端で 95%、下端で 50% の不透明度。
+  // SVG gradient ID はチャート間で衝突しないよう React useId を使うのが安全だが、
+  // 1 ページに複数置いてもブラウザ的には問題ない（同一定義のため）。
+  const gradients: { id: string; color: string }[] = [
+    { id: 'grad-win',      color: COLOR_WIN  },
+    { id: 'grad-lose',     color: COLOR_LOSE },
+    { id: 'grad-draw',     color: COLOR_DRAW },
+    { id: 'grad-rate-hi',  color: WIN_RATE_HI  },
+    { id: 'grad-rate-mid', color: WIN_RATE_MID },
+    { id: 'grad-rate-lo',  color: WIN_RATE_LO  },
+  ]
+
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart
@@ -231,6 +287,14 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
         margin={{ top: 4, right: 8, left: 0, bottom: hasImages ? 8 : 4 }}
         onMouseLeave={() => setActiveIndex(null)}
       >
+        <defs>
+          {gradients.map(g => (
+            <linearGradient key={g.id} id={g.id} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stopColor={g.color} stopOpacity="0.95" />
+              <stop offset="100%" stopColor={g.color} stopOpacity="0.5"  />
+            </linearGradient>
+          ))}
+        </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
         <XAxis
           dataKey="name"
@@ -267,7 +331,7 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
             return (
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, padding: '6px 10px' }}>
                 <div style={{ color: 'var(--text)', fontWeight: 700, marginBottom: 4 }}>{displayLabel}</div>
-                <div style={{ color: 'var(--text)' }}>試合数: {entry.total}</div>
+                <div style={{ color: 'var(--text)' }}>バトル数: {entry.total}</div>
                 <div style={{ color: COLOR_WIN }}>勝ち: {entry.wins}</div>
                 <div style={{ color: COLOR_LOSE }}>負け: {entry.total - entry.wins - entry.draws}</div>
                 {entry.draws > 0 && <div style={{ color: COLOR_DRAW }}>引き分け: {entry.draws}</div>}
@@ -277,25 +341,29 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
           }}
         />
         <Bar yAxisId="left" dataKey="wins" stackId="s" maxBarSize={32} activeBar={false}
+          shape={stackTopRoundedShape}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
         >
-          {chartData.map((_, i) => <Cell key={i} fill={COLOR_WIN} fillOpacity={cellOpacity(i)} />)}
+          {chartData.map((_, i) => <Cell key={i} fill="url(#grad-win)" fillOpacity={cellOpacity(i)} />)}
         </Bar>
         <Bar yAxisId="left" dataKey="losses" stackId="s" maxBarSize={32} activeBar={false}
+          shape={stackTopRoundedShape}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
         >
-          {chartData.map((_, i) => <Cell key={i} fill={COLOR_LOSE} fillOpacity={cellOpacity(i)} />)}
+          {chartData.map((_, i) => <Cell key={i} fill="url(#grad-lose)" fillOpacity={cellOpacity(i)} />)}
         </Bar>
         <Bar yAxisId="left" dataKey="draws" stackId="s" maxBarSize={32} activeBar={false}
+          shape={stackTopRoundedShape}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
         >
-          {chartData.map((_, i) => <Cell key={i} fill={COLOR_DRAW} fillOpacity={cellOpacity(i)} />)}
+          {chartData.map((_, i) => <Cell key={i} fill="url(#grad-draw)" fillOpacity={cellOpacity(i)} />)}
         </Bar>
         <Bar yAxisId="right" dataKey="win_rate" name="win_rate" maxBarSize={32} activeBar={false}
+          radius={[4, 4, 0, 0]}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
         >
           {chartData.map((entry, i) => (
-            <Cell key={i} fill={winRateColor(entry.win_rate)} fillOpacity={cellOpacity(i)} />
+            <Cell key={i} fill={`url(#grad-rate-${winRateLevel(entry.win_rate)})`} fillOpacity={cellOpacity(i)} />
           ))}
         </Bar>
       </BarChart>
@@ -333,7 +401,11 @@ function ChartCard({
             <button
               className={`chart-sort-btn${sortBy === 'total' ? ' active' : ''}`}
               onClick={() => onSortChange('total')}
-            >試合数</button>
+            >バトル数</button>
+            <button
+              className={`chart-sort-btn${sortBy === 'wins' ? ' active' : ''}`}
+              onClick={() => onSortChange('wins')}
+            >勝数</button>
             <button
               className={`chart-sort-btn${sortBy === 'win_rate' ? ' active' : ''}`}
               onClick={() => onSortChange('win_rate')}

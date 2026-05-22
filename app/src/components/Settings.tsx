@@ -15,8 +15,6 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   const [authLoading, setAuthLoading] = useState(false)
   const [fetching, setFetching] = useState(false)
   const [fetchResult, setFetchResult] = useState<string | null>(null)
-  const [masterRefreshing, setMasterRefreshing] = useState(false)
-  const [masterResult, setMasterResult] = useState<string | null>(null)
   const [themeId, setThemeId] = useState(getThemeId)
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<string | null>(null)
@@ -29,7 +27,7 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   useEffect(() => {
     invoke('set_scheduler_config', {
       enabled: settings.autoFetchEnabled,
-      hour: settings.autoFetchHour,
+      intervalMin: settings.autoFetchIntervalMin,
     }).catch(console.error)
     invoke('set_statink_config', {
       autoUpload: settings.statink.autoUpload,
@@ -41,10 +39,10 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
     const next = { ...settings, ...patch }
     onSave(next)
     // スケジューラー関連の変更は即 Rust 側へ同期
-    if ('autoFetchEnabled' in patch || 'autoFetchHour' in patch) {
+    if ('autoFetchEnabled' in patch || 'autoFetchIntervalMin' in patch) {
       invoke('set_scheduler_config', {
         enabled: next.autoFetchEnabled,
-        hour: next.autoFetchHour,
+        intervalMin: next.autoFetchIntervalMin,
       }).catch(console.error)
     }
     // stat.ink 設定の変更も即 Rust 側へ同期
@@ -105,19 +103,6 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
     }
   }
 
-  async function handleRefreshMasterData() {
-    setMasterRefreshing(true)
-    setMasterResult(null)
-    try {
-      const count = await invoke<number>('fetch_weapons')
-      setMasterResult(`武器データを ${count} 件更新しました`)
-    } catch (e) {
-      setMasterResult(`エラー: ${String(e)}`)
-    } finally {
-      setMasterRefreshing(false)
-    }
-  }
-
   return (
     <div className="settings-panel">
       <h2>設定</h2>
@@ -148,7 +133,7 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
           SplatNet3 から最新のバトル結果・詳細データを取得します。
         </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="settings-subitem" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button className="btn-primary" onClick={handleFetchFull} disabled={fetching}>
             {fetching ? '取得中...' : 'バトルデータを取得'}
           </button>
@@ -160,7 +145,7 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
         </div>
       </section>
 
-      <section className="settings-section">
+      <section className="settings-section settings-section--sub">
         <h3>自動取得（有効時はトレイに常駐）</h3>
         <label className="checkbox-label">
           <input
@@ -168,68 +153,24 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
             checked={settings.autoFetchEnabled}
             onChange={(e) => update({ autoFetchEnabled: e.target.checked })}
           />
-          毎日自動でバトルデータを取得する
+          自動でバトルデータを取得する
         </label>
         <label>
-          取得時刻（時）
-          <input
-            type="number"
-            min={0}
-            max={23}
-            value={settings.autoFetchHour}
-            onChange={(e) => update({ autoFetchHour: Number(e.target.value) })}
-            disabled={!settings.autoFetchEnabled}
-          />
-        </label>
-      </section>
-
-      <section className="settings-section">
-        <h3>AI API</h3>
-        <label>
-          プロバイダー
+          取得間隔
           <select
-            value={settings.ai.provider}
-            onChange={(e) => update({ ai: { ...settings.ai, provider: e.target.value as 'openai' | 'gemini' } })}
+            value={settings.autoFetchIntervalMin}
+            onChange={(e) => update({ autoFetchIntervalMin: Number(e.target.value) })}
+            disabled={!settings.autoFetchEnabled}
           >
-            <option value="openai">OpenAI (ChatGPT)</option>
-            <option value="gemini">Google Gemini</option>
+            <option value={15}>15分ごと</option>
+            <option value={30}>30分ごと</option>
+            <option value={60}>1時間ごと</option>
+            <option value={120}>2時間ごと</option>
+            <option value={360}>6時間ごと</option>
+            <option value={720}>12時間ごと</option>
+            <option value={1440}>24時間ごと</option>
           </select>
         </label>
-        <label>
-          APIキー
-          <input
-            type="password"
-            value={settings.ai.apiKey}
-            onChange={(e) => update({ ai: { ...settings.ai, apiKey: e.target.value } })}
-            placeholder="sk-... または AIzaSy..."
-          />
-        </label>
-        <label>
-          モデル
-          <input
-            type="text"
-            value={settings.ai.model}
-            onChange={(e) => update({ ai: { ...settings.ai, model: e.target.value } })}
-            placeholder={settings.ai.provider === 'openai' ? 'gpt-4o-mini' : 'gemini-1.5-flash'}
-          />
-        </label>
-      </section>
-
-      <section className="settings-section">
-        <h3>マスターデータ</h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
-          武器図鑑のデータを SplatNet3 から再取得します。武器が追加されたときなどに使用してください。
-        </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="btn-secondary" onClick={handleRefreshMasterData} disabled={masterRefreshing}>
-            {masterRefreshing ? '更新中...' : '武器データを更新'}
-          </button>
-          {masterResult && (
-            <span style={{ fontSize: 13, color: masterResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
-              {masterResult}
-            </span>
-          )}
-        </div>
       </section>
 
       <section className="settings-section">
@@ -274,6 +215,38 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
             </span>
           )}
         </div>
+      </section>
+
+      <section className="settings-section">
+        <h3>AI API</h3>
+        <label>
+          プロバイダー
+          <select
+            value={settings.ai.provider}
+            onChange={(e) => update({ ai: { ...settings.ai, provider: e.target.value as 'openai' | 'gemini' } })}
+          >
+            <option value="openai">OpenAI (ChatGPT)</option>
+            <option value="gemini">Google Gemini</option>
+          </select>
+        </label>
+        <label>
+          APIキー
+          <input
+            type="password"
+            value={settings.ai.apiKey}
+            onChange={(e) => update({ ai: { ...settings.ai, apiKey: e.target.value } })}
+            placeholder="sk-... または AIzaSy..."
+          />
+        </label>
+        <label>
+          モデル
+          <input
+            type="text"
+            value={settings.ai.model}
+            onChange={(e) => update({ ai: { ...settings.ai, model: e.target.value } })}
+            placeholder={settings.ai.provider === 'openai' ? 'gpt-4o-mini' : 'gemini-1.5-flash'}
+          />
+        </label>
       </section>
 
       <section className="settings-section">

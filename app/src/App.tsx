@@ -18,12 +18,15 @@ initAppSettings()
 const DEFAULT_SETTINGS: AppSettings = {
   ai: { provider: 'openai', apiKey: '', model: '' },
   autoFetchEnabled: false,
-  autoFetchHour: 4,
+  autoFetchIntervalMin: 1440, // 24h
   statink: { apiKey: '', autoUpload: false, screenName: null },
 }
 
-const SETTINGS_KEY     = 'chartoon:settings'
-const LAST_FETCHED_KEY = 'chartoon:lastFetchedAt'
+const SETTINGS_KEY         = 'chartoon:settings'
+const LAST_FETCHED_KEY     = 'chartoon:lastFetchedAt'
+const LAST_WEAPONS_FETCH_K = 'chartoon:lastWeaponsFetchAt'
+/** 武器マスターを再取得するインターバル（ミリ秒）。24 時間。 */
+const WEAPONS_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000
 
 function loadSettings(): AppSettings {
   try {
@@ -96,6 +99,19 @@ export default function App() {
     }).catch(console.error)
   }, [settings.statink.apiKey])
 
+  // 起動時に武器マスターの自動チェック。前回取得から 24h 経過していれば裏で再取得。
+  // 失敗してもサイレント（UI ブロックしない）。
+  useEffect(() => {
+    const last = Number(localStorage.getItem(LAST_WEAPONS_FETCH_K) ?? 0)
+    if (Date.now() - last < WEAPONS_FETCH_INTERVAL_MS) return
+    invoke<number>('fetch_weapons')
+      .then(count => {
+        localStorage.setItem(LAST_WEAPONS_FETCH_K, String(Date.now()))
+        console.log(`[startup] 武器マスター ${count} 件取得`)
+      })
+      .catch(err => console.warn('[startup] 武器マスター取得失敗:', err))
+  }, [loginVersion])
+
   useEffect(() => {
     const unlistenPromise = listen<string>('deep-link-received', async (event) => {
       const url = event.payload
@@ -125,13 +141,13 @@ export default function App() {
     <div className="app">
       <nav className="sidebar">
         <button className="logo" onClick={() => setShowAbout(true)}>chartoon</button>
-        <NavItem id="dashboard" label="ダッシュボード" active={tab} onClick={setTab} />
-        <NavItem id="battles"   label="バトルログ"     active={tab} onClick={setTab} />
-        <NavItem id="ai"        label="AI分析"         active={tab} onClick={setTab} />
-        <NavItem id="weapons"   label="武器図鑑"       active={tab} onClick={setTab} />
-        <NavItem id="settings"  label="設定"           active={tab} onClick={setTab} />
+        <NavItem id="dashboard" icon="📊" label="ダッシュボード" active={tab} onClick={setTab} />
+        <NavItem id="battles"   icon="⚔️" label="バトルログ"     active={tab} onClick={setTab} />
+        <NavItem id="ai"        icon="🧙" label="AI分析"         active={tab} onClick={setTab} />
+        <NavItem id="weapons"   icon="🔫" label="武器図鑑"       active={tab} onClick={setTab} />
+        <NavItem id="settings"  icon="⚙️" label="設定"           active={tab} onClick={setTab} />
         <div className="sidebar-last-fetched">
-          {lastFetchedAt ? `取得 ${lastFetchedAt}` : '未取得'}
+          {lastFetchedAt ? `データ最終更新日時: ${lastFetchedAt}` : '未取得'}
         </div>
       </nav>
 
@@ -151,10 +167,11 @@ export default function App() {
   )
 }
 
-function NavItem({ id, label, active, onClick }: { id: Tab; label: string; active: Tab; onClick: (t: Tab) => void }) {
+function NavItem({ id, icon, label, active, onClick }: { id: Tab; icon: string; label: string; active: Tab; onClick: (t: Tab) => void }) {
   return (
     <button className={`nav-item ${active === id ? 'active' : ''}`} onClick={() => onClick(id)}>
-      {label}
+      <span className="nav-item-icon" aria-hidden="true">{icon}</span>
+      <span className="nav-item-label">{label}</span>
     </button>
   )
 }

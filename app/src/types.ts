@@ -1,6 +1,21 @@
 export type Tab = 'dashboard' | 'battles' | 'weapons' | 'ai' | 'settings'
 
-export type Period = 'all' | '30d' | '7d' | 'custom'
+export type Period = 'all' | 'current_season' | '30d' | '7d' | 'custom'
+
+/** Splatoon 3 シーズンの開始日 (YYYY-MM-DD) を返す。
+ *  シーズンは 3/6/9/12 月の 1 日始まりの 3 ヶ月サイクル。 */
+export function currentSeasonStart(now: Date = new Date()): string {
+  const month = now.getMonth() // 0-indexed
+  let year = now.getFullYear()
+  let startMonth: number
+  if      (month >= 11) startMonth = 11      // Dec → Dec
+  else if (month >=  8) startMonth =  8      // Sep–Nov → Sep
+  else if (month >=  5) startMonth =  5      // Jun–Aug → Jun
+  else if (month >=  2) startMonth =  2      // Mar–May → Mar
+  else { startMonth = 11; year -= 1 }        // Jan–Feb → 前年 12 月
+  const m = String(startMonth + 1).padStart(2, '0')
+  return `${year}-${m}-01`
+}
 
 export interface Filters {
   period: Period
@@ -26,6 +41,7 @@ export const DEFAULT_FILTERS: Filters = {
 
 export function periodToSince(period: Period): string | null {
   if (period === 'all' || period === 'custom') return null
+  if (period === 'current_season') return currentSeasonStart()
   const d = new Date()
   d.setDate(d.getDate() - (period === '30d' ? 30 : 7))
   return d.toISOString().slice(0, 10)
@@ -188,7 +204,8 @@ export interface StatinkSettings {
 export interface AppSettings {
   ai: AiSettings
   autoFetchEnabled: boolean
-  autoFetchHour: number
+  /** 自動取得の実行間隔（分）。例: 15, 30, 60, 120, 360, 720, 1440 */
+  autoFetchIntervalMin: number
   statink: StatinkSettings
 }
 
@@ -256,4 +273,23 @@ export interface ChartSpec {
   xKey: string
   yKey: string
   colorKey?: string
+}
+
+/** db_battle_stats の返り値型。
+ *  avg_kill / avg_death は detail_fetched=1 のバトルのみで集計。詳細未取得しかない場合は null。 */
+export interface BattleStats {
+  total: number
+  wins: number
+  draws: number
+  win_rate: number
+  weapon_count: number
+  avg_kill: number | null
+  avg_death: number | null
+}
+
+/** 平均キル / 平均デスから集計キルレシオを文字列で返す。null・D=0 を考慮。 */
+export function avgKillRatio(avgKill: number | null, avgDeath: number | null): string {
+  if (avgKill === null || avgDeath === null) return '—'
+  if (avgDeath === 0) return '∞'
+  return (avgKill / avgDeath).toFixed(2)
 }

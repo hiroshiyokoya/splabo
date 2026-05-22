@@ -11,7 +11,7 @@ export const THEMES: Theme[] = [
   {
     id: 'dark',
     label: 'ダーク (デフォルト)',
-    dot: '#7c3aed',
+    dot: '#c8f030',
     vars: {},
   },
   {
@@ -19,14 +19,24 @@ export const THEMES: Theme[] = [
     label: 'Solarized Light',
     dot: '#fdf6e3',
     vars: {
-      '--bg': '#fdf6e3',
-      '--surface': '#eee8d5',
-      '--surface2': '#e6dfc8',
-      '--border': '#cdc8b8',
-      '--accent': '#268bd2',
+      '--bg':           '#fdf6e3',
+      '--surface':      '#eee8d5',
+      '--surface2':     '#e6dfc8',
+      '--border':       '#cdc8b8',
+      '--accent':       '#268bd2',
       '--accent-hover': '#1a6fa8',
-      '--text': '#3d454a',
-      '--text-muted': '#93a1a1',
+      '--accent-fg':    '#fdf6e3',                 // 青ボタンには明るい文字
+      '--text':         '#3d454a',
+      '--text-muted':   '#657b83',                 // #93a1a1 だと薄すぎたので Solarized base00 寄りに
+      // パネル系を反転：明るい背景・暗い文字
+      '--panel-bg':              'rgba(253, 246, 227, 0.92)',
+      '--panel-overlay':         'rgba(253, 246, 227, 0.55)',
+      '--panel-overlay-strong':  'rgba(253, 246, 227, 0.78)',
+      '--inner-highlight':       'rgba(0, 0, 0, 0.10)',
+      '--inner-highlight-strong':'rgba(0, 0, 0, 0.14)',
+      '--stat-item-bg':          'rgba(0, 0, 0, 0.04)',
+      '--stage-img-filter':      'brightness(0.92) saturate(0.85)',
+      '--panel-label-tint':      '#1a1a1e',         // パネルラベルは暗い文字寄り
     },
   },
   {
@@ -34,27 +44,41 @@ export const THEMES: Theme[] = [
     label: 'Solarized Dark',
     dot: '#002b36',
     vars: {
-      '--bg': '#002b36',
-      '--surface': '#073642',
-      '--surface2': '#0d3d4f',
-      '--border': '#1b4b5a',
-      '--accent': '#b58900',
+      '--bg':           '#002b36',
+      '--surface':      '#073642',
+      '--surface2':     '#0d3d4f',
+      '--border':       '#1b4b5a',
+      '--accent':       '#b58900',
       '--accent-hover': '#8a6800',
-      '--text': '#93a1a1',
-      '--text-muted': '#586e75',
+      '--accent-fg':    '#002b36', // アンバーボタンには濃文字
+      '--text':         '#93a1a1',
+      '--text-muted':   '#586e75',
     },
   },
 ]
 
+// CSS の :root と同期しておくこと（App.css）。
+// JS 起動時に applyTheme() で上書き適用されるため、CSS だけ変えても反映されない。
 const BASE_VARS: Record<string, string> = {
-  '--bg': '#0f0f13',
-  '--surface': '#1a1a24',
-  '--surface2': '#22222f',
-  '--border': '#2e2e40',
-  '--accent': '#7c3aed',
-  '--accent-hover': '#6d28d9',
-  '--text': '#e5e7eb',
-  '--text-muted': '#6b7280',
+  '--bg':            '#1a1a1e',
+  '--surface':       '#17172a',
+  '--surface2':      '#20203a',
+  '--border':        '#2a2a45',
+  '--accent':        '#c8f030',
+  '--accent-hover':  '#9dc024',
+  '--accent-fg':     '#2e0a4f',
+  '--accent2':       '#ff7621',
+  '--text':          '#eeeef8',
+  '--text-muted':    '#9b9bd0',
+  // モーダル / パネル系のオーバーレイ色（ライトテーマで上書き）
+  '--panel-bg':              'rgba(10, 8, 24, 0.88)',     // モーダル本体の不透明背景
+  '--panel-overlay':         'rgba(10, 8, 28, 0.25)',     // 薄い暗オーバーレイ
+  '--panel-overlay-strong':  'rgba(10, 8, 28, 0.45)',     // 濃いめ暗オーバーレイ
+  '--inner-highlight':       'rgba(255, 255, 255, 0.08)', // パネル境界・内側ハイライト
+  '--inner-highlight-strong':'rgba(255, 255, 255, 0.10)',
+  '--stat-item-bg':          'rgba(255, 255, 255, 0.04)',
+  '--stage-img-filter':      'brightness(0.42) saturate(0.75)',
+  '--panel-label-tint':      '#ffffff',                   // パネルラベルの混色相手
 }
 
 export function applyTheme(themeId: string): void {

@@ -40,7 +40,7 @@ export function AiAnalysis({ settings, onChartReady }: Props) {
       <h2>AI分析</h2>
       <p className="ai-hint">
         どんなグラフを見たいか日本語で入力してください。<br />
-        例:「武器別の勝率と試合数の相関を散布図で見せて」
+        例:「武器別の勝率とバトル数の相関を散布図で見せて」
       </p>
 
       <div className="ai-input-row">

@@ -429,7 +429,9 @@ pub async fn db_battle_stats(
             COUNT(*) as total,
             SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
             SUM(CASE WHEN result='draw' THEN 1 ELSE 0 END) as draws,
-            COUNT(DISTINCT weapon) as weapon_count
+            COUNT(DISTINCT weapon) as weapon_count,
+            AVG(CASE WHEN detail_fetched = 1 THEN kill  END) as avg_kill,
+            AVG(CASE WHEN detail_fetched = 1 THEN death END) as avg_death
          FROM battles
          WHERE (? IS NULL OR played_at >= ?)
            AND (? IS NULL OR played_at <= ?)
@@ -450,17 +452,22 @@ pub async fn db_battle_stats(
     .await
     .map_err(|e| e.to_string())?;
 
-    let total: i64        = row.get("total");
-    let wins: i64         = row.get("wins");
-    let draws: i64        = row.get("draws");
-    let weapon_count: i64 = row.get("weapon_count");
-    let decisive          = total - draws;
+    let total: i64                 = row.get("total");
+    let wins: i64                  = row.get("wins");
+    let draws: i64                 = row.get("draws");
+    let weapon_count: i64          = row.get("weapon_count");
+    // detail_fetched=1 のバトルのみで平均を取る（CASE で NULL にして AVG が無視）
+    let avg_kill:  Option<f64>     = row.try_get("avg_kill").ok();
+    let avg_death: Option<f64>     = row.try_get("avg_death").ok();
+    let decisive                   = total - draws;
     Ok(serde_json::json!({
         "total": total,
         "wins": wins,
         "draws": draws,
         "win_rate": if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 },
         "weapon_count": weapon_count,
+        "avg_kill":  avg_kill,
+        "avg_death": avg_death,
     }))
 }
 
@@ -757,15 +764,6 @@ pub async fn get_battles_team_json(pool: &DbPool) -> Result<Vec<(Option<String>,
     .await
     .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(|r| (r.get("my_team"), r.get("other_teams"))).collect())
-}
-
-/// 全バトルの awards JSON を返す（メダル画像キャッシュ用）。
-pub async fn get_battles_awards_json(pool: &DbPool) -> Result<Vec<String>, String> {
-    let rows = sqlx::query("SELECT awards FROM battles WHERE awards IS NOT NULL")
-        .fetch_all(pool.as_ref())
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(rows.into_iter().filter_map(|r| r.get::<Option<String>, _>("awards")).collect())
 }
 
 /// battle_players テーブルから sub/special を weapons テーブルに補完する。
