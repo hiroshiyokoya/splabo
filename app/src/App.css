@@ -1211,7 +1211,9 @@ body {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
 }
 /* アキスロット（★0/★1 の未解放サブスロット）は存在感を抑える */
-.gear-slot.empty { opacity: 0.4; }
+.gear-slot.empty { opacity: 0.5; }
 .gear-slot img { width: 100%; height: 100%; object-fit: contain; }
-.gear-slot-fallback { color: var(--text-muted); font-size: 10px; }
+.gear-slot-fallback { color: var(--text-muted); font-size: 10px; line-height: 1; }
+/* アキスロットの「?」フォールバックは大きめに（empty 画像が未キャッシュ時用） */
+.gear-slot.empty .gear-slot-fallback { font-size: 14px; font-weight: 700; }
 

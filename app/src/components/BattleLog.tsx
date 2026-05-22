@@ -631,7 +631,7 @@ function GearSlot({ ability, abilityImages, primary, isEmpty }: {
     >
       {imgUrl
         ? <img src={imgUrl} alt={label} />
-        : <span className="gear-slot-fallback">·</span>}
+        : <span className="gear-slot-fallback">{isEmpty ? '?' : '·'}</span>}
     </span>
   )
 }
