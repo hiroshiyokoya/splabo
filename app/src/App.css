@@ -486,10 +486,10 @@ body {
   margin-bottom: 12px;
 }
 .stat-item {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--stat-item-bg);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid var(--inner-highlight-strong);
   border-radius: 8px;
   padding: 8px 14px;
   min-width: 60px;
@@ -516,7 +516,7 @@ body {
 .team-table-wrap { background: var(--surface2); border-radius: 6px; overflow: hidden; }
 .team-table-wrap.my-team { border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .team-label { font-size: 11px; font-weight: 600; color: var(--text-muted); padding: 6px 10px 4px; }
-.team-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.team-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .team-table th {
   text-align: left;
   padding: 4px 8px;
@@ -550,8 +550,8 @@ body {
 .modal-panel--with-stage {
   position: relative;
   isolation: isolate;
-  background: rgba(10, 8, 24, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--panel-bg);
+  border: 1px solid var(--inner-highlight);
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
 }
 .modal-panel--with-stage::before {
@@ -561,7 +561,7 @@ body {
   background-image:    var(--stage-bg);
   background-size:     cover;
   background-position: center;
-  filter: brightness(0.42) saturate(0.75);
+  filter: var(--stage-img-filter);
   pointer-events: none;
   z-index: 0;
   border-radius: inherit;
@@ -573,7 +573,7 @@ body {
    backdrop-filter でぼかし、曇りガラスを表現する。 */
 .modal-panel--with-stage > .modal-header {
   background: transparent;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--inner-highlight);
 }
 .modal-panel--with-stage > .modal-body { background: transparent; }
 
@@ -1069,7 +1069,7 @@ body {
   gap: 10px;
   padding: 16px 22px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--team-color, #6066aa) 10%, rgba(10, 8, 28, 0.25));
+  background: color-mix(in srgb, var(--team-color, #6066aa) 10%, var(--panel-overlay));
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid color-mix(in srgb, var(--team-color, #6066aa) 45%, transparent);
@@ -1077,14 +1077,14 @@ body {
 .score-summary-label {
   font-size: 14px;
   font-weight: 800;
-  color: color-mix(in srgb, var(--team-color, #6066aa) 65%, #ffffff);
+  color: color-mix(in srgb, var(--team-color, #6066aa) 65%, var(--panel-label-tint));
   line-height: 1;
   letter-spacing: -0.02em;
 }
 .score-summary-value {
   font-size: 36px;
   font-weight: 800;
-  color: #ffffff;
+  color: var(--text);
   line-height: 1;
   letter-spacing: 0.01em;
 }
@@ -1114,14 +1114,14 @@ body {
 .team-panel {
   border-radius: 10px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--team-color, #6066aa) 7%, rgba(10, 8, 28, 0.28));
+  background: color-mix(in srgb, var(--team-color, #6066aa) 7%, var(--panel-overlay-strong));
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid color-mix(in srgb, var(--team-color, #6066aa) 35%, transparent);
   border-left: 5px solid color-mix(in srgb, var(--team-color, #6066aa) 80%, transparent);
 }
 .team-panel.my-team {
-  background: color-mix(in srgb, var(--team-color, #6066aa) 13%, rgba(10, 8, 28, 0.25));
+  background: color-mix(in srgb, var(--team-color, #6066aa) 13%, var(--panel-overlay));
   border-left-width: 6px;
 }
 .team-panel-header {
@@ -1129,13 +1129,13 @@ body {
   align-items: baseline;
   gap: 12px;
   padding: 8px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 12px;
+  border-bottom: 1px solid var(--inner-highlight);
+  font-size: 13px;
 }
 .team-panel-label {
   font-weight: 700;
-  font-size: 13px;
-  color: color-mix(in srgb, var(--team-color, #6066aa) 70%, #ffffff);
+  font-size: 14px;
+  color: color-mix(in srgb, var(--team-color, #6066aa) 70%, var(--panel-label-tint));
 }
 .team-panel-score {
   font-weight: 700;
@@ -1166,21 +1166,21 @@ body {
 .crown-badge.crown-333x { color: #ef4444; font-weight: 700; }
 
 /* splashtag */
-.splashtag-cell { min-width: 130px; max-width: 180px; }
+.splashtag-cell { min-width: 140px; max-width: 200px; }
 .splashtag-title {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .splashtag-name {
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.splashtag-id { color: var(--text-muted); font-size: 10px; }
+.splashtag-id { color: var(--text-muted); font-size: 11px; }
 
 /* gear grid (3 rows × 4 slots) */
 .gear-grid {
