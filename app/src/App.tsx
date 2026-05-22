@@ -141,11 +141,11 @@ export default function App() {
     <div className="app">
       <nav className="sidebar">
         <button className="logo" onClick={() => setShowAbout(true)}>chartoon</button>
-        <NavItem id="dashboard" label="ダッシュボード" active={tab} onClick={setTab} />
-        <NavItem id="battles"   label="バトルログ"     active={tab} onClick={setTab} />
-        <NavItem id="ai"        label="AI分析"         active={tab} onClick={setTab} />
-        <NavItem id="weapons"   label="武器図鑑"       active={tab} onClick={setTab} />
-        <NavItem id="settings"  label="設定"           active={tab} onClick={setTab} />
+        <NavItem id="dashboard" icon="📊" label="ダッシュボード" active={tab} onClick={setTab} />
+        <NavItem id="battles"   icon="⚔️" label="バトルログ"     active={tab} onClick={setTab} />
+        <NavItem id="ai"        icon="🧙" label="AI分析"         active={tab} onClick={setTab} />
+        <NavItem id="weapons"   icon="🔫" label="武器図鑑"       active={tab} onClick={setTab} />
+        <NavItem id="settings"  icon="⚙️" label="設定"           active={tab} onClick={setTab} />
         <div className="sidebar-last-fetched">
           {lastFetchedAt ? `データ最終更新日時: ${lastFetchedAt}` : '未取得'}
         </div>
@@ -167,10 +167,11 @@ export default function App() {
   )
 }
 
-function NavItem({ id, label, active, onClick }: { id: Tab; label: string; active: Tab; onClick: (t: Tab) => void }) {
+function NavItem({ id, icon, label, active, onClick }: { id: Tab; icon: string; label: string; active: Tab; onClick: (t: Tab) => void }) {
   return (
     <button className={`nav-item ${active === id ? 'active' : ''}`} onClick={() => onClick(id)}>
-      {label}
+      <span className="nav-item-icon" aria-hidden="true">{icon}</span>
+      <span className="nav-item-label">{label}</span>
     </button>
   )
 }
