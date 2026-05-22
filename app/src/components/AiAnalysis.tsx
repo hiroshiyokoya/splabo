@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { Summary, ChartSpec, AppSettings } from '../types'
+import { defaultModelFor } from '../utils/aiModels'
 
 interface Props {
   settings: AppSettings
@@ -92,10 +93,13 @@ dataはサマリーデータから計算してください。JSONのみ返し、
 
   const userMessage = `バトルデータのサマリー:\n${JSON.stringify(summary, null, 2)}\n\n要求: ${prompt}`
 
-  if (settings.ai.provider === 'openai') {
-    return callOpenAi(settings.ai.apiKey, settings.ai.model || 'gpt-4o-mini', systemPrompt, userMessage)
-  } else {
-    return callGemini(settings.ai.apiKey, settings.ai.model || 'gemini-2.5-flash', systemPrompt, userMessage)
+  const provider = settings.ai.provider
+  const model    = settings.ai.model || defaultModelFor(provider)
+  switch (provider) {
+    case 'openai':    return callOpenAi(settings.ai.apiKey, model, systemPrompt, userMessage)
+    case 'gemini':    return callGemini(settings.ai.apiKey, model, systemPrompt, userMessage)
+    case 'anthropic': return callAnthropic(settings.ai.apiKey, model, systemPrompt, userMessage)
+    case 'grok':      return callGrok(settings.ai.apiKey, model, systemPrompt, userMessage)
   }
 }
 
@@ -134,6 +138,55 @@ async function callGemini(apiKey: string, model: string, system: string, user: s
   if (!res.ok) throw new Error(`Gemini API error: ${res.status} ${await safeBodyText(res)}`)
   const json = await res.json()
   return JSON.parse(json.candidates[0].content.parts[0].text) as ChartSpec
+}
+
+async function callAnthropic(apiKey: string, model: string, system: string, user: string): Promise<ChartSpec> {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type':      'application/json',
+      'x-api-key':         apiKey,
+      'anthropic-version': '2023-06-01',
+      // ブラウザ環境（Tauri webview）から呼ぶため、CORS 制限を回避
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 4096,
+      system,
+      messages: [{ role: 'user', content: user }],
+    }),
+  })
+  if (!res.ok) throw new Error(`Anthropic API error: ${res.status} ${await safeBodyText(res)}`)
+  const json = await res.json()
+  // Anthropic の message.content は [{ type: 'text', text: '...' }, ...] 形式
+  const text = (json.content ?? [])
+    .filter((c: { type: string }) => c.type === 'text')
+    .map((c: { text: string }) => c.text)
+    .join('')
+  return JSON.parse(text) as ChartSpec
+}
+
+async function callGrok(apiKey: string, model: string, system: string, user: string): Promise<ChartSpec> {
+  // Grok (xAI) は OpenAI 互換 API
+  const res = await fetch('https://api.x.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user',   content: user   },
+      ],
+    }),
+  })
+  if (!res.ok) throw new Error(`Grok API error: ${res.status} ${await safeBodyText(res)}`)
+  const json = await res.json()
+  return JSON.parse(json.choices[0].message.content) as ChartSpec
 }
 
 /** エラーレスポンス本文を安全に取り出す。失敗時は空文字。長すぎる場合は切る。 */

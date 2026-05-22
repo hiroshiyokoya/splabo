@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import type { AppSettings } from '../types'
 import { THEMES, saveTheme, getThemeId } from '../utils/appSettings'
+import { AI_MODELS, PROVIDER_LABELS, modelDisplayLabel, defaultModelFor, type AiProvider } from '../utils/aiModels'
 
 interface Props {
   settings: AppSettings
@@ -223,10 +224,20 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
           プロバイダー
           <select
             value={settings.ai.provider}
-            onChange={(e) => update({ ai: { ...settings.ai, provider: e.target.value as 'openai' | 'gemini' } })}
+            onChange={(e) => {
+              const provider = e.target.value as AiProvider
+              // プロバイダ切替時、現プロバイダのプリセットに無いモデル名なら新プロバイダの既定モデルにリセット
+              const stillValid = AI_MODELS[provider].some(m => m.id === settings.ai.model)
+              update({ ai: {
+                ...settings.ai,
+                provider,
+                model: stillValid ? settings.ai.model : defaultModelFor(provider),
+              } })
+            }}
           >
-            <option value="openai">OpenAI (ChatGPT)</option>
-            <option value="gemini">Google Gemini</option>
+            {(Object.keys(PROVIDER_LABELS) as AiProvider[]).map(p => (
+              <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
+            ))}
           </select>
         </label>
         <label>
@@ -235,18 +246,38 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
             type="password"
             value={settings.ai.apiKey}
             onChange={(e) => update({ ai: { ...settings.ai, apiKey: e.target.value } })}
-            placeholder="sk-... または AIzaSy..."
+            placeholder="sk-... / AIzaSy... / sk-ant-... / xai-..."
           />
         </label>
         <label>
           モデル
+          <select
+            value={AI_MODELS[settings.ai.provider].some(m => m.id === settings.ai.model)
+              ? settings.ai.model : '__custom__'}
+            onChange={(e) => {
+              const v = e.target.value
+              if (v === '__custom__') return    // 「カスタム…」選択時は何もしない（下のテキストフィールドで入力）
+              update({ ai: { ...settings.ai, model: v } })
+            }}
+          >
+            {AI_MODELS[settings.ai.provider].map(m => (
+              <option key={m.id} value={m.id}>{modelDisplayLabel(m)}</option>
+            ))}
+            <option value="__custom__">カスタム（下のテキスト欄で指定）…</option>
+          </select>
+        </label>
+        <label>
+          カスタムモデル ID
           <input
             type="text"
             value={settings.ai.model}
             onChange={(e) => update({ ai: { ...settings.ai, model: e.target.value } })}
-            placeholder={settings.ai.provider === 'openai' ? 'gpt-4o-mini' : 'gemini-1.5-flash'}
+            placeholder={defaultModelFor(settings.ai.provider)}
           />
         </label>
+        <p className="settings-note">
+          価格・コンテキスト長は 2026 年 5 月時点の情報。最新は各プロバイダの公式料金ページを参照してください。
+        </p>
       </section>
 
       <section className="settings-section">
