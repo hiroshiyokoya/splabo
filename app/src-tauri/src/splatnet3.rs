@@ -814,6 +814,15 @@ pub async fn cache_ability_images(
         }
     }
 
+    // 結果検証：empty.gti が実際にディスク上に存在するかログ出力
+    if let Some((path, exists)) = crate::images::check_image(app, "ability", crate::abilities::EMPTY_SLOT_KEY) {
+        log::info!(
+            "empty 画像ファイル: {} {}",
+            path.display(),
+            if exists { "存在 ✓" } else { "なし ✗" }
+        );
+    }
+
     Ok(())
 }
 

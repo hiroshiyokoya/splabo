@@ -54,3 +54,10 @@ pub fn read_image(app: AppHandle, kind: String, name: String) -> Option<String> 
     let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
     Some(format!("data:image/png;base64,{b64}"))
 }
+
+/// キャッシュ済み画像が存在するかチェックし、(パス, 存在) を返す。デバッグ用。
+pub fn check_image(app: &AppHandle, kind: &str, name: &str) -> Option<(std::path::PathBuf, bool)> {
+    let path = image_path(app, kind, name).ok()?;
+    let exists = path.exists();
+    Some((path, exists))
+}
