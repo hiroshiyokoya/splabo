@@ -399,7 +399,7 @@ body {
   flex-wrap: wrap;
 }
 .modal-title-text { font-size: 18px; font-weight: 600; }
-.modal-stage      { font-size: 16px; color: var(--text-muted); font-weight: 600; }
+.modal-stage      { font-size: 16px; color: var(--text); opacity: 0.85; font-weight: 600; }
 .modal-meta {
   font-size: 14px;                 /* 12 → 14 */
   font-weight: 400;
@@ -516,7 +516,7 @@ body {
 .team-table-wrap { background: var(--surface2); border-radius: 6px; overflow: hidden; }
 .team-table-wrap.my-team { border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .team-label { font-size: 11px; font-weight: 600; color: var(--text-muted); padding: 6px 10px 4px; }
-.team-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.team-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .team-table th {
   text-align: left;
   padding: 4px 8px;
@@ -1148,11 +1148,11 @@ body {
 }
 
 /* team-panel inner table reuses .team-table styles */
-.team-panel .team-table { font-size: 11px; }
+.team-panel .team-table { font-size: 13px; }
 .team-panel .team-table th,
-.team-panel .team-table td { padding: 5px 6px; }
-.team-panel .team-table .num-col { text-align: right; min-width: 28px; }
-.team-panel .team-table .weapon-col { min-width: 110px; }
+.team-panel .team-table td { padding: 6px 8px; }
+.team-panel .team-table .num-col { text-align: right; min-width: 32px; }
+.team-panel .team-table .weapon-col { min-width: 120px; }
 .team-panel .team-table .gear-col   { min-width: 156px; }
 
 /* crown */
@@ -1166,21 +1166,21 @@ body {
 .crown-badge.crown-333x { color: #ef4444; font-weight: 700; }
 
 /* splashtag */
-.splashtag-cell { min-width: 140px; max-width: 200px; }
+.splashtag-cell { min-width: 150px; max-width: 220px; }
 .splashtag-title {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .splashtag-name {
-  font-size: 13px;
+  font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.splashtag-id { color: var(--text-muted); font-size: 11px; }
+.splashtag-id { color: var(--text-muted); font-size: 12px; }
 
 /* gear grid (3 rows × 4 slots) */
 .gear-grid {
