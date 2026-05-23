@@ -84,12 +84,23 @@ const HASH_METHOD_WEB_SERVICE: u8 = 2;
 // に保存されているため、起動時に共有ファイルが無く store にある場合は移行する。
 // ---------------------------------------------------------------------------
 
-const SHARED_DIR_NAME:  &str = "splatoon-gear";
-const SHARED_FILE_NAME: &str = "auth.json";
+const SHARED_DIR_NAME:    &str = "splatoon-gear";
+const SHARED_FILE_NAME:   &str = "auth.json";
+const PENDING_FILE_NAME:  &str = "login_pending.json";
+/// 認証 pending ファイルの有効期限（10 分）。これより古いと使わず削除。
+const PENDING_TTL_SECS:   i64  = 600;
+
+fn shared_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let base = app.path().config_dir().map_err(|e| format!("config_dir 取得失敗: {e}"))?;
+    Ok(base.join(SHARED_DIR_NAME))
+}
 
 fn shared_auth_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    let base = app.path().config_dir().map_err(|e| format!("config_dir 取得失敗: {e}"))?;
-    Ok(base.join(SHARED_DIR_NAME).join(SHARED_FILE_NAME))
+    Ok(shared_dir(app)?.join(SHARED_FILE_NAME))
+}
+
+fn shared_pending_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(shared_dir(app)?.join(PENDING_FILE_NAME))
 }
 
 /// 共有ファイル → 旧 store の順に探す。後者から取得した場合は共有ファイルにも書き戻す。
@@ -138,6 +149,58 @@ fn delete_session_token(app: &AppHandle) -> Result<(), String> {
         let _ = store.save();
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// 認証 pending（PKCE state/verifier）の共有ファイル管理。
+//
+// chartoon と geartoon が同じ deep link scheme を OS 登録しているため、
+// 認証開始したアプリと deep link を受け取るアプリが食い違うことがある。
+// そのため pending（state + verifier）も共有ファイルに置き、
+// どちらが受け取っても session_token 交換が完了できるようにする。
+// ---------------------------------------------------------------------------
+
+fn save_pending_shared(app: &AppHandle, p: &PendingAuth) -> Result<(), String> {
+    let path = shared_pending_path(app)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("共有ディレクトリ作成失敗: {e}"))?;
+    }
+    let payload = serde_json::json!({
+        "state":          p.state,
+        "verifier":       p.verifier,
+        "started_at":     chrono::Utc::now().to_rfc3339(),
+        "started_by_app": "chartoon",
+    });
+    std::fs::write(&path, serde_json::to_string_pretty(&payload).unwrap_or_default())
+        .map_err(|e| format!("共有 pending 書き込み失敗: {e}"))
+}
+
+/// 共有 pending を読む。TTL 切れなら削除して None を返す。
+fn load_pending_shared(app: &AppHandle) -> Option<PendingAuth> {
+    let path = shared_pending_path(app).ok()?;
+    let content = std::fs::read_to_string(&path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&content).ok()?;
+
+    // TTL 確認（10 分以上経ったら捨てる）
+    if let Some(ts) = v.get("started_at").and_then(|s| s.as_str()) {
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
+            let age = chrono::Utc::now().signed_duration_since(dt.with_timezone(&chrono::Utc));
+            if age.num_seconds() > PENDING_TTL_SECS {
+                let _ = std::fs::remove_file(&path);
+                return None;
+            }
+        }
+    }
+
+    let state    = v.get("state").and_then(|s| s.as_str())?.to_string();
+    let verifier = v.get("verifier").and_then(|s| s.as_str())?.to_string();
+    Some(PendingAuth { state, verifier })
+}
+
+fn delete_pending_shared(app: &AppHandle) {
+    if let Ok(path) = shared_pending_path(app) {
+        let _ = std::fs::remove_file(&path);
+    }
 }
 
 /// store のファイル名と session_token のキー。
@@ -551,12 +614,16 @@ pub fn start_login(app: AppHandle, state: State<'_, AuthState>) -> Result<String
     let url = build_login_url(&verifier, &csrf_state);
 
     // 後続の handle_auth_redirect で照合・消費するため保存。
+    // chartoon・geartoon 両方が同じ deep link scheme を OS 登録しているため、
+    // メモリ内 (AuthState) に加えて共有 pending ファイルにも書き、もう片方が
+    // deep link を受け取った場合でも交換できるようにする。
+    let pending = PendingAuth { verifier, state: csrf_state };
     {
         let mut guard = state.inner.lock().map_err(|e| e.to_string())?;
-        *guard = Some(PendingAuth {
-            verifier,
-            state: csrf_state,
-        });
+        *guard = Some(pending.clone());
+    }
+    if let Err(e) = save_pending_shared(&app, &pending) {
+        log::warn!("共有 pending 保存に失敗（メモリのみで継続）: {e}");
     }
 
     // Chromium 系ブラウザを直接起動する（カスタムスキームのリダイレクトを確実に処理するため）。
@@ -594,13 +661,20 @@ pub async fn handle_auth_redirect(
 ) -> Result<String, String> {
     let (code, returned_state) = parse_auth_fragment(&url)?;
 
-    // 保存しておいた PKCE パラメータを取り出し、state を照合する。
+    // PKCE パラメータを取り出す。
+    // 1) このアプリで start_login が呼ばれていればメモリ内に pending がある
+    // 2) もう片方のアプリで start_login → こちらが deep link を受け取ったケース
+    //    では共有 pending ファイルから読み込む（chartoon と geartoon が同じ scheme を
+    //    OS 登録しているため、deep link の受け先がズレることがある）
     let pending = {
         let mut guard = state.inner.lock().map_err(|e| e.to_string())?;
-        guard.take().ok_or_else(|| {
-            "進行中のログインがありません（start_login を先に呼んでください）".to_string()
-        })?
-    };
+        guard.take()
+    }
+    .or_else(|| load_pending_shared(&app))
+    .ok_or_else(|| {
+        "進行中のログインがありません（start_login を先に呼んでください）".to_string()
+    })?;
+
     if let Some(rs) = returned_state {
         if rs != pending.state {
             return Err("state が一致しません（CSRF の可能性）".to_string());
@@ -610,6 +684,9 @@ pub async fn handle_auth_redirect(
     let client = http_client()?;
     let session_token =
         exchange_session_token_code(&code, &pending.verifier, &client).await?;
+
+    // 交換成功したので共有 pending を削除（成否どちらでもこの後の試行は不可なので消す）
+    delete_pending_shared(&app);
 
     // session_token を共有ファイルに保存（chartoon と geartoon で共有）。
     save_session_token(&app, &session_token)?;
