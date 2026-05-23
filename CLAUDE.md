@@ -87,19 +87,30 @@ gh api repos/hiroshiyokoya/geartoon/contents/<path> --jq '.content' | base64 -d
 
 ### トラッキングイシューを常に最新に保つ
 
-`tracking` ラベルのついたイシューは Claude が常に最新の状態に保つ。
+`tracking` ラベルのついたイシュー（現在: **#15**）は Claude が常に最新の状態に保つ。
 
-**更新するタイミング（必須）:**
-- イシューを新規作成したとき → 該当マイルストーンのリストに追記する
-- イシューのマイルストーンを変更したとき → リスト内の位置を移動する
-- セッション開始時にリポジトリ状況を確認したとき → ズレがあれば修正する
+### 🚨 `gh issue create` と トラッキング更新は**セットの操作**
+
+**新しい Issue を立てたら、その直後に必ずトラッキングイシューにも追記する**。
+別タスクに移る前に、1 つのアクションとして必ずセットで実行すること。トラッキング更新を後回しにすると忘れる。
+
+```bash
+# 1) Issue を立てる
+gh issue create --title "..." --label "..." --body "..."
+# → 出力された URL から Issue 番号を控える（例: 94）
+
+# 2) 直後にトラッキング #15 へ追記する
+gh issue view 15 --json body --jq .body > /tmp/tracking.md
+# /tmp/tracking.md を編集して該当マイルストーンに「- #94 タイトル」を追記
+gh api repos/hiroshiyokoya/chartoon/issues/15 -X PATCH -F body=@/tmp/tracking.md
+```
+
+### その他の更新タイミング
+
+- **イシューのマイルストーンを変更**したとき → リスト内の位置を移動する
+- **セッション開始時にリポジトリ状況を確認**したとき → ズレがあれば修正する
 
 クローズ済みイシューは GitHub 側で自動的に取り消し線が引かれるため、トラッキング側で `[x]` を付ける必要はない。
-
-**更新方法:**
-```bash
-gh api repos/hiroshiyokoya/chartoon/issues/<番号> -X PATCH -f body="..."
-```
 
 ---
 
