@@ -1,0 +1,24 @@
+# 改行コードを LF 固定に統一する（Windows / macOS / Linux 横断）。
+# core.autocrlf=true の環境で出る「LF will be replaced by CRLF」警告を抑止。
+
+* text=auto eol=lf
+
+# バイナリ（text 自動判定に任せない）
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.webp   binary
+*.icns   binary
+*.ttf    binary
+*.woff   binary
+*.woff2  binary
+*.eot    binary
+*.gti    binary
+*.db     binary
+
+# Windows 限定ファイルは CRLF（実行不能を防ぐ）
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+*.ps1    text eol=crlf
