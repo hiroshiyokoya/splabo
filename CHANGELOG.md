@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+- chartoon と同じ PC に両方インストールすると、後にインストールした片方しか認証完了できなかった問題への対応 (#104)
+  - 認証済み session_token と PKCE pending を `<config_dir>/splatoon-gear/` 配下の共有ファイル化
+  - これにより、どちらのアプリで認証を開始しても、どちらが deep link を受け取っても、両方で認証済みになる
+  - 既存ユーザーは旧 store の token を自動で共有ファイルに移行（再ログイン不要）
+  - 同梱の chartoon 側にも対応 PR がマージ済みであることが必要（chartoon v1.0.0 以降）
+
 ## [0.5.0] — 2026-05-18
 
 geartoon 初回リリース。

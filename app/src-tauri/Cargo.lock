@@ -116,6 +116,7 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
+ "chrono",
  "log",
  "rand 0.8.6",
  "reqwest 0.12.28",
