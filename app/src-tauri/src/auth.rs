@@ -22,7 +22,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Mutex;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_store::StoreExt;
 
 // ---------------------------------------------------------------------------
@@ -72,6 +72,73 @@ const SPLATNET3_WEB_VIEW_VER: &str = "10.0.0-dfefd0af";
 const HASH_METHOD_CORAL: u8 = 1;
 /// znca-api hash_method: Web Service Token 用。
 const HASH_METHOD_WEB_SERVICE: u8 = 2;
+
+// ---------------------------------------------------------------------------
+// 認証トークン保存：chartoon と geartoon で共有するためのファイルベース実装。
+// パス：<config_dir>/splatoon-gear/auth.json
+//   - Windows: %APPDATA%\splatoon-gear\auth.json
+//   - macOS:   ~/Library/Application Support/splatoon-gear/auth.json
+//   - Linux:   ~/.config/splatoon-gear/auth.json
+//
+// 既存ユーザーの session_token は tauri_plugin_store(`auth.json` in app_data_dir)
+// に保存されているため、起動時に共有ファイルが無く store にある場合は移行する。
+// ---------------------------------------------------------------------------
+
+const SHARED_DIR_NAME:  &str = "splatoon-gear";
+const SHARED_FILE_NAME: &str = "auth.json";
+
+fn shared_auth_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let base = app.path().config_dir().map_err(|e| format!("config_dir 取得失敗: {e}"))?;
+    Ok(base.join(SHARED_DIR_NAME).join(SHARED_FILE_NAME))
+}
+
+/// 共有ファイル → 旧 store の順に探す。後者から取得した場合は共有ファイルにも書き戻す。
+fn load_session_token(app: &AppHandle) -> Option<String> {
+    // 1) 共有ファイル
+    if let Ok(path) = shared_auth_path(app) {
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(t) = v.get("session_token").and_then(|s| s.as_str()).filter(|s| !s.is_empty()) {
+                    return Some(t.to_string());
+                }
+            }
+        }
+    }
+    // 2) 旧 store からの後方互換読み込み → 共有ファイルへ移行
+    let store = app.store(STORE_FILE).ok()?;
+    let token = store.get(STORE_KEY_SESSION_TOKEN)
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .filter(|s| !s.is_empty())?;
+    let _ = save_session_token(app, &token);  // 共有ファイルへ移行（失敗してもメモリ上の token は返す）
+    Some(token)
+}
+
+fn save_session_token(app: &AppHandle, token: &str) -> Result<(), String> {
+    let path = shared_auth_path(app)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("共有ディレクトリ作成失敗: {e}"))?;
+    }
+    let payload = serde_json::json!({
+        "session_token": token,
+        "updated_at":    chrono::Utc::now().to_rfc3339(),
+        "source_app":    "chartoon",
+    });
+    std::fs::write(&path, serde_json::to_string_pretty(&payload).unwrap_or_default())
+        .map_err(|e| format!("共有 auth.json 書き込み失敗: {e}"))
+}
+
+fn delete_session_token(app: &AppHandle) -> Result<(), String> {
+    let path = shared_auth_path(app)?;
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| format!("共有 auth.json 削除失敗: {e}"))?;
+    }
+    // 旧 store も削除（後方互換クリーンアップ）
+    if let Ok(store) = app.store(STORE_FILE) {
+        store.delete(STORE_KEY_SESSION_TOKEN);
+        let _ = store.save();
+    }
+    Ok(())
+}
 
 /// store のファイル名と session_token のキー。
 const STORE_FILE: &str = "auth.json";
@@ -544,17 +611,8 @@ pub async fn handle_auth_redirect(
     let session_token =
         exchange_session_token_code(&code, &pending.verifier, &client).await?;
 
-    // session_token を store に保存（長期保存）。
-    let store = app
-        .store(STORE_FILE)
-        .map_err(|e| format!("store オープン失敗: {e}"))?;
-    store.set(
-        STORE_KEY_SESSION_TOKEN,
-        serde_json::Value::String(session_token.clone()),
-    );
-    store
-        .save()
-        .map_err(|e| format!("store 保存失敗: {e}"))?;
+    // session_token を共有ファイルに保存（chartoon と geartoon で共有）。
+    save_session_token(&app, &session_token)?;
 
     // nxapi ストレージにも保存（bullet token 取得でサイドカーが使用）。
     crate::nxapi::nxapi_setup(&app, &session_token).await?;
@@ -567,16 +625,9 @@ pub async fn handle_auth_redirect(
 /// → bulletToken を順に取得して返す。
 #[tauri::command]
 pub async fn get_bullet_token(app: AppHandle) -> Result<BulletTokenResult, String> {
-    // 保存済み session_token を読む。
-    let session_token = {
-        let store = app
-            .store(STORE_FILE)
-            .map_err(|e| format!("store オープン失敗: {e}"))?;
-        store
-            .get(STORE_KEY_SESSION_TOKEN)
-            .and_then(|v| v.as_str().map(|s| s.to_string()))
-            .ok_or_else(|| "未ログインです（session_token がありません）".to_string())?
-    };
+    // 保存済み session_token を読む（共有ファイル経由）。
+    let session_token = load_session_token(&app)
+        .ok_or_else(|| "未ログインです（session_token がありません）".to_string())?;
 
     let client = http_client()?;
     fetch_bullet_token(&session_token, &client).await
@@ -629,36 +680,19 @@ async fn request_f(
 
 /// session_token が保存済みか（= ログイン済みか）を返す。内部呼び出し用。
 pub fn is_logged_in(app: &AppHandle) -> bool {
-    app.store(STORE_FILE)
-        .ok()
-        .and_then(|store| store.get(STORE_KEY_SESSION_TOKEN))
-        .and_then(|v| v.as_str().map(|s| !s.is_empty()))
-        .unwrap_or(false)
+    load_session_token(app).is_some()
 }
 
 /// session_token が保存済みか（= ログイン済みか）を返す。
 #[tauri::command]
 pub fn check_auth_status(app: AppHandle) -> Result<bool, String> {
-    let store = app
-        .store(STORE_FILE)
-        .map_err(|e| format!("store オープン失敗: {e}"))?;
-    Ok(store
-        .get(STORE_KEY_SESSION_TOKEN)
-        .and_then(|v| v.as_str().map(|s| !s.is_empty()))
-        .unwrap_or(false))
+    Ok(load_session_token(&app).is_some())
 }
 
 /// 保存済みトークンを削除してログアウトする。
 #[tauri::command]
 pub fn logout(app: AppHandle) -> Result<(), String> {
-    let store = app
-        .store(STORE_FILE)
-        .map_err(|e| format!("store オープン失敗: {e}"))?;
-    store.delete(STORE_KEY_SESSION_TOKEN);
-    store
-        .save()
-        .map_err(|e| format!("store 保存失敗: {e}"))?;
-    Ok(())
+    delete_session_token(&app)
 }
 
 /// `now_unix` は将来のトークン有効期限管理用。現状は未使用警告抑制のため公開。
