@@ -139,6 +139,7 @@ OpenAI / Google Gemini / Anthropic Claude / xAI Grok のいずれかに集計デ
 Nintendo Switch Online 認証・SplatNet 3 API アクセス・stat.ink 連携の実装に際して以下を参照しました。
 
 - [samuelthomas2774/nxapi](https://github.com/samuelthomas2774/nxapi) — Nintendo Switch Online の認証・API アクセスライブラリ。chartoon の認証フローはこのプロジェクトが明らかにした仕様に基づいています。f-token 生成も nxapi が内部で使用するエンドポイント（`nxapi-znca-api.fancy.org.uk`）を利用します。
+- [fetus-hina/stat.ink](https://github.com/fetus-hina/stat.ink) — AIZU 氏が運営する Splatoon シリーズのバトル統計共有プラットフォーム（[stat.ink](https://stat.ink/)）の OSS 実装。chartoon の stat.ink アップロード機能はこのサービスの公開 API（`api/v3/battle`）を利用します。
 - [frozenpandaman/s3s](https://github.com/frozenpandaman/s3s) — SplatNet 3 から stat.ink へバトルデータを送る Python 製ツール。chartoon の stat.ink アップロード機能はこのリポジトリのペイロード構築ロジック（`prepare_battle_result` / `set_scoreboard` 相当）・UUID v5 名前空間・武器/ステージ ID 変換ルールを Rust で再実装したものです。
 
 ## 免責事項
