@@ -7,3 +7,4 @@ tools/nxapi-wrapper/node_modules/
 tools/nxapi-wrapper/dist/
 .env
 .claude/worktrees/
+.claude/settings.local.json
