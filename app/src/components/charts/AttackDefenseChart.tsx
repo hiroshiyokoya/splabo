@@ -35,11 +35,13 @@ function attackStackTopRoundedShape(props: any) {
  * `stackId="attack"` の 2 本（K+A）と `stackId="defense"` の 1 本（D）で 2 グループバーを表現する。
  */
 export function AttackDefenseChart({
-  data, height = 280, nameTransform,
+  data, height = 280, nameTransform, tickAngle,
 }: {
   data:           GroupedStatsRow[]
   height?:        number
   nameTransform?: (name: string) => string
+  /** X 軸ラベルを斜めに表示する角度。長いラベル（ステージ名など）向け。 */
+  tickAngle?:     number
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
 
@@ -81,9 +83,11 @@ export function AttackDefenseChart({
         <XAxis
           dataKey="name"
           interval={0}
-          height={28}
+          height={tickAngle ? 44 : 28}
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}
           tickFormatter={nameTransform}
+          angle={tickAngle ? tickAngle : undefined}
+          textAnchor={tickAngle ? 'start' : 'middle'}
         />
         <YAxis
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}
