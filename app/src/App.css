@@ -84,9 +84,30 @@ body {
 .nav-item:hover { color: var(--text); background: var(--surface2); }
 .nav-item.active { color: var(--accent); background: var(--surface2); border-left: 2px solid var(--accent); }
 
+/* サイドバー下部の「バトルデータを更新」ボタン。最終更新日時のすぐ上 */
+.sidebar-fetch-btn {
+  margin: auto 12px 4px;          /* 上に伸びて下のラベルとくっつく */
+  padding: 8px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: center;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.sidebar-fetch-btn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.sidebar-fetch-btn:disabled { opacity: 0.55; cursor: default; }
+
 .sidebar-last-fetched {
-  margin-top: auto;
-  padding: 12px 16px 4px;
+  /* sidebar-fetch-btn が margin-top: auto を取るので、こちらの auto は不要に */
+  padding: 4px 16px 4px;
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.4;

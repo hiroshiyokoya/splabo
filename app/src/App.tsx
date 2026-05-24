@@ -137,6 +137,20 @@ export default function App() {
     setTab('dashboard')
   }
 
+  // サイドバーから呼ばれる「バトルデータ更新」処理
+  const [fetching, setFetching] = useState(false)
+  async function handleFetchFull() {
+    if (fetching) return
+    setFetching(true)
+    try {
+      await invoke('fetch_battles_full')
+    } catch (e) {
+      console.error('バトルデータ取得失敗:', e)
+    } finally {
+      setFetching(false)
+    }
+  }
+
   return (
     <div className="app">
       <nav className="sidebar">
@@ -146,6 +160,14 @@ export default function App() {
         <NavItem id="ai"        icon="🧙" label="AI分析"         active={tab} onClick={setTab} />
         <NavItem id="weapons"   icon="🔫" label="武器図鑑"       active={tab} onClick={setTab} />
         <NavItem id="settings"  icon="⚙️" label="設定"           active={tab} onClick={setTab} />
+        <button
+          className="sidebar-fetch-btn"
+          onClick={handleFetchFull}
+          disabled={fetching}
+          title="SplatNet3 から最新のバトル結果・詳細データを取得"
+        >
+          {fetching ? '取得中…' : '🔄 バトルデータを更新'}
+        </button>
         <div className="sidebar-last-fetched">
           {lastFetchedAt ? `データ最終更新日時: ${lastFetchedAt}` : '未取得'}
         </div>
