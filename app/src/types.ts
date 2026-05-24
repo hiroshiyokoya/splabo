@@ -314,3 +314,118 @@ export function avgKillRatio(avgKill: number | null, avgDeath: number | null): s
   if (avgDeath === 0) return '∞'
   return (avgKill / avgDeath).toFixed(2)
 }
+
+// ---------------------------------------------------------------------------
+// カスタムグラフ（#86）用の型
+// ---------------------------------------------------------------------------
+
+/** db_grouped_stats の集計キー（X 軸候補）。 */
+export type GroupByKey =
+  | 'weapon'
+  | 'stage'
+  | 'rule'
+  | 'mode'
+  | 'sub_weapon'
+  | 'special_weapon'
+  | 'weapon_category'
+  | 'result'
+
+/** シンプル棒チャートで Y 軸に使えるメトリクス。 */
+export type MetricKey =
+  | 'total'         // バトル数
+  | 'wins'          // 勝数
+  | 'win_rate'      // 勝率（0-1）
+  | 'avg_kill'      // 平均キル
+  | 'avg_death'     // 平均デス
+  | 'avg_assist'    // 平均アシスト
+  | 'avg_kd'        // 平均キル/デス（クライアント側で算出）
+  | 'avg_special'   // 平均スペシャル
+  | 'avg_inked'     // 平均塗り
+  | 'avg_duration'  // 平均バトル時間（秒）
+
+/** カスタムグラフ 1 個分の設定。localStorage に CustomChart[] として保存する想定。 */
+export type CustomChartType = 'stacked_winrate' | 'simple_bar' | 'attack_defense'
+
+export interface CustomChart {
+  id:       string
+  title:    string
+  type:     CustomChartType
+  groupBy:  GroupByKey
+  /** `simple_bar` のときのみ必要。それ以外は無視される。 */
+  metric?:  MetricKey
+}
+
+/** db_grouped_stats の返却 1 行分。
+ *  `avg_*` は detail_fetched=1 のバトルだけで集計しているため、未取得しかない場合は null。 */
+export interface GroupedStatsRow {
+  key:           string
+  name:          string
+  total:         number
+  wins:          number
+  draws:         number
+  win_rate:      number
+  avg_kill:      number | null
+  avg_death:     number | null
+  avg_assist:    number | null
+  avg_special:   number | null
+  avg_inked:     number | null
+  avg_duration:  number | null
+}
+
+/** UI 表示用のラベル。 */
+export const GROUP_BY_LABELS: Record<GroupByKey, string> = {
+  weapon:          '武器',
+  stage:           'ステージ',
+  rule:            'ルール',
+  mode:            'モード',
+  sub_weapon:      'サブ',
+  special_weapon:  'スペシャル',
+  weapon_category: '武器カテゴリ',
+  result:          '結果',
+}
+
+export const METRIC_LABELS: Record<MetricKey, string> = {
+  total:        'バトル数',
+  wins:         '勝数',
+  win_rate:     '勝率',
+  avg_kill:     '平均キル',
+  avg_death:    '平均デス',
+  avg_assist:   '平均アシスト',
+  avg_kd:       '平均キル/デス',
+  avg_special:  '平均SP',
+  avg_inked:    '平均塗り',
+  avg_duration: '平均バトル時間',
+}
+
+/** GroupedStatsRow から指定メトリクスの数値を取り出す。NULL は null を返す。
+ *  `avg_kd` は avg_kill / avg_death をクライアント側で算出（D=0 は null）。 */
+export function getMetric(row: GroupedStatsRow, metric: MetricKey): number | null {
+  switch (metric) {
+    case 'total':        return row.total
+    case 'wins':         return row.wins
+    case 'win_rate':     return row.win_rate
+    case 'avg_kill':     return row.avg_kill
+    case 'avg_death':    return row.avg_death
+    case 'avg_assist':   return row.avg_assist
+    case 'avg_kd':
+      if (row.avg_kill === null || row.avg_death === null) return null
+      if (row.avg_death === 0) return null
+      return row.avg_kill / row.avg_death
+    case 'avg_special':  return row.avg_special
+    case 'avg_inked':    return row.avg_inked
+    case 'avg_duration': return row.avg_duration
+  }
+}
+
+/** メトリクス値の表示文字列。勝率は %、時間は m:ss、それ以外は小数 2 桁。 */
+export function formatMetric(value: number | null, metric: MetricKey): string {
+  if (value === null) return '—'
+  if (metric === 'win_rate') return `${(value * 100).toFixed(1)}%`
+  if (metric === 'avg_duration') {
+    const m = Math.floor(value / 60)
+    const s = Math.round(value % 60)
+    return `${m}:${String(s).padStart(2, '0')}`
+  }
+  if (metric === 'total' || metric === 'wins') return value.toLocaleString()
+  return value.toFixed(2)
+}

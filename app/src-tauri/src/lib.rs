@@ -81,6 +81,7 @@ pub fn run() {
             db::db_weapons_used,
             db::db_stages_used,
             db::db_summary,
+            db::db_grouped_stats,
             db::db_list_weapons,
             db::backfill_battle_players,
             images::read_image,

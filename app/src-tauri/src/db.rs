@@ -709,6 +709,110 @@ pub async fn db_summary(
     }))
 }
 
+/// 任意の `group_by` キーで集計し、平均キル/デス/アシスト/SP/塗り/バトル時間まで返す汎用集計コマンド。
+///
+/// カスタムグラフ（#86）の供給元として使う。`db_summary` が「勝率と件数」しか返さないのに対し、
+/// こちらは平均系メトリクスを含むため、シンプル棒・攻撃 vs デスチャートの両方を 1 回のクエリで賄える。
+///
+/// `group_by` の許容値:
+/// - `weapon` / `stage` / `rule` / `mode` / `sub_weapon` / `special_weapon` / `weapon_category` / `result`
+///
+/// 平均系は `detail_fetched=1` のバトルだけを母数にする（詳細未取得は K/D 等が 0 で記録されるため）。
+/// `weapon_category` は battles → weapons の LEFT JOIN を経由し、category が NULL/空のバトルは
+/// `category` 列が `'(未分類)'` として 1 グループにまとめる。
+#[tauri::command]
+pub async fn db_grouped_stats(
+    db: tauri::State<'_, DbPool>,
+    group_by: String,
+    since: Option<String>,
+    until: Option<String>,
+    mode: Option<String>,
+    rule: Option<String>,
+    result_filter: Option<String>,  // JS: resultFilter
+    weapon: Option<String>,
+    stage: Option<String>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mode = normalize_mode_filter(mode);
+
+    // group_by を SQL の (テーブル/JOIN, GROUP BY 式, display 用列) に翻訳する。
+    // ここで JOIN を分岐させているのは weapon_category だけ weapons テーブルが必要なため。
+    let (from_clause, group_expr, display_expr): (&str, &str, &str) = match group_by.as_str() {
+        "weapon"          => ("battles",                                              "weapon",                                                          "weapon"),
+        "stage"           => ("battles",                                              "stage",                                                           "COALESCE(MAX(stage_name), stage)"),
+        "rule"            => ("battles",                                              "rule",                                                            "rule"),
+        "mode"            => ("battles",                                              "CASE WHEN mode LIKE 'bankara%' THEN 'bankara' ELSE mode END",     "CASE WHEN mode LIKE 'bankara%' THEN 'bankara' ELSE mode END"),
+        "sub_weapon"      => ("battles",                                              "COALESCE(sub_weapon, '(不明)')",                                   "COALESCE(sub_weapon, '(不明)')"),
+        "special_weapon"  => ("battles",                                              "COALESCE(special_weapon, '(不明)')",                               "COALESCE(special_weapon, '(不明)')"),
+        "weapon_category" => ("battles LEFT JOIN weapons ON weapons.name = battles.weapon",
+                                                                                       "COALESCE(NULLIF(weapons.category, ''), '(未分類)')",                "COALESCE(NULLIF(weapons.category, ''), '(未分類)')"),
+        "result"          => ("battles",                                              "result",                                                          "result"),
+        _ => return Err(format!("未対応の group_by: {group_by}")),
+    };
+
+    let filter_where =
+        "(? IS NULL OR played_at >= ?)
+           AND (? IS NULL OR played_at <= ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || mode || '|') > 0)
+           AND (? IS NULL OR rule = ?)
+           AND (? IS NULL OR result = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)";
+
+    let sql = format!(
+        "SELECT
+            {group_expr} as key,
+            {display_expr} as display_name,
+            COUNT(*)                                                  as total,
+            SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END)            as wins,
+            SUM(CASE WHEN result='draw' THEN 1 ELSE 0 END)            as draws,
+            AVG(CASE WHEN detail_fetched = 1 THEN kill     END)       as avg_kill,
+            AVG(CASE WHEN detail_fetched = 1 THEN death    END)       as avg_death,
+            AVG(CASE WHEN detail_fetched = 1 THEN assist   END)       as avg_assist,
+            AVG(CASE WHEN detail_fetched = 1 THEN special  END)       as avg_special,
+            AVG(CASE WHEN detail_fetched = 1 THEN inked    END)       as avg_inked,
+            AVG(CASE WHEN detail_fetched = 1 THEN duration END)       as avg_duration
+         FROM {from_clause}
+         WHERE {filter_where}
+         GROUP BY {group_expr}
+         ORDER BY total DESC"
+    );
+
+    let rows = sqlx::query(&sql)
+        .bind(&since).bind(&since)
+        .bind(&until).bind(&until)
+        .bind(&mode).bind(&mode)
+        .bind(&rule).bind(&rule)
+        .bind(&result_filter).bind(&result_filter)
+        .bind(&weapon).bind(&weapon)
+        .bind(&stage).bind(&stage)
+        .fetch_all(db.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|r| {
+        let total: i64                = r.get("total");
+        let wins: i64                 = r.get("wins");
+        let draws: i64                = r.get("draws");
+        let decisive                  = total - draws;
+        let win_rate                  = if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 };
+        let name: String              = r.try_get("display_name").unwrap_or_else(|_| r.get::<String, _>("key"));
+        serde_json::json!({
+            "key":          r.get::<String, _>("key"),
+            "name":         name,
+            "total":        total,
+            "wins":         wins,
+            "draws":        draws,
+            "win_rate":     win_rate,
+            "avg_kill":     r.try_get::<f64, _>("avg_kill").ok(),
+            "avg_death":    r.try_get::<f64, _>("avg_death").ok(),
+            "avg_assist":   r.try_get::<f64, _>("avg_assist").ok(),
+            "avg_special":  r.try_get::<f64, _>("avg_special").ok(),
+            "avg_inked":    r.try_get::<f64, _>("avg_inked").ok(),
+            "avg_duration": r.try_get::<f64, _>("avg_duration").ok(),
+        })
+    }).collect())
+}
+
 // ---------------------------------------------------------------------------
 // 武器マスター
 // ---------------------------------------------------------------------------
