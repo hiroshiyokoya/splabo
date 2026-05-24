@@ -193,10 +193,10 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
               </ChartCard>
             )}
 
-            {/* #86 PR A: シンプル棒のデモ。ステージ別の平均塗り */}
+            {/* #86 PR A: シンプル棒のデモ。ステージ別の平均塗り。ラベルは斜め 30° で長い名前にも対応 */}
             {demoInked.length > 0 && (
               <ChartCard title="ステージ別 平均塗り">
-                <SimpleBarChart data={demoInked.slice(0, 14)} metric="avg_inked" height={260} nameTransform={stageAbbr} />
+                <SimpleBarChart data={demoInked.slice(0, 14)} metric="avg_inked" height={260} nameTransform={stageAbbr} tickAngle={30} />
               </ChartCard>
             )}
 

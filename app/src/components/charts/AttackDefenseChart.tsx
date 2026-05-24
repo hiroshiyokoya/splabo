@@ -106,22 +106,45 @@ export function AttackDefenseChart({
             )
           }}
         />
-        <Legend wrapperStyle={{ fontSize: 11 }} iconType="square" />
-        {/* 攻撃バー: K の上に A を積み上げ。shape でスタック最上段だけ角丸にして D バーと見た目を揃える。 */}
-        <Bar dataKey="kill"   name="平均キル"    stackId="attack" maxBarSize={24} activeBar={false}
+        {/* 角丸の小さなスウォッチで凡例を描く（Recharts デフォルトの四角アイコンは黒くて分かりにくい）。
+            Bar 側の fill (= 系列代表色) を payload.color で受け取ってここで丸角矩形を描く。 */}
+        <Legend
+          content={(props: any) => (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 14, fontSize: 11, paddingTop: 4 }}>
+              {(props.payload as any[] | undefined)?.map((entry, i) => (
+                <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width:        16,
+                      height:       10,
+                      background:   entry.color,
+                      borderRadius: 3,
+                    }}
+                    aria-hidden="true"
+                  />
+                  <span style={{ color: 'var(--text)' }}>{entry.value}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        />
+        {/* 攻撃バー: K の上に A を積み上げ。shape でスタック最上段だけ角丸にして D バーと見た目を揃える。
+            Bar の fill は実際の描画では Cell が上書きするが、Legend のアイコン色はここから取られる。 */}
+        <Bar dataKey="kill"   name="平均キル"    fill="#22c55e" stackId="attack" maxBarSize={24} activeBar={false}
           shape={attackStackTopRoundedShape}
           onMouseEnter={(_: any, i: number) => setActiveIndex(i)}
         >
           {chartData.map((_, i) => <Cell key={i} fill="url(#grad-kill)"   fillOpacity={cellOpacity(i)} />)}
         </Bar>
-        <Bar dataKey="assist" name="平均アシスト" stackId="attack" maxBarSize={24} activeBar={false}
+        <Bar dataKey="assist" name="平均アシスト" fill="#9ca3af" stackId="attack" maxBarSize={24} activeBar={false}
           shape={attackStackTopRoundedShape}
           onMouseEnter={(_: any, i: number) => setActiveIndex(i)}
         >
           {chartData.map((_, i) => <Cell key={i} fill="url(#grad-assist)" fillOpacity={cellOpacity(i)} />)}
         </Bar>
         {/* デスバー: 別 stackId なので横に並ぶ */}
-        <Bar dataKey="death"  name="平均デス"    stackId="defense" maxBarSize={24} activeBar={false} radius={[4, 4, 0, 0]}
+        <Bar dataKey="death"  name="平均デス"    fill="#ef4444" stackId="defense" maxBarSize={24} activeBar={false} radius={[4, 4, 0, 0]}
           onMouseEnter={(_: any, i: number) => setActiveIndex(i)}
         >
           {chartData.map((_, i) => <Cell key={i} fill="url(#grad-death)"  fillOpacity={cellOpacity(i)} />)}

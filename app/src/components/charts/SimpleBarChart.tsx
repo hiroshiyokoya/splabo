@@ -16,13 +16,16 @@ import { METRIC_LABELS, getMetric, formatMetric } from '../../types'
  * - 値が null のカテゴリ（detail_fetched=0 しかない等）はバーを描かず、ツールチップで「—」表示
  */
 export function SimpleBarChart({
-  data, metric, height = 260, nameTransform,
+  data, metric, height = 260, nameTransform, tickAngle,
 }: {
   data:           GroupedStatsRow[]
   metric:         MetricKey
   height?:        number
   /** X 軸ラベルの整形（ステージ名の省略など）。 */
   nameTransform?: (name: string) => string
+  /** X 軸ラベルを斜めに表示する角度（度）。ステージ名のように長いラベルで活用。
+   *  指定時は textAnchor='end' でラベル右端を tick に揃え、tick 高さを広げる。 */
+  tickAngle?:     number
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
 
@@ -90,9 +93,11 @@ export function SimpleBarChart({
         <XAxis
           dataKey="name"
           interval={0}
-          height={28}
+          height={tickAngle ? 44 : 28}
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}
           tickFormatter={nameTransform}
+          angle={tickAngle ? -tickAngle : undefined}
+          textAnchor={tickAngle ? 'end' : 'middle'}
         />
         <YAxis
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}
