@@ -161,12 +161,12 @@ export default function App() {
         <NavItem id="weapons"   icon="🔫" label="武器図鑑"       active={tab} onClick={setTab} />
         <NavItem id="settings"  icon="⚙️" label="設定"           active={tab} onClick={setTab} />
         <button
-          className="sidebar-fetch-btn"
+          className="btn-primary sidebar-fetch-btn"
           onClick={handleFetchFull}
           disabled={fetching}
           title="SplatNet3 から最新のバトル結果・詳細データを取得"
         >
-          {fetching ? '取得中…' : '🔄 バトルデータを更新'}
+          {fetching ? '取得中...' : '🔄 バトルデータを取得'}
         </button>
         <div className="sidebar-last-fetched">
           {lastFetchedAt ? `データ最終更新日時: ${lastFetchedAt}` : '未取得'}
