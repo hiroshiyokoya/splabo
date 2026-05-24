@@ -194,6 +194,25 @@ fn build_team_players(players_val: Option<&serde_json::Value>) -> Vec<serde_json
         .unwrap_or_default()
 }
 
+/// ウデマエ文字列を stat.ink の (rank, s_plus) 形式に分解する。
+/// 例:
+///   "S+0"  → ("s+", Some(0))
+///   "S+12" → ("s+", Some(12))
+///   "S"    → ("s",  None)
+///   "A+"   → ("a+", None)
+/// s3s の `re.split('([0-9]+)', child["udemae"].lower())` と同等。
+fn parse_udemae(s: &str) -> (String, Option<i64>) {
+    let lower = s.to_lowercase();
+    match lower.find(|c: char| c.is_ascii_digit()) {
+        Some(pos) => {
+            let rank = lower[..pos].to_string();
+            let num: Option<i64> = lower[pos..].parse().ok();
+            (rank, num)
+        }
+        None => (lower, None),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // メインのペイロード構築（s3s の prepare_battle_result に相当）
 // ---------------------------------------------------------------------------
@@ -394,10 +413,10 @@ fn build_payload(detail: &serde_json::Value, parent: Option<&serde_json::Value>)
 
     // --- 履歴クエリの親ノード由来の情報 ---
     // parent は各 historyGroup の最新バトルにだけ紐付いている（s3s 準拠）。
-    // - バンカラチャレンジ: bankaraMatchChallenge.winCount / loseCount
+    // - バンカラチャレンジ: bankaraMatchChallenge.winCount / loseCount / udemaeAfter / isPromo
     // - X マッチ評価戦:    xMatchMeasurement.winCount / loseCount / xPowerAfter
     if let Some(p) = parent {
-        // バンカラチャレンジのセット累計勝敗
+        // セット累計勝敗（バンカラチャレンジ・X マッチ評価戦の両方）
         if let Some(w) = p.pointer("/winCount").and_then(|v| v.as_i64()) {
             if let Some(l) = p.pointer("/loseCount").and_then(|v| v.as_i64()) {
                 payload["challenge_win"]  = serde_json::json!(w);
@@ -410,9 +429,34 @@ fn build_payload(detail: &serde_json::Value, parent: Option<&serde_json::Value>)
                 payload["x_power_after"] = serde_json::json!(after);
             }
         }
-        // 注: rank_before/rank_after の正確な算出（ウデマエ文字列パース、idx 判定、
-        //     昇格戦判定）は s3s と同等のロジックが必要で、本実装では未対応。
-        //     別 issue で扱う（#104 の TODO 部分）。
+        // バンカラチャレンジのランク変動と昇格戦判定
+        if mode == "BANKARA" {
+            // 昇格戦か
+            if let Some(is_promo) = p.pointer("/isPromo").and_then(|v| v.as_bool()) {
+                payload["rank_up_battle"] = serde_json::json!(if is_promo { "yes" } else { "no" });
+            }
+            // バトル直前のウデマエ（vsHistoryDetail に udemae フィールドがあれば）
+            let before_str = detail.pointer("/udemae")
+                .or_else(|| detail.pointer("/bankaraMatch/udemae"))
+                .and_then(|v| v.as_str());
+            if let Some(s) = before_str {
+                let (rank, sp) = parse_udemae(s);
+                payload["rank_before"] = serde_json::json!(rank);
+                if let Some(sp) = sp {
+                    payload["rank_before_s_plus"] = serde_json::json!(sp);
+                }
+            }
+            // 確定後ウデマエ（最新バトルなので udemaeAfter は最終値）
+            // s3s 流：udemaeAfter があれば rank_after に、無ければ rank_before と同じにする
+            let after_str = p.pointer("/udemaeAfter").and_then(|v| v.as_str()).or(before_str);
+            if let Some(s) = after_str {
+                let (rank, sp) = parse_udemae(s);
+                payload["rank_after"] = serde_json::json!(rank);
+                if let Some(sp) = sp {
+                    payload["rank_after_s_plus"] = serde_json::json!(sp);
+                }
+            }
+        }
     }
 
     // --- フェスマッチ ---
@@ -727,4 +771,27 @@ pub async fn delete_all_uploaded_battles(
 
     log::info!("[stat.ink] {} 件削除完了 (対象 {} 件)", deleted, battles.len());
     Ok(deleted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_udemae_s_plus_zero() {
+        assert_eq!(parse_udemae("S+0"),  ("s+".to_string(), Some(0)));
+        assert_eq!(parse_udemae("S+12"), ("s+".to_string(), Some(12)));
+    }
+
+    #[test]
+    fn parse_udemae_without_number() {
+        assert_eq!(parse_udemae("S"),  ("s".to_string(),  None));
+        assert_eq!(parse_udemae("A+"), ("a+".to_string(), None));
+        assert_eq!(parse_udemae("C-"), ("c-".to_string(), None));
+    }
+
+    #[test]
+    fn parse_udemae_lowercase_input() {
+        assert_eq!(parse_udemae("s+0"), ("s+".to_string(), Some(0)));
+    }
 }
