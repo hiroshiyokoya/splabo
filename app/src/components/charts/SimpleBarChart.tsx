@@ -96,8 +96,10 @@ export function SimpleBarChart({
           height={tickAngle ? 44 : 28}
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}
           tickFormatter={nameTransform}
-          angle={tickAngle ? -tickAngle : undefined}
-          textAnchor={tickAngle ? 'end' : 'middle'}
+          // Dashboard 上部の WinRateChart（ImageTick 内で `rotate(${tickAngle})`, textAnchor='start'）と
+          // 揃えるため、CW 方向の正の角度 + textAnchor='start' で「tick から下右へ伸びる」向きにする。
+          angle={tickAngle ? tickAngle : undefined}
+          textAnchor={tickAngle ? 'start' : 'middle'}
         />
         <YAxis
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}

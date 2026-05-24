@@ -107,23 +107,27 @@ export function AttackDefenseChart({
           }}
         />
         {/* 角丸の小さなスウォッチで凡例を描く（Recharts デフォルトの四角アイコンは黒くて分かりにくい）。
-            Bar 側の fill (= 系列代表色) を payload.color で受け取ってここで丸角矩形を描く。 */}
+            Recharts の payload は stack 順で並ぶことがあり期待と違うので、ここで「キル → アシスト → デス」固定で描く。 */}
         <Legend
-          content={(props: any) => (
+          content={() => (
             <div style={{ display: 'flex', justifyContent: 'center', gap: 14, fontSize: 11, paddingTop: 4 }}>
-              {(props.payload as any[] | undefined)?.map((entry, i) => (
-                <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {[
+                { color: '#22c55e', label: '平均キル' },
+                { color: '#9ca3af', label: '平均アシスト' },
+                { color: '#ef4444', label: '平均デス' },
+              ].map(item => (
+                <span key={item.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <span
                     style={{
-                      display: 'inline-block',
+                      display:      'inline-block',
                       width:        16,
                       height:       10,
-                      background:   entry.color,
+                      background:   item.color,
                       borderRadius: 3,
                     }}
                     aria-hidden="true"
                   />
-                  <span style={{ color: 'var(--text)' }}>{entry.value}</span>
+                  <span style={{ color: 'var(--text)' }}>{item.label}</span>
                 </span>
               ))}
             </div>
