@@ -90,8 +90,8 @@ body {
    .btn-primary は CSS の後ろの方で定義されているため、`.btn-primary.sidebar-fetch-btn`
    の合成セレクタで specificity を上げて上書きする。 */
 .btn-primary.sidebar-fetch-btn {
-  margin: auto 12px 4px;           /* 上に伸びて下のラベルとくっつく */
-  padding: 8px 10px;
+  margin: auto 20px 4px;           /* 左右マージンを増やしてボタン幅を狭める */
+  padding: 6px 8px;                /* 内部余白も少しタイトに */
   font-family: inherit;            /* btn-primary の M PLUS Rounded を上書き */
   font-size: 13px;                 /* ナビ項目と同じ */
   font-weight: 700;
