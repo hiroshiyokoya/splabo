@@ -1135,6 +1135,49 @@ body {
   flex-wrap: wrap;
 }
 
+/* rank-change: バンカラチャレンジ / X マッチ評価戦のランク・パワー・セット変動 */
+.rank-change {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rank-change-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 14px;
+}
+.rank-change-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  min-width: 64px;
+}
+.rank-change-value {
+  font-weight: 600;
+}
+.rank-change-value strong {
+  color: var(--accent);
+  font-weight: 800;
+}
+.promo-tag {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.promo-success {
+  background: color-mix(in srgb, var(--win) 22%, transparent);
+  color: var(--win);
+}
+.promo-attempt {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
+
 /* scoreboard: team panel stack — チームカラー曇りガラス */
 .teams-stack { display: flex; flex-direction: column; gap: 10px; }
 .team-panel {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import type { BattleRow, BattleStats, Filters, Player, Team, VsHistoryDetail, Award } from '../types'
+import type { BattleRow, BattleStats, Filters, ParentJson, Player, Team, VsHistoryDetail, Award } from '../types'
 import { filtersToRange, modeLabel, ruleLabel, resultLabel, avgKillRatio } from '../types'
 import { ABILITY_LABELS, abilityKeyFromUrl, colorToHex, loadAbilityImages } from '../utils/abilities'
 
@@ -456,14 +456,81 @@ function MyStatsCard({ battle, weaponImages }: {
           <StatItem label="塗り"       value={battle.inked.toLocaleString()} />
         </div>
       </div>
-      {(battle.rank_before || battle.rank_after || battle.x_power) && (
-        <div className="rank-row">
-          {battle.rank_before && <span>ランク: {battle.rank_before}</span>}
-          {battle.rank_after  && <span> → {battle.rank_after}</span>}
-          {battle.x_power     && <span> · Xパワー: {battle.x_power}</span>}
+      <RankChangeRow battle={battle} />
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// セット結果（バンカラチャレンジ / X マッチ評価戦）
+// parent_json が非 null の最新バトルに表示する
+// ---------------------------------------------------------------------------
+
+function RankChangeRow({ battle }: { battle: BattleRow }) {
+  if (!battle.parent_json) return null
+  const parent = tryParse(battle.parent_json) as ParentJson | null
+  if (!parent) return null
+
+  const setWin    = parent.winCount  ?? null
+  const setLose   = parent.loseCount ?? null
+  const hasSet    = setWin !== null && setLose !== null
+
+  // バンカラチャレンジのウデマエ前後
+  // detail（raw_json）から udemae を取り、parent.udemaeAfter があれば「→ <after>」を表示
+  const detail = tryParse(battle.raw_json) as { udemae?: string } | null
+  const udemaeBefore = detail?.udemae ?? null
+  const udemaeAfter  = parent.udemaeAfter ?? null
+  const isPromo      = parent.isPromo === true
+  const isPromoSuccess = isPromo && parent.isUdemaeUp === true
+
+  // X マッチ評価戦のパワー前後
+  const xPowerBefore = battle.x_power ?? null  // BattleRow.x_power は xMatch.lastXPower
+  const xPowerAfter  = parent.xPowerAfter ?? null
+
+  const showRank   = udemaeBefore || udemaeAfter || isPromo
+  const showXPower = xPowerBefore !== null || xPowerAfter !== null
+  if (!showRank && !showXPower && !hasSet) return null
+
+  return (
+    <div className="rank-change">
+      {showRank && (
+        <div className="rank-change-line">
+          <span className="rank-change-label">ランク</span>
+          <span className="rank-change-value">
+            {udemaeBefore ?? '?'}
+            {udemaeAfter && udemaeAfter !== udemaeBefore && (
+              <> → <strong>{udemaeAfter}</strong></>
+            )}
+            {isPromo && (
+              <span className={`promo-tag ${isPromoSuccess ? 'promo-success' : 'promo-attempt'}`}>
+                {isPromoSuccess ? '昇格！' : '昇格戦'}
+              </span>
+            )}
+          </span>
         </div>
       )}
-    </section>
+      {showXPower && (
+        <div className="rank-change-line">
+          <span className="rank-change-label">X パワー</span>
+          <span className="rank-change-value">
+            {xPowerBefore !== null ? xPowerBefore.toFixed(1) : '?'}
+            {xPowerAfter !== null && (
+              <> → <strong>{xPowerAfter.toFixed(1)}</strong></>
+            )}
+          </span>
+        </div>
+      )}
+      {hasSet && (
+        <div className="rank-change-line">
+          <span className="rank-change-label">セット</span>
+          <span className="rank-change-value">
+            <span style={{ color: 'var(--win)' }}>{setWin}勝</span>
+            {' '}
+            <span style={{ color: 'var(--lose)' }}>{setLose}敗</span>
+          </span>
+        </div>
+      )}
+    </div>
   )
 }
 
