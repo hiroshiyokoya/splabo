@@ -99,7 +99,7 @@ async function handleUploadStatink() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ color: 'var(--win)', fontSize: 13 }}>連携済み</span>
             <button className="btn-primary" onClick={handleLogout} disabled={authLoading}>
-              {authLoading ? '処理中...' : 'ログアウト'}
+              {authLoading ? '処理中...' : '認証解除'}
             </button>
           </div>
         ) : (

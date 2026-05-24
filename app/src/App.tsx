@@ -166,7 +166,7 @@ export default function App() {
           disabled={fetching}
           title="SplatNet3 から最新のバトル結果・詳細データを取得"
         >
-          {fetching ? '取得中...' : '🔄 バトルデータを取得'}
+          {fetching ? '取得中...' : 'バトルデータを取得'}
         </button>
         <div className="sidebar-last-fetched">
           {lastFetchedAt ? `データ最終更新日時: ${lastFetchedAt}` : '未取得'}
