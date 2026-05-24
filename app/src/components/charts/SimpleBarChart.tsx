@@ -10,7 +10,9 @@ import { METRIC_LABELS, getMetric, formatMetric } from '../../types'
  *
  * - X 軸: カテゴリ名（武器・ステージ・ルール等）
  * - Y 軸: 選んだ 1 メトリクスの値
- * - 勝率系はバーごとに段階色（hi/mid/lo）、それ以外は単一色
+ * - 勝率系はバーごとに段階色（hi/mid/lo）
+ * - それ以外はバーの値の大きさに応じてアクセント色を濃淡で変化させる
+ *   （大きい値ほど accent が濃く、小さい値ほど surface 寄りで淡い）
  * - 値が null のカテゴリ（detail_fetched=0 しかない等）はバーを描かず、ツールチップで「—」表示
  */
 export function SimpleBarChart({
@@ -30,13 +32,28 @@ export function SimpleBarChart({
     rawRow:  d,
   }))
 
+  // 値に応じた色グラデーションのためにレンジを取る。
+  // 勝率は閾値色を別系統で出すので除外。null も除外。
+  const numericValues = chartData
+    .map(d => d.value)
+    .filter((v): v is number => v !== null)
+  const minValue = numericValues.length > 0 ? Math.min(...numericValues) : 0
+  const maxValue = numericValues.length > 0 ? Math.max(...numericValues) : 1
+
+  /** 値の大きさに応じたバー色。勝率は段階色、それ以外は accent の濃淡。 */
   function barColor(value: number | null): string {
-    if (metric === 'win_rate' && value !== null) {
+    if (value === null) return 'transparent'
+    if (metric === 'win_rate') {
       if (value >= 0.55) return 'url(#grad-rate-hi)'
       if (value >= 0.45) return 'url(#grad-rate-mid)'
       return 'url(#grad-rate-lo)'
     }
-    return 'url(#grad-accent)'
+    // (value - min) / (max - min) を 0-1 に正規化し、accent 比率に反映。
+    // 値域が 0 だと max==min なので保険で 1 を返す。
+    const t = maxValue === minValue ? 1 : (value - minValue) / (maxValue - minValue)
+    // 30%（淡い）～ 95%（濃い）の範囲で混色。完全に bg にすると見えなくなるので下限を残す。
+    const pct = Math.round((0.30 + 0.65 * t) * 100)
+    return `color-mix(in srgb, var(--accent) ${pct}%, var(--surface))`
   }
 
   function cellOpacity(i: number) {

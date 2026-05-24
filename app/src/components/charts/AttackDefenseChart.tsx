@@ -4,6 +4,26 @@ import {
 } from 'recharts'
 import type { GroupedStatsRow } from '../../types'
 
+/** スタック最上段のセグメントだけ上端を角丸にする shape。
+ *  Recharts の `radius` を全 stack に付けると境目に凹みが出るので shape で制御する。
+ *  Dashboard.tsx の `stackTopRoundedShape` と同思想だが、こちらは attack スタック（kill 下・assist 上）専用。 */
+function attackStackTopRoundedShape(props: any) {
+  const { x, y, width, height, fill, fillOpacity, payload, dataKey } = props
+  if (height <= 0) return null
+  const isTop =
+    (dataKey === 'assist' && payload.assist > 0) ||
+    (dataKey === 'kill'   && payload.assist === 0 && payload.kill > 0)
+  const r = isTop ? Math.min(4, height / 2, width / 2) : 0
+  if (r === 0) {
+    return <rect x={x} y={y} width={width} height={height} fill={fill} fillOpacity={fillOpacity} />
+  }
+  const d =
+    `M ${x},${y + r} Q ${x},${y} ${x + r},${y} ` +
+    `L ${x + width - r},${y} Q ${x + width},${y} ${x + width},${y + r} ` +
+    `L ${x + width},${y + height} L ${x},${y + height} Z`
+  return <path d={d} fill={fill} fillOpacity={fillOpacity} />
+}
+
 /**
  * 「攻撃 vs デス」セットチャート。カテゴリごとに以下の 2 本を並べる：
  *
@@ -87,13 +107,15 @@ export function AttackDefenseChart({
           }}
         />
         <Legend wrapperStyle={{ fontSize: 11 }} iconType="square" />
-        {/* 攻撃バー: K の上に A を積み上げ。name は Legend に出る系列名。 */}
+        {/* 攻撃バー: K の上に A を積み上げ。shape でスタック最上段だけ角丸にして D バーと見た目を揃える。 */}
         <Bar dataKey="kill"   name="平均キル"    stackId="attack" maxBarSize={24} activeBar={false}
+          shape={attackStackTopRoundedShape}
           onMouseEnter={(_: any, i: number) => setActiveIndex(i)}
         >
           {chartData.map((_, i) => <Cell key={i} fill="url(#grad-kill)"   fillOpacity={cellOpacity(i)} />)}
         </Bar>
         <Bar dataKey="assist" name="平均アシスト" stackId="attack" maxBarSize={24} activeBar={false}
+          shape={attackStackTopRoundedShape}
           onMouseEnter={(_: any, i: number) => setActiveIndex(i)}
         >
           {chartData.map((_, i) => <Cell key={i} fill="url(#grad-assist)" fillOpacity={cellOpacity(i)} />)}
