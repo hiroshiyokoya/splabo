@@ -12,10 +12,11 @@ chartoon/
 ## 機能
 
 - **ダッシュボード** — 武器別・モード別・ステージ別の勝率をグラフで表示
-- **バトルログ** — バトル履歴を一覧表示（ページング対応）
+- **バトルログ** — バトル履歴を一覧表示（ページング対応）。詳細モーダルでチーム編成・ギア・ランク / X パワー変動を確認できます
 - **武器図鑑** — 所持武器の勝率・サブ/スペシャル一覧
-- **AI 分析** — 自然言語でグラフを生成（OpenAI / Google Gemini 対応）
-- **自動取得** — 指定時刻に毎日バトルデータをバックグラウンドで取得。有効時はウィンドウを閉じてもトレイに常駐し、完了をシステム通知でお知らせ
+- **stat.ink 自動アップロード** — 取得したバトルを [stat.ink](https://stat.ink/) へ自動アップロード（API キー登録時）。同一バトルは s3s と同じ UUID v5 名前空間で重複排除されます
+- **AI 分析** — 自然言語でグラフを生成（OpenAI / Google Gemini / Anthropic Claude / xAI Grok 対応）
+- **自動取得** — 15 分〜24 時間ごとの定期間隔でバトルデータをバックグラウンドで取得。有効時はウィンドウを閉じてもトレイに常駐し、完了をシステム通知でお知らせ
 
 ## 必要なもの
 
@@ -88,7 +89,18 @@ Nintendo Account ログインURL → ブラウザで開く（deep-link で認可
 
 ### AI 分析
 
-OpenAI (gpt-4o-mini 等) または Google Gemini に集計データを渡し、recharts で描画できる JSON（`ChartSpec`）を生成します。API キーは `localStorage` に保存されます。
+OpenAI / Google Gemini / Anthropic Claude / xAI Grok のいずれかに集計データを渡し、recharts で描画できる JSON（`ChartSpec`）を生成します。プロバイダごとに価格情報付きのモデルプリセットを用意しています（`app/src/utils/aiModels.ts`）。API キーは `localStorage` に保存されます。
+
+### stat.ink アップロード
+
+[**stat.ink**](https://stat.ink/) は Splatoon 3 のバトル統計を共有・分析する OSS プラットフォームです。chartoon は設定で API キーを登録すると、取得したバトルを `stat.ink/api/v3/battle` へ自動アップロードできます。
+
+ペイロード構築は [**s3s**](https://github.com/frozenpandaman/s3s)（frozenpandaman 氏が開発する Python 製のサードパーティツール）の `prepare_battle_result` / `set_scoreboard` 相当を Rust で再実装したものです（`src-tauri/src/statink.rs`）。バトル ID から UUID v5 を生成する際の名前空間も s3s と一致させており、同じバトルを別ツールから送信しても stat.ink 側で重複排除されます。武器・ステージの ID 変換ルールも s3s 由来です。
+
+- 送信先: `https://stat.ink/api/v3/battle`
+- 送信内容: バトル結果（モード・ルール・ステージ・K/D/A・塗り）、両チームのプレイヤー武器・ギアパワー、ウデマエ / X パワーの履歴（バンカラチャレンジ・X マッチ評価戦の最終バトルのみ）
+- API キー: ローカル（AppData）にのみ保存。stat.ink の [API トークン発行ページ](https://stat.ink/profile) から取得
+- 送信トリガー: 設定で「自動アップロード」を ON にしたとき、バトルデータ取得後に未送信ぶんを送信
 
 ---
 
@@ -114,7 +126,8 @@ OpenAI (gpt-4o-mini 等) または Google Gemini に集計データを渡し、r
 ### 外部サービスへの送信
 
 - **nxapi-znca-api（`nxapi-znca-api.fancy.org.uk`）**: Nintendo 認証フローで必要な f-token を生成するため、nxapi の内部処理として `id_token` がこのエンドポイントへ送信されます。これは nxapi の仕様に基づくものであり、chartoon 独自の送信ではありません。詳細は [nxapi](https://github.com/samuelthomas2774/nxapi) を参照してください。
-- **OpenAI / Google Gemini API**: AI 分析機能を使用する場合、バトル集計データ（個人を特定できないサマリー統計）がリクエストに含まれます。設定した API キーはローカルにのみ保存され、外部へ転送されません。
+- **stat.ink（`stat.ink/api/v3/battle`）**: 設定で API キーを登録し自動アップロードを有効にした場合のみ、バトル取得後に未送信ぶんが送信されます。送信内容はバトル結果・両チームのプレイヤー武器・ギアパワー・ウデマエ / X パワー履歴です。API キーはローカル（AppData）にのみ保存され、stat.ink 以外には送信されません。設定を OFF にすれば送信は行われません。
+- **AI 分析 API（OpenAI / Gemini / Anthropic / Grok）**: AI 分析機能を使用する場合、バトル集計データ（個人を特定できないサマリー統計）が選択したプロバイダのリクエストに含まれます。設定した API キーはローカル（`localStorage`）にのみ保存され、選択したプロバイダ以外には送信されません。
 - 上記以外に、本ツールが独自に情報を外部送信することはありません。
 
 ### 個人情報の収集について
@@ -123,9 +136,10 @@ OpenAI (gpt-4o-mini 等) または Google Gemini に集計データを渡し、r
 
 ## 参考リポジトリ
 
-Nintendo Switch Online 認証・SplatNet 3 API アクセスの実装に際して以下を参照しました。
+Nintendo Switch Online 認証・SplatNet 3 API アクセス・stat.ink 連携の実装に際して以下を参照しました。
 
 - [samuelthomas2774/nxapi](https://github.com/samuelthomas2774/nxapi) — Nintendo Switch Online の認証・API アクセスライブラリ。chartoon の認証フローはこのプロジェクトが明らかにした仕様に基づいています。f-token 生成も nxapi が内部で使用するエンドポイント（`nxapi-znca-api.fancy.org.uk`）を利用します。
+- [frozenpandaman/s3s](https://github.com/frozenpandaman/s3s) — SplatNet 3 から stat.ink へバトルデータを送る Python 製ツール。chartoon の stat.ink アップロード機能はこのリポジトリのペイロード構築ロジック（`prepare_battle_result` / `set_scoreboard` 相当）・UUID v5 名前空間・武器/ステージ ID 変換ルールを Rust で再実装したものです。
 
 ## 免責事項
 
