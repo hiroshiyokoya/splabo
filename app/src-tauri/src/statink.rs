@@ -362,6 +362,8 @@ fn build_payload(detail: &serde_json::Value) -> serde_json::Value {
     }
 
     // --- バンカラ追加情報 ---
+    // s3s と同じ排他ロジック：bankaraPower が取れたらそちら、無ければ weaponPower。
+    // GraphQL レスポンス上、両方が同時に入ることは観測されていない。
     if mode == "BANKARA" {
         if let Some(exp) = detail.pointer("/bankaraMatch/earnedUdemaePoint").and_then(|v| v.as_i64()) {
             payload["rank_exp_change"] = serde_json::json!(exp);
@@ -374,9 +376,37 @@ fn build_payload(detail: &serde_json::Value) -> serde_json::Value {
     }
 
     // --- X マッチ ---
+    // lastXPower はバトル直前の値なので `x_power_before` で送る（s3s 準拠）。
+    // 旧実装は誤って x_power_after に送っていたため、stat.ink 上で「対戦前の値が
+    // 対戦後として表示」されていた。after の値は別クエリ (XMatchMeasurementHistory)
+    // が必要で本実装では未対応。
     if mode == "X_MATCH" {
         if let Some(power) = detail.pointer("/xMatch/lastXPower").and_then(|v| v.as_f64()) {
-            payload["x_power_after"] = serde_json::json!(power);
+            payload["x_power_before"] = serde_json::json!(power);
+        }
+    }
+
+    // --- フェスマッチ ---
+    if mode == "FEST" {
+        // ドラゴンマッチ / カイマス（CONCH_SHELL_SCRAMBLE）の倍率
+        if let Some(t) = detail.pointer("/festMatch/dragonMatchType").and_then(|v| v.as_str()) {
+            match t {
+                "DECUPLE"                 => payload["fest_dragon"] = serde_json::json!("10x"),
+                "DRAGON"                  => payload["fest_dragon"] = serde_json::json!("100x"),
+                "DOUBLE_DRAGON"           => payload["fest_dragon"] = serde_json::json!("333x"),
+                "CONCH_SHELL_SCRAMBLE"    => payload["conch_clash"] = serde_json::json!("1x"),
+                "CONCH_SHELL_SCRAMBLE_10" => payload["conch_clash"] = serde_json::json!("10x"),
+                "CONCH_SHELL_SCRAMBLE_33" => payload["conch_clash"] = serde_json::json!("33x"),
+                _ => {} // NORMAL は送らない
+            }
+        }
+        // フェス貢献度
+        if let Some(c) = detail.pointer("/festMatch/contribution").and_then(|v| v.as_i64()) {
+            payload["clout_change"] = serde_json::json!(c);
+        }
+        // フェスパワー（PRO のみ。それ以外は null）
+        if let Some(power) = detail.pointer("/festMatch/myFestPower").and_then(|v| v.as_f64()) {
+            payload["fest_power"] = serde_json::json!(power);
         }
     }
 
