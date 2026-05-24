@@ -159,6 +159,10 @@ fn build_player(player: &serde_json::Value, rank_in_team: usize) -> serde_json::
             p["kill"]           = serde_json::json!(kill_or_assist - assist);
             p["death"]          = serde_json::json!(result.get("death").and_then(|v| v.as_i64()).unwrap_or(0));
             p["special"]        = serde_json::json!(result.get("special").and_then(|v| v.as_i64()).unwrap_or(0));
+            // トリカラーバトルのウルトラ信号試行数。それ以外のモードでは null
+            if let Some(noroshi) = result.get("noroshiTry").and_then(|v| v.as_i64()) {
+                p["signal"] = serde_json::json!(noroshi);
+            }
             p["disconnected"]   = serde_json::json!("no");
 
             // ギアパワー（接続継続プレイヤーのみ）
@@ -362,6 +366,8 @@ fn build_payload(detail: &serde_json::Value) -> serde_json::Value {
     }
 
     // --- バンカラ追加情報 ---
+    // s3s と同じ排他ロジック：bankaraPower が取れたらそちら、無ければ weaponPower。
+    // GraphQL レスポンス上、両方が同時に入ることは観測されていない。
     if mode == "BANKARA" {
         if let Some(exp) = detail.pointer("/bankaraMatch/earnedUdemaePoint").and_then(|v| v.as_i64()) {
             payload["rank_exp_change"] = serde_json::json!(exp);
@@ -374,11 +380,82 @@ fn build_payload(detail: &serde_json::Value) -> serde_json::Value {
     }
 
     // --- X マッチ ---
+    // lastXPower はバトル直前の値なので `x_power_before` で送る（s3s 準拠）。
+    // 旧実装は誤って x_power_after に送っていたため、stat.ink 上で「対戦前の値が
+    // 対戦後として表示」されていた。after の値は別クエリ (XMatchMeasurementHistory)
+    // が必要で本実装では未対応。
     if mode == "X_MATCH" {
         if let Some(power) = detail.pointer("/xMatch/lastXPower").and_then(|v| v.as_f64()) {
-            payload["x_power_after"] = serde_json::json!(power);
+            payload["x_power_before"] = serde_json::json!(power);
         }
     }
+
+    // --- フェスマッチ ---
+    if mode == "FEST" {
+        // ドラゴンマッチ / カイマス（CONCH_SHELL_SCRAMBLE）の倍率
+        if let Some(t) = detail.pointer("/festMatch/dragonMatchType").and_then(|v| v.as_str()) {
+            match t {
+                "DECUPLE"                 => payload["fest_dragon"] = serde_json::json!("10x"),
+                "DRAGON"                  => payload["fest_dragon"] = serde_json::json!("100x"),
+                "DOUBLE_DRAGON"           => payload["fest_dragon"] = serde_json::json!("333x"),
+                "CONCH_SHELL_SCRAMBLE"    => payload["conch_clash"] = serde_json::json!("1x"),
+                "CONCH_SHELL_SCRAMBLE_10" => payload["conch_clash"] = serde_json::json!("10x"),
+                "CONCH_SHELL_SCRAMBLE_33" => payload["conch_clash"] = serde_json::json!("33x"),
+                _ => {} // NORMAL は送らない
+            }
+        }
+        // フェス貢献度
+        if let Some(c) = detail.pointer("/festMatch/contribution").and_then(|v| v.as_i64()) {
+            payload["clout_change"] = serde_json::json!(c);
+        }
+        // フェスパワー（PRO のみ。それ以外は null）
+        if let Some(power) = detail.pointer("/festMatch/myFestPower").and_then(|v| v.as_f64()) {
+            payload["fest_power"] = serde_json::json!(power);
+        }
+        // フェスマッチのチームテーマ名（フェス陣営名）
+        if let Some(t) = detail.pointer("/myTeam/festTeamName").and_then(|v| v.as_str()) {
+            payload["our_team_theme"] = serde_json::json!(t);
+        }
+        if let Some(t) = detail.pointer("/otherTeams/0/festTeamName").and_then(|v| v.as_str()) {
+            payload["their_team_theme"] = serde_json::json!(t);
+        }
+        if let Some(t) = detail.pointer("/otherTeams/1/festTeamName").and_then(|v| v.as_str()) {
+            payload["third_team_theme"] = serde_json::json!(t);
+        }
+    }
+
+    // --- トリカラー（攻守の役割）---
+    // myTeam / otherTeams[i].tricolorRole: "ATTACK1" / "ATTACK2" / "DEFENSE"
+    // stat.ink キー: "attacker" / "defender"
+    let to_role = |s: &str| match s {
+        "DEFENSE" => Some("defender"),
+        "ATTACK1" | "ATTACK2" => Some("attacker"),
+        _ => None,
+    };
+    if let Some(r) = detail.pointer("/myTeam/tricolorRole").and_then(|v| v.as_str()).and_then(to_role) {
+        payload["our_team_role"] = serde_json::json!(r);
+    }
+    if let Some(r) = detail.pointer("/otherTeams/0/tricolorRole").and_then(|v| v.as_str()).and_then(to_role) {
+        payload["their_team_role"] = serde_json::json!(r);
+    }
+    if let Some(r) = detail.pointer("/otherTeams/1/tricolorRole").and_then(|v| v.as_str()).and_then(to_role) {
+        payload["third_team_role"] = serde_json::json!(r);
+    }
+
+    // --- イベントマッチ ---
+    if mode == "LEAGUE" {
+        // leagueMatchEvent.id は base64。stat.ink は base64 を decode した文字列 ID で受け取る
+        if let Some(id_b64) = detail.pointer("/leagueMatch/leagueMatchEvent/id").and_then(|v| v.as_str()) {
+            payload["event"] = decode_id(id_b64);
+        }
+        if let Some(power) = detail.pointer("/leagueMatch/myLeaguePower").and_then(|v| v.as_f64()) {
+            payload["event_power"] = serde_json::json!(power);
+        }
+    }
+
+    // --- 自動取得フラグ ---
+    // chartoon が自動アップロードした事を明示（s3s 準拠）
+    payload["automated"] = serde_json::json!("yes");
 
     // --- メダル ---
     if let Some(awards) = detail.get("awards").and_then(|v| v.as_array()) {
@@ -393,7 +470,12 @@ fn build_payload(detail: &serde_json::Value) -> serde_json::Value {
     // --- エージェント情報 ---
     payload["agent"]         = serde_json::json!("chartoon");
     payload["agent_version"] = serde_json::json!(env!("CARGO_PKG_VERSION"));
-    payload["automated"]     = serde_json::json!(true);
+    // automated は既に上で "yes" を入れている（s3s 準拠の文字列値）
+
+    // --- 生 JSON（s3s 準拠の保険データ）---
+    // 将来 stat.ink 側でフィールド追加された時に過去データから再パースできるよう、
+    // vsHistoryDetail のレスポンス全体を JSON 文字列で添付する。
+    payload["splatnet_json"] = serde_json::json!(detail.to_string());
 
     payload
 }
