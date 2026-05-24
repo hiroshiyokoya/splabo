@@ -11,6 +11,7 @@ import { About } from './components/About'
 import type { Tab, AppSettings, ChartSpec, Filters } from './types'
 import { DEFAULT_FILTERS } from './types'
 import { initAppSettings } from './utils/appSettings'
+import { useNotify, parseFetchError } from './utils/notify'
 import './App.css'
 
 initAppSettings()
@@ -53,12 +54,27 @@ export default function App() {
   const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(
     () => localStorage.getItem(LAST_FETCHED_KEY)
   )
+  const { notify } = useNotify()
+
+  /** フェッチ失敗を共通の流儀でトーストに変換する。
+   *  ・未ログイン → 設定タブへ誘導するボタン付き
+   *  ・期限切れ・ネットワーク → 再試行ボタン付き
+   *  ・それ以外 → エラー詳細を出して再試行ボタン付き */
+  function reportFetchError(err: unknown, retry?: () => void) {
+    const fe = parseFetchError(err)
+    const action =
+      fe.hint === 'settings' ? { label: '設定を開く', onClick: () => setTab('settings') } :
+      retry                  ? { label: '再試行',     onClick: retry } :
+      undefined
+    notify({ kind: fe.kind === 'not_logged_in' ? 'warning' : 'error', title: fe.title, message: fe.message, action, durationMs: 0 })
+  }
 
   // 認証完了後にデータ取得を実行
   useEffect(() => {
     if (loginVersion > 0) {
-      invoke('fetch_battles_full').catch(console.error)
+      invoke('fetch_battles_full').catch(err => reportFetchError(err, () => invoke('fetch_battles_full').catch(e => reportFetchError(e))))
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loginVersion])
 
   useEffect(() => {
@@ -145,7 +161,7 @@ export default function App() {
     try {
       await invoke('fetch_battles_full')
     } catch (e) {
-      console.error('バトルデータ取得失敗:', e)
+      reportFetchError(e, handleFetchFull)
     } finally {
       setFetching(false)
     }
@@ -177,7 +193,15 @@ export default function App() {
         {(tab === 'dashboard' || tab === 'battles') && (
           <FilterBar filters={filters} onChange={setFilters} />
         )}
-        {tab === 'dashboard' && <Dashboard filters={filters} aiChart={aiChart} />}
+        {tab === 'dashboard' && (
+          <Dashboard
+            filters={filters}
+            aiChart={aiChart}
+            onFetchRequest={handleFetchFull}
+            onOpenSettings={() => setTab('settings')}
+            fetching={fetching}
+          />
+        )}
         {tab === 'battles'   && <BattleLog filters={filters} statinkScreenName={settings.statink.screenName} />}
         {tab === 'weapons'   && <WeaponBook />}
         {tab === 'ai' && <AiAnalysis settings={settings} onChartReady={handleAiChart} />}

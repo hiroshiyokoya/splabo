@@ -60,9 +60,15 @@ type SortBy = 'total' | 'wins' | 'win_rate'
 interface Props {
   filters: Filters
   aiChart: ChartSpec | null
+  /** サイドバーの「バトルデータを取得」と同じ処理を空状態のボタンからも呼べるようにする。 */
+  onFetchRequest?: () => void
+  /** 「設定タブを開く」ためのコールバック（ログイン誘導用）。 */
+  onOpenSettings?: () => void
+  /** 取得中はボタンを disable + 表示文言を変えるためのフラグ。 */
+  fetching?: boolean
 }
 
-export function Dashboard({ filters, aiChart }: Props) {
+export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fetching }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [stats, setStats]     = useState<BattleStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -134,8 +140,12 @@ export function Dashboard({ filters, aiChart }: Props) {
 
       {loading ? (
         <div className="loading">読み込み中...</div>
-      ) : !summary ? (
-        <div className="empty">データがありません</div>
+      ) : !summary || totalBattles === 0 ? (
+        <DashboardEmptyState
+          onFetchRequest={onFetchRequest}
+          onOpenSettings={onOpenSettings}
+          fetching={fetching}
+        />
       ) : (
         <>
           <div className="stat-cards">
@@ -176,6 +186,42 @@ export function Dashboard({ filters, aiChart }: Props) {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 空状態（DB にバトルが 1 件も無いとき）
+// ---------------------------------------------------------------------------
+
+function DashboardEmptyState({ onFetchRequest, onOpenSettings, fetching }: {
+  onFetchRequest?: () => void
+  onOpenSettings?: () => void
+  fetching?: boolean
+}) {
+  return (
+    <div className="dashboard-empty">
+      <div className="dashboard-empty-icon" aria-hidden="true">📊</div>
+      <h3 className="dashboard-empty-title">まだバトルデータがありません</h3>
+      <p className="dashboard-empty-desc">
+        SplatNet 3 から最新のバトルデータを取得すると、ここに勝率グラフ・武器/ステージ別の集計が表示されます。
+      </p>
+      <ol className="dashboard-empty-steps">
+        <li>初回は <strong>設定</strong> から Nintendo アカウントでログイン</li>
+        <li><strong>バトルデータを取得</strong> ボタンを押す</li>
+      </ol>
+      <div className="dashboard-empty-actions">
+        {onFetchRequest && (
+          <button className="btn-primary" onClick={onFetchRequest} disabled={fetching}>
+            {fetching ? '取得中…' : 'バトルデータを取得'}
+          </button>
+        )}
+        {onOpenSettings && (
+          <button className="btn-secondary" onClick={onOpenSettings}>
+            設定を開く
+          </button>
+        )}
+      </div>
     </div>
   )
 }
