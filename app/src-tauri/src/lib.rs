@@ -208,7 +208,13 @@ pub fn run() {
 
 /// バトル取得 → 詳細取得 → 武器補完 → 画像キャッシュ → stat.ink 自動アップロード を一括実行。
 /// 完了後に "fetch_complete" イベントを emit する。
+///
+/// 未ログイン時はサイドカー呼び出しの前に明示的に `NOT_LOGGED_IN:` プリフィクス付き
+/// エラーを返し、フロントが「設定からログインしてください」UI を出せるようにする。
 async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usize, usize), String> {
+    if !auth::is_logged_in(app) {
+        return Err("NOT_LOGGED_IN: Nintendo アカウントでログインしていません。設定からログインしてください。".to_string());
+    }
     let result = nxapi::nxapi_get_bullet_token(app).await?;
     let client = reqwest::Client::builder()
         .build()
@@ -328,6 +334,9 @@ async fn upload_to_statink_one(
 /// さらに battles テーブルから sub/special を補完する。合計保存件数を返す。
 #[tauri::command]
 async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usize, String> {
+    if !auth::is_logged_in(&app) {
+        return Err("NOT_LOGGED_IN: Nintendo アカウントでログインしていません。".to_string());
+    }
     let result = nxapi::nxapi_get_bullet_token(&app).await?;
     let client = reqwest::Client::builder()
         .build()
