@@ -199,7 +199,12 @@ fn build_team_players(players_val: Option<&serde_json::Value>) -> Vec<serde_json
 // ---------------------------------------------------------------------------
 
 /// vsHistoryDetail JSON から stat.ink POST ペイロードを構築する。
-fn build_payload(detail: &serde_json::Value) -> serde_json::Value {
+/// stat.ink 用ペイロードを構築する。
+/// - `detail`: vsHistoryDetail（バトル単体の詳細）
+/// - `parent`: 該当バトルが所属する historyGroup の親オブジェクト
+///   （`bankaraMatchChallenge` または `xMatchMeasurement`）。
+///   各 historyGroup の最新バトルのみ非 None。それ以外は None。
+fn build_payload(detail: &serde_json::Value, parent: Option<&serde_json::Value>) -> serde_json::Value {
     let mut payload = serde_json::json!({});
 
     // --- UUID ---
@@ -381,13 +386,33 @@ fn build_payload(detail: &serde_json::Value) -> serde_json::Value {
 
     // --- X マッチ ---
     // lastXPower はバトル直前の値なので `x_power_before` で送る（s3s 準拠）。
-    // 旧実装は誤って x_power_after に送っていたため、stat.ink 上で「対戦前の値が
-    // 対戦後として表示」されていた。after の値は別クエリ (XMatchMeasurementHistory)
-    // が必要で本実装では未対応。
     if mode == "X_MATCH" {
         if let Some(power) = detail.pointer("/xMatch/lastXPower").and_then(|v| v.as_f64()) {
             payload["x_power_before"] = serde_json::json!(power);
         }
+    }
+
+    // --- 履歴クエリの親ノード由来の情報 ---
+    // parent は各 historyGroup の最新バトルにだけ紐付いている（s3s 準拠）。
+    // - バンカラチャレンジ: bankaraMatchChallenge.winCount / loseCount
+    // - X マッチ評価戦:    xMatchMeasurement.winCount / loseCount / xPowerAfter
+    if let Some(p) = parent {
+        // バンカラチャレンジのセット累計勝敗
+        if let Some(w) = p.pointer("/winCount").and_then(|v| v.as_i64()) {
+            if let Some(l) = p.pointer("/loseCount").and_then(|v| v.as_i64()) {
+                payload["challenge_win"]  = serde_json::json!(w);
+                payload["challenge_lose"] = serde_json::json!(l);
+            }
+        }
+        // X マッチ評価戦のセット確定後パワー
+        if mode == "X_MATCH" {
+            if let Some(after) = p.pointer("/xPowerAfter").and_then(|v| v.as_f64()) {
+                payload["x_power_after"] = serde_json::json!(after);
+            }
+        }
+        // 注: rank_before/rank_after の正確な算出（ウデマエ文字列パース、idx 判定、
+        //     昇格戦判定）は s3s と同等のロジックが必要で、本実装では未対応。
+        //     別 issue で扱う（#104 の TODO 部分）。
     }
 
     // --- フェスマッチ ---
@@ -544,7 +569,11 @@ pub async fn upload_pending_battles(
             }
         };
 
-        let payload = build_payload(&detail);
+        // parent_json は履歴クエリの親ノード（最新バトルのみ非 NULL）
+        let parent: Option<serde_json::Value> = battle.parent_json.as_deref()
+            .and_then(|s| serde_json::from_str(s).ok());
+
+        let payload = build_payload(&detail, parent.as_ref());
 
         let uuid = payload["uuid"].as_str().unwrap_or("").to_string();
         if uuid.is_empty() {

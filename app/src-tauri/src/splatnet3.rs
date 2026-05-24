@@ -115,7 +115,8 @@ fn parse_stage(node: &serde_json::Value) -> (String, Option<String>) {
 }
 
 /// レギュラーバトル1件のレスポンスノードから BattleRow を生成する。
-fn parse_regular_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
+/// `parent` は historyGroup の親（レギュラーには無いので常に None）。
+fn parse_regular_node(node: &serde_json::Value, fetched_at: &str, parent: Option<&serde_json::Value>) -> BattleRow {
     let id = str_val(node, "id");
     let played_at = get_played_at(node);
     let rule_raw = node.pointer("/vsRule/rule").and_then(|x| x.as_str()).unwrap_or("");
@@ -152,11 +153,13 @@ fn parse_regular_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
         my_team: None,
         other_teams: None,
         statink_uuid: None,
+        parent_json: parent.map(|p| p.to_string()),
     }
 }
 
 /// バンカラバトル1件のレスポンスノードから BattleRow を生成する。
-fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
+/// `parent` はバンカラチャレンジ時のみ bankaraMatchChallenge オブジェクト。
+fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str, parent: Option<&serde_json::Value>) -> BattleRow {
     let id = str_val(node, "id");
     let played_at = get_played_at(node);
     let rule_raw = node.pointer("/vsRule/rule").and_then(|x| x.as_str()).unwrap_or("");
@@ -206,11 +209,13 @@ fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
         my_team: None,
         other_teams: None,
         statink_uuid: None,
+        parent_json: parent.map(|p| p.to_string()),
     }
 }
 
 /// Xマッチ1件のレスポンスノードから BattleRow を生成する。
-fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
+/// `parent` は評価戦時のみ xMatchMeasurement オブジェクト。
+fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str, parent: Option<&serde_json::Value>) -> BattleRow {
     let id = str_val(node, "id");
     let played_at = get_played_at(node);
     let rule_raw = node.pointer("/vsRule/rule").and_then(|x| x.as_str()).unwrap_or("");
@@ -251,6 +256,7 @@ fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str) -> BattleRow {
         my_team: None,
         other_teams: None,
         statink_uuid: None,
+        parent_json: parent.map(|p| p.to_string()),
     }
 }
 
@@ -315,14 +321,20 @@ fn parse_judgement(node: &serde_json::Value) -> String {
     }
 }
 
-/// GraphQL レスポンスからバトルノード一覧を抽出する。
+/// GraphQL レスポンスからバトルノード一覧を (detail, parent_for_idx0) のペアで抽出する。
 /// SplatNet3 の historyGroups > nodes > historyDetails > nodes 構造を辿る。
-fn extract_battle_nodes(resp: &serde_json::Value) -> Vec<&serde_json::Value> {
-    let mut nodes = Vec::new();
+///
+/// `parent` は historyGroup の親ノード（bankaraMatchChallenge / xMatchMeasurement）の
+/// 最小オブジェクト。stat.ink へのアップロード時に rank_before/after や challenge_win/lose、
+/// x_power_after を組み立てるために使う。
+///
+/// s3s と同じ流儀で、**各 historyGroup の最初のバトル（idx==0、＝最新）にのみ** parent を
+/// 紐付ける。それ以外のバトルは parent=None（chronological に累計値が不正になるため）。
+fn extract_battle_nodes(
+    resp: &serde_json::Value,
+) -> Vec<(&serde_json::Value, Option<serde_json::Value>)> {
+    let mut nodes: Vec<(&serde_json::Value, Option<serde_json::Value>)> = Vec::new();
 
-    // data.regularBattleHistories.historyGroups.nodes[]
-    //   .historyDetails.nodes[]
-    // または data.bankaraBattleHistories / xBattleHistories と同じ構造
     let history_keys = [
         "regularBattleHistories",
         "bankaraBattleHistories",
@@ -336,7 +348,13 @@ fn extract_battle_nodes(resp: &serde_json::Value) -> Vec<&serde_json::Value> {
                     if let Some(details) =
                         group.pointer("/historyDetails/nodes").and_then(|x| x.as_array())
                     {
-                        nodes.extend(details.iter());
+                        // group の親情報を一度だけ抽出
+                        let parent = extract_parent_for_group(group);
+                        for (idx, detail) in details.iter().enumerate() {
+                            // idx==0（最新バトル）にだけ parent を紐付ける
+                            let p = if idx == 0 { parent.clone() } else { None };
+                            nodes.push((detail, p));
+                        }
                     }
                 }
             }
@@ -344,6 +362,18 @@ fn extract_battle_nodes(resp: &serde_json::Value) -> Vec<&serde_json::Value> {
     }
 
     nodes
+}
+
+/// historyGroup のノードから親情報（bankaraMatchChallenge or xMatchMeasurement）を取り出す。
+/// 該当する子オブジェクトが無い・null の場合は None。
+fn extract_parent_for_group(group: &serde_json::Value) -> Option<serde_json::Value> {
+    if let Some(p) = group.get("bankaraMatchChallenge").filter(|v| !v.is_null()) {
+        return Some(p.clone());
+    }
+    if let Some(p) = group.get("xMatchMeasurement").filter(|v| !v.is_null()) {
+        return Some(p.clone());
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -366,38 +396,37 @@ pub async fn fetch_and_store_battles(
     // --- レギュラー ---
     let regular_resp =
         graphql_request(client, bullet_token, country, language, HASH_REGULAR, None).await?;
-    let regular_nodes = extract_battle_nodes(&regular_resp);
-    let regular_rows: Vec<BattleRow> = regular_nodes
+    let regular_pairs = extract_battle_nodes(&regular_resp);
+    let regular_rows: Vec<BattleRow> = regular_pairs
         .iter()
-        .map(|n| parse_regular_node(n, &fetched_at))
+        .map(|(n, p)| parse_regular_node(n, &fetched_at, p.as_ref()))
         .collect();
     total_inserted += crate::db::insert_battles(pool, regular_rows).await?;
 
     // --- バンカラ ---
     let bankara_resp =
         graphql_request(client, bullet_token, country, language, HASH_BANKARA, None).await?;
-    let bankara_nodes = extract_battle_nodes(&bankara_resp);
-    let bankara_rows: Vec<BattleRow> = bankara_nodes
+    let bankara_pairs = extract_battle_nodes(&bankara_resp);
+    let bankara_rows: Vec<BattleRow> = bankara_pairs
         .iter()
-        .map(|n| parse_bankara_node(n, &fetched_at))
+        .map(|(n, p)| parse_bankara_node(n, &fetched_at, p.as_ref()))
         .collect();
     total_inserted += crate::db::insert_battles(pool, bankara_rows).await?;
 
     // --- Xマッチ ---
     let xmatch_resp =
         graphql_request(client, bullet_token, country, language, HASH_XMATCH, None).await?;
-    let xmatch_nodes = extract_battle_nodes(&xmatch_resp);
-    let xmatch_rows: Vec<BattleRow> = xmatch_nodes
+    let xmatch_pairs = extract_battle_nodes(&xmatch_resp);
+    let xmatch_rows: Vec<BattleRow> = xmatch_pairs
         .iter()
-        .map(|n| parse_xmatch_node(n, &fetched_at))
+        .map(|(n, p)| parse_xmatch_node(n, &fetched_at, p.as_ref()))
         .collect();
     total_inserted += crate::db::insert_battles(pool, xmatch_rows).await?;
 
     // --- 画像キャッシュ ---
-    let all_nodes = regular_nodes
-        .into_iter()
-        .chain(bankara_nodes)
-        .chain(xmatch_nodes);
+    let all_nodes = regular_pairs.iter().map(|(n, _)| *n)
+        .chain(bankara_pairs.iter().map(|(n, _)| *n))
+        .chain(xmatch_pairs.iter().map(|(n, _)| *n));
     let image_targets = collect_image_targets(all_nodes);
     for (kind, name, url) in image_targets {
         if let Err(e) = crate::images::download_and_cache(app, client, &kind, &name, &url).await {

@@ -34,6 +34,9 @@ pub async fn init_db(app: &AppHandle) -> Result<DbPool, String> {
         "ALTER TABLE battles ADD COLUMN other_teams    TEXT",
         "ALTER TABLE battles ADD COLUMN stage_name     TEXT",
         "ALTER TABLE battles ADD COLUMN statink_uuid  TEXT",
+        // historyGroups の親ノード（bankaraMatchChallenge or xMatchMeasurement）の JSON。
+        // 各 group の最新バトル（idx==0）にのみセットされる。NULL も多い。
+        "ALTER TABLE battles ADD COLUMN parent_json   TEXT",
         "ALTER TABLE weapons ADD COLUMN sub_weapon_image     TEXT",
         "ALTER TABLE weapons ADD COLUMN special_weapon_image TEXT",
     ] {
@@ -127,6 +130,9 @@ pub struct BattleRow {
     pub my_team: Option<String>,
     pub other_teams: Option<String>,
     pub statink_uuid: Option<String>,
+    /// 履歴クエリの親ノード（bankaraMatchChallenge / xMatchMeasurement）の JSON。
+    /// 各 historyGroup の最新バトルのみ非 NULL。stat.ink へのアップロード時に使用。
+    pub parent_json: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -153,8 +159,8 @@ pub async fn insert_battles(pool: &DbPool, rows: Vec<BattleRow>) -> Result<usize
             "INSERT OR IGNORE INTO battles
              (id, played_at, mode, rule, stage, stage_name, weapon, result,
               kill, death, assist, special, inked, duration,
-              rank_before, rank_after, x_power, raw_json, fetched_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              rank_before, rank_after, x_power, raw_json, fetched_at, parent_json)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .bind(&row.id)
         .bind(&row.played_at)
@@ -175,6 +181,7 @@ pub async fn insert_battles(pool: &DbPool, rows: Vec<BattleRow>) -> Result<usize
         .bind(row.x_power)
         .bind(&row.raw_json)
         .bind(&row.fetched_at)
+        .bind(&row.parent_json)
         .execute(pool.as_ref())
         .await
         .map_err(|e| e.to_string())?;
@@ -539,7 +546,7 @@ pub async fn db_list_battles(
                 kill, death, assist, special, inked, duration,
                 rank_before, rank_after, x_power, raw_json, fetched_at,
                 knockout, sub_weapon, special_weapon, awards, my_team, other_teams,
-                statink_uuid
+                statink_uuid, parent_json
          FROM battles
          WHERE (? IS NULL OR played_at >= ?)
            AND (? IS NULL OR played_at <= ?)
@@ -1069,7 +1076,7 @@ pub async fn get_battles_not_uploaded(pool: &DbPool) -> Result<Vec<BattleRow>, S
                 kill, death, assist, special, inked, duration,
                 rank_before, rank_after, x_power, raw_json, fetched_at,
                 knockout, sub_weapon, special_weapon, awards, my_team, other_teams,
-                statink_uuid
+                statink_uuid, parent_json
          FROM battles
          WHERE statink_uuid IS NULL
            AND detail_fetched = 1

@@ -160,6 +160,9 @@ export interface BattleRow {
   my_team: string | null
   other_teams: string | null
   statink_uuid: string | null
+  /** 履歴クエリの親ノード（bankaraMatchChallenge / xMatchMeasurement）の JSON。
+   *  各 historyGroup の最新バトルのみ非 null。stat.ink 連携や詳細表示で使う。 */
+  parent_json: string | null
 }
 
 export interface SummaryEntry {
