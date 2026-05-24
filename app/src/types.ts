@@ -116,6 +116,24 @@ export interface Team {
   players?: Player[]
 }
 
+/**
+ * battles.parent_json に保存される履歴クエリの親ノード。
+ * バンカラチャレンジ時は bankaraMatchChallenge、X マッチ評価戦時は xMatchMeasurement の中身。
+ * 各 historyGroup の最新バトル（idx==0）にのみ非 null。
+ */
+export interface ParentJson {
+  // 両方共通
+  winCount?:  number
+  loseCount?: number
+  // バンカラチャレンジ
+  earnedUdemaePoint?: number
+  udemaeAfter?:        string | null
+  isPromo?:            boolean
+  isUdemaeUp?:         boolean
+  // X マッチ評価戦
+  xPowerAfter?: number | null
+}
+
 export interface VsHistoryDetail {
   myTeam?: Team
   otherTeams?: Team[]
