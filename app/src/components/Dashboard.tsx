@@ -5,8 +5,10 @@ import {
   BarChart, Bar, LineChart, Line, ScatterChart, Scatter,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
-import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats } from '../types'
+import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats, GroupedStatsRow } from '../types'
 import { filtersToRange, stageAbbr, modeLabel, ruleLabel, avgKillRatio } from '../types'
+import { SimpleBarChart } from './charts/SimpleBarChart'
+import { AttackDefenseChart } from './charts/AttackDefenseChart'
 
 const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
@@ -71,6 +73,10 @@ interface Props {
 export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fetching }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [stats, setStats]     = useState<BattleStats | null>(null)
+  // #86 PR A: 新タイプチャートのデモ用に「武器カテゴリ別の攻撃 vs デス」「ステージ別の平均塗り」を表示。
+  // PR B でカスタムグラフ機構に移行するまでの暫定。
+  const [demoAttackDefense, setDemoAttackDefense] = useState<GroupedStatsRow[]>([])
+  const [demoInked, setDemoInked]                 = useState<GroupedStatsRow[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
@@ -94,8 +100,10 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
     Promise.all([
       invoke<Summary>('db_summary', filterArgs),
       invoke<BattleStats>('db_battle_stats', filterArgs),
+      invoke<GroupedStatsRow[]>('db_grouped_stats', { ...filterArgs, groupBy: 'weapon_category' }),
+      invoke<GroupedStatsRow[]>('db_grouped_stats', { ...filterArgs, groupBy: 'stage' }),
     ])
-      .then(([s, st]) => { setSummary(s); setStats(st) })
+      .then(([s, st, gAd, gInk]) => { setSummary(s); setStats(st); setDemoAttackDefense(gAd); setDemoInked(gInk) })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [refreshKey, filters])
@@ -177,6 +185,20 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
             <ChartCard title="モード別 バトル数 & 勝率" sortBy={modeSort} onSortChange={setModeSort}>
               <WinRateChart data={sorted(summary.by_mode, modeSort)} height={220} images={new Map()} nameTransform={modeLabel} />
             </ChartCard>
+
+            {/* #86 PR A: 新チャートタイプのデモ。武器カテゴリ別の K/A/D セットチャート */}
+            {demoAttackDefense.length > 0 && (
+              <ChartCard title="武器カテゴリ別 攻撃 vs デス">
+                <AttackDefenseChart data={demoAttackDefense.slice(0, 14)} height={260} />
+              </ChartCard>
+            )}
+
+            {/* #86 PR A: シンプル棒のデモ。ステージ別の平均塗り。ラベルは斜め 30° で長い名前にも対応 */}
+            {demoInked.length > 0 && (
+              <ChartCard title="ステージ別 平均塗り">
+                <SimpleBarChart data={demoInked.slice(0, 14)} metric="avg_inked" height={260} nameTransform={stageAbbr} tickAngle={30} />
+              </ChartCard>
+            )}
 
             {aiChart && (
               <ChartCard title={aiChart.title}>
