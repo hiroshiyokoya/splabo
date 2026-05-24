@@ -87,8 +87,9 @@ body {
 /* サイドバー下部の「バトルデータを取得」ボタン。
    見た目（背景・border・hover）は .btn-primary に任せ、
    ここではサイドバー固有の配置・サイズ・フォント調整。
-   ナビ項目（.nav-item）と同じ大きさ・同じシステムフォントで、bold 指定。 */
-.sidebar-fetch-btn {
+   .btn-primary は CSS の後ろの方で定義されているため、`.btn-primary.sidebar-fetch-btn`
+   の合成セレクタで specificity を上げて上書きする。 */
+.btn-primary.sidebar-fetch-btn {
   margin: auto 12px 4px;           /* 上に伸びて下のラベルとくっつく */
   padding: 8px 10px;
   font-family: inherit;            /* btn-primary の M PLUS Rounded を上書き */
