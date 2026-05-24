@@ -151,7 +151,6 @@ This project is not affiliated with or endorsed by Nintendo. "Splatoon" is a tra
 ## 関連リポジトリ
 
 - [geartoon](https://github.com/hiroshiyokoya/geartoon) — Splatoon 3 ギア検索・構成共有アプリ（Tauri + React）
-- [geartoon-viewer](https://github.com/hiroshiyokoya/geartoon-viewer) — Android ビューワー（Kotlin + Jetpack Compose）
 
 ## License
 
