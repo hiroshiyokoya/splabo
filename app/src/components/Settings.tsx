@@ -14,8 +14,6 @@ interface Props {
 export function Settings({ settings, onSave, loginVersion }: Props) {
   const [loggedIn, setLoggedIn] = useState(false)
   const [authLoading, setAuthLoading] = useState(false)
-  const [fetching, setFetching] = useState(false)
-  const [fetchResult, setFetchResult] = useState<string | null>(null)
   const [themeId, setThemeId] = useState(getThemeId)
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<string | null>(null)
@@ -78,20 +76,7 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
     }
   }
 
-  async function handleFetchFull() {
-    setFetching(true)
-    setFetchResult(null)
-    try {
-      const [battles] = await invoke<[number, number]>('fetch_battles_full')
-      setFetchResult(`バトル +${battles}件`)
-    } catch (e) {
-      setFetchResult(`エラー: ${String(e)}`)
-    } finally {
-      setFetching(false)
-    }
-  }
-
-  async function handleUploadStatink() {
+async function handleUploadStatink() {
     setUploading(true)
     setUploadResult(null)
     try {
@@ -114,7 +99,7 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ color: 'var(--win)', fontSize: 13 }}>連携済み</span>
             <button className="btn-primary" onClick={handleLogout} disabled={authLoading}>
-              {authLoading ? '処理中...' : 'ログアウト'}
+              {authLoading ? '処理中...' : '認証解除'}
             </button>
           </div>
         ) : (
@@ -130,23 +115,6 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
       </section>
 
       <section className="settings-section">
-        <h3>バトルデータ取得</h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
-          SplatNet3 から最新のバトル結果・詳細データを取得します。
-        </p>
-        <div className="settings-subitem" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="btn-primary" onClick={handleFetchFull} disabled={fetching}>
-            {fetching ? '取得中...' : 'バトルデータを取得'}
-          </button>
-          {fetchResult && (
-            <span style={{ fontSize: 13, color: fetchResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
-              {fetchResult}
-            </span>
-          )}
-        </div>
-      </section>
-
-      <section className="settings-section settings-section--sub">
         <h3>自動取得（有効時はトレイに常駐）</h3>
         <label className="checkbox-label">
           <input
