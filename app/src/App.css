@@ -86,13 +86,16 @@ body {
 
 /* サイドバー下部の「バトルデータを取得」ボタン。
    見た目（背景・border・hover）は .btn-primary に任せ、
-   ここではサイドバー固有の配置・サイズ調整のみ。 */
+   ここではサイドバー固有の配置・サイズ・フォント調整。
+   ナビ項目（.nav-item）と同じ大きさ・同じシステムフォントで、bold 指定。 */
 .sidebar-fetch-btn {
-  margin: auto 12px 4px;          /* 上に伸びて下のラベルとくっつく */
-  font-size: 13px;
+  margin: auto 12px 4px;           /* 上に伸びて下のラベルとくっつく */
+  padding: 8px 10px;
+  font-family: inherit;            /* btn-primary の M PLUS Rounded を上書き */
+  font-size: 13px;                 /* ナビ項目と同じ */
+  font-weight: 700;
   white-space: normal;             /* サイドバー幅で 2 行折り返しを許可 */
   line-height: 1.3;
-  padding: 8px 10px;
 }
 
 .sidebar-last-fetched {
