@@ -99,7 +99,7 @@ export function SimpleBarChart({
           height={hasImages ? 40 : tickAngle ? 44 : 28}
           // 画像 tick がある場合は categoryTick、無い場合は組み込みテキスト
           // （Dashboard 上部の WinRateChart の ImageTick と表示位置を揃える）
-          tick={hasImages ? categoryTick({ images, tickAngle, nameTransform }) : ({ fill: 'var(--text)', fontSize: 10 } as object)}
+          tick={hasImages ? categoryTick({ images, tickAngle, nameTransform, activeIndex, onHoverIndex: setActiveIndex }) : ({ fill: 'var(--text)', fontSize: 10 } as object)}
           tickFormatter={hasImages ? undefined : nameTransform}
           angle={hasImages ? undefined : tickAngle ? tickAngle : undefined}
           textAnchor={hasImages ? undefined : tickAngle ? 'start' : 'middle'}
