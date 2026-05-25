@@ -4,6 +4,7 @@ import {
 } from 'recharts'
 import type { GroupedStatsRow, MetricKey } from '../../types'
 import { METRIC_LABELS, getMetric, formatMetric } from '../../types'
+import { categoryTick } from './CategoryTick'
 
 /**
  * 単一メトリクスを棒で見せるシンプルなチャート。
@@ -16,17 +17,19 @@ import { METRIC_LABELS, getMetric, formatMetric } from '../../types'
  * - 値が null のカテゴリ（detail_fetched=0 しかない等）はバーを描かず、ツールチップで「—」表示
  */
 export function SimpleBarChart({
-  data, metric, height = 260, nameTransform, tickAngle,
+  data, metric, height = 260, nameTransform, tickAngle, images,
 }: {
   data:           GroupedStatsRow[]
   metric:         MetricKey
   height?:        number
   /** X 軸ラベルの整形（ステージ名の省略など）。 */
   nameTransform?: (name: string) => string
-  /** X 軸ラベルを斜めに表示する角度（度）。ステージ名のように長いラベルで活用。
-   *  指定時は textAnchor='end' でラベル右端を tick に揃え、tick 高さを広げる。 */
+  /** X 軸ラベルを斜めに表示する角度（度）。ステージ名のように長いラベルで活用。 */
   tickAngle?:     number
+  /** カテゴリ → 画像 URL の対応。武器アイコン等を X 軸ラベルとして描く。 */
+  images?:        Map<string, string>
 }) {
+  const hasImages = !!images && data.some(d => images.has(d.name))
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
 
   const chartData = data.map(d => ({
@@ -93,13 +96,13 @@ export function SimpleBarChart({
         <XAxis
           dataKey="name"
           interval={0}
-          height={tickAngle ? 44 : 28}
-          tick={{ fill: 'var(--text)', fontSize: 10 } as object}
-          tickFormatter={nameTransform}
-          // Dashboard 上部の WinRateChart（ImageTick 内で `rotate(${tickAngle})`, textAnchor='start'）と
-          // 揃えるため、CW 方向の正の角度 + textAnchor='start' で「tick から下右へ伸びる」向きにする。
-          angle={tickAngle ? tickAngle : undefined}
-          textAnchor={tickAngle ? 'start' : 'middle'}
+          height={hasImages ? 40 : tickAngle ? 44 : 28}
+          // 画像 tick がある場合は categoryTick、無い場合は組み込みテキスト
+          // （Dashboard 上部の WinRateChart の ImageTick と表示位置を揃える）
+          tick={hasImages ? categoryTick({ images, tickAngle, nameTransform }) : ({ fill: 'var(--text)', fontSize: 10 } as object)}
+          tickFormatter={hasImages ? undefined : nameTransform}
+          angle={hasImages ? undefined : tickAngle ? tickAngle : undefined}
+          textAnchor={hasImages ? undefined : tickAngle ? 'start' : 'middle'}
         />
         <YAxis
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}

@@ -253,6 +253,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
                     data={groupedStatsCache[c.groupBy] ?? []}
                     onEdit={() => handleEdit(c.id)}
                     onDelete={() => handleDelete(c.id)}
+                    weaponImages={weaponImages}
                   />
                 ))}
               </SortableContext>

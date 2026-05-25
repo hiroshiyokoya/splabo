@@ -3,6 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
 import type { GroupedStatsRow } from '../../types'
+import { categoryTick } from './CategoryTick'
 
 const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
@@ -40,19 +41,22 @@ function stackTopRoundedShape(props: any) {
 /**
  * カスタムグラフ用の「勝/負/分積み上げ + 勝率線」チャート。
  *
- * Dashboard 内蔵の WinRateChart から画像ティック・hoverImage 関連を除いた汎用版。
- * カスタムグラフでは武器アイコンを並べない（ステージ・ルール・モード等、武器以外もありうるため）。
+ * Dashboard 内蔵 WinRateChart から hoverImage 機能を除いた汎用版。
+ * `images` を渡すと X 軸ラベルにアイコンを描く（X 軸が武器のときに使用）。
  */
 export function StackedWinrateChart({
-  data, height = 260, nameTransform, tickAngle,
+  data, height = 260, nameTransform, tickAngle, images,
 }: {
   data:           GroupedStatsRow[]
   height?:        number
   nameTransform?: (name: string) => string
   tickAngle?:     number
+  /** カテゴリ → 画像 URL の対応。武器アイコン等を X 軸ラベルとして描く。 */
+  images?:        Map<string, string>
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
-  const tickHeight = tickAngle ? 44 : 28
+  const hasImages = !!images && data.some(d => images.has(d.name))
+  const tickHeight = hasImages ? 40 : tickAngle ? 44 : 28
 
   const chartData = data.map(d => ({
     name:     d.name,
@@ -96,10 +100,10 @@ export function StackedWinrateChart({
           dataKey="name"
           interval={0}
           height={tickHeight}
-          tick={{ fill: 'var(--text)', fontSize: 10 } as object}
-          tickFormatter={nameTransform}
-          angle={tickAngle ? tickAngle : undefined}
-          textAnchor={tickAngle ? 'start' : 'middle'}
+          tick={hasImages ? categoryTick({ images, tickAngle, nameTransform }) : ({ fill: 'var(--text)', fontSize: 10 } as object)}
+          tickFormatter={hasImages ? undefined : nameTransform}
+          angle={hasImages ? undefined : tickAngle ? tickAngle : undefined}
+          textAnchor={hasImages ? undefined : tickAngle ? 'start' : 'middle'}
         />
         <YAxis yAxisId="left" tick={{ fontSize: 10, fill: 'var(--text)' }} width={36} />
         <YAxis

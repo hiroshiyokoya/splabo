@@ -18,12 +18,14 @@ import { StackedWinrateChart } from './charts/StackedWinrateChart'
  *   - その他 → そのまま
  */
 export function CustomChartCard({
-  chart, data, onEdit, onDelete,
+  chart, data, onEdit, onDelete, weaponImages,
 }: {
   chart:    CustomChart
   data:     GroupedStatsRow[]
   onEdit:   () => void
   onDelete: () => void
+  /** 武器名 → 画像 URL の対応。X 軸が `weapon` のときラベルをアイコンに置換する。 */
+  weaponImages?: Map<string, string>
 }) {
   const sortable = useSortable({ id: chart.id })
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable
@@ -61,18 +63,20 @@ export function CustomChartCard({
           <button className="custom-chart-btn" onClick={onDelete} aria-label="削除" title="削除">✕</button>
         </div>
       </div>
-      {renderChartBody(chart, sliced, nameTransform, tickAngle)}
+      {renderChartBody(chart, sliced, nameTransform, tickAngle, weaponImages)}
     </div>
   )
 }
 
 /** shape × yComposition の組み合わせでチャートコンポーネントへディスパッチする。
- *  v1.0.0 は shape='bar' の 3 構成のみ実装。それ以外の shape は「未実装」プレースホルダ。 */
+ *  v1.0.0 は shape='bar' の 3 構成のみ実装。それ以外の shape は「未実装」プレースホルダ。
+ *  X 軸が `weapon` のときに限り、`weaponImages` を渡してアイコンラベルにする。 */
 function renderChartBody(
   chart:         CustomChart,
   data:          GroupedStatsRow[],
   nameTransform: ((s: string) => string) | undefined,
   tickAngle:     number | undefined,
+  weaponImages:  Map<string, string> | undefined,
 ): ReactNode {
   if (chart.shape !== 'bar') {
     return (
@@ -82,14 +86,17 @@ function renderChartBody(
       </div>
     )
   }
+  // X 軸が武器のときだけ画像 tick を有効化。他の groupBy では undefined。
+  const images = chart.groupBy === 'weapon' ? weaponImages : undefined
+
   if (chart.yComposition === 'single_metric' && chart.metric) {
-    return <SimpleBarChart data={data} metric={chart.metric} nameTransform={nameTransform} tickAngle={tickAngle} />
+    return <SimpleBarChart data={data} metric={chart.metric} nameTransform={nameTransform} tickAngle={tickAngle} images={images} />
   }
   if (chart.yComposition === 'stacked_winrate') {
-    return <StackedWinrateChart data={data} nameTransform={nameTransform} tickAngle={tickAngle} />
+    return <StackedWinrateChart data={data} nameTransform={nameTransform} tickAngle={tickAngle} images={images} />
   }
   if (chart.yComposition === 'attack_defense') {
-    return <AttackDefenseChart data={data} nameTransform={nameTransform} tickAngle={tickAngle} />
+    return <AttackDefenseChart data={data} nameTransform={nameTransform} tickAngle={tickAngle} images={images} />
   }
   return null
 }

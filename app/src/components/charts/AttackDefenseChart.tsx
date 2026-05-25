@@ -3,6 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
 } from 'recharts'
 import type { GroupedStatsRow } from '../../types'
+import { categoryTick } from './CategoryTick'
 
 /** スタック最上段のセグメントだけ上端を角丸にする shape。
  *  Recharts の `radius` を全 stack に付けると境目に凹みが出るので shape で制御する。
@@ -35,14 +36,17 @@ function attackStackTopRoundedShape(props: any) {
  * `stackId="attack"` の 2 本（K+A）と `stackId="defense"` の 1 本（D）で 2 グループバーを表現する。
  */
 export function AttackDefenseChart({
-  data, height = 280, nameTransform, tickAngle,
+  data, height = 280, nameTransform, tickAngle, images,
 }: {
   data:           GroupedStatsRow[]
   height?:        number
   nameTransform?: (name: string) => string
   /** X 軸ラベルを斜めに表示する角度。長いラベル（ステージ名など）向け。 */
   tickAngle?:     number
+  /** カテゴリ → 画像 URL の対応。武器アイコン等を X 軸ラベルとして描く。 */
+  images?:        Map<string, string>
 }) {
+  const hasImages = !!images && data.some(d => images.has(d.name))
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
 
   const chartData = data.map(d => ({
@@ -83,11 +87,11 @@ export function AttackDefenseChart({
         <XAxis
           dataKey="name"
           interval={0}
-          height={tickAngle ? 44 : 28}
-          tick={{ fill: 'var(--text)', fontSize: 10 } as object}
-          tickFormatter={nameTransform}
-          angle={tickAngle ? tickAngle : undefined}
-          textAnchor={tickAngle ? 'start' : 'middle'}
+          height={hasImages ? 40 : tickAngle ? 44 : 28}
+          tick={hasImages ? categoryTick({ images, tickAngle, nameTransform }) : ({ fill: 'var(--text)', fontSize: 10 } as object)}
+          tickFormatter={hasImages ? undefined : nameTransform}
+          angle={hasImages ? undefined : tickAngle ? tickAngle : undefined}
+          textAnchor={hasImages ? undefined : tickAngle ? 'start' : 'middle'}
         />
         <YAxis
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}
