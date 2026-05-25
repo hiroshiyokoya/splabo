@@ -138,7 +138,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 .chart-title {
   font-size: 13px;
@@ -166,12 +166,13 @@ body {
 /* カード上段。ドラッグ・設定・削除ボタンを右寄せで配置。
    下段の chart-card-header を固定 4 グラフと同じ「title | 並び替え」レイアウトに
    揃えるため、操作系ボタンは別行にしている。 */
+.custom-chart-card { padding-top: 12px; }
 .custom-chart-toprow {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: 4px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 .custom-chart-actions {
   display: flex;
