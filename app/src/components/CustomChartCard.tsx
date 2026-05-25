@@ -86,6 +86,19 @@ export function CustomChartCard({
 
   return (
     <div className="chart-card custom-chart-card" ref={setNodeRef} style={style}>
+      {/* 上段：ドラッグ・設定・削除（カスタムグラフ専用）。
+          こうすることで下の chart-card-header は固定 4 グラフと同じ「title | 並び替え」レイアウトになる。 */}
+      <div className="custom-chart-toprow">
+        <button
+          className="custom-chart-handle"
+          {...attributes}
+          {...listeners}
+          aria-label="並び替え"
+          title="ドラッグで並び替え"
+        >⋮⋮</button>
+        <button className="custom-chart-btn" onClick={onEdit}   aria-label="設定" title="設定">⚙</button>
+        <button className="custom-chart-btn" onClick={onDelete} aria-label="削除" title="削除">✕</button>
+      </div>
       <div className="chart-card-header">
         <h3 className="chart-title">{autoChartTitle(chart)}</h3>
         {sortOptions.length > 0 && (
@@ -99,17 +112,6 @@ export function CustomChartCard({
             ))}
           </div>
         )}
-        <div className="custom-chart-actions">
-          <button
-            className="custom-chart-handle"
-            {...attributes}
-            {...listeners}
-            aria-label="並び替え"
-            title="ドラッグで並び替え"
-          >⋮⋮</button>
-          <button className="custom-chart-btn" onClick={onEdit}   aria-label="設定" title="設定">⚙</button>
-          <button className="custom-chart-btn" onClick={onDelete} aria-label="削除" title="削除">✕</button>
-        </div>
       </div>
       {renderChartBody(chart, sliced, nameTransform, tickAngle, weaponImages)}
     </div>
