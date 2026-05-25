@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell,
 } from 'recharts'
 import type { GroupedStatsRow, MetricKey } from '../../types'
 import { METRIC_LABELS, getMetric, formatMetric } from '../../types'
 import { categoryTick } from './CategoryTick'
+import { HoverTooltip } from './HoverTooltip'
 
 /**
  * 単一メトリクスを棒で見せるシンプルなチャート。
@@ -66,7 +67,12 @@ export function SimpleBarChart({
     return activeIndex === null || activeIndex === i ? 1 : 0.35
   }
 
+  // YAxis 幅 42 + 右マージン 8。HoverTooltip の位置計算に使う。
+  const leftPad  = 42
+  const rightPad = 8
+
   return (
+    <div className="chart-hover-area" style={{ position: 'relative' }}>
     <ResponsiveContainer width="100%" height={height}>
       <BarChart
         data={chartData}
@@ -109,21 +115,6 @@ export function SimpleBarChart({
           width={42}
           tickFormatter={metric === 'win_rate' ? (v: number) => `${(v * 100).toFixed(0)}%` : undefined}
         />
-        <Tooltip
-          cursor={false}
-          content={({ active, payload, label }: any) => {
-            if (!active || !payload?.length) return null
-            const p = payload[0]?.payload as { name: string; value: number | null; rawRow: GroupedStatsRow }
-            const displayLabel = nameTransform ? nameTransform(label) : label
-            return (
-              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, padding: '6px 10px' }}>
-                <div style={{ color: 'var(--text)', fontWeight: 700, marginBottom: 4 }}>{displayLabel}</div>
-                <div style={{ color: 'var(--text)' }}>{METRIC_LABELS[metric]}: {formatMetric(p.value, metric)}</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 2 }}>バトル数: {p.rawRow.total}</div>
-              </div>
-            )
-          }}
-        />
         <Bar dataKey="value" maxBarSize={32} radius={[4, 4, 0, 0]} activeBar={false}
           onMouseEnter={(_: any, i: number) => setActiveIndex(i)}
         >
@@ -133,5 +124,19 @@ export function SimpleBarChart({
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+    <HoverTooltip activeIndex={activeIndex} dataLength={chartData.length} leftPad={leftPad} rightPad={rightPad}>
+      {activeIndex != null && (() => {
+        const p = chartData[activeIndex]
+        const displayLabel = nameTransform ? nameTransform(p.name) : p.name
+        return (
+          <>
+            <div className="hover-tt-title">{displayLabel}</div>
+            <div className="hover-tt-row">{METRIC_LABELS[metric]}: {formatMetric(p.value, metric)}</div>
+            <div className="hover-tt-row hover-tt-row--muted">バトル数: {p.rawRow.total}</div>
+          </>
+        )
+      })()}
+    </HoverTooltip>
+    </div>
   )
 }

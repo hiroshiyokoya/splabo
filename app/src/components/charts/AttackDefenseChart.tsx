@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, Legend,
 } from 'recharts'
 import type { GroupedStatsRow } from '../../types'
 import { categoryTick } from './CategoryTick'
+import { HoverTooltip } from './HoverTooltip'
 
 /** スタック最上段のセグメントだけ上端を角丸にする shape。
  *  Recharts の `radius` を全 stack に付けると境目に凹みが出るので shape で制御する。
@@ -61,7 +62,12 @@ export function AttackDefenseChart({
     return activeIndex === null || activeIndex === i ? 1 : 0.35
   }
 
+  // YAxis 幅 36 + 右マージン 8。HoverTooltip 位置計算用。
+  const leftPad  = 36
+  const rightPad = 8
+
   return (
+    <div className="chart-hover-area" style={{ position: 'relative' }}>
     <ResponsiveContainer width="100%" height={height}>
       <BarChart
         data={chartData}
@@ -96,23 +102,6 @@ export function AttackDefenseChart({
         <YAxis
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}
           width={36}
-        />
-        <Tooltip
-          cursor={false}
-          content={({ active, payload, label }: any) => {
-            if (!active || !payload?.length) return null
-            const row = payload[0]?.payload as { kill: number; assist: number; death: number; rawRow: GroupedStatsRow }
-            const displayLabel = nameTransform ? nameTransform(label) : label
-            return (
-              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, padding: '6px 10px' }}>
-                <div style={{ color: 'var(--text)', fontWeight: 700, marginBottom: 4 }}>{displayLabel}</div>
-                <div style={{ color: '#22c55e' }}>平均キル: {row.kill.toFixed(2)}</div>
-                <div style={{ color: '#9ca3af' }}>平均アシスト: {row.assist.toFixed(2)}</div>
-                <div style={{ color: '#ef4444' }}>平均デス: {row.death.toFixed(2)}</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 2 }}>バトル数: {row.rawRow.total}</div>
-              </div>
-            )
-          }}
         />
         {/* 角丸の小さなスウォッチで凡例を描く（Recharts デフォルトの四角アイコンは黒くて分かりにくい）。
             Recharts の payload は stack 順で並ぶことがあり期待と違うので、ここで「キル → アシスト → デス」固定で描く。 */}
@@ -163,5 +152,21 @@ export function AttackDefenseChart({
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+    <HoverTooltip activeIndex={activeIndex} dataLength={chartData.length} leftPad={leftPad} rightPad={rightPad}>
+      {activeIndex != null && (() => {
+        const row = chartData[activeIndex]
+        const displayLabel = nameTransform ? nameTransform(row.name) : row.name
+        return (
+          <>
+            <div className="hover-tt-title">{displayLabel}</div>
+            <div className="hover-tt-row" style={{ color: '#22c55e' }}>平均キル: {row.kill.toFixed(2)}</div>
+            <div className="hover-tt-row" style={{ color: '#9ca3af' }}>平均アシスト: {row.assist.toFixed(2)}</div>
+            <div className="hover-tt-row" style={{ color: '#ef4444' }}>平均デス: {row.death.toFixed(2)}</div>
+            <div className="hover-tt-row hover-tt-row--muted">バトル数: {row.rawRow.total}</div>
+          </>
+        )
+      })()}
+    </HoverTooltip>
+    </div>
   )
 }

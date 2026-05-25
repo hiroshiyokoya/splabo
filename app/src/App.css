@@ -262,6 +262,31 @@ body {
 }
 .form-hint--warn { color: var(--accent2); }
 
+/* HoverTooltip: activeIndex 連動の自前ツールチップ。Recharts デフォルトの
+   Tooltip はプロット領域内ホバーにしか反応しないので、X 軸アイコンの
+   ホバー時にも出すために独立に描く。 */
+.chart-hover-area { width: 100%; }
+.chart-hover-tooltip {
+  position: absolute;
+  transform: translateX(-50%);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 10;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+}
+.hover-tt-title {
+  color: var(--text);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.hover-tt-row { color: var(--text); }
+.hover-tt-row--muted { color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+
 /* 未実装 shape の placeholder（CustomChartCard 内） */
 .chart-not-implemented {
   display: flex;
