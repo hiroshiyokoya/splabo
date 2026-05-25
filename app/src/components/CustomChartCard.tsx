@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CustomChart, GroupedStatsRow } from '../types'
-import { stageAbbr, modeLabel, ruleLabel } from '../types'
+import { stageAbbr, modeLabel, ruleLabel, autoChartTitle } from '../types'
 import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
 import { StackedWinrateChart } from './charts/StackedWinrateChart'
@@ -50,7 +50,7 @@ export function CustomChartCard({
   return (
     <div className="chart-card custom-chart-card" ref={setNodeRef} style={style}>
       <div className="chart-card-header">
-        <h3 className="chart-title">{chart.title}</h3>
+        <h3 className="chart-title">{autoChartTitle(chart)}</h3>
         <div className="custom-chart-actions">
           <button
             className="custom-chart-handle"

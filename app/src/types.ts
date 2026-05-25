@@ -364,9 +364,12 @@ export type YComposition =
   | 'stacked_winrate'  // 勝/負/分 積み上げ + 勝率線
   | 'attack_defense'   // 平均K (灰色 A 積み) + 平均D セット
 
+/**
+ * カスタムグラフの設定。タイトルは持たず、表示時に `autoChartTitle(chart)` で
+ * 「{X 軸}別 {Y 軸}」を常に算出する（軸を変えると即座にタイトルも追随する）。
+ */
 export interface CustomChart {
   id:           string
-  title:        string
   shape:        ChartShape
   yComposition: YComposition
   groupBy:      GroupByKey

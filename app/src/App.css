@@ -233,6 +233,16 @@ body {
   color: var(--text-muted);
   opacity: 0.75;
 }
+/* ChartConfigModal の自動タイトルプレビュー表示。読み取り専用の見た目に。 */
+.form-preview-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface2);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
 .form-input {
   background: var(--surface2);
   border: 1px solid var(--border);

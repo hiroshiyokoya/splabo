@@ -2,11 +2,11 @@ import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey } fro
 
 const STORAGE_KEY = 'chartoon:customCharts'
 
-/** 旧形式（v1: shape/yComposition 分離前、`type` 1 本）→ 新形式へ変換する。
- *  PR #114 のローカル試用で旧形式が保存されているケースに備えて入れている。 */
+/** 旧形式（v1: shape/yComposition 分離前、`type` 1 本、title あり）→ 新形式へ変換する。
+ *  title はもう持たないので捨てる。 */
 interface CustomChartV1 {
   id:      string
-  title:   string
+  title?:  string
   type:    'simple_bar' | 'stacked_winrate' | 'attack_defense'
   groupBy: GroupByKey
   metric?: MetricKey
@@ -19,7 +19,6 @@ function migrateV1(old: CustomChartV1): CustomChart {
                                      'attack_defense'
   return {
     id:           old.id,
-    title:        old.title,
     shape:        'bar' as ChartShape,
     yComposition,
     groupBy:      old.groupBy,
@@ -27,7 +26,8 @@ function migrateV1(old: CustomChartV1): CustomChart {
   }
 }
 
-/** localStorage から読み込み。新旧両形式を許容し、新形式に正規化して返す。 */
+/** localStorage から読み込み。新旧両形式を許容し、新形式に正規化して返す。
+ *  旧形式の `title` フィールドは捨てる（タイトルは常に autoChartTitle で算出するため）。 */
 export function loadCustomCharts(): CustomChart[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -37,10 +37,16 @@ export function loadCustomCharts(): CustomChart[] {
     const result: CustomChart[] = []
     for (const c of parsed) {
       if (typeof c !== 'object' || c === null) continue
-      if (typeof c.id !== 'string' || typeof c.title !== 'string' || typeof c.groupBy !== 'string') continue
-      // 新形式：shape と yComposition が揃っているもの
+      if (typeof c.id !== 'string' || typeof c.groupBy !== 'string') continue
+      // 新形式：shape と yComposition が揃っているもの（title は無視）
       if (typeof c.shape === 'string' && typeof c.yComposition === 'string') {
-        result.push(c as CustomChart)
+        result.push({
+          id:           c.id,
+          shape:        c.shape,
+          yComposition: c.yComposition,
+          groupBy:      c.groupBy,
+          metric:       c.metric,
+        })
         continue
       }
       // 旧形式：type フィールドのみ → マイグレーション
@@ -69,11 +75,10 @@ export function generateChartId(): string {
   return `chart-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`
 }
 
-/** 新規チャート作成用のデフォルト値。タイトルは空のまま（autoChartTitle で自動生成される）。 */
+/** 新規チャート作成用のデフォルト値。タイトルは持たず autoChartTitle で算出される。 */
 export function newChartDefault(): CustomChart {
   return {
     id:           generateChartId(),
-    title:        '',
     shape:        'bar',
     yComposition: 'single_metric',
     groupBy:      'weapon',
