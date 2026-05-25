@@ -1,22 +1,56 @@
-import type { CustomChart, CustomChartType, GroupByKey, MetricKey } from '../types'
+import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey } from '../types'
 
 const STORAGE_KEY = 'chartoon:customCharts'
 
-/** localStorage から読み込み。形式が壊れていたら空配列を返す。 */
+/** 旧形式（v1: shape/yComposition 分離前、`type` 1 本）→ 新形式へ変換する。
+ *  PR #114 のローカル試用で旧形式が保存されているケースに備えて入れている。 */
+interface CustomChartV1 {
+  id:      string
+  title:   string
+  type:    'simple_bar' | 'stacked_winrate' | 'attack_defense'
+  groupBy: GroupByKey
+  metric?: MetricKey
+}
+
+function migrateV1(old: CustomChartV1): CustomChart {
+  const yComposition: YComposition =
+    old.type === 'simple_bar'      ? 'single_metric'   :
+    old.type === 'stacked_winrate' ? 'stacked_winrate' :
+                                     'attack_defense'
+  return {
+    id:           old.id,
+    title:        old.title,
+    shape:        'bar' as ChartShape,
+    yComposition,
+    groupBy:      old.groupBy,
+    metric:       old.metric,
+  }
+}
+
+/** localStorage から読み込み。新旧両形式を許容し、新形式に正規化して返す。 */
 export function loadCustomCharts(): CustomChart[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    // 形式チェック：必須フィールドが揃っているものだけ残す（古いバージョンとの互換性のため）
-    return parsed.filter((c): c is CustomChart =>
-      typeof c === 'object' && c !== null &&
-      typeof c.id === 'string' &&
-      typeof c.title === 'string' &&
-      typeof c.type === 'string' &&
-      typeof c.groupBy === 'string'
-    )
+    const result: CustomChart[] = []
+    for (const c of parsed) {
+      if (typeof c !== 'object' || c === null) continue
+      if (typeof c.id !== 'string' || typeof c.title !== 'string' || typeof c.groupBy !== 'string') continue
+      // 新形式：shape と yComposition が揃っているもの
+      if (typeof c.shape === 'string' && typeof c.yComposition === 'string') {
+        result.push(c as CustomChart)
+        continue
+      }
+      // 旧形式：type フィールドのみ → マイグレーション
+      if (typeof c.type === 'string') {
+        result.push(migrateV1(c as CustomChartV1))
+        continue
+      }
+      // 不明形式はスキップ
+    }
+    return result
   } catch {
     return []
   }
@@ -38,11 +72,12 @@ export function generateChartId(): string {
 /** 新規チャート作成用のデフォルト値。 */
 export function newChartDefault(): CustomChart {
   return {
-    id:      generateChartId(),
-    title:   '新しいグラフ',
-    type:    'simple_bar' as CustomChartType,
-    groupBy: 'weapon' as GroupByKey,
-    metric:  'win_rate' as MetricKey,
+    id:           generateChartId(),
+    title:        '新しいグラフ',
+    shape:        'bar',
+    yComposition: 'single_metric',
+    groupBy:      'weapon',
+    metric:       'win_rate',
   }
 }
 

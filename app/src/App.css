@@ -244,6 +244,24 @@ body {
   margin: 0;
   line-height: 1.55;
 }
+.form-hint--warn { color: var(--accent2); }
+
+/* 未実装 shape の placeholder（CustomChartCard 内） */
+.chart-not-implemented {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  min-height: 200px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.7;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 24px;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

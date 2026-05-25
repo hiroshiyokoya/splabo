@@ -343,17 +343,56 @@ export type MetricKey =
   | 'avg_inked'     // 平均塗り
   | 'avg_duration'  // 平均バトル時間（秒）
 
-/** カスタムグラフ 1 個分の設定。localStorage に CustomChart[] として保存する想定。 */
-export type CustomChartType = 'stacked_winrate' | 'simple_bar' | 'attack_defense'
+/**
+ * カスタムグラフ 1 個分の設定。localStorage に CustomChart[] として保存する想定。
+ *
+ * モデルは「形 (shape)」と「Y 軸の構成 (yComposition)」を分離してある：
+ *   - shape: 視覚的プリミティブ。棒・線・散布図・ヒートマップ
+ *   - yComposition: Y 軸データの組み立て方。単一メトリクス / 勝/負/分 積み上げ+勝率 / 攻撃 vs デス
+ *
+ * v1.0.0 で実装する組み合わせは `shape='bar'` の 3 構成のみ。
+ * 線・散布図・ヒートマップは UI には出すが v1.1+ で実装予定。
+ */
+export type ChartShape =
+  | 'bar'      // 棒
+  | 'line'     // 線（v1.1+）
+  | 'scatter'  // 散布図（v1.1+）
+  | 'heatmap'  // ヒートマップ（v1.1+）
+
+export type YComposition =
+  | 'single_metric'    // 単一メトリクス（Y 軸にメトリクスを 1 つ選ぶ）
+  | 'stacked_winrate'  // 勝/負/分 積み上げ + 勝率線
+  | 'attack_defense'   // 平均K (灰色 A 積み) + 平均D セット
 
 export interface CustomChart {
-  id:       string
-  title:    string
-  type:     CustomChartType
-  groupBy:  GroupByKey
-  /** `simple_bar` のときのみ必要。それ以外は無視される。 */
-  metric?:  MetricKey
+  id:           string
+  title:        string
+  shape:        ChartShape
+  yComposition: YComposition
+  groupBy:      GroupByKey
+  /** yComposition='single_metric' のときのみ必要。それ以外は無視される。 */
+  metric?:      MetricKey
 }
+
+/** UI ラベル。 */
+export const CHART_SHAPE_LABELS: Record<ChartShape, string> = {
+  bar:     '棒グラフ',
+  line:    '線グラフ',
+  scatter: '散布図',
+  heatmap: 'ヒートマップ',
+}
+
+export const Y_COMPOSITION_LABELS: Record<YComposition, string> = {
+  single_metric:   '単一メトリクス',
+  stacked_winrate: '勝/負/分 積み上げ + 勝率線',
+  attack_defense:  '攻撃 vs デス セット',
+}
+
+/** v1.0.0 で実装済みの shape。それ以外は UI で disabled。 */
+export const IMPLEMENTED_SHAPES: ChartShape[] = ['bar']
+
+/** v1.0.0 で実装済みの yComposition（全 shape 共通で扱う最大集合）。 */
+export const IMPLEMENTED_Y_COMPOSITIONS: YComposition[] = ['single_metric', 'stacked_winrate', 'attack_defense']
 
 /** db_grouped_stats の返却 1 行分。
  *  `avg_*` は detail_fetched=1 のバトルだけで集計しているため、未取得しかない場合は null。 */

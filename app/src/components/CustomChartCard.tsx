@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CustomChart, GroupedStatsRow } from '../types'
@@ -60,15 +61,35 @@ export function CustomChartCard({
           <button className="custom-chart-btn" onClick={onDelete} aria-label="削除" title="削除">✕</button>
         </div>
       </div>
-      {chart.type === 'simple_bar' && chart.metric && (
-        <SimpleBarChart data={sliced} metric={chart.metric} nameTransform={nameTransform} tickAngle={tickAngle} />
-      )}
-      {chart.type === 'attack_defense' && (
-        <AttackDefenseChart data={sliced} nameTransform={nameTransform} tickAngle={tickAngle} />
-      )}
-      {chart.type === 'stacked_winrate' && (
-        <StackedWinrateChart data={sliced} nameTransform={nameTransform} tickAngle={tickAngle} />
-      )}
+      {renderChartBody(chart, sliced, nameTransform, tickAngle)}
     </div>
   )
+}
+
+/** shape × yComposition の組み合わせでチャートコンポーネントへディスパッチする。
+ *  v1.0.0 は shape='bar' の 3 構成のみ実装。それ以外の shape は「未実装」プレースホルダ。 */
+function renderChartBody(
+  chart:         CustomChart,
+  data:          GroupedStatsRow[],
+  nameTransform: ((s: string) => string) | undefined,
+  tickAngle:     number | undefined,
+): ReactNode {
+  if (chart.shape !== 'bar') {
+    return (
+      <div className="chart-not-implemented">
+        この形（{chart.shape}）は v1.0.0 では未実装です。<br />
+        v1.1+ で対応予定です。
+      </div>
+    )
+  }
+  if (chart.yComposition === 'single_metric' && chart.metric) {
+    return <SimpleBarChart data={data} metric={chart.metric} nameTransform={nameTransform} tickAngle={tickAngle} />
+  }
+  if (chart.yComposition === 'stacked_winrate') {
+    return <StackedWinrateChart data={data} nameTransform={nameTransform} tickAngle={tickAngle} />
+  }
+  if (chart.yComposition === 'attack_defense') {
+    return <AttackDefenseChart data={data} nameTransform={nameTransform} tickAngle={tickAngle} />
+  }
+  return null
 }

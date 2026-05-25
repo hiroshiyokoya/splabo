@@ -1,18 +1,15 @@
 import { useEffect, useState } from 'react'
-import type { CustomChart, CustomChartType, GroupByKey, MetricKey } from '../types'
-import { GROUP_BY_LABELS, METRIC_LABELS } from '../types'
+import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey } from '../types'
+import {
+  GROUP_BY_LABELS, METRIC_LABELS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
+  IMPLEMENTED_SHAPES,
+} from '../types'
 
-const CHART_TYPE_LABELS: Record<CustomChartType, string> = {
-  stacked_winrate: '積み上げ棒＋勝率線',
-  simple_bar:      'シンプル棒（1 メトリクス）',
-  attack_defense:  '攻撃 vs デス セット',
-}
-
-/** 各チャートタイプで「タイトル以外に追加で設定が必要な項目」を一覧化したヒント文。 */
-const CHART_TYPE_DESCRIPTIONS: Record<CustomChartType, string> = {
-  stacked_winrate: '勝/負/分の積み上げ + 勝率線。集計キーだけ選択。',
-  simple_bar:      '単一メトリクスの棒。Y 軸メトリクスを選択。',
-  attack_defense:  '平均キル（灰色アシスト積み上げ）と平均デスを 2 本セットで表示。',
+/** 各 yComposition のヒント説明。 */
+const Y_COMPOSITION_DESCRIPTIONS: Record<YComposition, string> = {
+  single_metric:   'Y 軸に好きな 1 メトリクス（勝率・バトル数・平均K/D など）を取る。',
+  stacked_winrate: '勝/負/分 を積み上げた棒に、勝率を線で重ねる。既存 4 グラフと同じ形。',
+  attack_defense:  'カテゴリごとに「平均K（灰色 A 積み）」「平均D」を 2 本セットで横並びに表示。',
 }
 
 interface Props {
@@ -23,20 +20,20 @@ interface Props {
 }
 
 /**
- * カスタムグラフの追加・編集モーダル。
+ * カスタムグラフの追加・編集モーダル（v2 モデル）。
  *
- * - 「+ グラフを追加」ボタンから呼ぶときは initial=null（新規）
- * - カードの ⚙ ボタンから呼ぶときは initial に既存値を渡す（編集）
- * - グラフタイプによって表示するフォーム項目が変わる：
- *   - `stacked_winrate` / `attack_defense`: X 軸（groupBy）だけ
- *   - `simple_bar`: X 軸（groupBy）+ Y 軸メトリクス
+ * v2 では「グラフの形 (shape)」と「Y 軸の構成 (yComposition)」を独立に選ぶ：
+ *   - shape: 棒 / 線 / 散布図 / ヒートマップ（v1.0.0 は bar のみ実装）
+ *   - yComposition: 単一メトリクス / 勝負分積み上げ+勝率 / 攻撃 vs デス
+ *
+ * UI 上、未実装の shape も選択肢に出すが disabled にして「（未実装）」ラベルを付ける。
  */
 export function ChartConfigModal({ initial, onSave, onClose }: Props) {
-  // editing state
-  const [title,   setTitle]   = useState(initial?.title   ?? '新しいグラフ')
-  const [type,    setType]    = useState<CustomChartType>(initial?.type    ?? 'simple_bar')
-  const [groupBy, setGroupBy] = useState<GroupByKey>(initial?.groupBy ?? 'weapon')
-  const [metric,  setMetric]  = useState<MetricKey>(initial?.metric  ?? 'win_rate')
+  const [title,        setTitle]        = useState(initial?.title        ?? '新しいグラフ')
+  const [shape,        setShape]        = useState<ChartShape>(initial?.shape        ?? 'bar')
+  const [yComposition, setYComposition] = useState<YComposition>(initial?.yComposition ?? 'single_metric')
+  const [groupBy,      setGroupBy]      = useState<GroupByKey>(initial?.groupBy      ?? 'weapon')
+  const [metric,       setMetric]       = useState<MetricKey>(initial?.metric       ?? 'win_rate')
 
   // ESC で閉じる
   useEffect(() => {
@@ -48,14 +45,17 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   function handleSave() {
     const trimmedTitle = title.trim() || 'グラフ'
     const chart: CustomChart = {
-      id:      initial?.id ?? '',  // 保存側で空ならカスタム ID 生成
-      title:   trimmedTitle,
-      type,
+      id:           initial?.id ?? '',  // 保存側で空ならカスタム ID 生成
+      title:        trimmedTitle,
+      shape,
+      yComposition,
       groupBy,
-      metric:  type === 'simple_bar' ? metric : undefined,
+      metric:       yComposition === 'single_metric' ? metric : undefined,
     }
     onSave(chart)
   }
+
+  const shapeIsImplemented = IMPLEMENTED_SHAPES.includes(shape)
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -80,13 +80,22 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
           </div>
 
           <div className="form-field">
-            <label className="form-label">グラフタイプ</label>
-            <select className="form-input" value={type} onChange={e => setType(e.target.value as CustomChartType)}>
-              {(Object.keys(CHART_TYPE_LABELS) as CustomChartType[]).map(t => (
-                <option key={t} value={t}>{CHART_TYPE_LABELS[t]}</option>
-              ))}
+            <label className="form-label">形（グラフの種類）</label>
+            <select className="form-input" value={shape} onChange={e => setShape(e.target.value as ChartShape)}>
+              {(Object.keys(CHART_SHAPE_LABELS) as ChartShape[]).map(s => {
+                const implemented = IMPLEMENTED_SHAPES.includes(s)
+                return (
+                  <option key={s} value={s} disabled={!implemented}>
+                    {CHART_SHAPE_LABELS[s]}{implemented ? '' : '（未実装）'}
+                  </option>
+                )
+              })}
             </select>
-            <p className="form-hint">{CHART_TYPE_DESCRIPTIONS[type]}</p>
+            {!shapeIsImplemented && (
+              <p className="form-hint form-hint--warn">
+                この形は v1.0.0 では未実装です。v1.1+ で対応予定。
+              </p>
+            )}
           </div>
 
           <div className="form-field">
@@ -98,9 +107,19 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             </select>
           </div>
 
-          {type === 'simple_bar' && (
+          <div className="form-field">
+            <label className="form-label">Y 軸の構成</label>
+            <select className="form-input" value={yComposition} onChange={e => setYComposition(e.target.value as YComposition)}>
+              {(Object.keys(Y_COMPOSITION_LABELS) as YComposition[]).map(y => (
+                <option key={y} value={y}>{Y_COMPOSITION_LABELS[y]}</option>
+              ))}
+            </select>
+            <p className="form-hint">{Y_COMPOSITION_DESCRIPTIONS[yComposition]}</p>
+          </div>
+
+          {yComposition === 'single_metric' && (
             <div className="form-field">
-              <label className="form-label">Y 軸（メトリクス）</label>
+              <label className="form-label">メトリクス</label>
               <select className="form-input" value={metric} onChange={e => setMetric(e.target.value as MetricKey)}>
                 {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
                   <option key={m} value={m}>{METRIC_LABELS[m]}</option>
@@ -111,7 +130,9 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
 
           <div className="modal-actions">
             <button className="btn-secondary" onClick={onClose}>キャンセル</button>
-            <button className="btn-primary" onClick={handleSave}>{initial ? '更新' : '追加'}</button>
+            <button className="btn-primary" onClick={handleSave} disabled={!shapeIsImplemented}>
+              {initial ? '更新' : '追加'}
+            </button>
           </div>
         </div>
       </div>
