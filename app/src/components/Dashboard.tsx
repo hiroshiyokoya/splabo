@@ -5,6 +5,7 @@ import {
   BarChart, Bar, LineChart, Line, ScatterChart, Scatter,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
+import { HoverTooltip } from './charts/HoverTooltip'
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -421,7 +422,12 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
     { id: 'grad-rate-lo',  color: WIN_RATE_LO  },
   ]
 
+  // HoverTooltip 位置計算用：左 YAxis 36 + 右 YAxis 36（+ マージン 8）
+  const leftPad  = 36
+  const rightPad = 36 + 8
+
   return (
+    <div className="chart-hover-area" style={{ position: 'relative' }}>
     <ResponsiveContainer width="100%" height={height}>
       <BarChart
         data={chartData}
@@ -463,24 +469,6 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
           width={36}
         />
         <ReferenceLine yAxisId="right" y={0.5} stroke="#4b5563" strokeDasharray="4 4" />
-        <Tooltip
-          cursor={false}
-          content={({ active, payload, label }: any) => {
-            if (!active || !payload?.length) return null
-            const entry = payload[0]?.payload as SummaryEntry
-            const displayLabel = nameTransform ? nameTransform(label) : label
-            return (
-              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, padding: '6px 10px' }}>
-                <div style={{ color: 'var(--text)', fontWeight: 700, marginBottom: 4 }}>{displayLabel}</div>
-                <div style={{ color: 'var(--text)' }}>バトル数: {entry.total}</div>
-                <div style={{ color: COLOR_WIN }}>勝ち: {entry.wins}</div>
-                <div style={{ color: COLOR_LOSE }}>負け: {entry.total - entry.wins - entry.draws}</div>
-                {entry.draws > 0 && <div style={{ color: COLOR_DRAW }}>引き分け: {entry.draws}</div>}
-                <div style={{ color: 'var(--text)' }}>勝率: {(entry.win_rate * 100).toFixed(1)}%</div>
-              </div>
-            )
-          }}
-        />
         <Bar yAxisId="left" dataKey="wins" stackId="s" maxBarSize={32} activeBar={false}
           shape={stackTopRoundedShape}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
@@ -509,6 +497,23 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+    <HoverTooltip activeIndex={activeIndex} dataLength={chartData.length} leftPad={leftPad} rightPad={rightPad}>
+      {activeIndex != null && (() => {
+        const entry = chartData[activeIndex]
+        const displayLabel = nameTransform ? nameTransform(entry.name) : entry.name
+        return (
+          <>
+            <div className="hover-tt-title">{displayLabel}</div>
+            <div className="hover-tt-row">バトル数: {entry.total}</div>
+            <div className="hover-tt-row" style={{ color: COLOR_WIN }}>勝ち: {entry.wins}</div>
+            <div className="hover-tt-row" style={{ color: COLOR_LOSE }}>負け: {entry.total - entry.wins - entry.draws}</div>
+            {entry.draws > 0 && <div className="hover-tt-row" style={{ color: COLOR_DRAW }}>引き分け: {entry.draws}</div>}
+            <div className="hover-tt-row">勝率: {(entry.win_rate * 100).toFixed(1)}%</div>
+          </>
+        )
+      })()}
+    </HoverTooltip>
+    </div>
   )
 }
 
