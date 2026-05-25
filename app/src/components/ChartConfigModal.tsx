@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey } from '../types'
 import {
   GROUP_BY_LABELS, METRIC_LABELS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
-  IMPLEMENTED_SHAPES,
+  IMPLEMENTED_SHAPES, autoChartTitle,
 } from '../types'
 
 /** 各 yComposition のヒント説明。 */
@@ -29,11 +29,16 @@ interface Props {
  * UI 上、未実装の shape も選択肢に出すが disabled にして「（未実装）」ラベルを付ける。
  */
 export function ChartConfigModal({ initial, onSave, onClose }: Props) {
-  const [title,        setTitle]        = useState(initial?.title        ?? '新しいグラフ')
+  // タイトルは空がデフォルト。空のまま保存すると autoChartTitle で「{X}別 {Y}」を自動採用する。
+  // 編集時は既存タイトルを表示するが、ユーザーが空にすれば自動採用に戻せる。
+  const [title,        setTitle]        = useState(initial?.title        ?? '')
   const [shape,        setShape]        = useState<ChartShape>(initial?.shape        ?? 'bar')
   const [yComposition, setYComposition] = useState<YComposition>(initial?.yComposition ?? 'single_metric')
   const [groupBy,      setGroupBy]      = useState<GroupByKey>(initial?.groupBy      ?? 'weapon')
   const [metric,       setMetric]       = useState<MetricKey>(initial?.metric       ?? 'win_rate')
+
+  // 現在の軸からプレビュー用のタイトル文字列を都度算出。プレースホルダーに使う。
+  const autoTitle = autoChartTitle({ groupBy, yComposition, metric })
 
   // ESC で閉じる
   useEffect(() => {
@@ -43,7 +48,8 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   }, [onClose])
 
   function handleSave() {
-    const trimmedTitle = title.trim() || 'グラフ'
+    // 空欄なら自動タイトル「{X 軸}別 {Y 軸}」を採用
+    const trimmedTitle = title.trim() || autoTitle
     const chart: CustomChart = {
       id:           initial?.id ?? '',  // 保存側で空ならカスタム ID 生成
       title:        trimmedTitle,
@@ -67,16 +73,19 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
 
         <div className="modal-body chart-config-body">
           <div className="form-field">
-            <label className="form-label">タイトル</label>
+            <label className="form-label">タイトル <span className="form-label-note">（空欄で自動）</span></label>
             <input
               type="text"
               className="form-input"
               value={title}
               onChange={e => setTitle(e.target.value)}
               maxLength={40}
-              placeholder="例: 武器カテゴリ別 平均キル"
+              placeholder={autoTitle}
               autoFocus
             />
+            <p className="form-hint">
+              空のままにすると「<strong>{autoTitle}</strong>」が自動で使われます。
+            </p>
           </div>
 
           <div className="form-field">

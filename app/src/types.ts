@@ -394,6 +394,26 @@ export const IMPLEMENTED_SHAPES: ChartShape[] = ['bar']
 /** v1.0.0 で実装済みの yComposition（全 shape 共通で扱う最大集合）。 */
 export const IMPLEMENTED_Y_COMPOSITIONS: YComposition[] = ['single_metric', 'stacked_winrate', 'attack_defense']
 
+/**
+ * 軸の選択から自動生成するグラフタイトル。「{X 軸ラベル}別 {Y 軸ラベル}」形式。
+ *
+ * - single_metric → メトリクス名（「平均キル」「勝率」など）
+ * - stacked_winrate → 「バトル数 & 勝率」（既存の固定 4 グラフと表記を揃える）
+ * - attack_defense → 「攻撃 vs デス」
+ *
+ * ユーザーが ChartConfigModal でタイトル入力を空にしたとき、これを使って自動採用する。
+ */
+export function autoChartTitle(spec: { groupBy: GroupByKey; yComposition: YComposition; metric?: MetricKey }): string {
+  const xLabel = GROUP_BY_LABELS[spec.groupBy]
+  const yLabel =
+    spec.yComposition === 'single_metric'
+      ? (spec.metric ? METRIC_LABELS[spec.metric] : 'メトリクス')
+      : spec.yComposition === 'stacked_winrate'
+      ? 'バトル数 & 勝率'
+      : '攻撃 vs デス'
+  return `${xLabel}別 ${yLabel}`
+}
+
 /** db_grouped_stats の返却 1 行分。
  *  `avg_*` は detail_fetched=1 のバトルだけで集計しているため、未取得しかない場合は null。 */
 export interface GroupedStatsRow {

@@ -69,11 +69,11 @@ export function generateChartId(): string {
   return `chart-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`
 }
 
-/** 新規チャート作成用のデフォルト値。 */
+/** 新規チャート作成用のデフォルト値。タイトルは空のまま（autoChartTitle で自動生成される）。 */
 export function newChartDefault(): CustomChart {
   return {
     id:           generateChartId(),
-    title:        '新しいグラフ',
+    title:        '',
     shape:        'bar',
     yComposition: 'single_metric',
     groupBy:      'weapon',

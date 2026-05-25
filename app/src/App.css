@@ -227,6 +227,12 @@ body {
   font-weight: 600;
   color: var(--text-muted);
 }
+.form-label-note {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.75;
+}
 .form-input {
   background: var(--surface2);
   border: 1px solid var(--border);
