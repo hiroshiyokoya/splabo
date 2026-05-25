@@ -138,7 +138,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 .chart-title {
   font-size: 13px;
@@ -161,6 +161,165 @@ body {
 }
 .chart-sort-btn:hover { color: var(--text); }
 .chart-sort-btn.active { color: var(--accent); border-color: var(--accent); }
+
+/* ── カスタムグラフ（#86） ── */
+/* カード上段。ドラッグ・設定・削除ボタンを右寄せで配置。
+   下段の chart-card-header を固定 4 グラフと同じ「title | 並び替え」レイアウトに
+   揃えるため、操作系ボタンは別行にしている。 */
+.custom-chart-card { padding-top: 12px; }
+.custom-chart-toprow {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.custom-chart-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.custom-chart-handle,
+.custom-chart-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.custom-chart-handle { cursor: grab; }
+.custom-chart-handle:active { cursor: grabbing; }
+.custom-chart-handle:hover,
+.custom-chart-btn:hover {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--surface2);
+}
+.custom-chart-card { touch-action: none; }
+
+.dashboard-add-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+.dashboard-add-btn {
+  padding: 8px 24px;
+  font-size: 13px;
+}
+
+/* ── ChartConfigModal ── */
+/* .modal-panel.chart-config-modal の compound 指定で、後に登場する .modal-panel { max-width: 980px } に勝つ */
+.modal-panel.chart-config-modal {
+  max-width: 520px;
+  width: 100%;
+}
+.chart-config-body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.form-label-note {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+/* ChartConfigModal の自動タイトルプレビュー表示。読み取り専用の見た目に。 */
+.form-preview-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface2);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.form-input {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.form-input:focus { outline: 1px solid var(--accent); }
+.form-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.55;
+}
+.form-hint--warn { color: var(--accent2); }
+
+/* HoverTooltip: activeIndex 連動の自前ツールチップ。Recharts デフォルトの
+   Tooltip はプロット領域内ホバーにしか反応しないので、X 軸アイコンの
+   ホバー時にも出すために独立に描く。 */
+.chart-hover-area { width: 100%; }
+.chart-hover-tooltip {
+  position: absolute;
+  transform: translateX(-50%);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 10;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+}
+.hover-tt-title {
+  color: var(--text);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.hover-tt-row { color: var(--text); }
+.hover-tt-row--muted { color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+
+/* 未実装 shape の placeholder（CustomChartCard 内） */
+.chart-not-implemented {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  min-height: 200px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.7;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 24px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
 .tooltip-box {
   background: var(--surface2);
   border: 1px solid var(--border);

@@ -4,6 +4,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import type { AppSettings } from '../types'
 import { THEMES, saveTheme, getThemeId } from '../utils/appSettings'
 import { AI_MODELS, PROVIDER_LABELS, modelDisplayLabel, defaultModelFor, type AiProvider } from '../utils/aiModels'
+import { clearCustomCharts } from '../utils/customCharts'
 
 interface Props {
   settings: AppSettings
@@ -246,6 +247,25 @@ async function handleUploadStatink() {
         <p className="settings-note">
           価格・コンテキスト長は 2026 年 5 月時点の情報。最新は各プロバイダの公式料金ページを参照してください。
         </p>
+      </section>
+
+      <section className="settings-section">
+        <h3>ダッシュボード</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+          追加したカスタムグラフをすべて消してダッシュボードを初期状態（既存の固定 4 グラフのみ）に戻します。
+        </p>
+        <button
+          className="btn-secondary"
+          onClick={() => {
+            if (window.confirm('追加したカスタムグラフをすべて削除します。よろしいですか？')) {
+              clearCustomCharts()
+              // 反映のためリロード。Dashboard 側 state を直接触る経路を作らないシンプル運用。
+              window.location.reload()
+            }
+          }}
+        >
+          カスタムグラフをすべて削除（ダッシュボードをリセット）
+        </button>
       </section>
 
       <section className="settings-section">

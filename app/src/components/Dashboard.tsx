@@ -5,10 +5,19 @@ import {
   BarChart, Bar, LineChart, Line, ScatterChart, Scatter,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
-import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats, GroupedStatsRow } from '../types'
+import { HoverTooltip } from './charts/HoverTooltip'
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, arrayMove,
+} from '@dnd-kit/sortable'
+import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats, GroupedStatsRow, CustomChart, GroupByKey } from '../types'
 import { filtersToRange, stageAbbr, modeLabel, ruleLabel, avgKillRatio } from '../types'
-import { SimpleBarChart } from './charts/SimpleBarChart'
-import { AttackDefenseChart } from './charts/AttackDefenseChart'
+import { CustomChartCard } from './CustomChartCard'
+import { ChartConfigModal } from './ChartConfigModal'
+import { loadCustomCharts, saveCustomCharts, generateChartId } from '../utils/customCharts'
 
 const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
@@ -73,10 +82,12 @@ interface Props {
 export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fetching }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [stats, setStats]     = useState<BattleStats | null>(null)
-  // #86 PR A: 新タイプチャートのデモ用に「武器カテゴリ別の攻撃 vs デス」「ステージ別の平均塗り」を表示。
-  // PR B でカスタムグラフ機構に移行するまでの暫定。
-  const [demoAttackDefense, setDemoAttackDefense] = useState<GroupedStatsRow[]>([])
-  const [demoInked, setDemoInked]                 = useState<GroupedStatsRow[]>([])
+  // #86 PR B: ユーザーが追加したカスタムグラフ。localStorage に永続化。
+  const [customCharts, setCustomCharts] = useState<CustomChart[]>(() => loadCustomCharts())
+  // 各 groupBy のデータをキャッシュ（同じキーを複数カードで参照するので 1 回で済ませる）。
+  const [groupedStatsCache, setGroupedStatsCache] = useState<Partial<Record<GroupByKey, GroupedStatsRow[]>>>({})
+  // モーダル状態：null=閉じる、{ chart: null }=新規、{ chart: 既存 }=編集
+  const [modalState, setModalState] = useState<{ chart: CustomChart | null } | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
@@ -84,6 +95,11 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
   const [stageSort, setStageSort] = useState<SortBy>('total')
   const [ruleSort, setRuleSort] = useState<SortBy>('total')
   const [modeSort, setModeSort] = useState<SortBy>('total')
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
   useEffect(() => {
     const { since, until } = filtersToRange(filters)
@@ -97,16 +113,24 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
       weapon: filters.weapon.length > 0 ? filters.weapon.join('|') : null,
       stage: filters.stage.length > 0 ? filters.stage.join('|') : null,
     }
+    // カスタムグラフが必要としている group_by を unique にまとめて 1 回ずつ取得。
+    const neededGroups = Array.from(new Set(customCharts.map(c => c.groupBy)))
     Promise.all([
       invoke<Summary>('db_summary', filterArgs),
       invoke<BattleStats>('db_battle_stats', filterArgs),
-      invoke<GroupedStatsRow[]>('db_grouped_stats', { ...filterArgs, groupBy: 'weapon_category' }),
-      invoke<GroupedStatsRow[]>('db_grouped_stats', { ...filterArgs, groupBy: 'stage' }),
+      ...neededGroups.map(g => invoke<GroupedStatsRow[]>('db_grouped_stats', { ...filterArgs, groupBy: g }).then(rows => [g, rows] as const)),
     ])
-      .then(([s, st, gAd, gInk]) => { setSummary(s); setStats(st); setDemoAttackDefense(gAd); setDemoInked(gInk) })
+      .then((results) => {
+        const [s, st, ...gpairs] = results as [Summary, BattleStats, ...(readonly [GroupByKey, GroupedStatsRow[]])[]]
+        setSummary(s)
+        setStats(st)
+        const cache: Partial<Record<GroupByKey, GroupedStatsRow[]>> = {}
+        for (const [g, rows] of gpairs) cache[g] = rows
+        setGroupedStatsCache(cache)
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [refreshKey, filters])
+  }, [refreshKey, filters, customCharts])
 
   // fetch_complete イベントでデータを自動リフレッシュ
   useEffect(() => {
@@ -138,6 +162,40 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
 
   function sorted(data: SummaryEntry[], by: SortBy): SummaryEntry[] {
     return [...data].sort((a, b) => b[by] - a[by])
+  }
+
+  // ---- カスタムグラフ操作 ----
+  function persist(charts: CustomChart[]) {
+    setCustomCharts(charts)
+    saveCustomCharts(charts)
+  }
+  function handleAdd() {
+    setModalState({ chart: null })
+  }
+  function handleEdit(id: string) {
+    const c = customCharts.find(x => x.id === id)
+    if (c) setModalState({ chart: c })
+  }
+  function handleDelete(id: string) {
+    persist(customCharts.filter(c => c.id !== id))
+  }
+  function handleSaveFromModal(saved: CustomChart) {
+    if (saved.id) {
+      // 編集モード：同じ ID で置換
+      persist(customCharts.map(c => c.id === saved.id ? saved : c))
+    } else {
+      // 新規モード：ID を生成して末尾に追加
+      persist([...customCharts, { ...saved, id: generateChartId() }])
+    }
+    setModalState(null)
+  }
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIdx = customCharts.findIndex(c => c.id === active.id)
+    const newIdx = customCharts.findIndex(c => c.id === over.id)
+    if (oldIdx < 0 || newIdx < 0) return
+    persist(arrayMove(customCharts, oldIdx, newIdx))
   }
 
   return (
@@ -186,19 +244,21 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
               <WinRateChart data={sorted(summary.by_mode, modeSort)} height={220} images={new Map()} nameTransform={modeLabel} />
             </ChartCard>
 
-            {/* #86 PR A: 新チャートタイプのデモ。武器カテゴリ別の K/A/D セットチャート */}
-            {demoAttackDefense.length > 0 && (
-              <ChartCard title="武器カテゴリ別 攻撃 vs デス">
-                <AttackDefenseChart data={demoAttackDefense.slice(0, 14)} height={260} />
-              </ChartCard>
-            )}
-
-            {/* #86 PR A: シンプル棒のデモ。ステージ別の平均塗り。ラベルは斜め 30° で長い名前にも対応 */}
-            {demoInked.length > 0 && (
-              <ChartCard title="ステージ別 平均塗り">
-                <SimpleBarChart data={demoInked.slice(0, 14)} metric="avg_inked" height={260} nameTransform={stageAbbr} tickAngle={30} />
-              </ChartCard>
-            )}
+            {/* #86 PR B: カスタムグラフ。ドラッグで並び替え可能、⚙で編集・✕で削除 */}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={customCharts.map(c => c.id)} strategy={rectSortingStrategy}>
+                {customCharts.map(c => (
+                  <CustomChartCard
+                    key={c.id}
+                    chart={c}
+                    data={groupedStatsCache[c.groupBy] ?? []}
+                    onEdit={() => handleEdit(c.id)}
+                    onDelete={() => handleDelete(c.id)}
+                    weaponImages={weaponImages}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
 
             {aiChart && (
               <ChartCard title={aiChart.title}>
@@ -206,7 +266,21 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
               </ChartCard>
             )}
           </div>
+
+          <div className="dashboard-add-row">
+            <button className="btn-secondary dashboard-add-btn" onClick={handleAdd}>
+              + グラフを追加
+            </button>
+          </div>
         </>
+      )}
+
+      {modalState && (
+        <ChartConfigModal
+          initial={modalState.chart}
+          onSave={handleSaveFromModal}
+          onClose={() => setModalState(null)}
+        />
       )}
     </div>
   )
@@ -348,7 +422,12 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
     { id: 'grad-rate-lo',  color: WIN_RATE_LO  },
   ]
 
+  // HoverTooltip 位置計算用：左 YAxis 36 + 右 YAxis 36（+ マージン 8）
+  const leftPad  = 36
+  const rightPad = 36 + 8
+
   return (
+    <div className="chart-hover-area" style={{ position: 'relative' }}>
     <ResponsiveContainer width="100%" height={height}>
       <BarChart
         data={chartData}
@@ -390,24 +469,6 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
           width={36}
         />
         <ReferenceLine yAxisId="right" y={0.5} stroke="#4b5563" strokeDasharray="4 4" />
-        <Tooltip
-          cursor={false}
-          content={({ active, payload, label }: any) => {
-            if (!active || !payload?.length) return null
-            const entry = payload[0]?.payload as SummaryEntry
-            const displayLabel = nameTransform ? nameTransform(label) : label
-            return (
-              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, padding: '6px 10px' }}>
-                <div style={{ color: 'var(--text)', fontWeight: 700, marginBottom: 4 }}>{displayLabel}</div>
-                <div style={{ color: 'var(--text)' }}>バトル数: {entry.total}</div>
-                <div style={{ color: COLOR_WIN }}>勝ち: {entry.wins}</div>
-                <div style={{ color: COLOR_LOSE }}>負け: {entry.total - entry.wins - entry.draws}</div>
-                {entry.draws > 0 && <div style={{ color: COLOR_DRAW }}>引き分け: {entry.draws}</div>}
-                <div style={{ color: 'var(--text)' }}>勝率: {(entry.win_rate * 100).toFixed(1)}%</div>
-              </div>
-            )
-          }}
-        />
         <Bar yAxisId="left" dataKey="wins" stackId="s" maxBarSize={32} activeBar={false}
           shape={stackTopRoundedShape}
           onMouseEnter={(_: any, index: number) => setActiveIndex(index)}
@@ -436,6 +497,23 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+    <HoverTooltip activeIndex={activeIndex} dataLength={chartData.length} leftPad={leftPad} rightPad={rightPad}>
+      {activeIndex != null && (() => {
+        const entry = chartData[activeIndex]
+        const displayLabel = nameTransform ? nameTransform(entry.name) : entry.name
+        return (
+          <>
+            <div className="hover-tt-title">{displayLabel}</div>
+            <div className="hover-tt-row">バトル数: {entry.total}</div>
+            <div className="hover-tt-row" style={{ color: COLOR_WIN }}>勝ち: {entry.wins}</div>
+            <div className="hover-tt-row" style={{ color: COLOR_LOSE }}>負け: {entry.total - entry.wins - entry.draws}</div>
+            {entry.draws > 0 && <div className="hover-tt-row" style={{ color: COLOR_DRAW }}>引き分け: {entry.draws}</div>}
+            <div className="hover-tt-row">勝率: {(entry.win_rate * 100).toFixed(1)}%</div>
+          </>
+        )
+      })()}
+    </HoverTooltip>
+    </div>
   )
 }
 

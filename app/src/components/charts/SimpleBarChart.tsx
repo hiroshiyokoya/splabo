@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell,
 } from 'recharts'
 import type { GroupedStatsRow, MetricKey } from '../../types'
 import { METRIC_LABELS, getMetric, formatMetric } from '../../types'
+import { categoryTick } from './CategoryTick'
+import { HoverTooltip } from './HoverTooltip'
 
 /**
  * 単一メトリクスを棒で見せるシンプルなチャート。
@@ -16,17 +18,19 @@ import { METRIC_LABELS, getMetric, formatMetric } from '../../types'
  * - 値が null のカテゴリ（detail_fetched=0 しかない等）はバーを描かず、ツールチップで「—」表示
  */
 export function SimpleBarChart({
-  data, metric, height = 260, nameTransform, tickAngle,
+  data, metric, height = 260, nameTransform, tickAngle, images,
 }: {
   data:           GroupedStatsRow[]
   metric:         MetricKey
   height?:        number
   /** X 軸ラベルの整形（ステージ名の省略など）。 */
   nameTransform?: (name: string) => string
-  /** X 軸ラベルを斜めに表示する角度（度）。ステージ名のように長いラベルで活用。
-   *  指定時は textAnchor='end' でラベル右端を tick に揃え、tick 高さを広げる。 */
+  /** X 軸ラベルを斜めに表示する角度（度）。ステージ名のように長いラベルで活用。 */
   tickAngle?:     number
+  /** カテゴリ → 画像 URL の対応。武器アイコン等を X 軸ラベルとして描く。 */
+  images?:        Map<string, string>
 }) {
+  const hasImages = !!images && data.some(d => images.has(d.name))
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
 
   const chartData = data.map(d => ({
@@ -63,7 +67,12 @@ export function SimpleBarChart({
     return activeIndex === null || activeIndex === i ? 1 : 0.35
   }
 
+  // YAxis 幅 42 + 右マージン 8。HoverTooltip の位置計算に使う。
+  const leftPad  = 42
+  const rightPad = 8
+
   return (
+    <div className="chart-hover-area" style={{ position: 'relative' }}>
     <ResponsiveContainer width="100%" height={height}>
       <BarChart
         data={chartData}
@@ -93,33 +102,18 @@ export function SimpleBarChart({
         <XAxis
           dataKey="name"
           interval={0}
-          height={tickAngle ? 44 : 28}
-          tick={{ fill: 'var(--text)', fontSize: 10 } as object}
-          tickFormatter={nameTransform}
-          // Dashboard 上部の WinRateChart（ImageTick 内で `rotate(${tickAngle})`, textAnchor='start'）と
-          // 揃えるため、CW 方向の正の角度 + textAnchor='start' で「tick から下右へ伸びる」向きにする。
-          angle={tickAngle ? tickAngle : undefined}
-          textAnchor={tickAngle ? 'start' : 'middle'}
+          height={hasImages ? 40 : tickAngle ? 44 : 28}
+          // 画像 tick がある場合は categoryTick、無い場合は組み込みテキスト
+          // （Dashboard 上部の WinRateChart の ImageTick と表示位置を揃える）
+          tick={hasImages ? categoryTick({ images, tickAngle, nameTransform, activeIndex, onHoverIndex: setActiveIndex }) : ({ fill: 'var(--text)', fontSize: 10 } as object)}
+          tickFormatter={hasImages ? undefined : nameTransform}
+          angle={hasImages ? undefined : tickAngle ? tickAngle : undefined}
+          textAnchor={hasImages ? undefined : tickAngle ? 'start' : 'middle'}
         />
         <YAxis
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}
           width={42}
           tickFormatter={metric === 'win_rate' ? (v: number) => `${(v * 100).toFixed(0)}%` : undefined}
-        />
-        <Tooltip
-          cursor={false}
-          content={({ active, payload, label }: any) => {
-            if (!active || !payload?.length) return null
-            const p = payload[0]?.payload as { name: string; value: number | null; rawRow: GroupedStatsRow }
-            const displayLabel = nameTransform ? nameTransform(label) : label
-            return (
-              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, padding: '6px 10px' }}>
-                <div style={{ color: 'var(--text)', fontWeight: 700, marginBottom: 4 }}>{displayLabel}</div>
-                <div style={{ color: 'var(--text)' }}>{METRIC_LABELS[metric]}: {formatMetric(p.value, metric)}</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 2 }}>バトル数: {p.rawRow.total}</div>
-              </div>
-            )
-          }}
         />
         <Bar dataKey="value" maxBarSize={32} radius={[4, 4, 0, 0]} activeBar={false}
           onMouseEnter={(_: any, i: number) => setActiveIndex(i)}
@@ -130,5 +124,19 @@ export function SimpleBarChart({
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+    <HoverTooltip activeIndex={activeIndex} dataLength={chartData.length} leftPad={leftPad} rightPad={rightPad}>
+      {activeIndex != null && (() => {
+        const p = chartData[activeIndex]
+        const displayLabel = nameTransform ? nameTransform(p.name) : p.name
+        return (
+          <>
+            <div className="hover-tt-title">{displayLabel}</div>
+            <div className="hover-tt-row">{METRIC_LABELS[metric]}: {formatMetric(p.value, metric)}</div>
+            <div className="hover-tt-row hover-tt-row--muted">バトル数: {p.rawRow.total}</div>
+          </>
+        )
+      })()}
+    </HoverTooltip>
+    </div>
   )
 }
