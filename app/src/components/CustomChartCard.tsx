@@ -1,11 +1,38 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { CustomChart, GroupedStatsRow } from '../types'
-import { stageAbbr, modeLabel, ruleLabel, autoChartTitle } from '../types'
+import type { CustomChart, GroupedStatsRow, MetricKey } from '../types'
+import { stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric } from '../types'
 import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
 import { StackedWinrateChart } from './charts/StackedWinrateChart'
+
+/** yComposition ごとに用意する並び替えオプション。
+ *  - stacked_winrate: バトル数 / 勝数 / 勝率
+ *  - attack_defense:  キル数 / デス数 / キルレ（K/D 比）
+ *  - single_metric:   並び替えなし（既に選択メトリクスが Y 軸なので自明）。 */
+type SortOption = { key: MetricKey; label: string }
+const SORT_OPTIONS_STACKED_WINRATE: SortOption[] = [
+  { key: 'total',    label: 'バトル数' },
+  { key: 'wins',     label: '勝数' },
+  { key: 'win_rate', label: '勝率' },
+]
+const SORT_OPTIONS_ATTACK_DEFENSE: SortOption[] = [
+  { key: 'avg_kill',  label: 'キル数' },
+  { key: 'avg_death', label: 'デス数' },
+  { key: 'avg_kd',    label: 'キルレ' },
+]
+
+/** 上位 14 件抽出 → 指定 MetricKey で降順ソート。null は最後尾。 */
+function sortAndSlice(rows: GroupedStatsRow[], sortKey: MetricKey | null): GroupedStatsRow[] {
+  const sliced = rows.slice(0, 14)
+  if (!sortKey) return sliced
+  return [...sliced].sort((a, b) => {
+    const av = getMetric(a, sortKey) ?? -Infinity
+    const bv = getMetric(b, sortKey) ?? -Infinity
+    return bv - av
+  })
+}
 
 /**
  * カスタムグラフ 1 枚分のカード。dnd-kit Sortable で並び替え可能、
@@ -16,6 +43,8 @@ import { StackedWinrateChart } from './charts/StackedWinrateChart'
  *   - mode  → modeLabel
  *   - rule  → ruleLabel
  *   - その他 → そのまま
+ * - yComposition に応じて並び替えボタンを常に表示
+ *   （stacked_winrate / attack_defense のとき）。
  */
 export function CustomChartCard({
   chart, data, onEdit, onDelete, weaponImages,
@@ -36,6 +65,14 @@ export function CustomChartCard({
     opacity:   isDragging ? 0.5 : 1,
   }
 
+  // yComposition ごとに使う並び替え選択肢と既定値を決める。
+  const sortOptions: SortOption[] =
+    chart.yComposition === 'stacked_winrate' ? SORT_OPTIONS_STACKED_WINRATE :
+    chart.yComposition === 'attack_defense'  ? SORT_OPTIONS_ATTACK_DEFENSE  :
+                                                []
+  const defaultSortKey = sortOptions[0]?.key ?? null
+  const [sortKey, setSortKey] = useState<MetricKey | null>(defaultSortKey)
+
   // 軸キーに応じた表示整形（ステージは斜め）
   const nameTransform =
     chart.groupBy === 'stage' ? stageAbbr :
@@ -44,13 +81,24 @@ export function CustomChartCard({
                                 undefined
   const tickAngle = chart.groupBy === 'stage' ? 30 : undefined
 
-  // 描画件数は上位 14 件まで（既存のデフォルトカードと揃える）
-  const sliced = data.slice(0, 14)
+  // 上位 14 件を取って選択されたキーでソート
+  const sliced = sortAndSlice(data, sortKey)
 
   return (
     <div className="chart-card custom-chart-card" ref={setNodeRef} style={style}>
       <div className="chart-card-header">
         <h3 className="chart-title">{autoChartTitle(chart)}</h3>
+        {sortOptions.length > 0 && (
+          <div className="chart-sort-btns">
+            {sortOptions.map(o => (
+              <button
+                key={o.key}
+                className={`chart-sort-btn${sortKey === o.key ? ' active' : ''}`}
+                onClick={() => setSortKey(o.key)}
+              >{o.label}</button>
+            ))}
+          </div>
+        )}
         <div className="custom-chart-actions">
           <button
             className="custom-chart-handle"

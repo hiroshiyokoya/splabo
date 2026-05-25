@@ -387,8 +387,8 @@ export const CHART_SHAPE_LABELS: Record<ChartShape, string> = {
 
 export const Y_COMPOSITION_LABELS: Record<YComposition, string> = {
   single_metric:   '単一メトリクス',
-  stacked_winrate: '勝/負/分 積み上げ + 勝率線',
-  attack_defense:  '攻撃 vs デス セット',
+  stacked_winrate: 'バトル数 & 勝率',
+  attack_defense:  'キル vs デス',
 }
 
 /** v1.0.0 で実装済みの shape。それ以外は UI で disabled。 */
@@ -413,7 +413,7 @@ export function autoChartTitle(spec: { groupBy: GroupByKey; yComposition: YCompo
       ? (spec.metric ? METRIC_LABELS[spec.metric] : 'メトリクス')
       : spec.yComposition === 'stacked_winrate'
       ? 'バトル数 & 勝率'
-      : '攻撃 vs デス'
+      : 'キル vs デス'
   return `${xLabel}別 ${yLabel}`
 }
 
