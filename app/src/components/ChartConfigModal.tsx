@@ -36,6 +36,12 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   const [groupBy2,     setGroupBy2]     = useState<GroupByKey>(initial?.groupBy2     ?? 'stage')
   const [metric,       setMetric]       = useState<MetricKey>(initial?.metric       ?? 'win_rate')
   const [topN,         setTopN]         = useState<number>(initial?.topN ?? 20)
+  // scatter 用
+  const [dotUnit,      setDotUnit]      = useState<'weapon' | 'stage'>(initial?.dotUnit ?? 'weapon')
+  const [xMetric,      setXMetric]      = useState<MetricKey>(initial?.xMetric ?? 'avg_kill')
+  const [yMetric,      setYMetric]      = useState<MetricKey>(initial?.yMetric ?? 'win_rate')
+  const [sizeMetric,   setSizeMetric]   = useState<MetricKey | ''>(initial?.sizeMetric ?? 'total')
+  const [colorMetric,  setColorMetric]  = useState<MetricKey | ''>(initial?.colorMetric ?? '')
 
   // shape ごとに groupBy / yComposition を適切に補正する：
   //   - line: 時系列バケット (day/three_day/week/month) + single_metric
@@ -53,10 +59,19 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       if (isTimeBucketGroupBy(groupBy)) setGroupBy('weapon')
       if (isTimeBucketGroupBy(groupBy2)) setGroupBy2('stage')
       if (yComposition !== 'single_metric') setYComposition('single_metric')
+    } else if (shape === 'scatter') {
+      // ドット単位 (weapon/stage) = groupBy として扱う
+      setGroupBy(dotUnit)
+      if (yComposition !== 'single_metric') setYComposition('single_metric')
     } else {
       if (isTimeBucketGroupBy(groupBy)) setGroupBy('weapon')
     }
   }, [shape])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // scatter のドット単位を変えたら groupBy も同期させる（プリフェッチのキー連動のため）
+  useEffect(() => {
+    if (shape === 'scatter') setGroupBy(dotUnit)
+  }, [dotUnit, shape])
 
   // 現在の軸から算出するタイトル（モーダル上部にプレビュー表示）
   const previewTitle = autoChartTitle({ groupBy, yComposition, metric })
@@ -77,6 +92,11 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       metric:       yComposition === 'single_metric' ? metric : undefined,
       groupBy2:     shape === 'heatmap' ? groupBy2 : undefined,
       topN:         shape === 'heatmap' ? topN : undefined,
+      dotUnit:      shape === 'scatter' ? dotUnit : undefined,
+      xMetric:      shape === 'scatter' ? xMetric : undefined,
+      yMetric:      shape === 'scatter' ? yMetric : undefined,
+      sizeMetric:   shape === 'scatter' && sizeMetric  ? (sizeMetric  as MetricKey) : undefined,
+      colorMetric:  shape === 'scatter' && colorMetric ? (colorMetric as MetricKey) : undefined,
     }
     onSave(chart)
   }
@@ -173,6 +193,55 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               />
               <p className="form-hint">バトル数の多い武器を上位 N 種に絞ります（デフォルト 20）。</p>
             </div>
+          )}
+
+          {shape === 'scatter' && (
+            <>
+              <div className="form-field">
+                <label className="form-label">ドット単位</label>
+                <select className="form-input" value={dotUnit} onChange={e => setDotUnit(e.target.value as 'weapon' | 'stage')}>
+                  <option value="weapon">武器</option>
+                  <option value="stage">ステージ</option>
+                </select>
+                <p className="form-hint">1 ドット = 1 {dotUnit === 'weapon' ? '武器' : 'ステージ'}（バトル単位は後続 PR）。</p>
+              </div>
+              <div className="form-field">
+                <label className="form-label">X 軸メトリクス</label>
+                <select className="form-input" value={xMetric} onChange={e => setXMetric(e.target.value as MetricKey)}>
+                  {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
+                    <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-field">
+                <label className="form-label">Y 軸メトリクス</label>
+                <select className="form-input" value={yMetric} onChange={e => setYMetric(e.target.value as MetricKey)}>
+                  {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
+                    <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-field">
+                <label className="form-label">サイズメトリクス（任意）</label>
+                <select className="form-input" value={sizeMetric} onChange={e => setSizeMetric((e.target.value || '') as MetricKey | '')}>
+                  <option value="">（一定サイズ）</option>
+                  {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
+                    <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+                  ))}
+                </select>
+                <p className="form-hint">バトル数を選ぶとサンプル多いカテゴリほど大きく見える（sqrt スケール）。</p>
+              </div>
+              <div className="form-field">
+                <label className="form-label">色メトリクス（任意）</label>
+                <select className="form-input" value={colorMetric} onChange={e => setColorMetric((e.target.value || '') as MetricKey | '')}>
+                  <option value="">（単色 = アクセント）</option>
+                  {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
+                    <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+                  ))}
+                </select>
+                <p className="form-hint">勝率は divergent (赤↔青)、それ以外は accent の濃淡。</p>
+              </div>
+            </>
           )}
 
           <div className="form-field">

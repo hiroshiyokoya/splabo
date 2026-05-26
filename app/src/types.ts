@@ -391,6 +391,16 @@ export interface CustomChart {
   groupBy2?:    GroupByKey
   /** shape='heatmap' で武器軸を選んだときに表示する上位 N。デフォルト 20。 */
   topN?:        number
+  /** shape='scatter' で 1 ドット = 何の単位か。v1.0.0 は weapon / stage のみ実装（battle 単位は後続）。 */
+  dotUnit?:     'weapon' | 'stage'
+  /** scatter の X 軸メトリクス。 */
+  xMetric?:     MetricKey
+  /** scatter の Y 軸メトリクス。 */
+  yMetric?:     MetricKey
+  /** scatter のサイズメトリクス。バブルチャート化。指定なければ一定サイズ。 */
+  sizeMetric?:  MetricKey
+  /** scatter の色メトリクス。指定なければ単色。 */
+  colorMetric?: MetricKey
 }
 
 /** ヒートマップ用の 2D 集計行（db_grouped_stats_2d の返り値）。 */
@@ -446,8 +456,8 @@ export const Y_COMPOSITION_LABELS: Record<YComposition, string> = {
 }
 
 /** 実装済みの shape。それ以外は UI で disabled。
- *  v1.0.0: bar / line / calendar_heatmap / heatmap。scatter は後続 PR。 */
-export const IMPLEMENTED_SHAPES: ChartShape[] = ['bar', 'line', 'calendar_heatmap', 'heatmap']
+ *  v1.0.0: bar / line / calendar_heatmap / heatmap / scatter。 */
+export const IMPLEMENTED_SHAPES: ChartShape[] = ['bar', 'line', 'calendar_heatmap', 'heatmap', 'scatter']
 
 /**
  * メトリクスを「色スケールのグループ」に分類する。
