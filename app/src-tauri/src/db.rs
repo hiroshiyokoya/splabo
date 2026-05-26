@@ -701,6 +701,189 @@ fn stat_i64(result: Option<&serde_json::Value>, key: &str) -> i64 {
     result.and_then(|r| r.get(key)).and_then(|v| v.as_i64()).unwrap_or(0)
 }
 
+// ---------------------------------------------------------------------------
+// gear_configuration populate
+// ---------------------------------------------------------------------------
+
+/// ability マスターの key → id 対応表をロードする。
+async fn load_ability_id_map(pool: &DbPool) -> Result<std::collections::HashMap<String, i64>, String> {
+    let rows = sqlx::query("SELECT id, key FROM ability")
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows
+        .iter()
+        .map(|r| (r.get::<String, _>("key"), r.get::<i64, _>("id")))
+        .collect())
+}
+
+/// プレイヤー JSON から 1 つのギア (headGear / clothingGear / shoesGear) の
+/// (primary_id, sub1_id, sub2_id, sub3_id) を抽出する。primary が抽出できなければ None。
+fn extract_gear_ability_ids(
+    player: &serde_json::Value,
+    gear_key: &str,
+    ability_id_map: &std::collections::HashMap<String, i64>,
+) -> Option<(i64, Option<i64>, Option<i64>, Option<i64>)> {
+    let gear = player.get(gear_key)?;
+    let primary_url = gear.pointer("/primaryGearPower/image/url").and_then(|v| v.as_str())?;
+    let primary_key = match crate::abilities::ability_key_from_url(primary_url) {
+        Some(Some(k)) => k,
+        _             => return None, // 未知 or empty
+    };
+    let primary_id = *ability_id_map.get(primary_key)?;
+
+    let mut subs: [Option<i64>; 3] = [None, None, None];
+    if let Some(arr) = gear.pointer("/additionalGearPowers").and_then(|v| v.as_array()) {
+        for (i, sub) in arr.iter().enumerate().take(3) {
+            if let Some(url) = sub.pointer("/image/url").and_then(|v| v.as_str()) {
+                if let Some(Some(key)) = crate::abilities::ability_key_from_url(url) {
+                    subs[i] = ability_id_map.get(key).copied();
+                }
+                // empty スロット (Some(None)) / 未知 (None) はそのまま None
+            }
+        }
+    }
+
+    Some((primary_id, subs[0], subs[1], subs[2]))
+}
+
+type GearKey = (i64, Option<i64>, Option<i64>, Option<i64>);
+
+/// gear_configuration を find-or-create で取得し、ID を返す。cache は同一バッチ内で再利用する。
+async fn find_or_create_gear_config(
+    pool: &DbPool,
+    primary: i64,
+    sub1: Option<i64>,
+    sub2: Option<i64>,
+    sub3: Option<i64>,
+    cache: &mut std::collections::HashMap<GearKey, i64>,
+) -> Result<i64, String> {
+    let key = (primary, sub1, sub2, sub3);
+    if let Some(&id) = cache.get(&key) {
+        return Ok(id);
+    }
+
+    // NULL 比較は IFNULL で 0 をセンチネルに（ability ID は >= 1）
+    let existing = sqlx::query(
+        "SELECT id FROM gear_configuration
+         WHERE primary_ability_id = ?
+           AND IFNULL(sub1_ability_id, 0) = IFNULL(?, 0)
+           AND IFNULL(sub2_ability_id, 0) = IFNULL(?, 0)
+           AND IFNULL(sub3_ability_id, 0) = IFNULL(?, 0)
+         LIMIT 1",
+    )
+    .bind(primary)
+    .bind(sub1)
+    .bind(sub2)
+    .bind(sub3)
+    .fetch_optional(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let id = if let Some(row) = existing {
+        row.get::<i64, _>("id")
+    } else {
+        let result = sqlx::query(
+            "INSERT INTO gear_configuration
+                (primary_ability_id, sub1_ability_id, sub2_ability_id, sub3_ability_id)
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(primary)
+        .bind(sub1)
+        .bind(sub2)
+        .bind(sub3)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+        result.last_insert_rowid()
+    };
+
+    cache.insert(key, id);
+    Ok(id)
+}
+
+/// 1 バトル分の my_team / other_teams JSON からギア情報を抽出し、
+/// 対応する battle_player 行の headgear_id / clothing_id / shoes_id を埋める。
+async fn populate_gear_for_battle(
+    pool: &DbPool,
+    battle_id: &str,
+    ability_id_map: &std::collections::HashMap<String, i64>,
+    gear_cache: &mut std::collections::HashMap<GearKey, i64>,
+) -> Result<(), String> {
+    let row = sqlx::query("SELECT my_team, other_teams FROM battle WHERE id = ?")
+        .bind(battle_id)
+        .fetch_optional(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(row) = row else { return Ok(()); };
+    let my_team:     Option<String> = row.try_get("my_team").ok().flatten();
+    let other_teams: Option<String> = row.try_get("other_teams").ok().flatten();
+
+    // 各プレイヤー: (is_our_team, rank_in_team, head_id, clothing_id, shoes_id)
+    let mut updates: Vec<(i64, i64, Option<i64>, Option<i64>, Option<i64>)> = Vec::new();
+
+    if let Some(json) = &my_team {
+        if let Ok(arr) = serde_json::from_str::<serde_json::Value>(json) {
+            if let Some(list) = arr.as_array() {
+                for (slot, p) in list.iter().enumerate() {
+                    let mut ids: [Option<i64>; 3] = [None, None, None];
+                    for (i, gear_key) in ["headGear", "clothingGear", "shoesGear"].iter().enumerate() {
+                        if let Some((pr, s1, s2, s3)) = extract_gear_ability_ids(p, gear_key, ability_id_map) {
+                            ids[i] = Some(find_or_create_gear_config(pool, pr, s1, s2, s3, gear_cache).await?);
+                        }
+                    }
+                    updates.push((1, slot as i64, ids[0], ids[1], ids[2]));
+                }
+            }
+        }
+    }
+
+    if let Some(json) = &other_teams {
+        if let Ok(arr) = serde_json::from_str::<serde_json::Value>(json) {
+            if let Some(teams) = arr.as_array() {
+                let mut slot = 0i64;
+                for team in teams {
+                    if let Some(list) = team.pointer("/players").and_then(|v| v.as_array()) {
+                        for p in list {
+                            let mut ids: [Option<i64>; 3] = [None, None, None];
+                            for (i, gear_key) in ["headGear", "clothingGear", "shoesGear"].iter().enumerate() {
+                                if let Some((pr, s1, s2, s3)) = extract_gear_ability_ids(p, gear_key, ability_id_map) {
+                                    ids[i] = Some(find_or_create_gear_config(pool, pr, s1, s2, s3, gear_cache).await?);
+                                }
+                            }
+                            updates.push((0, slot, ids[0], ids[1], ids[2]));
+                            slot += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for (is_our_team, rank_in_team, head, cloth, shoes) in updates {
+        sqlx::query(
+            "UPDATE battle_player
+                SET headgear_id = COALESCE(?, headgear_id),
+                    clothing_id = COALESCE(?, clothing_id),
+                    shoes_id    = COALESCE(?, shoes_id)
+              WHERE battle_id = ? AND is_our_team = ? AND rank_in_team = ?",
+        )
+        .bind(head)
+        .bind(cloth)
+        .bind(shoes)
+        .bind(battle_id)
+        .bind(is_our_team)
+        .bind(rank_in_team)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+
 /// my_team / other_teams の JSON 文字列からプレイヤー行を生成する。
 pub fn parse_players_from_json(
     battle_id: &str,
@@ -799,6 +982,25 @@ pub async fn insert_battle_players(pool: &DbPool, players: &[BattlePlayerRow]) -
             log::warn!("[shadow] insert_battle_players: {e}");
         }
     }
+
+    // ギア情報を新スキーマの battle_player にも紐付ける（バトル単位で重複処理）。
+    let battle_ids: std::collections::HashSet<&String> = players.iter().map(|p| &p.battle_id).collect();
+    if !battle_ids.is_empty() {
+        let ability_id_map = match load_ability_id_map(pool).await {
+            Ok(m) => m,
+            Err(e) => {
+                log::warn!("[gear] ability マスター読込失敗、ギア populate スキップ: {e}");
+                return Ok(());
+            }
+        };
+        let mut gear_cache: std::collections::HashMap<GearKey, i64> = std::collections::HashMap::new();
+        for bid in battle_ids {
+            if let Err(e) = populate_gear_for_battle(pool, bid, &ability_id_map, &mut gear_cache).await {
+                log::warn!("[gear] populate 失敗 battle={bid}: {e}");
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -1453,6 +1655,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// version 7: 既存 battles / battle_players から新スキーマへデータ移行
 /// version 8: 新 battle テーブルに parent_json 列を追加し、旧 battles から backfill
 /// version 9: 新 battle テーブルに表示用カラム (knockout/sub_weapon/special_weapon/awards/my_team/other_teams) を追加し、旧 battles から backfill
+/// version 10: 既存バトルの gear_configuration を my_team/other_teams JSON から backfill
 pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
     let ver_row = sqlx::query("PRAGMA user_version")
         .fetch_one(pool.as_ref())
@@ -1460,7 +1663,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 9 {
+    if current_version >= 10 {
         return Ok(0); // 最新バージョンに達している
     }
 
@@ -2122,6 +2325,51 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         log::info!(
             "migrate v9: battle に表示用カラム追加 (backfill {} 件)",
             filled,
+        );
+    }
+
+    // version 10: 既存バトルの gear_configuration を my_team / other_teams JSON から backfill。
+    //             ability マスター (v6 で seed 済み) + abilities::ABILITY_HASHES のハッシュ→キー対応で
+    //             ギア画像 URL から ability ID を逆引きし、find-or-create で gear_configuration に
+    //             登録、battle_player の headgear_id / clothing_id / shoes_id を埋める。
+    if current_version < 10 {
+        let ability_id_map = load_ability_id_map(pool).await?;
+        let mut gear_cache: std::collections::HashMap<GearKey, i64> = std::collections::HashMap::new();
+
+        let battle_ids = sqlx::query(
+            "SELECT id FROM battle
+             WHERE my_team IS NOT NULL OR other_teams IS NOT NULL",
+        )
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let mut processed = 0usize;
+        let mut skipped = 0usize;
+        for row in &battle_ids {
+            let bid: String = row.get("id");
+            match populate_gear_for_battle(pool, &bid, &ability_id_map, &mut gear_cache).await {
+                Ok(_) => processed += 1,
+                Err(e) => {
+                    log::warn!(
+                        "[v10 gear] populate 失敗 battle={}: {e}",
+                        &bid[..bid.len().min(20)]
+                    );
+                    skipped += 1;
+                }
+            }
+        }
+
+        sqlx::query("PRAGMA user_version = 10")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        log::info!(
+            "migrate v10: gear_configuration backfill (processed {}, skipped {}, gear_configs {})",
+            processed,
+            skipped,
+            gear_cache.len(),
         );
     }
 
