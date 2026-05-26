@@ -383,36 +383,40 @@ async fn upsert_map_id(pool: &DbPool, key: &str, name: Option<&str>) -> Result<O
     Ok(row.map(|r| r.get("id")))
 }
 
-/// 新スキーマの `battle` テーブルに INSERT OR REPLACE する（シャドウライト）。
-/// FK 翻訳に失敗した場合は warning ログを出してスキップ（旧 battles 側は引き続き正しく書ける）。
+/// 新スキーマの `battle` テーブルに INSERT OR REPLACE する。
+/// rule が空 (list クエリ取り込み直後) なら rule_id = NULL で挿入し、後段の
+/// `shadow_update_battle_detail` (詳細取得後) で正しい rule_id に更新される。
+/// rule 以外の必須 FK (lobby / result / weapon / map) が解決できない場合は warn + スキップ。
 async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), String> {
-    // list クエリ取り込み時点では `rule` が空（vsRule は詳細クエリにしか含まれない）。
-    // その場合は黙ってスキップし、後続の `update_battle_detail` 経由の
-    // `shadow_update_battle_detail` で正しい値が入るのを待つ。
-    if row.rule.is_empty() {
-        return Ok(());
-    }
-
     let lobby_id  = old_mode_to_lobby_id(&row.mode);
-    let rule_id   = old_rule_to_rule_id(&row.rule);
+    // rule は list クエリでは空文字。詳細クエリで埋まる前提で NULL を許容する。
+    let rule_id   = if row.rule.is_empty() { None } else { old_rule_to_rule_id(&row.rule) };
     let result_id = old_result_to_result_id(&row.result);
     let weapon_id = upsert_weapon_id(pool, &row.weapon).await?;
     let map_id    = upsert_map_id(pool, &row.stage, row.stage_name.as_deref()).await?;
 
-    let (Some(lobby_id), Some(rule_id), Some(result_id), Some(weapon_id), Some(map_id)) =
-        (lobby_id, rule_id, result_id, weapon_id, map_id)
+    // rule 以外の必須 FK が落ちる場合のみスキップ。rule_id は None でも続行。
+    let (Some(lobby_id), Some(result_id), Some(weapon_id), Some(map_id)) =
+        (lobby_id, result_id, weapon_id, map_id)
     else {
         log::warn!(
-            "[shadow] battle スキップ id={} (mode={} rule={} result={} weapon={} stage={})",
+            "[shadow] battle スキップ id={} (mode={} result={} weapon={} stage={})",
             &row.id[..row.id.len().min(20)],
             row.mode,
-            row.rule,
             row.result,
             row.weapon,
             row.stage,
         );
         return Ok(());
     };
+    // rule が指定されているのに未知 slug の場合は warn しておく (引き続き NULL で挿入)。
+    if !row.rule.is_empty() && rule_id.is_none() {
+        log::warn!(
+            "[shadow] 未知 rule={} のためバトル {} の rule_id を NULL で挿入",
+            row.rule,
+            &row.id[..row.id.len().min(20)],
+        );
+    }
 
     let kill_or_assist = row.kill + row.assist;
     let is_knockout: Option<i64> = row
@@ -507,43 +511,24 @@ async fn shadow_write_battle_player(pool: &DbPool, p: &BattlePlayerRow) -> Resul
 }
 
 pub async fn insert_battles(pool: &DbPool, rows: Vec<BattleRow>) -> Result<usize, String> {
+    // 旧 battles テーブルは v11 で drop 済み。新 battle テーブルへ直接書く。
     let mut inserted = 0usize;
     for row in rows {
-        let result = sqlx::query(
-            "INSERT OR IGNORE INTO battles
-             (id, played_at, mode, rule, stage, stage_name, weapon, result,
-              kill, death, assist, special, inked, duration,
-              rank_before, rank_after, x_power, raw_json, fetched_at, parent_json)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        )
-        .bind(&row.id)
-        .bind(&row.played_at)
-        .bind(&row.mode)
-        .bind(&row.rule)
-        .bind(&row.stage)
-        .bind(&row.stage_name)
-        .bind(&row.weapon)
-        .bind(&row.result)
-        .bind(row.kill)
-        .bind(row.death)
-        .bind(row.assist)
-        .bind(row.special)
-        .bind(row.inked)
-        .bind(row.duration)
-        .bind(&row.rank_before)
-        .bind(&row.rank_after)
-        .bind(row.x_power)
-        .bind(&row.raw_json)
-        .bind(&row.fetched_at)
-        .bind(&row.parent_json)
-        .execute(pool.as_ref())
-        .await
-        .map_err(|e| e.to_string())?;
-        inserted += result.rows_affected() as usize;
+        // INSERT OR REPLACE なので既存行は上書き。既存判定は別途必要なら id 存在チェックを追加する。
+        let existed = sqlx::query("SELECT 1 FROM battle WHERE id = ? LIMIT 1")
+            .bind(&row.id)
+            .fetch_optional(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?
+            .is_some();
 
-        // 新スキーマへもシャドウライト（失敗はログのみ）
         if let Err(e) = shadow_write_battle(pool, &row).await {
-            log::warn!("[shadow] insert_battles: {e}");
+            log::warn!("[battle insert] {e}");
+            continue;
+        }
+
+        if !existed {
+            inserted += 1;
         }
     }
     Ok(inserted)
@@ -580,43 +565,12 @@ pub async fn update_battle_detail(
     my_team: Option<&str>,
     other_teams: Option<&str>,
 ) -> Result<(), String> {
-    sqlx::query(
-        "UPDATE battles SET kill=?, death=?, assist=?, special=?, inked=?,
-                            raw_json=?, rule=?, mode=?, detail_fetched=1,
-                            knockout=?, sub_weapon=?, special_weapon=?,
-                            awards=?, my_team=?, other_teams=?
-         WHERE id=?",
-    )
-    .bind(kill)
-    .bind(death)
-    .bind(assist)
-    .bind(special)
-    .bind(inked)
-    .bind(raw_json)
-    .bind(rule)
-    .bind(mode)
-    .bind(knockout)
-    .bind(sub_weapon)
-    .bind(special_weapon)
-    .bind(awards)
-    .bind(my_team)
-    .bind(other_teams)
-    .bind(id)
-    .execute(pool.as_ref())
-    .await
-    .map_err(|e| e.to_string())?;
-
-    // 新スキーマへもシャドウ UPDATE
-    if let Err(e) = shadow_update_battle_detail(
+    // 旧 battles は v11 で drop 済み。新 battle テーブルのみ UPDATE する。
+    shadow_update_battle_detail(
         pool, id, kill, death, assist, special, inked, raw_json, rule, mode,
         knockout, sub_weapon, special_weapon, awards, my_team, other_teams,
     )
     .await
-    {
-        log::warn!("[shadow] update_battle_detail id={id}: {e}");
-    }
-
-    Ok(())
 }
 
 /// 詳細取得結果を新スキーマの `battle` 行に反映する。FK 翻訳に失敗したらスキップ。
@@ -954,32 +908,10 @@ pub fn parse_players_from_json(
 }
 
 pub async fn insert_battle_players(pool: &DbPool, players: &[BattlePlayerRow]) -> Result<(), String> {
+    // 旧 battle_players は v11 で drop 済み。新 battle_player のみへ書く。
     for p in players {
-        sqlx::query(
-            "INSERT OR IGNORE INTO battle_players
-             (battle_id, team, slot, is_myself, weapon, sub_weapon, special_weapon,
-              kill, death, assist, special, paint)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-        )
-        .bind(&p.battle_id)
-        .bind(&p.team)
-        .bind(p.slot)
-        .bind(p.is_myself as i64)
-        .bind(&p.weapon)
-        .bind(&p.sub_weapon)
-        .bind(&p.special_weapon)
-        .bind(p.kill)
-        .bind(p.death)
-        .bind(p.assist)
-        .bind(p.special)
-        .bind(p.paint)
-        .execute(pool.as_ref())
-        .await
-        .map_err(|e| e.to_string())?;
-
-        // 新スキーマへもシャドウライト（失敗はログのみ）
         if let Err(e) = shadow_write_battle_player(pool, p).await {
-            log::warn!("[shadow] insert_battle_players: {e}");
+            log::warn!("[battle_player insert] {e}");
         }
     }
 
@@ -1212,7 +1144,7 @@ pub async fn db_list_battles(
         "SELECT b.id                     AS id,
                 b.played_at              AS played_at,
                 CASE WHEN l.key LIKE 'bankara%' THEN l.key ELSE {LOBBY_KEY_AS_OLD} END AS mode,
-                {RULE_KEY_AS_OLD}        AS rule,
+                COALESCE({RULE_KEY_AS_OLD}, '') AS rule,
                 m.key                    AS stage,
                 m.name_ja                AS stage_name,
                 w.key                    AS weapon,
@@ -1237,11 +1169,11 @@ pub async fn db_list_battles(
                 b.statink_uuid           AS statink_uuid,
                 b.parent_json            AS parent_json
          FROM battle b
-         JOIN lobby  l   ON l.id   = b.lobby_id
-         JOIN rule   r   ON r.id   = b.rule_id
-         JOIN result res ON res.id = b.result_id
-         JOIN weapon w   ON w.id   = b.weapon_id
-         JOIN map    m   ON m.id   = b.map_id
+         JOIN      lobby  l   ON l.id   = b.lobby_id
+         LEFT JOIN rule   r   ON r.id   = b.rule_id
+         JOIN      result res ON res.id = b.result_id
+         JOIN      weapon w   ON w.id   = b.weapon_id
+         JOIN      map    m   ON m.id   = b.map_id
          WHERE (? IS NULL OR b.played_at >= ?)
            AND (? IS NULL OR b.played_at <= ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
@@ -1602,31 +1534,20 @@ pub async fn get_battles_team_json(pool: &DbPool) -> Result<Vec<(Option<String>,
         .collect())
 }
 
-/// battle_players テーブルから sub/special を weapons テーブルに補完する。
-/// 自分の武器だけでなく、同じバトルの味方・敵の武器も対象になる。
+/// 新スキーマの weapon マスター（と weapon_id を持つ battle_player）から
+/// 旧 weapons テーブルに sub/special を補完する。db_list_weapons が sub/special
+/// 画像 URL を保持する旧 weapons テーブルを読んでいる間に必要。
 pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, String> {
-    // battle_players から全プレイヤーの sub/special をアップサート
+    // 新 weapon マスター + battle_player から、武器ごとの最新 sub/special を集約
     sqlx::query(
         "INSERT INTO weapons (name, category, sub_weapon, special_weapon)
-         SELECT weapon, '', sub_weapon, special_weapon
-         FROM (
-             SELECT weapon, sub_weapon, special_weapon,
-                    ROW_NUMBER() OVER (PARTITION BY weapon ORDER BY battle_id DESC) AS rn
-             FROM battle_players
-             WHERE weapon != '' AND sub_weapon IS NOT NULL
-         ) WHERE rn = 1
+         SELECT w.key, COALESCE(w.category_key, ''), w.sub_key, w.special_key
+         FROM weapon w
+         WHERE w.key != ''
          ON CONFLICT(name) DO UPDATE SET
+             category       = CASE WHEN excluded.category != '' THEN excluded.category ELSE weapons.category END,
              sub_weapon     = COALESCE(excluded.sub_weapon, weapons.sub_weapon),
              special_weapon = COALESCE(excluded.special_weapon, weapons.special_weapon)",
-    )
-    .execute(pool.as_ref())
-    .await
-    .map_err(|e| e.to_string())?;
-
-    // 詳細未取得で battle_players にもない武器を name だけ登録
-    sqlx::query(
-        "INSERT OR IGNORE INTO weapons (name, category, sub_weapon, special_weapon)
-         SELECT DISTINCT weapon, '', NULL, NULL FROM battles WHERE weapon != ''",
     )
     .execute(pool.as_ref())
     .await
@@ -1656,6 +1577,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// version 8: 新 battle テーブルに parent_json 列を追加し、旧 battles から backfill
 /// version 9: 新 battle テーブルに表示用カラム (knockout/sub_weapon/special_weapon/awards/my_team/other_teams) を追加し、旧 battles から backfill
 /// version 10: 既存バトルの gear_configuration を my_team/other_teams JSON から backfill
+/// version 11: battle.rule_id を nullable に変更し、旧 battles / battle_players テーブルを drop
 pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
     let ver_row = sqlx::query("PRAGMA user_version")
         .fetch_one(pool.as_ref())
@@ -1663,7 +1585,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 10 {
+    if current_version >= 11 {
         return Ok(0); // 最新バージョンに達している
     }
 
@@ -2373,6 +2295,100 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         );
     }
 
+    // version 11: battle.rule_id を nullable に変更（list クエリ取り込み時点で
+    //             rule が未確定なバトルも挿入できるようにするため）。SQLite は
+    //             ALTER COLUMN がないので table recreation パターン。
+    //             あわせて旧 battles / battle_players テーブルを drop し、
+    //             以後は完全に新スキーマで動作する。
+    //             旧 weapons は db_list_weapons が sub/special 画像を保持するため残す。
+    if current_version < 11 {
+        // 既存インデックス・データを保ったまま rule_id を nullable に変更
+        sqlx::query("PRAGMA foreign_keys = OFF")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let recreation_sql = "
+            CREATE TABLE battle_v11 (
+                id                 TEXT    PRIMARY KEY,
+                uuid               TEXT,
+                played_at          TEXT    NOT NULL,
+                period             TEXT,
+                lobby_id           INTEGER NOT NULL REFERENCES lobby(id),
+                rule_id            INTEGER REFERENCES rule(id),
+                map_id             INTEGER NOT NULL REFERENCES map(id),
+                result_id          INTEGER NOT NULL REFERENCES result(id),
+                weapon_id          INTEGER NOT NULL REFERENCES weapon(id),
+                is_knockout        INTEGER,
+                rank_in_team       INTEGER,
+                kill               INTEGER NOT NULL DEFAULT 0,
+                assist             INTEGER NOT NULL DEFAULT 0,
+                kill_or_assist     INTEGER NOT NULL DEFAULT 0,
+                death              INTEGER NOT NULL DEFAULT 0,
+                special            INTEGER NOT NULL DEFAULT 0,
+                inked              INTEGER NOT NULL DEFAULT 0,
+                duration           INTEGER NOT NULL DEFAULT 0,
+                our_team_inked     INTEGER,
+                their_team_inked   INTEGER,
+                our_team_percent   REAL,
+                their_team_percent REAL,
+                our_team_count     INTEGER,
+                their_team_count   INTEGER,
+                rank_before        TEXT,
+                rank_after         TEXT,
+                rank_before_s_plus INTEGER,
+                rank_after_s_plus  INTEGER,
+                x_power_before     REAL,
+                x_power_after      REAL,
+                raw_json           TEXT,
+                fetched_at         TEXT    NOT NULL DEFAULT (datetime('now')),
+                detail_fetched     INTEGER NOT NULL DEFAULT 0,
+                statink_uuid       TEXT,
+                parent_json        TEXT,
+                knockout           TEXT,
+                sub_weapon         TEXT,
+                special_weapon     TEXT,
+                awards             TEXT,
+                my_team            TEXT,
+                other_teams        TEXT
+            );
+            INSERT INTO battle_v11 SELECT * FROM battle;
+            DROP TABLE battle;
+            ALTER TABLE battle_v11 RENAME TO battle;
+            CREATE INDEX battle_played_at ON battle(played_at);
+            CREATE INDEX battle_lobby     ON battle(lobby_id);
+            CREATE INDEX battle_rule      ON battle(rule_id);
+            CREATE INDEX battle_map       ON battle(map_id);
+            CREATE INDEX battle_weapon    ON battle(weapon_id);
+        ";
+        sqlx::query(recreation_sql)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| format!("v11 battle 再作成失敗: {e}"))?;
+
+        // 旧テーブルを drop（旧 weapons は db_list_weapons でまだ使うので残す）
+        sqlx::query("DROP TABLE IF EXISTS battle_players")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| format!("v11 battle_players drop 失敗: {e}"))?;
+        sqlx::query("DROP TABLE IF EXISTS battles")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| format!("v11 battles drop 失敗: {e}"))?;
+
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        sqlx::query("PRAGMA user_version = 11")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        log::info!("migrate v11: battle.rule_id を nullable 化、旧 battles / battle_players を drop");
+    }
+
     Ok(updated)
 }
 
@@ -2420,14 +2436,8 @@ pub async fn get_battles_uploaded(pool: &DbPool) -> Result<Vec<(String, String)>
 }
 
 /// バトルの statink_uuid を NULL にリセットする（削除後の再アップロード用）。
-/// 移行期は新旧両方の battle / battles テーブルを更新する（PR 90-D2d で旧 drop 後は片方のみ）。
 pub async fn reset_statink_uuid(pool: &DbPool, id: &str) -> Result<(), String> {
     sqlx::query("UPDATE battle SET statink_uuid = NULL WHERE id = ?")
-        .bind(id)
-        .execute(pool.as_ref())
-        .await
-        .map_err(|e| e.to_string())?;
-    sqlx::query("UPDATE battles SET statink_uuid = NULL WHERE id = ?")
         .bind(id)
         .execute(pool.as_ref())
         .await
@@ -2435,15 +2445,9 @@ pub async fn reset_statink_uuid(pool: &DbPool, id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// バトルを stat.ink アップロード済みとしてマークする。新旧両方を更新。
+/// バトルを stat.ink アップロード済みとしてマークする。
 pub async fn mark_statink_uploaded(pool: &DbPool, id: &str, uuid: &str) -> Result<(), String> {
     sqlx::query("UPDATE battle SET statink_uuid=? WHERE id=?")
-        .bind(uuid)
-        .bind(id)
-        .execute(pool.as_ref())
-        .await
-        .map_err(|e| e.to_string())?;
-    sqlx::query("UPDATE battles SET statink_uuid=? WHERE id=?")
         .bind(uuid)
         .bind(id)
         .execute(pool.as_ref())
