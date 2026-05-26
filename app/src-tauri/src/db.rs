@@ -808,7 +808,7 @@ pub async fn backfill_battle_players(db: tauri::State<'_, DbPool>) -> Result<usi
 // フィルターヘルパー
 // ---------------------------------------------------------------------------
 
-/// モードフィルターを正規化する。
+/// モードフィルターを正規化する（旧 battles テーブル向け）。
 /// 'bankara' は 'bankara_challenge|bankara_open' に展開し、
 /// instr パイプフィルターでどちらにもマッチさせる。
 fn normalize_mode_filter(mode: Option<String>) -> Option<String> {
@@ -818,6 +818,25 @@ fn normalize_mode_filter(mode: Option<String>) -> Option<String> {
         } else {
             m
         }
+    })
+}
+
+/// 新スキーマの `lobby` マスター向けにフロントから来た mode slug を翻訳する。
+/// 'bankara' は展開、'x' は新マスター key の 'xmatch' に置換する。
+fn translate_mode_filter(mode: Option<String>) -> Option<String> {
+    mode.map(|m| match m.as_str() {
+        "bankara" => "bankara_challenge|bankara_open".to_string(),
+        "x"       => "xmatch".to_string(),
+        _         => m,
+    })
+}
+
+/// 新スキーマの `rule` マスター向けにフロントから来た rule slug を翻訳する。
+/// 'turf_war' は stat.ink スラッグの 'nawabari' に置換する。
+fn translate_rule_filter(rule: Option<String>) -> Option<String> {
+    rule.map(|r| match r.as_str() {
+        "turf_war" => "nawabari".to_string(),
+        _          => r,
     })
 }
 
@@ -1126,6 +1145,10 @@ pub async fn db_summary(
 /// 平均系は `detail_fetched=1` のバトルだけを母数にする（詳細未取得は K/D 等が 0 で記録されるため）。
 /// `weapon_category` は battles → weapons の LEFT JOIN を経由し、category が NULL/空のバトルは
 /// `category` 列が `'(未分類)'` として 1 グループにまとめる。
+///
+/// 新スキーマ（v6 で追加した `battle` + マスター各種）から読む。フロントが送る
+/// 旧 slug は `translate_mode_filter` / `translate_rule_filter` で新マスターの key に
+/// 翻訳してから WHERE 句に渡す。返す JSON 形式は従来と同一。
 #[tauri::command]
 pub async fn db_grouped_stats(
     db: tauri::State<'_, DbPool>,
@@ -1138,46 +1161,51 @@ pub async fn db_grouped_stats(
     weapon: Option<String>,
     stage: Option<String>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let mode = normalize_mode_filter(mode);
+    let mode = translate_mode_filter(mode);
+    let rule = translate_rule_filter(rule);
 
-    // group_by を SQL の (テーブル/JOIN, GROUP BY 式, display 用列) に翻訳する。
-    // ここで JOIN を分岐させているのは weapon_category だけ weapons テーブルが必要なため。
-    let (from_clause, group_expr, display_expr): (&str, &str, &str) = match group_by.as_str() {
-        "weapon"          => ("battles",                                              "weapon",                                                          "weapon"),
-        "stage"           => ("battles",                                              "stage",                                                           "COALESCE(MAX(stage_name), stage)"),
-        "rule"            => ("battles",                                              "rule",                                                            "rule"),
-        "mode"            => ("battles",                                              "CASE WHEN mode LIKE 'bankara%' THEN 'bankara' ELSE mode END",     "CASE WHEN mode LIKE 'bankara%' THEN 'bankara' ELSE mode END"),
-        "sub_weapon"      => ("battles",                                              "COALESCE(sub_weapon, '(不明)')",                                   "COALESCE(sub_weapon, '(不明)')"),
-        "special_weapon"  => ("battles",                                              "COALESCE(special_weapon, '(不明)')",                               "COALESCE(special_weapon, '(不明)')"),
-        "weapon_category" => ("battles LEFT JOIN weapons ON weapons.name = battles.weapon",
-                                                                                       "COALESCE(NULLIF(weapons.category, ''), '(未分類)')",                "COALESCE(NULLIF(weapons.category, ''), '(未分類)')"),
-        "result"          => ("battles",                                              "result",                                                          "result"),
+    // group_by を新スキーマ用の (GROUP BY 式, display 用列) に翻訳する。
+    // FROM 句は全 group_by 共通で battle + 5 マスター JOIN。
+    let (group_expr, display_expr): (&str, &str) = match group_by.as_str() {
+        "weapon"          => ("w.key",                                                          "COALESCE(w.name_ja, w.key)"),
+        "stage"           => ("m.key",                                                          "COALESCE(MAX(m.name_ja), m.key)"),
+        "rule"            => ("r.key",                                                          "r.key"),
+        "mode"            => ("CASE WHEN l.key LIKE 'bankara%' THEN 'bankara' ELSE l.key END",  "CASE WHEN l.key LIKE 'bankara%' THEN 'bankara' ELSE l.key END"),
+        "sub_weapon"      => ("COALESCE(w.sub_key, '(不明)')",                                   "COALESCE(w.sub_key, '(不明)')"),
+        "special_weapon"  => ("COALESCE(w.special_key, '(不明)')",                               "COALESCE(w.special_key, '(不明)')"),
+        "weapon_category" => ("COALESCE(NULLIF(w.category_key, ''), '(未分類)')",                "COALESCE(NULLIF(w.category_key, ''), '(未分類)')"),
+        "result"          => ("res.key",                                                        "res.key"),
         _ => return Err(format!("未対応の group_by: {group_by}")),
     };
 
     let filter_where =
-        "(? IS NULL OR played_at >= ?)
-           AND (? IS NULL OR played_at <= ?)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || mode || '|') > 0)
-           AND (? IS NULL OR rule = ?)
-           AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)";
+        "(? IS NULL OR b.played_at >= ?)
+           AND (? IS NULL OR b.played_at <= ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
+           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR res.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)";
 
     let sql = format!(
         "SELECT
             {group_expr} as key,
             {display_expr} as display_name,
             COUNT(*)                                                  as total,
-            SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END)            as wins,
-            SUM(CASE WHEN result='draw' THEN 1 ELSE 0 END)            as draws,
-            AVG(CASE WHEN detail_fetched = 1 THEN kill     END)       as avg_kill,
-            AVG(CASE WHEN detail_fetched = 1 THEN death    END)       as avg_death,
-            AVG(CASE WHEN detail_fetched = 1 THEN assist   END)       as avg_assist,
-            AVG(CASE WHEN detail_fetched = 1 THEN special  END)       as avg_special,
-            AVG(CASE WHEN detail_fetched = 1 THEN inked    END)       as avg_inked,
-            AVG(CASE WHEN detail_fetched = 1 THEN duration END)       as avg_duration
-         FROM {from_clause}
+            SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END)           as wins,
+            SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END)           as draws,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.kill     END)   as avg_kill,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.death    END)   as avg_death,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.assist   END)   as avg_assist,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.special  END)   as avg_special,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.inked    END)   as avg_inked,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.duration END)   as avg_duration
+         FROM battle b
+         JOIN lobby  l   ON l.id   = b.lobby_id
+         JOIN rule   r   ON r.id   = b.rule_id
+         JOIN result res ON res.id = b.result_id
+         JOIN weapon w   ON w.id   = b.weapon_id
+         JOIN map    m   ON m.id   = b.map_id
          WHERE {filter_where}
          GROUP BY {group_expr}
          ORDER BY total DESC"
