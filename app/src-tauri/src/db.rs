@@ -847,6 +847,15 @@ fn translate_rule_filter(rule: Option<String>) -> Option<String> {
     })
 }
 
+/// SELECT 句で `lobby.key` を返すときに、フロントが期待する旧 slug へ逆翻訳する SQL 式。
+/// 新マスターは stat.ink スラッグ ('xmatch') を使うが、chartoon フロントの
+/// MODE_LABELS は 'x' をキーにしているため整合させる。
+const LOBBY_KEY_AS_OLD: &str = "CASE l.key WHEN 'xmatch' THEN 'x' ELSE l.key END";
+
+/// SELECT 句で `rule.key` を返すときに、フロントが期待する旧 slug へ逆翻訳する SQL 式。
+/// 'nawabari' (新マスター) → 'turf_war' (chartoon フロント `RULE_LABELS` キー)。
+const RULE_KEY_AS_OLD: &str = "CASE r.key WHEN 'nawabari' THEN 'turf_war' ELSE r.key END";
+
 // ---------------------------------------------------------------------------
 // Tauri コマンド
 // ---------------------------------------------------------------------------
@@ -862,23 +871,29 @@ pub async fn db_battle_stats(
     weapon: Option<String>,
     stage: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let mode = normalize_mode_filter(mode);
+    let mode = translate_mode_filter(mode);
+    let rule = translate_rule_filter(rule);
     let row = sqlx::query(
         "SELECT
             COUNT(*) as total,
-            SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
-            SUM(CASE WHEN result='draw' THEN 1 ELSE 0 END) as draws,
-            COUNT(DISTINCT weapon) as weapon_count,
-            AVG(CASE WHEN detail_fetched = 1 THEN kill  END) as avg_kill,
-            AVG(CASE WHEN detail_fetched = 1 THEN death END) as avg_death
-         FROM battles
-         WHERE (? IS NULL OR played_at >= ?)
-           AND (? IS NULL OR played_at <= ?)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || mode || '|') > 0)
-           AND (? IS NULL OR rule = ?)
-           AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)",
+            SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END) as draws,
+            COUNT(DISTINCT b.weapon_id) as weapon_count,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.kill  END) as avg_kill,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.death END) as avg_death
+         FROM battle b
+         JOIN lobby  l   ON l.id   = b.lobby_id
+         JOIN rule   r   ON r.id   = b.rule_id
+         JOIN result res ON res.id = b.result_id
+         JOIN weapon w   ON w.id   = b.weapon_id
+         JOIN map    m   ON m.id   = b.map_id
+         WHERE (? IS NULL OR b.played_at >= ?)
+           AND (? IS NULL OR b.played_at <= ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
+           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR res.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)",
     )
     .bind(&since).bind(&since)
     .bind(&until).bind(&until)
@@ -921,16 +936,23 @@ pub async fn db_battle_count(
     weapon: Option<String>,
     stage: Option<String>,
 ) -> Result<i64, String> {
-    let mode = normalize_mode_filter(mode);
+    let mode = translate_mode_filter(mode);
+    let rule = translate_rule_filter(rule);
     let row = sqlx::query(
-        "SELECT COUNT(*) as cnt FROM battles
-         WHERE (? IS NULL OR played_at >= ?)
-           AND (? IS NULL OR played_at <= ?)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || mode || '|') > 0)
-           AND (? IS NULL OR rule = ?)
-           AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)",
+        "SELECT COUNT(*) as cnt
+         FROM battle b
+         JOIN lobby  l   ON l.id   = b.lobby_id
+         JOIN rule   r   ON r.id   = b.rule_id
+         JOIN result res ON res.id = b.result_id
+         JOIN weapon w   ON w.id   = b.weapon_id
+         JOIN map    m   ON m.id   = b.map_id
+         WHERE (? IS NULL OR b.played_at >= ?)
+           AND (? IS NULL OR b.played_at <= ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
+           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR res.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)",
     )
     .bind(&since).bind(&since)
     .bind(&until).bind(&until)
@@ -1009,14 +1031,18 @@ pub async fn db_list_battles(
 #[tauri::command]
 pub async fn db_stages_used(db: tauri::State<'_, DbPool>) -> Result<Vec<serde_json::Value>, String> {
     let rows = sqlx::query(
-        "SELECT stage, stage_name FROM battles GROUP BY stage ORDER BY COUNT(*) DESC",
+        "SELECT m.key as id, MAX(m.name_ja) as name
+         FROM battle b
+         JOIN map m ON m.id = b.map_id
+         GROUP BY m.id
+         ORDER BY COUNT(*) DESC",
     )
     .fetch_all(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(|r| {
-        let id: String          = r.get("stage");
-        let name: Option<String> = r.get("stage_name");
+        let id: String           = r.get("id");
+        let name: Option<String> = r.try_get("name").ok().flatten();
         serde_json::json!({ "id": id, "name": name.unwrap_or_else(|| id.clone()) })
     }).collect())
 }
@@ -1025,7 +1051,11 @@ pub async fn db_stages_used(db: tauri::State<'_, DbPool>) -> Result<Vec<serde_js
 #[tauri::command]
 pub async fn db_weapons_used(db: tauri::State<'_, DbPool>) -> Result<Vec<String>, String> {
     let rows = sqlx::query(
-        "SELECT weapon FROM battles GROUP BY weapon ORDER BY COUNT(*) DESC",
+        "SELECT w.key as weapon
+         FROM battle b
+         JOIN weapon w ON w.id = b.weapon_id
+         GROUP BY w.id
+         ORDER BY COUNT(*) DESC",
     )
     .fetch_all(db.as_ref())
     .await
@@ -1044,15 +1074,24 @@ pub async fn db_summary(
     weapon: Option<String>,
     stage: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let mode = normalize_mode_filter(mode);
+    let mode = translate_mode_filter(mode);
+    let rule = translate_rule_filter(rule);
+
+    let common_joins =
+        "FROM battle b
+         JOIN lobby  l   ON l.id   = b.lobby_id
+         JOIN rule   r   ON r.id   = b.rule_id
+         JOIN result res ON res.id = b.result_id
+         JOIN weapon w   ON w.id   = b.weapon_id
+         JOIN map    m   ON m.id   = b.map_id";
     let filter_where =
-        "(? IS NULL OR played_at >= ?)
-           AND (? IS NULL OR played_at <= ?)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || mode || '|') > 0)
-           AND (? IS NULL OR rule = ?)
-           AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)";
+        "(? IS NULL OR b.played_at >= ?)
+           AND (? IS NULL OR b.played_at <= ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
+           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR res.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)";
 
     macro_rules! bind_filters {
         ($q:expr) => {
@@ -1067,10 +1106,10 @@ pub async fn db_summary(
     }
 
     let by_weapon = bind_filters!(sqlx::query(&format!(
-        "SELECT weapon as name, COUNT(*) as total,
-                SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN result='draw' THEN 1 ELSE 0 END) as draws
-         FROM battles WHERE {filter_where} GROUP BY weapon ORDER BY total DESC"
+        "SELECT w.key as name, COUNT(*) as total,
+                SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END) as draws
+         {common_joins} WHERE {filter_where} GROUP BY w.id ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
     .await
@@ -1078,12 +1117,12 @@ pub async fn db_summary(
 
     let by_mode = bind_filters!(sqlx::query(&format!(
         "SELECT
-                CASE WHEN mode LIKE 'bankara%' THEN 'bankara' ELSE mode END as name,
+                CASE WHEN l.key LIKE 'bankara%' THEN 'bankara' ELSE {LOBBY_KEY_AS_OLD} END as name,
                 COUNT(*) as total,
-                SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN result='draw' THEN 1 ELSE 0 END) as draws
-         FROM battles WHERE {filter_where}
-         GROUP BY CASE WHEN mode LIKE 'bankara%' THEN 'bankara' ELSE mode END
+                SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END) as draws
+         {common_joins} WHERE {filter_where}
+         GROUP BY CASE WHEN l.key LIKE 'bankara%' THEN 'bankara' ELSE l.key END
          ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
@@ -1091,22 +1130,22 @@ pub async fn db_summary(
     .map_err(|e| e.to_string())?;
 
     let by_stage = bind_filters!(sqlx::query(&format!(
-        "SELECT stage as name,
-                COALESCE(MAX(stage_name), stage) as display_name,
+        "SELECT m.key as name,
+                COALESCE(MAX(m.name_ja), m.key) as display_name,
                 COUNT(*) as total,
-                SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN result='draw' THEN 1 ELSE 0 END) as draws
-         FROM battles WHERE {filter_where} GROUP BY stage ORDER BY total DESC"
+                SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END) as draws
+         {common_joins} WHERE {filter_where} GROUP BY m.id ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;
 
     let by_rule = bind_filters!(sqlx::query(&format!(
-        "SELECT rule as name, COUNT(*) as total,
-                SUM(CASE WHEN result='win'  THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN result='draw' THEN 1 ELSE 0 END) as draws
-         FROM battles WHERE {filter_where} GROUP BY rule ORDER BY total DESC"
+        "SELECT {RULE_KEY_AS_OLD} as name, COUNT(*) as total,
+                SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END) as draws
+         {common_joins} WHERE {filter_where} GROUP BY r.id ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
     .await
@@ -1173,15 +1212,17 @@ pub async fn db_grouped_stats(
 
     // group_by を新スキーマ用の (GROUP BY 式, display 用列) に翻訳する。
     // FROM 句は全 group_by 共通で battle + 5 マスター JOIN。
+    // rule/mode はフロント期待値（'turf_war' / 'x' ...）へ逆翻訳して返す。
     let (group_expr, display_expr): (&str, &str) = match group_by.as_str() {
-        "weapon"          => ("w.key",                                                          "COALESCE(w.name_ja, w.key)"),
-        "stage"           => ("m.key",                                                          "COALESCE(MAX(m.name_ja), m.key)"),
-        "rule"            => ("r.key",                                                          "r.key"),
-        "mode"            => ("CASE WHEN l.key LIKE 'bankara%' THEN 'bankara' ELSE l.key END",  "CASE WHEN l.key LIKE 'bankara%' THEN 'bankara' ELSE l.key END"),
-        "sub_weapon"      => ("COALESCE(w.sub_key, '(不明)')",                                   "COALESCE(w.sub_key, '(不明)')"),
-        "special_weapon"  => ("COALESCE(w.special_key, '(不明)')",                               "COALESCE(w.special_key, '(不明)')"),
-        "weapon_category" => ("COALESCE(NULLIF(w.category_key, ''), '(未分類)')",                "COALESCE(NULLIF(w.category_key, ''), '(未分類)')"),
-        "result"          => ("res.key",                                                        "res.key"),
+        "weapon"          => ("w.key",                                                                                "COALESCE(w.name_ja, w.key)"),
+        "stage"           => ("m.key",                                                                                "COALESCE(MAX(m.name_ja), m.key)"),
+        "rule"            => (RULE_KEY_AS_OLD,                                                                        RULE_KEY_AS_OLD),
+        "mode"            => ("CASE WHEN l.key LIKE 'bankara%' THEN 'bankara' ELSE (CASE l.key WHEN 'xmatch' THEN 'x' ELSE l.key END) END",
+                              "CASE WHEN l.key LIKE 'bankara%' THEN 'bankara' ELSE (CASE l.key WHEN 'xmatch' THEN 'x' ELSE l.key END) END"),
+        "sub_weapon"      => ("COALESCE(w.sub_key, '(不明)')",                                                         "COALESCE(w.sub_key, '(不明)')"),
+        "special_weapon"  => ("COALESCE(w.special_key, '(不明)')",                                                     "COALESCE(w.special_key, '(不明)')"),
+        "weapon_category" => ("COALESCE(NULLIF(w.category_key, ''), '(未分類)')",                                      "COALESCE(NULLIF(w.category_key, ''), '(未分類)')"),
+        "result"          => ("res.key",                                                                              "res.key"),
         _ => return Err(format!("未対応の group_by: {group_by}")),
     };
 
