@@ -424,8 +424,8 @@ async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), Strin
         "INSERT OR REPLACE INTO battle
             (id, played_at, lobby_id, rule_id, map_id, result_id, weapon_id,
              is_knockout, kill, assist, kill_or_assist, death, special, inked, duration,
-             rank_before, rank_after, x_power_after, raw_json, fetched_at, statink_uuid)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             rank_before, rank_after, x_power_after, raw_json, fetched_at, statink_uuid, parent_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&row.id)
     .bind(&row.played_at)
@@ -448,6 +448,7 @@ async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), Strin
     .bind(&row.raw_json)
     .bind(&row.fetched_at)
     .bind(&row.statink_uuid)
+    .bind(&row.parent_json)
     .execute(pool.as_ref())
     .await
     .map_err(|e| format!("shadow battle insert 失敗 id={}: {e}", row.id))?;
@@ -1410,6 +1411,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// version 5: バンカラ mode を raw_json から再パースして修復
 /// version 6: stat.ink 互換の正規化スキーマ（battle / battle_player / マスター各種）を追加
 /// version 7: 既存 battles / battle_players から新スキーマへデータ移行
+/// version 8: 新 battle テーブルに parent_json 列を追加し、旧 battles から backfill
 pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
     let ver_row = sqlx::query("PRAGMA user_version")
         .fetch_one(pool.as_ref())
@@ -1417,7 +1419,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 7 {
+    if current_version >= 8 {
         return Ok(0); // 最新バージョンに達している
     }
 
@@ -1997,6 +1999,49 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         );
     }
 
+    // version 8: 新 battle テーブルに parent_json 列を追加し、旧 battles から backfill。
+    //            stat.ink アップロードのランクマッチ情報 (challenge_win/lose 等) で必要。
+    //            あわせて statink_uuid も旧 → 新へ同期する（PR 90-D2b で stat.ink upload を
+    //            新スキーマから読むようにするための準備）。
+    if current_version < 8 {
+        // ALTER TABLE は IF NOT EXISTS 非対応なので、失敗を握りつぶす（既に列があれば OK）。
+        let _ = sqlx::query("ALTER TABLE battle ADD COLUMN parent_json TEXT")
+            .execute(pool.as_ref())
+            .await;
+
+        let parent_filled = sqlx::query(
+            "UPDATE battle
+                SET parent_json = (SELECT old_b.parent_json FROM battles old_b WHERE old_b.id = battle.id)
+              WHERE parent_json IS NULL",
+        )
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| format!("v8 parent_json backfill 失敗: {e}"))?
+        .rows_affected();
+
+        let uuid_synced = sqlx::query(
+            "UPDATE battle
+                SET statink_uuid = (SELECT old_b.statink_uuid FROM battles old_b WHERE old_b.id = battle.id)
+              WHERE statink_uuid IS NULL
+                AND EXISTS (SELECT 1 FROM battles old_b WHERE old_b.id = battle.id AND old_b.statink_uuid IS NOT NULL)",
+        )
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| format!("v8 statink_uuid 同期失敗: {e}"))?
+        .rows_affected();
+
+        sqlx::query("PRAGMA user_version = 8")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        log::info!(
+            "migrate v8: battle に parent_json 追加 (backfill {} 件, statink_uuid 同期 {} 件)",
+            parent_filled,
+            uuid_synced,
+        );
+    }
+
     Ok(updated)
 }
 
@@ -2004,17 +2049,23 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
 // stat.ink アップロード管理
 // ---------------------------------------------------------------------------
 
-/// statink_uuid が未設定のバトル一覧を返す（古い順）。
-pub async fn get_battles_not_uploaded(pool: &DbPool) -> Result<Vec<BattleRow>, String> {
-    let rows = sqlx::query_as::<_, BattleRow>(
-        "SELECT id, played_at, mode, rule, stage, stage_name, weapon, result,
-                kill, death, assist, special, inked, duration,
-                rank_before, rank_after, x_power, raw_json, fetched_at,
-                knockout, sub_weapon, special_weapon, awards, my_team, other_teams,
-                statink_uuid, parent_json
-         FROM battles
+/// stat.ink アップロード処理が必要とする最小フィールドだけを持つ軽量行。
+/// 旧 `BattleRow` は表示・集計用の全カラムを保持しているが、stat.ink 側は
+/// raw_json と parent_json と id だけ参照する。
+#[derive(Debug, FromRow)]
+pub struct StatinkBattleRow {
+    pub id: String,
+    pub raw_json: String,
+    pub parent_json: Option<String>,
+}
+
+/// statink_uuid が未設定のバトル一覧を返す（古い順）。新スキーマから読む。
+pub async fn get_battles_not_uploaded(pool: &DbPool) -> Result<Vec<StatinkBattleRow>, String> {
+    let rows = sqlx::query_as::<_, StatinkBattleRow>(
+        "SELECT id, raw_json, parent_json FROM battle
          WHERE statink_uuid IS NULL
            AND detail_fetched = 1
+           AND raw_json IS NOT NULL
          ORDER BY played_at ASC",
     )
     .fetch_all(pool.as_ref())
@@ -2023,17 +2074,28 @@ pub async fn get_battles_not_uploaded(pool: &DbPool) -> Result<Vec<BattleRow>, S
     Ok(rows)
 }
 
-/// statink_uuid が設定済みのバトル一覧を返す（id, statink_uuid のペア）。
+/// statink_uuid が設定済みのバトル一覧を返す（id, statink_uuid のペア）。新スキーマから読む。
 pub async fn get_battles_uploaded(pool: &DbPool) -> Result<Vec<(String, String)>, String> {
-    let rows = sqlx::query("SELECT id, statink_uuid FROM battles WHERE statink_uuid IS NOT NULL ORDER BY played_at ASC")
-        .fetch_all(pool.as_ref())
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(rows.into_iter().map(|r| (r.get::<String, _>("id"), r.get::<String, _>("statink_uuid"))).collect())
+    let rows = sqlx::query(
+        "SELECT id, statink_uuid FROM battle WHERE statink_uuid IS NOT NULL ORDER BY played_at ASC",
+    )
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.get::<String, _>("id"), r.get::<String, _>("statink_uuid")))
+        .collect())
 }
 
 /// バトルの statink_uuid を NULL にリセットする（削除後の再アップロード用）。
+/// 移行期は新旧両方の battle / battles テーブルを更新する（PR 90-D2d で旧 drop 後は片方のみ）。
 pub async fn reset_statink_uuid(pool: &DbPool, id: &str) -> Result<(), String> {
+    sqlx::query("UPDATE battle SET statink_uuid = NULL WHERE id = ?")
+        .bind(id)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
     sqlx::query("UPDATE battles SET statink_uuid = NULL WHERE id = ?")
         .bind(id)
         .execute(pool.as_ref())
@@ -2042,8 +2104,14 @@ pub async fn reset_statink_uuid(pool: &DbPool, id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// バトルを stat.ink アップロード済みとしてマークする。
+/// バトルを stat.ink アップロード済みとしてマークする。新旧両方を更新。
 pub async fn mark_statink_uploaded(pool: &DbPool, id: &str, uuid: &str) -> Result<(), String> {
+    sqlx::query("UPDATE battle SET statink_uuid=? WHERE id=?")
+        .bind(uuid)
+        .bind(id)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
     sqlx::query("UPDATE battles SET statink_uuid=? WHERE id=?")
         .bind(uuid)
         .bind(id)
