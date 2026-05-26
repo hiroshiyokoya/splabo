@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey } from '../types'
 import {
   GROUP_BY_LABELS, METRIC_LABELS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
-  IMPLEMENTED_SHAPES, autoChartTitle,
+  IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, autoChartTitle,
 } from '../types'
 
 /** 各 yComposition のヒント説明。 */
@@ -34,6 +34,18 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   const [yComposition, setYComposition] = useState<YComposition>(initial?.yComposition ?? 'single_metric')
   const [groupBy,      setGroupBy]      = useState<GroupByKey>(initial?.groupBy      ?? 'weapon')
   const [metric,       setMetric]       = useState<MetricKey>(initial?.metric       ?? 'win_rate')
+
+  // shape='line' は時系列バケットのみ。shape を line に切り替えたとき groupBy が
+  // 時系列でなければ自動で 'day' に補正する。逆に line 以外へ戻したとき時系列
+  // groupBy のままだと bar 等で意味不明になるので 'weapon' に補正する。
+  useEffect(() => {
+    if (shape === 'line') {
+      if (!isTimeBucketGroupBy(groupBy)) setGroupBy('day')
+      if (yComposition !== 'single_metric') setYComposition('single_metric')
+    } else {
+      if (isTimeBucketGroupBy(groupBy)) setGroupBy('weapon')
+    }
+  }, [shape])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // 現在の軸から算出するタイトル（モーダル上部にプレビュー表示）
   const previewTitle = autoChartTitle({ groupBy, yComposition, metric })
@@ -94,20 +106,33 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
           <div className="form-field">
             <label className="form-label">X 軸（集計キー）</label>
             <select className="form-input" value={groupBy} onChange={e => setGroupBy(e.target.value as GroupByKey)}>
-              {(Object.keys(GROUP_BY_LABELS) as GroupByKey[]).map(g => (
-                <option key={g} value={g}>{GROUP_BY_LABELS[g]}</option>
-              ))}
+              {(Object.keys(GROUP_BY_LABELS) as GroupByKey[])
+                .filter(g => shape === 'line' ? isTimeBucketGroupBy(g) : !isTimeBucketGroupBy(g))
+                .map(g => (
+                  <option key={g} value={g}>{GROUP_BY_LABELS[g]}</option>
+                ))}
             </select>
+            {shape === 'line' && (
+              <p className="form-hint">線グラフは時系列のみ。粒度は {TIME_BUCKET_GROUP_BYS.map(k => GROUP_BY_LABELS[k]).join(' / ')} から選びます。</p>
+            )}
           </div>
 
           <div className="form-field">
             <label className="form-label">Y 軸の構成</label>
-            <select className="form-input" value={yComposition} onChange={e => setYComposition(e.target.value as YComposition)}>
+            <select
+              className="form-input"
+              value={yComposition}
+              onChange={e => setYComposition(e.target.value as YComposition)}
+              disabled={shape === 'line'}
+            >
               {(Object.keys(Y_COMPOSITION_LABELS) as YComposition[]).map(y => (
                 <option key={y} value={y}>{Y_COMPOSITION_LABELS[y]}</option>
               ))}
             </select>
             <p className="form-hint">{Y_COMPOSITION_DESCRIPTIONS[yComposition]}</p>
+            {shape === 'line' && (
+              <p className="form-hint form-hint--warn">線グラフは現在「単一メトリクス」のみ対応です（多系列・2 軸は後続 PR）。</p>
+            )}
           </div>
 
           {yComposition === 'single_metric' && (

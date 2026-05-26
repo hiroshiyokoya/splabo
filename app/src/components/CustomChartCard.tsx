@@ -6,6 +6,7 @@ import { stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric } from '../t
 import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
 import { StackedWinrateChart } from './charts/StackedWinrateChart'
+import { LineChart } from './charts/LineChart'
 
 /** yComposition ごとに用意する並び替えオプション。
  *  - stacked_winrate: バトル数 / 勝数 / 勝率
@@ -119,7 +120,7 @@ export function CustomChartCard({
 }
 
 /** shape × yComposition の組み合わせでチャートコンポーネントへディスパッチする。
- *  v1.0.0 は shape='bar' の 3 構成のみ実装。それ以外の shape は「未実装」プレースホルダ。
+ *  v1.0.0 は shape='bar' / 'line' を実装。scatter / heatmap は今後の PR。
  *  X 軸が `weapon` のときに限り、`weaponImages` を渡してアイコンラベルにする。 */
 function renderChartBody(
   chart:         CustomChart,
@@ -128,11 +129,24 @@ function renderChartBody(
   tickAngle:     number | undefined,
   weaponImages:  Map<string, string> | undefined,
 ): ReactNode {
+  // line: 時系列のみ。yComposition は single_metric を前提とする。
+  if (chart.shape === 'line') {
+    if (chart.yComposition === 'single_metric' && chart.metric) {
+      return <LineChart data={data} metric={chart.metric} />
+    }
+    return (
+      <div className="chart-not-implemented">
+        この組み合わせ（line × {chart.yComposition}）はまだ未対応です。<br />
+        「単一メトリクス」を選んでください。
+      </div>
+    )
+  }
+
   if (chart.shape !== 'bar') {
     return (
       <div className="chart-not-implemented">
-        この形（{chart.shape}）は v1.0.0 では未実装です。<br />
-        v1.1+ で対応予定です。
+        この形（{chart.shape}）はまだ未実装です。<br />
+        後続 PR で対応予定です。
       </div>
     )
   }
