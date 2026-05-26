@@ -14,6 +14,32 @@
   --lose:          #ef4444;
   --draw:          #f59e0b;
   --sidebar-w:     180px;
+
+  /* カレンダーヒートマップ用のセル色 (GitHub 風 5 段階) */
+  --cell-empty:    #20203a;  /* 空 (バトル無し) */
+  --cell-sparse:   #2a2a3f;  /* サンプル不足のグレーアウト */
+  --cell-c1:       #2b3a16;
+  --cell-c2:       #587621;
+  --cell-c3:       #84a92e;
+  --cell-c4:       #aeda3b;
+  --cell-c5:       #c8f030;  /* 最濃 = accent */
+  /* 率系 (勝率) divergent: 赤 ←→ ニュートラル ←→ 青 */
+  --cell-r1:       #b22f3f;  /* 強い赤 */
+  --cell-r2:       #de7785;
+  --cell-r3:       #4a4a6b;  /* ニュートラル */
+  --cell-r4:       #7fd9e3;
+  --cell-r5:       #2998ad;  /* 強い青 */
+}
+
+/* カレンダーセルのツールチップ */
+.cal-tooltip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+  min-width: 140px;
+  z-index: 10;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

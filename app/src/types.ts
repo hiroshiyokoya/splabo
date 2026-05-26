@@ -365,10 +365,11 @@ export type MetricKey =
  * 線・散布図・ヒートマップは UI には出すが v1.1+ で実装予定。
  */
 export type ChartShape =
-  | 'bar'      // 棒
-  | 'line'     // 線（v1.1+）
-  | 'scatter'  // 散布図（v1.1+）
-  | 'heatmap'  // ヒートマップ（v1.1+）
+  | 'bar'              // 棒
+  | 'line'             // 線
+  | 'scatter'          // 散布図（後続 PR）
+  | 'heatmap'          // ヒートマップ（後続 PR）
+  | 'calendar_heatmap' // カレンダーヒートマップ
 
 export type YComposition =
   | 'single_metric'    // 単一メトリクス（Y 軸にメトリクスを 1 つ選ぶ）
@@ -390,10 +391,11 @@ export interface CustomChart {
 
 /** UI ラベル。 */
 export const CHART_SHAPE_LABELS: Record<ChartShape, string> = {
-  bar:     '棒グラフ',
-  line:    '線グラフ',
-  scatter: '散布図',
-  heatmap: 'ヒートマップ',
+  bar:              '棒グラフ',
+  line:             '線グラフ',
+  scatter:          '散布図',
+  heatmap:          'ヒートマップ',
+  calendar_heatmap: 'カレンダー',
 }
 
 export const Y_COMPOSITION_LABELS: Record<YComposition, string> = {
@@ -403,8 +405,21 @@ export const Y_COMPOSITION_LABELS: Record<YComposition, string> = {
 }
 
 /** 実装済みの shape。それ以外は UI で disabled。
- *  v1.0.0: bar / line。scatter / heatmap は後続 PR。 */
-export const IMPLEMENTED_SHAPES: ChartShape[] = ['bar', 'line']
+ *  v1.0.0: bar / line / calendar_heatmap。scatter / heatmap は後続 PR。 */
+export const IMPLEMENTED_SHAPES: ChartShape[] = ['bar', 'line', 'calendar_heatmap']
+
+/**
+ * メトリクスを「色スケールのグループ」に分類する。
+ * - count: バトル数・勝数。相対 max-based。
+ * - rate:  勝率。固定 0–100% (50% を中央色とした divergent)。
+ * - average: K/D/A・スペシャル・塗り・バトル時間。相対 min-max。
+ */
+export type MetricGroup = 'count' | 'rate' | 'average'
+export function metricGroup(metric: MetricKey): MetricGroup {
+  if (metric === 'total' || metric === 'wins')                  return 'count'
+  if (metric === 'win_rate')                                    return 'rate'
+  return 'average'
+}
 
 /** v1.0.0 で実装済みの yComposition（全 shape 共通で扱う最大集合）。 */
 export const IMPLEMENTED_Y_COMPOSITIONS: YComposition[] = ['single_metric', 'stacked_winrate', 'attack_defense']
