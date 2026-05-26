@@ -424,8 +424,9 @@ async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), Strin
         "INSERT OR REPLACE INTO battle
             (id, played_at, lobby_id, rule_id, map_id, result_id, weapon_id,
              is_knockout, kill, assist, kill_or_assist, death, special, inked, duration,
-             rank_before, rank_after, x_power_after, raw_json, fetched_at, statink_uuid, parent_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             rank_before, rank_after, x_power_after, raw_json, fetched_at, statink_uuid, parent_json,
+             knockout, sub_weapon, special_weapon, awards, my_team, other_teams)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&row.id)
     .bind(&row.played_at)
@@ -449,6 +450,12 @@ async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), Strin
     .bind(&row.fetched_at)
     .bind(&row.statink_uuid)
     .bind(&row.parent_json)
+    .bind(&row.knockout)
+    .bind(&row.sub_weapon)
+    .bind(&row.special_weapon)
+    .bind(&row.awards)
+    .bind(&row.my_team)
+    .bind(&row.other_teams)
     .execute(pool.as_ref())
     .await
     .map_err(|e| format!("shadow battle insert 失敗 id={}: {e}", row.id))?;
@@ -542,9 +549,9 @@ pub async fn insert_battles(pool: &DbPool, rows: Vec<BattleRow>) -> Result<usize
     Ok(inserted)
 }
 
-/// 詳細取得が未完了のバトル ID 一覧を返す。
+/// 詳細取得が未完了のバトル ID 一覧を返す。新スキーマから読む。
 pub async fn get_battles_without_detail(pool: &DbPool) -> Result<Vec<String>, String> {
-    let rows = sqlx::query("SELECT id FROM battles WHERE detail_fetched = 0 ORDER BY played_at DESC")
+    let rows = sqlx::query("SELECT id FROM battle WHERE detail_fetched = 0 ORDER BY played_at DESC")
         .fetch_all(pool.as_ref())
         .await
         .map_err(|e| e.to_string())?;
@@ -601,7 +608,8 @@ pub async fn update_battle_detail(
 
     // 新スキーマへもシャドウ UPDATE
     if let Err(e) = shadow_update_battle_detail(
-        pool, id, kill, death, assist, special, inked, raw_json, rule, mode, knockout,
+        pool, id, kill, death, assist, special, inked, raw_json, rule, mode,
+        knockout, sub_weapon, special_weapon, awards, my_team, other_teams,
     )
     .await
     {
@@ -625,6 +633,11 @@ async fn shadow_update_battle_detail(
     rule: &str,
     mode: &str,
     knockout: Option<&str>,
+    sub_weapon: Option<&str>,
+    special_weapon: Option<&str>,
+    awards: Option<&str>,
+    my_team: Option<&str>,
+    other_teams: Option<&str>,
 ) -> Result<(), String> {
     let lobby_id = old_mode_to_lobby_id(mode);
     let rule_id  = old_rule_to_rule_id(rule);
@@ -637,7 +650,8 @@ async fn shadow_update_battle_detail(
     sqlx::query(
         "UPDATE battle
             SET kill=?, assist=?, kill_or_assist=?, death=?, special=?, inked=?,
-                raw_json=?, rule_id=?, lobby_id=?, is_knockout=?, detail_fetched=1
+                raw_json=?, rule_id=?, lobby_id=?, is_knockout=?, detail_fetched=1,
+                knockout=?, sub_weapon=?, special_weapon=?, awards=?, my_team=?, other_teams=?
           WHERE id=?",
     )
     .bind(kill)
@@ -650,6 +664,12 @@ async fn shadow_update_battle_detail(
     .bind(rule_id)
     .bind(lobby_id)
     .bind(is_knockout)
+    .bind(knockout)
+    .bind(sub_weapon)
+    .bind(special_weapon)
+    .bind(awards)
+    .bind(my_team)
+    .bind(other_teams)
     .bind(id)
     .execute(pool.as_ref())
     .await
@@ -783,12 +803,13 @@ pub async fn insert_battle_players(pool: &DbPool, players: &[BattlePlayerRow]) -
 }
 
 /// 詳細取得済みで battle_players 未登録のバトルをバックフィルする（内部実装）。
+/// 新スキーマの battle / battle_player から判定する。
 pub async fn backfill_battle_players_inner(pool: &DbPool) -> Result<usize, String> {
     let rows = sqlx::query(
-        "SELECT id, my_team, other_teams FROM battles
+        "SELECT id, my_team, other_teams FROM battle
          WHERE detail_fetched = 1
            AND (my_team IS NOT NULL OR other_teams IS NOT NULL)
-           AND id NOT IN (SELECT DISTINCT battle_id FROM battle_players)",
+           AND id NOT IN (SELECT DISTINCT battle_id FROM battle_player)",
     )
     .fetch_all(pool.as_ref())
     .await
@@ -797,8 +818,8 @@ pub async fn backfill_battle_players_inner(pool: &DbPool) -> Result<usize, Strin
     let mut count = 0usize;
     for row in &rows {
         let battle_id:   String         = row.get("id");
-        let my_team:     Option<String> = row.get("my_team");
-        let other_teams: Option<String> = row.get("other_teams");
+        let my_team:     Option<String> = row.try_get("my_team").ok().flatten();
+        let other_teams: Option<String> = row.try_get("other_teams").ok().flatten();
         let players = parse_players_from_json(&battle_id, my_team.as_deref(), other_teams.as_deref());
         count += players.len();
         insert_battle_players(pool, &players).await?;
@@ -815,19 +836,6 @@ pub async fn backfill_battle_players(db: tauri::State<'_, DbPool>) -> Result<usi
 // ---------------------------------------------------------------------------
 // フィルターヘルパー
 // ---------------------------------------------------------------------------
-
-/// モードフィルターを正規化する（旧 battles テーブル向け）。
-/// 'bankara' は 'bankara_challenge|bankara_open' に展開し、
-/// instr パイプフィルターでどちらにもマッチさせる。
-fn normalize_mode_filter(mode: Option<String>) -> Option<String> {
-    mode.map(|m| {
-        if m == "bankara" {
-            "bankara_challenge|bankara_open".to_string()
-        } else {
-            m
-        }
-    })
-}
 
 /// 新スキーマの `lobby` マスター向けにフロントから来た mode slug を翻訳する。
 /// 'bankara' は展開、'x' は新マスター key の 'xmatch' に置換する。
@@ -983,33 +991,62 @@ pub async fn db_list_battles(
     order_by: Option<String>,       // JS: orderBy
     order_asc: Option<bool>,        // JS: orderAsc
 ) -> Result<Vec<BattleRow>, String> {
-    let mode = normalize_mode_filter(mode);
+    let mode = translate_mode_filter(mode);
+    let rule = translate_rule_filter(rule);
     // kill_ratio は death=0 のとき大きなセンチネルに置換することで
     // DESC で上端 / ASC で下端 に配置（フロント側 ∞ 表示と整合）。
     let order_expr: &str = match order_by.as_deref() {
-        Some("kill")       => "kill",
-        Some("assist")     => "assist",
-        Some("death")      => "death",
-        Some("special")    => "special",
-        Some("inked")      => "inked",
-        Some("kill_ratio") => "COALESCE(CAST(kill AS REAL) / NULLIF(death, 0), 999999.0)",
-        _                  => "played_at",
+        Some("kill")       => "b.kill",
+        Some("assist")     => "b.assist",
+        Some("death")      => "b.death",
+        Some("special")    => "b.special",
+        Some("inked")      => "b.inked",
+        Some("kill_ratio") => "COALESCE(CAST(b.kill AS REAL) / NULLIF(b.death, 0), 999999.0)",
+        _                  => "b.played_at",
     };
     let order_dir = if order_asc.unwrap_or(false) { "ASC" } else { "DESC" };
+    // フロントが期待する旧 slug 形式へ逆翻訳して BattleRow に詰める。
     let sql = format!(
-        "SELECT id, played_at, mode, rule, stage, stage_name, weapon, result,
-                kill, death, assist, special, inked, duration,
-                rank_before, rank_after, x_power, raw_json, fetched_at,
-                knockout, sub_weapon, special_weapon, awards, my_team, other_teams,
-                statink_uuid, parent_json
-         FROM battles
-         WHERE (? IS NULL OR played_at >= ?)
-           AND (? IS NULL OR played_at <= ?)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || mode || '|') > 0)
-           AND (? IS NULL OR rule = ?)
-           AND (? IS NULL OR result = ?)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || weapon || '|') > 0)
-           AND (? IS NULL OR instr('|' || ? || '|', '|' || stage || '|') > 0)
+        "SELECT b.id                     AS id,
+                b.played_at              AS played_at,
+                CASE WHEN l.key LIKE 'bankara%' THEN l.key ELSE {LOBBY_KEY_AS_OLD} END AS mode,
+                {RULE_KEY_AS_OLD}        AS rule,
+                m.key                    AS stage,
+                m.name_ja                AS stage_name,
+                w.key                    AS weapon,
+                res.key                  AS result,
+                b.kill                   AS kill,
+                b.death                  AS death,
+                b.assist                 AS assist,
+                b.special                AS special,
+                b.inked                  AS inked,
+                b.duration               AS duration,
+                b.rank_before            AS rank_before,
+                b.rank_after             AS rank_after,
+                b.x_power_after          AS x_power,
+                COALESCE(b.raw_json, '') AS raw_json,
+                b.fetched_at             AS fetched_at,
+                b.knockout               AS knockout,
+                b.sub_weapon             AS sub_weapon,
+                b.special_weapon         AS special_weapon,
+                b.awards                 AS awards,
+                b.my_team                AS my_team,
+                b.other_teams            AS other_teams,
+                b.statink_uuid           AS statink_uuid,
+                b.parent_json            AS parent_json
+         FROM battle b
+         JOIN lobby  l   ON l.id   = b.lobby_id
+         JOIN rule   r   ON r.id   = b.rule_id
+         JOIN result res ON res.id = b.result_id
+         JOIN weapon w   ON w.id   = b.weapon_id
+         JOIN map    m   ON m.id   = b.map_id
+         WHERE (? IS NULL OR b.played_at >= ?)
+           AND (? IS NULL OR b.played_at <= ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
+           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR res.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)
          ORDER BY {order_expr} {order_dir} LIMIT ? OFFSET ?"
     );
     let rows = sqlx::query_as::<_, BattleRow>(&sql)
@@ -1348,16 +1385,19 @@ pub async fn update_weapon_sub_special_images(
     Ok(())
 }
 
-/// バトル詳細の my_team / other_teams JSON を全件返す（画像キャッシュ用）。
+/// バトル詳細の my_team / other_teams JSON を全件返す（画像キャッシュ用）。新スキーマから読む。
 pub async fn get_battles_team_json(pool: &DbPool) -> Result<Vec<(Option<String>, Option<String>)>, String> {
     let rows = sqlx::query(
-        "SELECT my_team, other_teams FROM battles
+        "SELECT my_team, other_teams FROM battle
          WHERE my_team IS NOT NULL OR other_teams IS NOT NULL",
     )
     .fetch_all(pool.as_ref())
     .await
     .map_err(|e| e.to_string())?;
-    Ok(rows.into_iter().map(|r| (r.get("my_team"), r.get("other_teams"))).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.try_get("my_team").ok().flatten(), r.try_get("other_teams").ok().flatten()))
+        .collect())
 }
 
 /// battle_players テーブルから sub/special を weapons テーブルに補完する。
@@ -1412,6 +1452,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// version 6: stat.ink 互換の正規化スキーマ（battle / battle_player / マスター各種）を追加
 /// version 7: 既存 battles / battle_players から新スキーマへデータ移行
 /// version 8: 新 battle テーブルに parent_json 列を追加し、旧 battles から backfill
+/// version 9: 新 battle テーブルに表示用カラム (knockout/sub_weapon/special_weapon/awards/my_team/other_teams) を追加し、旧 battles から backfill
 pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
     let ver_row = sqlx::query("PRAGMA user_version")
         .fetch_one(pool.as_ref())
@@ -1419,7 +1460,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 8 {
+    if current_version >= 9 {
         return Ok(0); // 最新バージョンに達している
     }
 
@@ -2039,6 +2080,48 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             "migrate v8: battle に parent_json 追加 (backfill {} 件, statink_uuid 同期 {} 件)",
             parent_filled,
             uuid_synced,
+        );
+    }
+
+    // version 9: 新 battle テーブルに表示用カラム (knockout / sub_weapon / special_weapon /
+    //            awards / my_team / other_teams) を追加し、旧 battles から backfill。
+    //            これで `db_list_battles` 等のフロント向け表示クエリも新スキーマで賄える。
+    if current_version < 9 {
+        for sql in [
+            "ALTER TABLE battle ADD COLUMN knockout       TEXT",
+            "ALTER TABLE battle ADD COLUMN sub_weapon     TEXT",
+            "ALTER TABLE battle ADD COLUMN special_weapon TEXT",
+            "ALTER TABLE battle ADD COLUMN awards         TEXT",
+            "ALTER TABLE battle ADD COLUMN my_team        TEXT",
+            "ALTER TABLE battle ADD COLUMN other_teams    TEXT",
+        ] {
+            // ALTER TABLE IF NOT EXISTS は非対応なので失敗を握りつぶす（列が既にあれば OK）
+            let _ = sqlx::query(sql).execute(pool.as_ref()).await;
+        }
+
+        let filled = sqlx::query(
+            "UPDATE battle SET
+                knockout       = COALESCE(battle.knockout,       (SELECT b.knockout       FROM battles b WHERE b.id = battle.id)),
+                sub_weapon     = COALESCE(battle.sub_weapon,     (SELECT b.sub_weapon     FROM battles b WHERE b.id = battle.id)),
+                special_weapon = COALESCE(battle.special_weapon, (SELECT b.special_weapon FROM battles b WHERE b.id = battle.id)),
+                awards         = COALESCE(battle.awards,         (SELECT b.awards         FROM battles b WHERE b.id = battle.id)),
+                my_team        = COALESCE(battle.my_team,        (SELECT b.my_team        FROM battles b WHERE b.id = battle.id)),
+                other_teams    = COALESCE(battle.other_teams,    (SELECT b.other_teams    FROM battles b WHERE b.id = battle.id))
+              WHERE EXISTS (SELECT 1 FROM battles b WHERE b.id = battle.id)",
+        )
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| format!("v9 backfill 失敗: {e}"))?
+        .rows_affected();
+
+        sqlx::query("PRAGMA user_version = 9")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        log::info!(
+            "migrate v9: battle に表示用カラム追加 (backfill {} 件)",
+            filled,
         );
     }
 
