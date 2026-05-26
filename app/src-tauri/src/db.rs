@@ -99,6 +99,158 @@ const SCHEMA: &str = r#"
 "#;
 
 // ---------------------------------------------------------------------------
+// 新スキーマ（v6, stat.ink 互換の正規化形）
+// ---------------------------------------------------------------------------
+//
+// 既存の battles / battle_players / weapons とは別テーブルとして共存させ、
+// PR 90-B 以降で raw_json から段階的にデータ移行する。
+//
+// マスターの key は stat.ink のスラッグに揃える（連携・将来のマージ用）:
+//   lobby:  regular / bankara_open / bankara_challenge / xmatch / splatfest_open / splatfest_challenge / event / private
+//   rule:   nawabari / area / yagura / hoko / asari / tricolor
+//   result: win / lose / draw
+//   ability: abilities::ABILITY_HASHES の stat.ink キー（ink_saver_main 等）
+
+const SCHEMA_V6: &str = r#"
+    CREATE TABLE IF NOT EXISTS lobby (
+        id  INTEGER PRIMARY KEY,
+        key TEXT    NOT NULL UNIQUE
+    );
+
+    CREATE TABLE IF NOT EXISTS rule (
+        id  INTEGER PRIMARY KEY,
+        key TEXT    NOT NULL UNIQUE
+    );
+
+    CREATE TABLE IF NOT EXISTS result (
+        id  INTEGER PRIMARY KEY,
+        key TEXT    NOT NULL UNIQUE
+    );
+
+    CREATE TABLE IF NOT EXISTS ability (
+        id        INTEGER PRIMARY KEY,
+        key       TEXT    NOT NULL UNIQUE,
+        image_key TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS map (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        key          TEXT    NOT NULL UNIQUE,
+        name_ja      TEXT,
+        name_en      TEXT,
+        splatnet3_id TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS weapon (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        key          TEXT    NOT NULL UNIQUE,
+        name_ja      TEXT,
+        category_key TEXT,
+        sub_key      TEXT,
+        special_key  TEXT,
+        image_key    TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS gear_configuration (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        primary_ability_id INTEGER NOT NULL REFERENCES ability(id),
+        sub1_ability_id    INTEGER REFERENCES ability(id),
+        sub2_ability_id    INTEGER REFERENCES ability(id),
+        sub3_ability_id    INTEGER REFERENCES ability(id),
+        UNIQUE(primary_ability_id, sub1_ability_id, sub2_ability_id, sub3_ability_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS battle (
+        id                 TEXT    PRIMARY KEY,
+        uuid               TEXT,
+        played_at          TEXT    NOT NULL,
+        period             TEXT,
+        lobby_id           INTEGER NOT NULL REFERENCES lobby(id),
+        rule_id            INTEGER NOT NULL REFERENCES rule(id),
+        map_id             INTEGER NOT NULL REFERENCES map(id),
+        result_id          INTEGER NOT NULL REFERENCES result(id),
+        weapon_id          INTEGER NOT NULL REFERENCES weapon(id),
+        is_knockout        INTEGER,
+        rank_in_team       INTEGER,
+        kill               INTEGER NOT NULL DEFAULT 0,
+        assist             INTEGER NOT NULL DEFAULT 0,
+        kill_or_assist     INTEGER NOT NULL DEFAULT 0,
+        death              INTEGER NOT NULL DEFAULT 0,
+        special            INTEGER NOT NULL DEFAULT 0,
+        inked              INTEGER NOT NULL DEFAULT 0,
+        duration           INTEGER NOT NULL DEFAULT 0,
+        our_team_inked     INTEGER,
+        their_team_inked   INTEGER,
+        our_team_percent   REAL,
+        their_team_percent REAL,
+        our_team_count     INTEGER,
+        their_team_count   INTEGER,
+        rank_before        TEXT,
+        rank_after         TEXT,
+        rank_before_s_plus INTEGER,
+        rank_after_s_plus  INTEGER,
+        x_power_before     REAL,
+        x_power_after      REAL,
+        raw_json           TEXT,
+        fetched_at         TEXT    NOT NULL DEFAULT (datetime('now')),
+        detail_fetched     INTEGER NOT NULL DEFAULT 0,
+        statink_uuid       TEXT
+    );
+    CREATE INDEX IF NOT EXISTS battle_played_at ON battle(played_at);
+    CREATE INDEX IF NOT EXISTS battle_lobby     ON battle(lobby_id);
+    CREATE INDEX IF NOT EXISTS battle_rule      ON battle(rule_id);
+    CREATE INDEX IF NOT EXISTS battle_map       ON battle(map_id);
+    CREATE INDEX IF NOT EXISTS battle_weapon    ON battle(weapon_id);
+
+    CREATE TABLE IF NOT EXISTS battle_player (
+        battle_id      TEXT    NOT NULL REFERENCES battle(id) ON DELETE CASCADE,
+        is_our_team    INTEGER NOT NULL,
+        rank_in_team   INTEGER NOT NULL,
+        is_me          INTEGER NOT NULL DEFAULT 0,
+        name           TEXT,
+        name_id        TEXT,
+        weapon_id      INTEGER NOT NULL REFERENCES weapon(id),
+        headgear_id    INTEGER REFERENCES gear_configuration(id),
+        clothing_id    INTEGER REFERENCES gear_configuration(id),
+        shoes_id       INTEGER REFERENCES gear_configuration(id),
+        kill           INTEGER NOT NULL DEFAULT 0,
+        assist         INTEGER NOT NULL DEFAULT 0,
+        kill_or_assist INTEGER NOT NULL DEFAULT 0,
+        death          INTEGER NOT NULL DEFAULT 0,
+        special        INTEGER NOT NULL DEFAULT 0,
+        inked          INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (battle_id, is_our_team, rank_in_team)
+    );
+    CREATE INDEX IF NOT EXISTS battle_player_weapon ON battle_player(weapon_id);
+"#;
+
+const LOBBY_SEED: &[(i64, &str)] = &[
+    (1, "regular"),
+    (2, "bankara_open"),
+    (3, "bankara_challenge"),
+    (4, "xmatch"),
+    (5, "event"),
+    (6, "splatfest_open"),
+    (7, "splatfest_challenge"),
+    (8, "private"),
+];
+
+const RULE_SEED: &[(i64, &str)] = &[
+    (1, "nawabari"),
+    (2, "area"),
+    (3, "yagura"),
+    (4, "hoko"),
+    (5, "asari"),
+    (6, "tricolor"),
+];
+
+const RESULT_SEED: &[(i64, &str)] = &[
+    (1, "win"),
+    (2, "lose"),
+    (3, "draw"),
+];
+
+// ---------------------------------------------------------------------------
 // 型
 // ---------------------------------------------------------------------------
 
@@ -923,6 +1075,10 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 ///
 /// version 1: mode/rule/stage/result を stat.ink ID 形式に変換（初回実装・バグあり）
 /// version 2: mode 判定バグ修正版で全件再処理
+/// version 3: kill カウントを kill_or_assist から実キル数に修正
+/// version 4: rule を raw_json から再パースして修復
+/// version 5: バンカラ mode を raw_json から再パースして修復
+/// version 6: stat.ink 互換の正規化スキーマ（battle / battle_player / マスター各種）を追加
 pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
     let ver_row = sqlx::query("PRAGMA user_version")
         .fetch_one(pool.as_ref())
@@ -930,7 +1086,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 5 {
+    if current_version >= 6 {
         return Ok(0); // 最新バージョンに達している
     }
 
@@ -1164,6 +1320,78 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             .map_err(|e| e.to_string())?;
 
         log::info!("migrate v5: mode を raw_json から再パース、{} 件修正", fixed);
+    }
+
+    // version 6: stat.ink 互換の正規化スキーマを追加。
+    //            新テーブル（battle / battle_player / マスター各種）を作成し、
+    //            固定 ID のマスター（lobby / rule / result / ability）を seed する。
+    //            既存テーブル（battles / battle_players / weapons）はそのまま残し、
+    //            後続 PR で raw_json からのデータ移行を行う。
+    if current_version < 6 {
+        // 新スキーマ作成
+        sqlx::query(SCHEMA_V6)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| format!("v6 schema 作成失敗: {e}"))?;
+
+        // lobby seed
+        for (id, key) in LOBBY_SEED {
+            sqlx::query("INSERT OR IGNORE INTO lobby (id, key) VALUES (?, ?)")
+                .bind(id)
+                .bind(key)
+                .execute(pool.as_ref())
+                .await
+                .map_err(|e| format!("lobby seed 失敗 ({key}): {e}"))?;
+        }
+
+        // rule seed
+        for (id, key) in RULE_SEED {
+            sqlx::query("INSERT OR IGNORE INTO rule (id, key) VALUES (?, ?)")
+                .bind(id)
+                .bind(key)
+                .execute(pool.as_ref())
+                .await
+                .map_err(|e| format!("rule seed 失敗 ({key}): {e}"))?;
+        }
+
+        // result seed
+        for (id, key) in RESULT_SEED {
+            sqlx::query("INSERT OR IGNORE INTO result (id, key) VALUES (?, ?)")
+                .bind(id)
+                .bind(key)
+                .execute(pool.as_ref())
+                .await
+                .map_err(|e| format!("result seed 失敗 ({key}): {e}"))?;
+        }
+
+        // ability seed: abilities::ABILITY_HASHES の Some(key) を順に固定 ID で投入
+        let ability_keys: Vec<&'static str> = crate::abilities::ABILITY_HASHES
+            .iter()
+            .filter_map(|(_, key)| *key)
+            .collect();
+        for (i, key) in ability_keys.iter().enumerate() {
+            let id = (i as i64) + 1;
+            sqlx::query("INSERT OR IGNORE INTO ability (id, key, image_key) VALUES (?, ?, ?)")
+                .bind(id)
+                .bind(key)
+                .bind(key)
+                .execute(pool.as_ref())
+                .await
+                .map_err(|e| format!("ability seed 失敗 ({key}): {e}"))?;
+        }
+
+        sqlx::query("PRAGMA user_version = 6")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        log::info!(
+            "migrate v6: 正規化スキーマ追加 (lobby {}, rule {}, result {}, ability {})",
+            LOBBY_SEED.len(),
+            RULE_SEED.len(),
+            RESULT_SEED.len(),
+            ability_keys.len(),
+        );
     }
 
     Ok(updated)
