@@ -1,13 +1,14 @@
 import { useState, type ReactNode } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { CustomChart, GroupedStatsRow, MetricKey } from '../types'
+import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, MetricKey } from '../types'
 import { stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric } from '../types'
 import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
 import { StackedWinrateChart } from './charts/StackedWinrateChart'
 import { LineChart } from './charts/LineChart'
 import { CalendarHeatmapChart } from './charts/CalendarHeatmapChart'
+import { HeatmapChart } from './charts/HeatmapChart'
 
 /** yComposition ごとに用意する並び替えオプション。
  *  - stacked_winrate: バトル数 / 勝数 / 勝率
@@ -49,10 +50,12 @@ function sortAndSlice(rows: GroupedStatsRow[], sortKey: MetricKey | null): Group
  *   （stacked_winrate / attack_defense のとき）。
  */
 export function CustomChartCard({
-  chart, data, onEdit, onDelete, weaponImages,
+  chart, data, data2d, onEdit, onDelete, weaponImages,
 }: {
   chart:    CustomChart
   data:     GroupedStatsRow[]
+  /** shape='heatmap' のときだけ使う 2D データ。 */
+  data2d?:  GroupedStatsRow2D[]
   onEdit:   () => void
   onDelete: () => void
   /** 武器名 → 画像 URL の対応。X 軸が `weapon` のときラベルをアイコンに置換する。 */
@@ -118,7 +121,7 @@ export function CustomChartCard({
           </div>
         )}
       </div>
-      {renderChartBody(chart, sliced, nameTransform, tickAngle, weaponImages)}
+      {renderChartBody(chart, sliced, data2d, nameTransform, tickAngle, weaponImages)}
     </div>
   )
 }
@@ -129,6 +132,7 @@ export function CustomChartCard({
 function renderChartBody(
   chart:         CustomChart,
   data:          GroupedStatsRow[],
+  data2d:        GroupedStatsRow2D[] | undefined,
   nameTransform: ((s: string) => string) | undefined,
   tickAngle:     number | undefined,
   weaponImages:  Map<string, string> | undefined,
@@ -155,6 +159,26 @@ function renderChartBody(
       <div className="chart-not-implemented">
         カレンダーヒートマップは「単一メトリクス」を選んでください。
       </div>
+    )
+  }
+
+  // heatmap: 2 軸クロス集計。X 軸 = chart.groupBy / Y 軸 = chart.groupBy2。
+  if (chart.shape === 'heatmap') {
+    if (!chart.groupBy2) {
+      return <div className="chart-not-implemented">Y 軸 (groupBy2) を選んでください。</div>
+    }
+    if (chart.yComposition !== 'single_metric' || !chart.metric) {
+      return <div className="chart-not-implemented">ヒートマップは「単一メトリクス」を選んでください。</div>
+    }
+    const xT = chart.groupBy  === 'stage' ? stageAbbr : chart.groupBy  === 'mode' ? modeLabel : chart.groupBy  === 'rule' ? ruleLabel : undefined
+    const yT = chart.groupBy2 === 'stage' ? stageAbbr : chart.groupBy2 === 'mode' ? modeLabel : chart.groupBy2 === 'rule' ? ruleLabel : undefined
+    return (
+      <HeatmapChart
+        data={data2d ?? []}
+        metric={chart.metric}
+        xLabelTransform={xT}
+        yLabelTransform={yT}
+      />
     )
   }
 

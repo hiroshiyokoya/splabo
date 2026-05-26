@@ -33,11 +33,14 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   const [shape,        setShape]        = useState<ChartShape>(initial?.shape        ?? 'bar')
   const [yComposition, setYComposition] = useState<YComposition>(initial?.yComposition ?? 'single_metric')
   const [groupBy,      setGroupBy]      = useState<GroupByKey>(initial?.groupBy      ?? 'weapon')
+  const [groupBy2,     setGroupBy2]     = useState<GroupByKey>(initial?.groupBy2     ?? 'stage')
   const [metric,       setMetric]       = useState<MetricKey>(initial?.metric       ?? 'win_rate')
+  const [topN,         setTopN]         = useState<number>(initial?.topN ?? 20)
 
   // shape ごとに groupBy / yComposition を適切に補正する：
   //   - line: 時系列バケット (day/three_day/week/month) + single_metric
   //   - calendar_heatmap: day 固定 + single_metric
+  //   - heatmap: カテゴリ系 X/Y + single_metric。X==Y 衝突を避ける
   //   - その他 (bar など): 時系列でないカテゴリ系へ戻す
   useEffect(() => {
     if (shape === 'line') {
@@ -45,6 +48,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       if (yComposition !== 'single_metric') setYComposition('single_metric')
     } else if (shape === 'calendar_heatmap') {
       if (groupBy !== 'day') setGroupBy('day')
+      if (yComposition !== 'single_metric') setYComposition('single_metric')
+    } else if (shape === 'heatmap') {
+      if (isTimeBucketGroupBy(groupBy)) setGroupBy('weapon')
+      if (isTimeBucketGroupBy(groupBy2)) setGroupBy2('stage')
       if (yComposition !== 'single_metric') setYComposition('single_metric')
     } else {
       if (isTimeBucketGroupBy(groupBy)) setGroupBy('weapon')
@@ -68,6 +75,8 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       yComposition,
       groupBy,
       metric:       yComposition === 'single_metric' ? metric : undefined,
+      groupBy2:     shape === 'heatmap' ? groupBy2 : undefined,
+      topN:         shape === 'heatmap' ? topN : undefined,
     }
     onSave(chart)
   }
@@ -133,13 +142,46 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             )}
           </div>
 
+          {shape === 'heatmap' && (
+            <div className="form-field">
+              <label className="form-label">Y 軸（集計キー 2）</label>
+              <select
+                className="form-input"
+                value={groupBy2}
+                onChange={e => setGroupBy2(e.target.value as GroupByKey)}
+              >
+                {(Object.keys(GROUP_BY_LABELS) as GroupByKey[])
+                  .filter(g => !isTimeBucketGroupBy(g) && g !== groupBy)
+                  .map(g => (
+                    <option key={g} value={g}>{GROUP_BY_LABELS[g]}</option>
+                  ))}
+              </select>
+              <p className="form-hint">X 軸と異なるカテゴリを選んでください。</p>
+            </div>
+          )}
+
+          {shape === 'heatmap' && (groupBy === 'weapon' || groupBy2 === 'weapon') && (
+            <div className="form-field">
+              <label className="form-label">武器軸の上位 N</label>
+              <input
+                type="number"
+                className="form-input"
+                min={5}
+                max={200}
+                value={topN}
+                onChange={e => setTopN(Math.max(1, Math.min(200, Number(e.target.value) || 20)))}
+              />
+              <p className="form-hint">バトル数の多い武器を上位 N 種に絞ります（デフォルト 20）。</p>
+            </div>
+          )}
+
           <div className="form-field">
             <label className="form-label">Y 軸の構成</label>
             <select
               className="form-input"
               value={yComposition}
               onChange={e => setYComposition(e.target.value as YComposition)}
-              disabled={shape === 'line' || shape === 'calendar_heatmap'}
+              disabled={shape === 'line' || shape === 'calendar_heatmap' || shape === 'heatmap'}
             >
               {(Object.keys(Y_COMPOSITION_LABELS) as YComposition[]).map(y => (
                 <option key={y} value={y}>{Y_COMPOSITION_LABELS[y]}</option>
