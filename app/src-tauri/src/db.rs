@@ -250,6 +250,45 @@ const RESULT_SEED: &[(i64, &str)] = &[
     (3, "draw"),
 ];
 
+/// 旧 `battles.mode` の slug を新 `lobby.id` に変換する。
+/// 未知の値は `None` を返し、呼び出し元で migration をスキップする。
+fn old_mode_to_lobby_id(mode: &str) -> Option<i64> {
+    match mode {
+        "regular"           => Some(1),
+        "bankara_open"      => Some(2),
+        "bankara_challenge" => Some(3),
+        "x" | "xmatch"      => Some(4),
+        "event"             => Some(5),
+        "splatfest_open"    => Some(6),
+        "splatfest_challenge" => Some(7),
+        "private"           => Some(8),
+        _ => None,
+    }
+}
+
+/// 旧 `battles.rule` の slug を新 `rule.id` に変換する。
+fn old_rule_to_rule_id(rule: &str) -> Option<i64> {
+    match rule {
+        "turf_war" | "nawabari" => Some(1),
+        "area"                  => Some(2),
+        "yagura"                => Some(3),
+        "hoko"                  => Some(4),
+        "asari"                 => Some(5),
+        "tricolor"              => Some(6),
+        _ => None,
+    }
+}
+
+/// 旧 `battles.result` の slug を新 `result.id` に変換する。
+fn old_result_to_result_id(result: &str) -> Option<i64> {
+    match result {
+        "win"  => Some(1),
+        "lose" => Some(2),
+        "draw" => Some(3),
+        _ => None,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 型
 // ---------------------------------------------------------------------------
@@ -1079,6 +1118,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// version 4: rule を raw_json から再パースして修復
 /// version 5: バンカラ mode を raw_json から再パースして修復
 /// version 6: stat.ink 互換の正規化スキーマ（battle / battle_player / マスター各種）を追加
+/// version 7: 既存 battles / battle_players から新スキーマへデータ移行
 pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
     let ver_row = sqlx::query("PRAGMA user_version")
         .fetch_one(pool.as_ref())
@@ -1086,7 +1126,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 6 {
+    if current_version >= 7 {
         return Ok(0); // 最新バージョンに達している
     }
 
@@ -1391,6 +1431,278 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             RULE_SEED.len(),
             RESULT_SEED.len(),
             ability_keys.len(),
+        );
+    }
+
+    // version 7: 既存 battles / battle_players から新スキーマ（battle / battle_player）へ
+    //            データを移行する。weapon と map マスターも既存データから populate する。
+    //            gear_configuration は本 PR では populate せず、後続 PR で raw_json から抽出する。
+    //            既存テーブルはそのまま残し、後続 PR で旧テーブルを drop する。
+    if current_version < 7 {
+        // ---- 1. weapon マスター populate ----
+        // 旧 weapons テーブル / battles.weapon / battle_players.weapon の DISTINCT 集合を投入
+        let weapon_master_rows = sqlx::query(
+            "SELECT name AS key, category, sub_weapon, special_weapon FROM weapons WHERE name != ''",
+        )
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| format!("v7 weapons 読込失敗: {e}"))?;
+        for r in &weapon_master_rows {
+            let key: String = r.get("key");
+            let category: String = r.get("category");
+            let sub: Option<String> = r.try_get("sub_weapon").ok().flatten();
+            let special: Option<String> = r.try_get("special_weapon").ok().flatten();
+            sqlx::query(
+                "INSERT OR IGNORE INTO weapon (key, name_ja, category_key, sub_key, special_key, image_key)
+                 VALUES (?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&key)
+            .bind(&key)
+            .bind(if category.is_empty() { None } else { Some(category) })
+            .bind(sub)
+            .bind(special)
+            .bind(&key)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| format!("v7 weapon insert 失敗 ({key}): {e}"))?;
+        }
+        for row in sqlx::query("SELECT DISTINCT weapon AS key FROM battle_players WHERE weapon != ''")
+            .fetch_all(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?
+            .iter()
+            .chain(
+                sqlx::query("SELECT DISTINCT weapon AS key FROM battles WHERE weapon != ''")
+                    .fetch_all(pool.as_ref())
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .iter(),
+            )
+        {
+            let key: String = row.get("key");
+            sqlx::query("INSERT OR IGNORE INTO weapon (key, name_ja, image_key) VALUES (?, ?, ?)")
+                .bind(&key)
+                .bind(&key)
+                .bind(&key)
+                .execute(pool.as_ref())
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+
+        let weapon_lookup = sqlx::query("SELECT id, key FROM weapon")
+            .fetch_all(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        let weapon_id_map: std::collections::HashMap<String, i64> = weapon_lookup
+            .iter()
+            .map(|r| (r.get::<String, _>("key"), r.get::<i64, _>("id")))
+            .collect();
+
+        // ---- 2. map マスター populate ----
+        // 旧 battles.stage / stage_name の DISTINCT 集合を投入（同一 stage で複数の name がある場合は MAX で選択）
+        let stage_rows = sqlx::query(
+            "SELECT stage AS key, MAX(stage_name) AS name_ja
+             FROM battles WHERE stage != '' GROUP BY stage",
+        )
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+        for r in &stage_rows {
+            let key: String = r.get("key");
+            let name: Option<String> = r.try_get("name_ja").ok().flatten();
+            sqlx::query("INSERT OR IGNORE INTO map (key, name_ja) VALUES (?, ?)")
+                .bind(&key)
+                .bind(name)
+                .execute(pool.as_ref())
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+
+        let map_lookup = sqlx::query("SELECT id, key FROM map")
+            .fetch_all(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        let map_id_map: std::collections::HashMap<String, i64> = map_lookup
+            .iter()
+            .map(|r| (r.get::<String, _>("key"), r.get::<i64, _>("id")))
+            .collect();
+
+        // ---- 3. battle テーブル migrate ----
+        let battles = sqlx::query(
+            "SELECT id, played_at, mode, rule, stage, weapon, result,
+                    kill, death, assist, special, inked, duration,
+                    rank_before, rank_after, x_power, raw_json, fetched_at,
+                    detail_fetched, statink_uuid, knockout
+             FROM battles",
+        )
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let mut battle_inserted = 0usize;
+        let mut battle_skipped = 0usize;
+        for row in &battles {
+            let id:     String = row.get("id");
+            let mode:   String = row.get("mode");
+            let rule:   String = row.get("rule");
+            let stage:  String = row.get("stage");
+            let weapon: String = row.get("weapon");
+            let result: String = row.get("result");
+
+            let lobby_id  = old_mode_to_lobby_id(&mode);
+            let rule_id   = old_rule_to_rule_id(&rule);
+            let result_id = old_result_to_result_id(&result);
+            let map_id    = map_id_map.get(&stage).copied();
+            let weapon_id = weapon_id_map.get(&weapon).copied();
+
+            let (Some(lobby_id), Some(rule_id), Some(result_id), Some(map_id), Some(weapon_id)) =
+                (lobby_id, rule_id, result_id, map_id, weapon_id)
+            else {
+                log::warn!(
+                    "[v7] battle スキップ id={} (mode={mode} rule={rule} stage={stage} weapon={weapon} result={result})",
+                    &id[..id.len().min(20)],
+                );
+                battle_skipped += 1;
+                continue;
+            };
+
+            let played_at:      String         = row.get("played_at");
+            let kill:           i64            = row.get("kill");
+            let death:          i64            = row.get("death");
+            let assist:         i64            = row.get("assist");
+            let special:        i64            = row.get("special");
+            let inked:          i64            = row.get("inked");
+            let duration:       i64            = row.get("duration");
+            let kill_or_assist                 = kill + assist;
+            let rank_before:    Option<String> = row.try_get("rank_before").ok().flatten();
+            let rank_after:     Option<String> = row.try_get("rank_after").ok().flatten();
+            let x_power:        Option<f64>    = row.try_get("x_power").ok().flatten();
+            let raw_json:       String         = row.get("raw_json");
+            let fetched_at:     String         = row.get("fetched_at");
+            let detail_fetched: i64            = row.get("detail_fetched");
+            let statink_uuid:   Option<String> = row.try_get("statink_uuid").ok().flatten();
+            let knockout:       Option<String> = row.try_get("knockout").ok().flatten();
+            let is_knockout:    Option<i64>    =
+                knockout.as_deref().map(|k| if k == "WIN" { 1 } else { 0 });
+
+            let r = sqlx::query(
+                "INSERT OR IGNORE INTO battle
+                    (id, played_at, lobby_id, rule_id, map_id, result_id, weapon_id,
+                     is_knockout, kill, assist, kill_or_assist, death, special, inked, duration,
+                     rank_before, rank_after, x_power_after, raw_json, fetched_at,
+                     detail_fetched, statink_uuid)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&id)
+            .bind(played_at)
+            .bind(lobby_id)
+            .bind(rule_id)
+            .bind(map_id)
+            .bind(result_id)
+            .bind(weapon_id)
+            .bind(is_knockout)
+            .bind(kill)
+            .bind(assist)
+            .bind(kill_or_assist)
+            .bind(death)
+            .bind(special)
+            .bind(inked)
+            .bind(duration)
+            .bind(rank_before)
+            .bind(rank_after)
+            .bind(x_power)
+            .bind(raw_json)
+            .bind(fetched_at)
+            .bind(detail_fetched)
+            .bind(statink_uuid)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| format!("v7 battle insert 失敗 id={id}: {e}"))?;
+            if r.rows_affected() > 0 {
+                battle_inserted += 1;
+            }
+        }
+
+        // ---- 4. battle_player テーブル migrate ----
+        let players = sqlx::query(
+            "SELECT battle_id, team, slot, is_myself, weapon, kill, assist, death, special, paint
+             FROM battle_players",
+        )
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let mut player_inserted = 0usize;
+        let mut player_skipped = 0usize;
+        for row in &players {
+            let battle_id: String = row.get("battle_id");
+
+            // 親 battle が新スキーマに居ない（スキップされた）レコードは無視
+            let exists = sqlx::query("SELECT 1 FROM battle WHERE id = ? LIMIT 1")
+                .bind(&battle_id)
+                .fetch_optional(pool.as_ref())
+                .await
+                .map_err(|e| e.to_string())?;
+            if exists.is_none() {
+                player_skipped += 1;
+                continue;
+            }
+
+            let team:      String = row.get("team");
+            let slot:      i64    = row.get("slot");
+            let is_myself: i64    = row.get("is_myself");
+            let weapon:    String = row.get("weapon");
+            let Some(weapon_id) = weapon_id_map.get(&weapon).copied() else {
+                player_skipped += 1;
+                continue;
+            };
+
+            let is_our_team    = if team == "my" { 1 } else { 0 };
+            let kill:    i64   = row.get("kill");
+            let assist:  i64   = row.get("assist");
+            let death:   i64   = row.get("death");
+            let special: i64   = row.get("special");
+            let inked:   i64   = row.get("paint");
+            let kill_or_assist = kill + assist;
+
+            let r = sqlx::query(
+                "INSERT OR IGNORE INTO battle_player
+                    (battle_id, is_our_team, rank_in_team, is_me, weapon_id,
+                     kill, assist, kill_or_assist, death, special, inked)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&battle_id)
+            .bind(is_our_team)
+            .bind(slot)
+            .bind(is_myself)
+            .bind(weapon_id)
+            .bind(kill)
+            .bind(assist)
+            .bind(kill_or_assist)
+            .bind(death)
+            .bind(special)
+            .bind(inked)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| format!("v7 battle_player insert 失敗 battle={battle_id}: {e}"))?;
+            if r.rows_affected() > 0 {
+                player_inserted += 1;
+            }
+        }
+
+        sqlx::query("PRAGMA user_version = 7")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        log::info!(
+            "migrate v7: weapon {} 件, map {} 件, battle {} 件 (skip {}), battle_player {} 件 (skip {}) を新スキーマへ移行",
+            weapon_id_map.len(),
+            map_id_map.len(),
+            battle_inserted,
+            battle_skipped,
+            player_inserted,
+            player_skipped,
         );
     }
 
