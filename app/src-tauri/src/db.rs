@@ -386,6 +386,13 @@ async fn upsert_map_id(pool: &DbPool, key: &str, name: Option<&str>) -> Result<O
 /// 新スキーマの `battle` テーブルに INSERT OR REPLACE する（シャドウライト）。
 /// FK 翻訳に失敗した場合は warning ログを出してスキップ（旧 battles 側は引き続き正しく書ける）。
 async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), String> {
+    // list クエリ取り込み時点では `rule` が空（vsRule は詳細クエリにしか含まれない）。
+    // その場合は黙ってスキップし、後続の `update_battle_detail` 経由の
+    // `shadow_update_battle_detail` で正しい値が入るのを待つ。
+    if row.rule.is_empty() {
+        return Ok(());
+    }
+
     let lobby_id  = old_mode_to_lobby_id(&row.mode);
     let rule_id   = old_rule_to_rule_id(&row.rule);
     let result_id = old_result_to_result_id(&row.result);
