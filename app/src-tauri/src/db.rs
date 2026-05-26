@@ -343,6 +343,154 @@ pub struct WeaponRecord {
 // 書き込み
 // ---------------------------------------------------------------------------
 
+/// 新スキーマの `weapon` マスターに key を upsert し、id を返す。
+/// PR 90-D で書き込みパスを完全切替する前のシャドウライト用ヘルパー。
+async fn upsert_weapon_id(pool: &DbPool, key: &str) -> Result<Option<i64>, String> {
+    if key.is_empty() {
+        return Ok(None);
+    }
+    sqlx::query("INSERT OR IGNORE INTO weapon (key, name_ja, image_key) VALUES (?, ?, ?)")
+        .bind(key)
+        .bind(key)
+        .bind(key)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    let row = sqlx::query("SELECT id FROM weapon WHERE key = ?")
+        .bind(key)
+        .fetch_optional(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.map(|r| r.get("id")))
+}
+
+/// 新スキーマの `map` マスターに key を upsert し、id を返す。
+async fn upsert_map_id(pool: &DbPool, key: &str, name: Option<&str>) -> Result<Option<i64>, String> {
+    if key.is_empty() {
+        return Ok(None);
+    }
+    sqlx::query("INSERT OR IGNORE INTO map (key, name_ja) VALUES (?, ?)")
+        .bind(key)
+        .bind(name)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    let row = sqlx::query("SELECT id FROM map WHERE key = ?")
+        .bind(key)
+        .fetch_optional(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.map(|r| r.get("id")))
+}
+
+/// 新スキーマの `battle` テーブルに INSERT OR REPLACE する（シャドウライト）。
+/// FK 翻訳に失敗した場合は warning ログを出してスキップ（旧 battles 側は引き続き正しく書ける）。
+async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), String> {
+    let lobby_id  = old_mode_to_lobby_id(&row.mode);
+    let rule_id   = old_rule_to_rule_id(&row.rule);
+    let result_id = old_result_to_result_id(&row.result);
+    let weapon_id = upsert_weapon_id(pool, &row.weapon).await?;
+    let map_id    = upsert_map_id(pool, &row.stage, row.stage_name.as_deref()).await?;
+
+    let (Some(lobby_id), Some(rule_id), Some(result_id), Some(weapon_id), Some(map_id)) =
+        (lobby_id, rule_id, result_id, weapon_id, map_id)
+    else {
+        log::warn!(
+            "[shadow] battle スキップ id={} (mode={} rule={} result={} weapon={} stage={})",
+            &row.id[..row.id.len().min(20)],
+            row.mode,
+            row.rule,
+            row.result,
+            row.weapon,
+            row.stage,
+        );
+        return Ok(());
+    };
+
+    let kill_or_assist = row.kill + row.assist;
+    let is_knockout: Option<i64> = row
+        .knockout
+        .as_deref()
+        .map(|k| if k == "WIN" { 1 } else { 0 });
+
+    sqlx::query(
+        "INSERT OR REPLACE INTO battle
+            (id, played_at, lobby_id, rule_id, map_id, result_id, weapon_id,
+             is_knockout, kill, assist, kill_or_assist, death, special, inked, duration,
+             rank_before, rank_after, x_power_after, raw_json, fetched_at, statink_uuid)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&row.id)
+    .bind(&row.played_at)
+    .bind(lobby_id)
+    .bind(rule_id)
+    .bind(map_id)
+    .bind(result_id)
+    .bind(weapon_id)
+    .bind(is_knockout)
+    .bind(row.kill)
+    .bind(row.assist)
+    .bind(kill_or_assist)
+    .bind(row.death)
+    .bind(row.special)
+    .bind(row.inked)
+    .bind(row.duration)
+    .bind(&row.rank_before)
+    .bind(&row.rank_after)
+    .bind(row.x_power)
+    .bind(&row.raw_json)
+    .bind(&row.fetched_at)
+    .bind(&row.statink_uuid)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| format!("shadow battle insert 失敗 id={}: {e}", row.id))?;
+
+    Ok(())
+}
+
+/// 新スキーマの `battle_player` テーブルに INSERT OR REPLACE する（シャドウライト）。
+/// 親 `battle` が新スキーマに居ない場合（FK 違反）はスキップ。
+async fn shadow_write_battle_player(pool: &DbPool, p: &BattlePlayerRow) -> Result<(), String> {
+    let Some(weapon_id) = upsert_weapon_id(pool, &p.weapon).await? else {
+        return Ok(());
+    };
+
+    let exists = sqlx::query("SELECT 1 FROM battle WHERE id = ? LIMIT 1")
+        .bind(&p.battle_id)
+        .fetch_optional(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    if exists.is_none() {
+        return Ok(());
+    }
+
+    let is_our_team    = if p.team == "my" { 1 } else { 0 };
+    let kill_or_assist = p.kill + p.assist;
+
+    sqlx::query(
+        "INSERT OR REPLACE INTO battle_player
+            (battle_id, is_our_team, rank_in_team, is_me, weapon_id,
+             kill, assist, kill_or_assist, death, special, inked)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&p.battle_id)
+    .bind(is_our_team)
+    .bind(p.slot)
+    .bind(p.is_myself as i64)
+    .bind(weapon_id)
+    .bind(p.kill)
+    .bind(p.assist)
+    .bind(kill_or_assist)
+    .bind(p.death)
+    .bind(p.special)
+    .bind(p.paint)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| format!("shadow battle_player insert 失敗 battle={}: {e}", p.battle_id))?;
+
+    Ok(())
+}
+
 pub async fn insert_battles(pool: &DbPool, rows: Vec<BattleRow>) -> Result<usize, String> {
     let mut inserted = 0usize;
     for row in rows {
@@ -377,6 +525,11 @@ pub async fn insert_battles(pool: &DbPool, rows: Vec<BattleRow>) -> Result<usize
         .await
         .map_err(|e| e.to_string())?;
         inserted += result.rows_affected() as usize;
+
+        // 新スキーマへもシャドウライト（失敗はログのみ）
+        if let Err(e) = shadow_write_battle(pool, &row).await {
+            log::warn!("[shadow] insert_battles: {e}");
+        }
     }
     Ok(inserted)
 }
@@ -437,6 +590,63 @@ pub async fn update_battle_detail(
     .execute(pool.as_ref())
     .await
     .map_err(|e| e.to_string())?;
+
+    // 新スキーマへもシャドウ UPDATE
+    if let Err(e) = shadow_update_battle_detail(
+        pool, id, kill, death, assist, special, inked, raw_json, rule, mode, knockout,
+    )
+    .await
+    {
+        log::warn!("[shadow] update_battle_detail id={id}: {e}");
+    }
+
+    Ok(())
+}
+
+/// 詳細取得結果を新スキーマの `battle` 行に反映する。FK 翻訳に失敗したらスキップ。
+#[allow(clippy::too_many_arguments)]
+async fn shadow_update_battle_detail(
+    pool: &DbPool,
+    id: &str,
+    kill: i64,
+    death: i64,
+    assist: i64,
+    special: i64,
+    inked: i64,
+    raw_json: &str,
+    rule: &str,
+    mode: &str,
+    knockout: Option<&str>,
+) -> Result<(), String> {
+    let lobby_id = old_mode_to_lobby_id(mode);
+    let rule_id  = old_rule_to_rule_id(rule);
+    let (Some(lobby_id), Some(rule_id)) = (lobby_id, rule_id) else {
+        return Ok(());
+    };
+    let is_knockout: Option<i64> = knockout.map(|k| if k == "WIN" { 1 } else { 0 });
+    let kill_or_assist = kill + assist;
+
+    sqlx::query(
+        "UPDATE battle
+            SET kill=?, assist=?, kill_or_assist=?, death=?, special=?, inked=?,
+                raw_json=?, rule_id=?, lobby_id=?, is_knockout=?, detail_fetched=1
+          WHERE id=?",
+    )
+    .bind(kill)
+    .bind(assist)
+    .bind(kill_or_assist)
+    .bind(death)
+    .bind(special)
+    .bind(inked)
+    .bind(raw_json)
+    .bind(rule_id)
+    .bind(lobby_id)
+    .bind(is_knockout)
+    .bind(id)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
@@ -555,6 +765,11 @@ pub async fn insert_battle_players(pool: &DbPool, players: &[BattlePlayerRow]) -
         .execute(pool.as_ref())
         .await
         .map_err(|e| e.to_string())?;
+
+        // 新スキーマへもシャドウライト（失敗はログのみ）
+        if let Err(e) = shadow_write_battle_player(pool, p).await {
+            log::warn!("[shadow] insert_battle_players: {e}");
+        }
     }
     Ok(())
 }
