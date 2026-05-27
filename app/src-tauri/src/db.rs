@@ -383,10 +383,15 @@ async fn upsert_map_id(pool: &DbPool, key: &str, name: Option<&str>) -> Result<O
     Ok(row.map(|r| r.get("id")))
 }
 
-/// 新スキーマの `battle` テーブルに INSERT OR REPLACE する。
+/// 新スキーマの `battle` テーブルに `INSERT OR IGNORE` する。
 /// rule が空 (list クエリ取り込み直後) なら rule_id = NULL で挿入し、後段の
 /// `shadow_update_battle_detail` (詳細取得後) で正しい rule_id に更新される。
 /// rule 以外の必須 FK (lobby / result / weapon / map) が解決できない場合は warn + スキップ。
+///
+/// **既存行はスキップする (#141)**：list クエリは詳細クエリより情報が少ない
+/// （rule_id / raw_json / my_team / other_teams 等が無い）。`INSERT OR REPLACE` で
+/// 既存行を上書きしてしまうと `detail_fetched` も DEFAULT 0 に戻り、すべての
+/// 詳細情報が消えて再フェッチが走るループになる。既存行はそのまま温存する。
 async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), String> {
     let lobby_id  = old_mode_to_lobby_id(&row.mode);
     // rule は list クエリでは空文字。詳細クエリで埋まる前提で NULL を許容する。
@@ -425,7 +430,7 @@ async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), Strin
         .map(|k| if k == "WIN" { 1 } else { 0 });
 
     sqlx::query(
-        "INSERT OR REPLACE INTO battle
+        "INSERT OR IGNORE INTO battle
             (id, played_at, lobby_id, rule_id, map_id, result_id, weapon_id,
              is_knockout, kill, assist, kill_or_assist, death, special, inked, duration,
              rank_before, rank_after, x_power_after, raw_json, fetched_at, statink_uuid, parent_json,
@@ -467,8 +472,9 @@ async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), Strin
     Ok(())
 }
 
-/// 新スキーマの `battle_player` テーブルに INSERT OR REPLACE する（シャドウライト）。
+/// 新スキーマの `battle_player` テーブルに `INSERT OR IGNORE` する（シャドウライト）。
 /// 親 `battle` が新スキーマに居ない場合（FK 違反）はスキップ。
+/// 同一バトル × 同一スロットのレコードは内容変化しないため、既存行はスキップで OK (#141)。
 async fn shadow_write_battle_player(pool: &DbPool, p: &BattlePlayerRow) -> Result<(), String> {
     let Some(weapon_id) = upsert_weapon_id(pool, &p.weapon).await? else {
         return Ok(());
@@ -487,7 +493,7 @@ async fn shadow_write_battle_player(pool: &DbPool, p: &BattlePlayerRow) -> Resul
     let kill_or_assist = p.kill + p.assist;
 
     sqlx::query(
-        "INSERT OR REPLACE INTO battle_player
+        "INSERT OR IGNORE INTO battle_player
             (battle_id, is_our_team, rank_in_team, is_me, weapon_id,
              kill, assist, kill_or_assist, death, special, inked)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
