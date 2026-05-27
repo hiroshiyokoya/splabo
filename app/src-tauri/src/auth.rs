@@ -737,7 +737,7 @@ async fn request_f(
         .post(ZNCA_API_URL)
         .header("Content-Type", "application/json")
         .header("Accept", "application/json")
-        .header("User-Agent", "chartoon/0.1.0")
+        .header("User-Agent", concat!("chartoon/", env!("CARGO_PKG_VERSION")))
         .header("X-znca-Client-Version", ZNCA_API_COMPATIBILITY_VERSION)
         .json(&body)
         .send()
