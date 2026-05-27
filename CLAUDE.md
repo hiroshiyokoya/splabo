@@ -38,6 +38,24 @@ gh api repos/hiroshiyokoya/geartoon/contents/<path> --jq '.content' | base64 -d
 
 ---
 
+## 最新状況確認
+
+「最新状況を確認して」「現状どう？」など状態確認を依頼されたら、**必ず最初にローカルとリモートを同期**してから答える。stale なローカル状態で答えると古いタグ・ブランチを見落として、二度手間になる。
+
+```bash
+git fetch --all --tags --prune
+git checkout develop && git pull origin develop
+```
+
+その上で:
+- `git tag --list`（リモートから fetch 済みのタグ含む）
+- GitHub MCP で open な PR / Issue を取得
+- トラッキング #15 を読み直す
+
+`~/.claude/CLAUDE.md` の共通ルールに集約予定（要転記）。
+
+---
+
 ## トラッキングイシュー
 
 `tracking` ラベルのついたイシュー（**#15**）は Claude が常に最新の状態に保つ。
