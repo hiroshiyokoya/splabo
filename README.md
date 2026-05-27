@@ -1,6 +1,10 @@
+<img src="app/public/chartoon-logo.png" alt="chartoon" height="300">
+
 # チャートゥーン (chartoon)
 
 Nintendo アカウントから [nxapi](https://github.com/samuelthomas2774/nxapi) が解析した非公式 API 経由で Splatoon 3 のバトル履歴を取得し、グラフで可視化する OSS の PC アプリです。任天堂株式会社とは無関係です。
+
+🌐 **ダウンロードページ**: https://chartoon.pages.dev/
 
 ```
 chartoon/
@@ -17,6 +21,26 @@ chartoon/
 - **stat.ink 自動アップロード** — 取得したバトルを [stat.ink](https://stat.ink/) へ自動アップロード（API キー登録時）。同一バトルは s3s と同じ UUID v5 名前空間で重複排除されます
 - **AI 分析** — 自然言語でグラフを生成（OpenAI / Google Gemini / Anthropic Claude / xAI Grok 対応）
 - **自動取得** — 15 分〜24 時間ごとの定期間隔でバトルデータをバックグラウンドで取得。有効時はウィンドウを閉じてもトレイに常駐し、完了をシステム通知でお知らせ
+
+## スクリーンショット
+
+<table>
+  <tr>
+    <th>ダッシュボード</th>
+    <th>カレンダーヒートマップ</th>
+    <th>散布図</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/dashboard.png" alt="ダッシュボード" height="240"></td>
+    <td><img src="docs/screenshots/calendar.png" alt="カレンダーヒートマップ" height="240"></td>
+    <td><img src="docs/screenshots/scatter.png" alt="散布図" height="240"></td>
+  </tr>
+  <tr valign="top">
+    <td>ダッシュボードでバトル結果を分析</td>
+    <td>カレンダー形式で可視化</td>
+    <td>散布図などチャートをカスタマイズ</td>
+  </tr>
+</table>
 
 ## 必要なもの
 
