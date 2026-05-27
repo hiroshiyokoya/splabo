@@ -1076,20 +1076,25 @@ body {
 }
 .weapon-modal-hero-overall { gap: 12px; margin-top: 4px; font-size: 14px; }
 
-.weapon-modal-official-grid {
+/* バトル統計パネル（4×2 グリッド・最後の行は 3 列残しで右余白） */
+.weapon-modal-stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
 }
-.weapon-modal-official-item {
+.weapon-modal-stat-panel {
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 10px;
   text-align: center;
 }
-.weapon-modal-official-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
-.weapon-modal-official-value { font-size: 18px; font-weight: 700; }
+.weapon-modal-stat-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+.weapon-modal-stat-value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 520px) {
+  .weapon-modal-stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
 
 .weapon-modal-stage-list { display: flex; flex-direction: column; gap: 4px; }
 .weapon-modal-stage-row {
