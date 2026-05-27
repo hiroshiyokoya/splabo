@@ -16,7 +16,7 @@ import { METRIC_LABELS, getMetric, formatMetric, metricGroup } from '../../types
  * - データが無い日は空セル (薄いグレー)
  */
 
-const CELL  = 36
+const CELL  = 24
 const GAP   = 4
 const PITCH = CELL + GAP
 
