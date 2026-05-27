@@ -18,8 +18,8 @@
   /* カレンダーヒートマップ用のセル色 (5 段階)
      sequential は「ほぼ白 → accent (ライム)」、
      divergent は「青 ← 白 → 赤」で、中央が暗くならないように白を通す */
-  --cell-empty:    #565666;  /* 空 (バトル無し) */
-  --cell-sparse:   #9c9caa;  /* サンプル不足のグレーアウト (明るめ) */
+  --cell-empty:    #9c9caa;  /* 空 (バトル無し)。明るめのグレー */
+  --cell-sparse:   #c8c8d2;  /* サンプル不足。空より更に薄いグレー */
   --cell-c1:       #f3f6e6;  /* 最薄 = ほぼ白 */
   --cell-c2:       #e2efb6;
   --cell-c3:       #d6ea7d;
