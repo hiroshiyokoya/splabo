@@ -283,7 +283,6 @@ export function WeaponBook() {
           image={weaponImages.get(selected.name) ?? null}
           subImage={selected.sub_weapon ? (subImages.get(selected.sub_weapon) ?? null) : null}
           spImage={selected.special_weapon ? (spImages.get(selected.special_weapon) ?? null) : null}
-          stats={statsByWeapon.get(selected.name) ?? null}
           onClose={() => setSelected(null)}
         />
       )}
