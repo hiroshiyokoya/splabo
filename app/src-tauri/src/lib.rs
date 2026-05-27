@@ -233,6 +233,8 @@ async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usiz
     db::populate_weapons_from_battles(db).await?;
     splatnet3::cache_sub_special_images(db, app, &client).await?;
     splatnet3::cache_ability_images(db, app, &client).await?;
+    // 全プレイヤー（味方・相手）のメイン武器画像もキャッシュ（#136）
+    splatnet3::cache_all_weapon_images(db, app, &client).await?;
 
     // stat.ink 自動アップロード（設定が有効かつ API キーがある場合のみ）
     let uploaded = if let Some(sc) = app.try_state::<StatinkConfig>() {
@@ -356,6 +358,7 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
     db::populate_weapons_from_battles(&db).await?;
     splatnet3::cache_sub_special_images(&db, &app, &client).await?;
     splatnet3::cache_ability_images(&db, &app, &client).await?;
+    splatnet3::cache_all_weapon_images(&db, &app, &client).await?;
     Ok(count)
 }
 

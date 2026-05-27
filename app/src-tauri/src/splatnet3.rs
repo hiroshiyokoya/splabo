@@ -683,6 +683,67 @@ pub async fn fetch_and_store_weapons(
     Ok(count)
 }
 
+/// 保存済みバトルの my_team / other_teams JSON から **全プレイヤーのメイン武器画像** をキャッシュする (#136)。
+///
+/// `fetch_and_store_weapons`（HistoryRecordQuery）は自分が使ったことのある武器しか返さない。
+/// それだけだと味方武器 / 相手武器を集計軸に取った時に「自分が使ったことのない武器」が
+/// アイコン無しになり、テキストフォールバックが混ざる（#118 で発覚）。
+///
+/// このため、全バトル詳細の my_team + other_teams の `weapon.{name, image.url}` を走査して
+/// download_and_cache する。既にキャッシュ済みのファイルがあれば短絡されるので何度呼んでも安い。
+pub async fn cache_all_weapon_images(
+    pool: &crate::db::DbPool,
+    app: &tauri::AppHandle,
+    client: &reqwest::Client,
+) -> Result<(), String> {
+    let team_data = crate::db::get_battles_team_json(pool).await?;
+
+    // 同じ武器（name）はバトル間で重複するので HashMap で 1 URL に集約する。
+    let mut seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
+    for (my_team_json, other_teams_json) in &team_data {
+        let mut players: Vec<serde_json::Value> = Vec::new();
+
+        if let Some(json) = my_team_json {
+            if let Ok(arr) = serde_json::from_str::<serde_json::Value>(json) {
+                if let Some(list) = arr.as_array() {
+                    players.extend(list.iter().cloned());
+                }
+            }
+        }
+        if let Some(json) = other_teams_json {
+            if let Ok(arr) = serde_json::from_str::<serde_json::Value>(json) {
+                if let Some(teams) = arr.as_array() {
+                    for team in teams {
+                        if let Some(list) = team.pointer("/players").and_then(|v| v.as_array()) {
+                            players.extend(list.iter().cloned());
+                        }
+                    }
+                }
+            }
+        }
+
+        for p in &players {
+            let Some(name) = p.pointer("/weapon/name").and_then(|v| v.as_str()) else { continue };
+            let Some(url)  = p.pointer("/weapon/image/url").and_then(|v| v.as_str()) else { continue };
+            if name.is_empty() || url.is_empty() { continue; }
+            seen.entry(name.to_string()).or_insert_with(|| url.to_string());
+        }
+    }
+
+    log::info!("[weapon-image] all-team キャッシュ対象 {} 種", seen.len());
+    let mut downloaded = 0usize;
+    for (name, url) in &seen {
+        match crate::images::download_and_cache(app, client, "weapon", name, url).await {
+            Ok(()) => downloaded += 1,
+            Err(e) => log::warn!("武器画像キャッシュ失敗 ({name}): {e}"),
+        }
+    }
+    log::info!("[weapon-image] all-team キャッシュ完了 {}/{}", downloaded, seen.len());
+
+    Ok(())
+}
+
 /// 保存済みバトルの my_team / other_teams JSON からサブ・スペシャルウェポンの画像をキャッシュし、
 /// weapons テーブルに image URL を記録する。
 pub async fn cache_sub_special_images(
