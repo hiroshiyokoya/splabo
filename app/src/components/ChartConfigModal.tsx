@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey, BattleNumericMetric } from '../types'
 import {
   GROUP_BY_LABELS, METRIC_LABELS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
@@ -86,8 +86,15 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
     if (shape === 'scatter' && dotUnit !== 'battle') setGroupBy(dotUnit)
   }, [dotUnit, shape])
 
-  // dotUnit を切り替えたとき X / Y / size / color の選択肢系統が変わるのでデフォルトに戻す
+  // dotUnit を切り替えたとき X / Y / size / color の選択肢系統が変わるのでデフォルトに戻す。
+  // ただし **編集モードで開いたときの初回マウントでは保存値を保持** したいので、
+  // ref で 1 回目をスキップする（#143）。
+  const dotUnitSkipFirstRef = useRef(true)
   useEffect(() => {
+    if (dotUnitSkipFirstRef.current) {
+      dotUnitSkipFirstRef.current = false
+      return
+    }
     if (shape !== 'scatter') return
     if (dotUnit === 'battle') {
       setXMetric('kill')
