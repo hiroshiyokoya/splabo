@@ -1,6 +1,6 @@
 [package]
 name = "chartoon"
-version = "0.4.1"
+version = "0.1.0"
 description = "Splatoon battle data logger and analytics dashboard"
 authors = []
 edition = "2021"

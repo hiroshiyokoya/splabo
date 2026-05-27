@@ -3161,26 +3161,21 @@ pub fn extract_stage_numeric_id(b64_id: &str) -> String {
 
 #[tauri::command]
 pub async fn db_list_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<WeaponRecord>, String> {
-    // v11 で旧 battles テーブルは drop 済み（再起動時の init schema で空のまま再作成される）。
-    // 集計は新スキーマの battle / weapon / result を経由する:
-    //   旧 weapons.name は populate_weapons_from_battles で新 weapon.key と一致させてあるので、
-    //   weapons.name = weapon.key で JOIN し、weapon.id で battle.weapon_id とつなぐ。
-    // weapon_records (#49) は LEFT JOIN で未取得武器は NULL を返す。
+    // weapon_records は LEFT JOIN なので未取得武器は NULL のまま返す。
+    // FE 側で NULL を 0 にフォールバックするか、未取得表示にするかを選ぶ。
     let rows = sqlx::query_as::<_, WeaponRecord>(
         "SELECT w.name, w.category, w.sub_weapon, w.special_weapon,
                 w.sub_weapon_image, w.special_weapon_image,
                 COUNT(b.id) as total,
-                COALESCE(SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END), 0) as wins,
-                COALESCE(SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END), 0) as draws,
+                COALESCE(SUM(CASE WHEN b.result='win'  THEN 1 ELSE 0 END), 0) as wins,
+                COALESCE(SUM(CASE WHEN b.result='draw' THEN 1 ELSE 0 END), 0) as draws,
                 wr.weapon_level      as weapon_level,
                 wr.win_count_total   as win_count_total,
                 wr.paint_point_total as paint_point_total,
                 wr.weapon_power      as weapon_power,
                 wr.weapon_power_max  as weapon_power_max
          FROM weapons w
-         LEFT JOIN weapon nw ON nw.key = w.name
-         LEFT JOIN battle b ON b.weapon_id = nw.id
-         LEFT JOIN result res ON res.id = b.result_id
+         LEFT JOIN battles b ON b.weapon = w.name
          LEFT JOIN weapon_records wr ON wr.weapon_id = w.name
          GROUP BY w.name
          ORDER BY CASE WHEN w.category = '' OR w.category IS NULL THEN 1 ELSE 0 END,
