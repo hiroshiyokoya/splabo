@@ -42,6 +42,38 @@
   z-index: 10;
 }
 
+/* カラーバー (カレンダー/ヒートマップの凡例) */
+.cal-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.cal-legend-label { font-weight: 600; margin-right: 4px; }
+.cal-legend-bar {
+  display: inline-flex;
+  gap: 2px;
+}
+.cal-legend-swatch {
+  display: inline-block;
+  width: 22px;
+  height: 12px;
+  border-radius: 2px;
+}
+.cal-legend-swatch--sparse { background: var(--cell-sparse); width: 14px; }
+.cal-legend-end { color: var(--text-muted); min-width: 28px; }
+.cal-legend-mid { color: var(--text-muted); }
+.cal-legend-sparse {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+}
+.cal-legend-sparse-text { font-size: 11px; }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {

@@ -16,7 +16,7 @@ import { METRIC_LABELS, getMetric, formatMetric, metricGroup } from '../../types
  * - データが無い日は空セル (薄いグレー)
  */
 
-const CELL  = 20
+const CELL  = 36
 const GAP   = 4
 const PITCH = CELL + GAP
 
@@ -166,14 +166,11 @@ export function CalendarHeatmapChart({
     return averageColor(value, minVal, maxVal)
   }
 
-  // 凡例 (カラーバー) の配置。グリッド下に 1 行 (高さ ~28px)。
-  const LEGEND_H = 32
   const GRID_TOP = 16
   const GRID_HEIGHT = 7 * PITCH
-  const LEGEND_TOP = GRID_TOP + GRID_HEIGHT + 16
 
   const width  = Math.max(weeks.length * PITCH + 26, 280)
-  const height = LEGEND_TOP + LEGEND_H
+  const height = GRID_TOP + GRID_HEIGHT + 8
 
   /** 凡例ラベル: 左端値・中央値・右端値 */
   const legendColors = group === 'rate' ? RATE_COLORS : group === 'count' ? COUNT_COLORS : AVG_COLORS
@@ -227,57 +224,25 @@ export function CalendarHeatmapChart({
             )
           })
         )}
-        {/* カラーバー (凡例) */}
-        {(() => {
-          const swatchW = 22
-          const swatchH = 10
-          const startX = 22
-          return (
-            <>
-              <text x={startX} y={LEGEND_TOP - 4} fontSize={10} fill="var(--text-muted)">
-                {METRIC_LABELS[metric]}
-              </text>
-              {legendColors.map((c, i) => (
-                <rect
-                  key={i}
-                  x={startX + i * (swatchW + 2)}
-                  y={LEGEND_TOP}
-                  width={swatchW}
-                  height={swatchH}
-                  rx={2}
-                  fill={c}
-                />
-              ))}
-              <text x={startX} y={LEGEND_TOP + swatchH + 12} fontSize={10} fill="var(--text-muted)" textAnchor="start">
-                {legendLeft}
-              </text>
-              {legendMid && (
-                <text
-                  x={startX + (legendColors.length * (swatchW + 2)) / 2 - 1}
-                  y={LEGEND_TOP + swatchH + 12}
-                  fontSize={10}
-                  fill="var(--text-muted)"
-                  textAnchor="middle"
-                >{legendMid}</text>
-              )}
-              <text
-                x={startX + legendColors.length * (swatchW + 2) - 2}
-                y={LEGEND_TOP + swatchH + 12}
-                fontSize={10}
-                fill="var(--text-muted)"
-                textAnchor="end"
-              >{legendRight}</text>
-              {/* サンプル不足の凡例 (率/平均のみ) */}
-              {(group === 'rate' || group === 'average') && (
-                <g transform={`translate(${startX + legendColors.length * (swatchW + 2) + 24}, ${LEGEND_TOP})`}>
-                  <rect width={swatchW * 0.6} height={swatchH} rx={2} fill="var(--cell-sparse)" />
-                  <text x={swatchW * 0.6 + 6} y={swatchH - 1} fontSize={10} fill="var(--text-muted)">サンプル不足</text>
-                </g>
-              )}
-            </>
-          )
-        })()}
       </svg>
+      {/* カラーバー (凡例) を SVG の下に HTML として配置 */}
+      <div className="cal-legend">
+        <span className="cal-legend-label">{METRIC_LABELS[metric]}</span>
+        <span className="cal-legend-end">{legendLeft}</span>
+        <span className="cal-legend-bar">
+          {legendColors.map((c, i) => (
+            <span key={i} className="cal-legend-swatch" style={{ background: c }} />
+          ))}
+        </span>
+        {legendMid && <span className="cal-legend-mid">{legendMid}</span>}
+        <span className="cal-legend-end">{legendRight}</span>
+        {(group === 'rate' || group === 'average') && (
+          <span className="cal-legend-sparse">
+            <span className="cal-legend-swatch cal-legend-swatch--sparse" />
+            <span className="cal-legend-sparse-text">サンプル不足</span>
+          </span>
+        )}
+      </div>
       {hover && (
         <div
           className="cal-tooltip"
