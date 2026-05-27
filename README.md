@@ -24,10 +24,23 @@ chartoon/
 
 ## スクリーンショット
 
-| ダッシュボード | カレンダーヒートマップ | 散布図 |
-|---|---|---|
-| <img src="docs/screenshots/dashboard.png" alt="ダッシュボード" height="240"> | <img src="docs/screenshots/calendar.png" alt="カレンダーヒートマップ" height="240"> | <img src="docs/screenshots/scatter.png" alt="散布図" height="240"> |
-| ダッシュボードでバトル結果を分析 | カレンダー形式で可視化 | 散布図などチャートをカスタマイズ |
+<table>
+  <tr>
+    <th>ダッシュボード</th>
+    <th>カレンダーヒートマップ</th>
+    <th>散布図</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/dashboard.png" alt="ダッシュボード" height="240"></td>
+    <td><img src="docs/screenshots/calendar.png" alt="カレンダーヒートマップ" height="240"></td>
+    <td><img src="docs/screenshots/scatter.png" alt="散布図" height="240"></td>
+  </tr>
+  <tr valign="top">
+    <td>ダッシュボードでバトル結果を分析</td>
+    <td>カレンダー形式で可視化</td>
+    <td>散布図などチャートをカスタマイズ</td>
+  </tr>
+</table>
 
 ## 必要なもの
 
