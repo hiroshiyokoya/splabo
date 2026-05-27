@@ -27,7 +27,7 @@ chartoon/
 | ダッシュボード | カレンダーヒートマップ | 散布図 |
 |---|---|---|
 | <img src="docs/screenshots/dashboard.png" alt="ダッシュボード" height="240"> | <img src="docs/screenshots/calendar.png" alt="カレンダーヒートマップ" height="240"> | <img src="docs/screenshots/scatter.png" alt="散布図" height="240"> |
-| 主要指標と複数軸での集計を一覧 | カレンダー形式で可視化 | 散布図などチャートをカスタマイズ |
+| 主要指標と各種チャートを一覧 | カレンダー形式で可視化 | 散布図などチャートをカスタマイズ |
 
 ## 必要なもの
 
