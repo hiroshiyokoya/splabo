@@ -4,6 +4,8 @@
 
 Nintendo アカウントから [nxapi](https://github.com/samuelthomas2774/nxapi) が解析した非公式 API 経由で Splatoon 3 のバトル履歴を取得し、グラフで可視化する OSS の PC アプリです。任天堂株式会社とは無関係です。
 
+🌐 **ダウンロードページ**: https://chartoon.pages.dev/
+
 ```
 chartoon/
 └── app/         # Tauri アプリ本体（Vite + React + recharts + Rust）
@@ -24,7 +26,7 @@ chartoon/
 
 | ダッシュボード | カレンダーヒートマップ | 散布図 |
 |---|---|---|
-| ![ダッシュボード](docs/screenshots/dashboard.png) | ![カレンダーヒートマップ](docs/screenshots/calendar.png) | ![散布図](docs/screenshots/scatter.png) |
+| <img src="docs/screenshots/dashboard.png" alt="ダッシュボード" height="240"> | <img src="docs/screenshots/calendar.png" alt="カレンダーヒートマップ" height="240"> | <img src="docs/screenshots/scatter.png" alt="散布図" height="240"> |
 | 主要指標と武器・ステージ・ルール・モード別の集計を一覧 | 日別バトル数をカレンダー形式で可視化 | ステージ別 平均キル × 平均デス（バトル数 = バブル径） |
 
 ## 必要なもの
