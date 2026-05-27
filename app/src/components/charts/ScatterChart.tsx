@@ -2,131 +2,127 @@ import { useMemo, useState } from 'react'
 import {
   ScatterChart as RScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, ResponsiveContainer, Cell,
 } from 'recharts'
-import type { GroupedStatsRow, MetricKey } from '../../types'
-import { METRIC_LABELS, getMetric, formatMetric, metricGroup } from '../../types'
 
 /**
- * 散布図。1 ドット = 1 カテゴリ (武器 or ステージ)。
+ * 散布図 (presentational)。
  *
- * - X / Y 軸: 任意のメトリクス
- * - サイズ: 任意のメトリクス（指定なければ一定）。sqrt スケールで半径比例
- * - 色: 任意のメトリクス（指定なければ単色）。勝率は divergent (50% 中央)、
- *   それ以外は sequential (アクセント色の濃淡)
- * - 0 サンプル除外
- *
- * バトル単位の散布図は別 PR で対応予定。
+ * 呼び出し側 (CustomChartCard) で「ドット単位ごとのデータ」を
+ * 既に points: { name, x, y, size, color, tooltipRows }[] に正規化して渡す。
+ * ScatterChart 自体は metric や dotUnit を知らない。
  */
 
-function colorForMetric(value: number | null, metric: MetricKey, min: number, max: number): string {
-  if (value === null) return 'var(--cell-empty)'
-  const g = metricGroup(metric)
-  if (g === 'rate') {
-    const t = (value - 0.5) * 2
-    if (t < -0.4) return 'var(--cell-r1)'
-    if (t < -0.1) return 'var(--cell-r2)'
-    if (t <=  0.1) return 'var(--cell-r3)'
-    if (t <=  0.4) return 'var(--cell-r4)'
-    return 'var(--cell-r5)'
-  }
-  if (max <= min) return 'var(--cell-c3)'
-  const t = (value - min) / (max - min)
-  if (t <= 0.2) return 'var(--cell-c1)'
-  if (t <= 0.4) return 'var(--cell-c2)'
-  if (t <= 0.6) return 'var(--cell-c3)'
-  if (t <= 0.8) return 'var(--cell-c4)'
-  return 'var(--cell-c5)'
+export interface ScatterPoint {
+  name:        string
+  x:           number | null
+  y:           number | null
+  size:        number | null   // null = 一定サイズ
+  color:       string          // 既に CSS color に解決済み
+  tooltipRows: { label: string; value: string; muted?: boolean }[]
+  /** 重なり判定用キー。同じ groupKey の点はツールチップで一緒に並べて表示する。
+   *  バトル単位なら整数化された (x, y) 等、カテゴリ単位なら省略 (グループ化しない)。 */
+  groupKey?:   string
+  /** ツールチップ内で 1 行に詰める「個別ラベル」 (例: 日付 / 武器 / 勝敗)。
+   *  groupKey で複数点まとまったとき、各点の name 部分として並ぶ。 */
+  rowText?:    string
 }
 
 export function ScatterChart({
-  data, xMetric, yMetric, sizeMetric, colorMetric, height = 300, nameTransform,
+  points, xLabel, yLabel, xIsRate, yIsRate, hasSize, fillOpacity = 0.85, height = 320,
 }: {
-  data:          GroupedStatsRow[]
-  xMetric:       MetricKey
-  yMetric:       MetricKey
-  sizeMetric?:   MetricKey
-  colorMetric?:  MetricKey
-  height?:       number
-  nameTransform?: (s: string) => string
+  points:       ScatterPoint[]
+  xLabel:       string
+  yLabel:       string
+  xIsRate?:     boolean
+  yIsRate?:     boolean
+  hasSize?:     boolean
+  /** ドットの塗り透過度。バトル単位 (重なり多) では 0.4 程度を渡して密度を見せる。 */
+  fillOpacity?: number
+  height?:      number
 }) {
-  const [hover, setHover] = useState<{ name: string; x: number | null; y: number | null; size: number | null; color: number | null } | null>(null)
+  const [hover, setHover] = useState<ScatterPoint | null>(null)
 
-  const points = useMemo(() => {
-    // 0 サンプルは除外。X, Y どちらかが null も除外（ドットを置けないため）。
-    return data
-      .filter(d => d.total > 0)
-      .map(d => ({
-        name:  d.name,
-        x:     getMetric(d, xMetric),
-        y:     getMetric(d, yMetric),
-        size:  sizeMetric  ? getMetric(d, sizeMetric)  : null,
-        color: colorMetric ? getMetric(d, colorMetric) : null,
-        total: d.total,
-      }))
-      .filter(p => p.x !== null && p.y !== null)
-  }, [data, xMetric, yMetric, sizeMetric, colorMetric])
+  // X / Y どちらか null は描画対象外
+  const drawable = useMemo(() => points.filter(p => p.x !== null && p.y !== null), [points])
 
-  // 色マッピング用 min/max
-  const colorMinMax = useMemo(() => {
-    if (!colorMetric) return { min: 0, max: 0 }
-    const vs = points.map(p => p.color).filter((v): v is number => v !== null)
-    return { min: vs.length ? Math.min(...vs) : 0, max: vs.length ? Math.max(...vs) : 0 }
-  }, [points, colorMetric])
+  // groupKey → siblings: 重なり判定用に同一 groupKey の点を集約
+  const siblings = useMemo(() => {
+    const m = new Map<string, ScatterPoint[]>()
+    for (const p of drawable) {
+      if (!p.groupKey) continue
+      const arr = m.get(p.groupKey) ?? []
+      arr.push(p)
+      m.set(p.groupKey, arr)
+    }
+    return m
+  }, [drawable])
 
-  // サイズ範囲 (sqrt スケール)。ZAxis の range で recharts に任せる。
-  const zRange: [number, number] = sizeMetric ? [40, 600] : [120, 120]
+  const hoverSiblings = hover?.groupKey ? (siblings.get(hover.groupKey) ?? [hover]) : (hover ? [hover] : [])
+  const ROW_LIMIT = 12
 
-  const colorOf = (v: number | null): string => {
-    if (!colorMetric) return 'var(--accent)'
-    return colorForMetric(v, colorMetric, colorMinMax.min, colorMinMax.max)
-  }
+  // サイズ範囲 (sqrt スケール)。指定なしは ZAxis で一定。
+  const zRange: [number, number] = hasSize ? [40, 600] : [120, 120]
 
   return (
     <div className="chart-hover-area" style={{ position: 'relative' }}>
     <ResponsiveContainer width="100%" height={height}>
       <RScatterChart
-        margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
+        margin={{ top: 4, right: 8, left: 0, bottom: 24 }}
         onMouseLeave={() => setHover(null)}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         <XAxis
           type="number"
           dataKey="x"
-          name={METRIC_LABELS[xMetric]}
+          name={xLabel}
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}
-          tickFormatter={xMetric === 'win_rate' ? (v: number) => `${(v * 100).toFixed(0)}%` : undefined}
-          domain={xMetric === 'win_rate' ? [0, 1] : ['auto', 'auto']}
+          tickFormatter={xIsRate ? (v: number) => `${(v * 100).toFixed(0)}%` : undefined}
+          domain={xIsRate ? [0, 1] : ['auto', 'auto']}
+          label={{ value: xLabel, position: 'insideBottom', offset: -10, fill: 'var(--text-muted)', fontSize: 11 } as object}
         />
         <YAxis
           type="number"
           dataKey="y"
-          name={METRIC_LABELS[yMetric]}
+          name={yLabel}
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}
-          width={48}
-          tickFormatter={yMetric === 'win_rate' ? (v: number) => `${(v * 100).toFixed(0)}%` : undefined}
-          domain={yMetric === 'win_rate' ? [0, 1] : ['auto', 'auto']}
+          width={56}
+          tickFormatter={yIsRate ? (v: number) => `${(v * 100).toFixed(0)}%` : undefined}
+          domain={yIsRate ? [0, 1] : ['auto', 'auto']}
+          label={{ value: yLabel, angle: -90, position: 'insideLeft', offset: 12, fill: 'var(--text-muted)', fontSize: 11, style: { textAnchor: 'middle' } } as object}
         />
         <ZAxis type="number" dataKey="size" range={zRange} />
         <Scatter
-          data={points}
+          data={drawable}
           onMouseEnter={(p: any) => setHover(p)}
           isAnimationActive={false}
         >
-          {points.map((p, i) => (
-            <Cell key={i} fill={colorOf(p.color)} fillOpacity={0.85} stroke="var(--surface)" strokeWidth={0.5} />
+          {drawable.map((p, i) => (
+            <Cell key={i} fill={p.color} fillOpacity={fillOpacity} stroke="var(--surface)" strokeWidth={0.5} />
           ))}
         </Scatter>
       </RScatterChart>
     </ResponsiveContainer>
     {hover && (
-      <div className="cal-tooltip" style={{ position: 'absolute', right: 12, top: 12, pointerEvents: 'none', minWidth: 160 }}>
-        <div className="hover-tt-title">{nameTransform ? nameTransform(hover.name) : hover.name}</div>
-        <div className="hover-tt-row">{METRIC_LABELS[xMetric]}: {formatMetric(hover.x, xMetric)}</div>
-        <div className="hover-tt-row">{METRIC_LABELS[yMetric]}: {formatMetric(hover.y, yMetric)}</div>
-        {sizeMetric && (
-          <div className="hover-tt-row hover-tt-row--muted">{METRIC_LABELS[sizeMetric]}: {formatMetric(hover.size, sizeMetric)}</div>
-        )}
-        {colorMetric && (
-          <div className="hover-tt-row hover-tt-row--muted">{METRIC_LABELS[colorMetric]}: {formatMetric(hover.color, colorMetric)}</div>
+      <div className="cal-tooltip" style={{ position: 'absolute', right: 12, top: 12, pointerEvents: 'none', minWidth: 180, maxWidth: 280 }}>
+        {hoverSiblings.length > 1 ? (
+          <>
+            {/* 重なってる全件: 共通の x/y 等を 1 回 + 各点の rowText を並べる */}
+            <div className="hover-tt-title">{hover.tooltipRows.slice(0, 2).map(r => `${r.label} ${r.value}`).join(' / ')} <span className="hover-tt-row--muted">({hoverSiblings.length} 件)</span></div>
+            {hoverSiblings.slice(0, ROW_LIMIT).map((p, i) => (
+              <div key={i} className="hover-tt-row hover-tt-row--muted">{p.rowText ?? p.name}</div>
+            ))}
+            {hoverSiblings.length > ROW_LIMIT && (
+              <div className="hover-tt-row hover-tt-row--muted">他 {hoverSiblings.length - ROW_LIMIT} 件</div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="hover-tt-title">{hover.name}</div>
+            {hover.tooltipRows.map((r, i) => (
+              <div key={i} className={r.muted ? 'hover-tt-row hover-tt-row--muted' : 'hover-tt-row'}>
+                {r.label}: {r.value}
+              </div>
+            ))}
+          </>
         )}
       </div>
     )}

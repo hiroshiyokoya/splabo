@@ -13,7 +13,7 @@ import {
 import {
   SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable'
-import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats, GroupedStatsRow, GroupedStatsRow2D, CustomChart, GroupByKey } from '../types'
+import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats, BattleRow, GroupedStatsRow, GroupedStatsRow2D, CustomChart, GroupByKey } from '../types'
 import { filtersToRange, stageAbbr, modeLabel, ruleLabel, avgKillRatio } from '../types'
 import { CustomChartCard } from './CustomChartCard'
 import { ChartConfigModal } from './ChartConfigModal'
@@ -88,6 +88,8 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
   const [groupedStatsCache, setGroupedStatsCache] = useState<Partial<Record<GroupByKey, GroupedStatsRow[]>>>({})
   // ヒートマップ用の 2D キャッシュ。キーは `${groupBy}|${groupBy2}|${topN}`。
   const [grouped2dCache, setGrouped2dCache] = useState<Record<string, GroupedStatsRow2D[]>>({})
+  // バトル単位散布図のキャッシュ (フィルター変更時のみ再取得)
+  const [battleData, setBattleData] = useState<BattleRow[]>([])
   // モーダル状態：null=閉じる、{ chart: null }=新規、{ chart: 既存 }=編集
   const [modalState, setModalState] = useState<{ chart: CustomChart | null } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -116,13 +118,15 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
       stage: filters.stage.length > 0 ? filters.stage.join('|') : null,
     }
     // カスタムグラフが必要としている group_by を unique にまとめて 1 回ずつ取得。
-    // 1D: heatmap 以外。 2D: heatmap のみ。
+    // 1D: heatmap 以外。 2D: heatmap のみ。 BattleRow: scatter で dotUnit='battle' のみ。
     const neededGroups = Array.from(new Set(customCharts.filter(c => c.shape !== 'heatmap').map(c => c.groupBy)))
     const needed2dKeys = Array.from(new Set(
       customCharts
         .filter(c => c.shape === 'heatmap' && c.groupBy2)
         .map(c => `${c.groupBy}|${c.groupBy2}|${c.topN ?? 20}`)
     ))
+    const needsBattleData = customCharts.some(c => c.shape === 'scatter' && c.dotUnit === 'battle')
+
     Promise.all([
       invoke<Summary>('db_summary', filterArgs),
       invoke<BattleStats>('db_battle_stats', filterArgs),
@@ -136,11 +140,15 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
           topN: Number(tnStr),
         }).then(rows => [key, rows] as const)
       }),
+      needsBattleData
+        ? invoke<BattleRow[]>('db_list_battles', { ...filterArgs, limit: 10000, offset: 0, orderBy: 'played_at', orderAsc: false })
+        : Promise.resolve([] as BattleRow[]),
     ])
       .then((results) => {
         const [s, st, ...rest] = results as [Summary, BattleStats, ...unknown[]]
         const gpairs = rest.slice(0, neededGroups.length) as (readonly [GroupByKey, GroupedStatsRow[]])[]
-        const pairs2d = rest.slice(neededGroups.length) as (readonly [string, GroupedStatsRow2D[]])[]
+        const pairs2d = rest.slice(neededGroups.length, neededGroups.length + needed2dKeys.length) as (readonly [string, GroupedStatsRow2D[]])[]
+        const battleRows = rest[neededGroups.length + needed2dKeys.length] as BattleRow[]
         setSummary(s)
         setStats(st)
         const cache: Partial<Record<GroupByKey, GroupedStatsRow[]>> = {}
@@ -149,6 +157,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
         const cache2d: Record<string, GroupedStatsRow2D[]> = {}
         for (const [k, rows] of pairs2d) cache2d[k] = rows
         setGrouped2dCache(cache2d)
+        setBattleData(battleRows)
       })
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -275,6 +284,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
                     chart={c}
                     data={groupedStatsCache[c.groupBy] ?? []}
                     data2d={c.shape === 'heatmap' && c.groupBy2 ? grouped2dCache[`${c.groupBy}|${c.groupBy2}|${c.topN ?? 20}`] ?? [] : undefined}
+                    battleData={c.shape === 'scatter' && c.dotUnit === 'battle' ? battleData : undefined}
                     onEdit={() => handleEdit(c.id)}
                     onDelete={() => handleDelete(c.id)}
                     weaponImages={weaponImages}

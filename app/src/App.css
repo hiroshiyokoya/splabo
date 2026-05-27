@@ -15,19 +15,21 @@
   --draw:          #f59e0b;
   --sidebar-w:     180px;
 
-  /* カレンダーヒートマップ用のセル色 (GitHub 風 5 段階) */
-  --cell-empty:    #20203a;  /* 空 (バトル無し) */
-  --cell-sparse:   #2a2a3f;  /* サンプル不足のグレーアウト */
-  --cell-c1:       #2b3a16;
-  --cell-c2:       #587621;
-  --cell-c3:       #84a92e;
-  --cell-c4:       #aeda3b;
+  /* カレンダーヒートマップ用のセル色 (5 段階)
+     sequential は「ほぼ白 → accent (ライム)」、
+     divergent は「青 ← 白 → 赤」で、中央が暗くならないように白を通す */
+  --cell-empty:    #9c9caa;  /* 空 (バトル無し)。明るめのグレー */
+  --cell-sparse:   #c8c8d2;  /* サンプル不足。空より更に薄いグレー */
+  --cell-c1:       #f3f6e6;  /* 最薄 = ほぼ白 */
+  --cell-c2:       #e2efb6;
+  --cell-c3:       #d6ea7d;
+  --cell-c4:       #cce155;
   --cell-c5:       #c8f030;  /* 最濃 = accent */
-  /* 率系 (勝率) divergent: 赤 ←→ ニュートラル ←→ 青 */
+  /* 率系 (勝率) divergent: 強い赤 ← 白 → 強い青 */
   --cell-r1:       #b22f3f;  /* 強い赤 */
-  --cell-r2:       #de7785;
-  --cell-r3:       #4a4a6b;  /* ニュートラル */
-  --cell-r4:       #7fd9e3;
+  --cell-r2:       #e89e9e;  /* 薄い赤 */
+  --cell-r3:       #eeeef0;  /* 中央 = 白 (text 色と整合) */
+  --cell-r4:       #a4d2dd;  /* 薄い青 */
   --cell-r5:       #2998ad;  /* 強い青 */
 }
 
@@ -41,6 +43,38 @@
   min-width: 140px;
   z-index: 10;
 }
+
+/* カラーバー (カレンダー/ヒートマップの凡例) */
+.cal-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.cal-legend-label { font-weight: 600; margin-right: 4px; }
+.cal-legend-bar {
+  display: inline-flex;
+  gap: 2px;
+}
+.cal-legend-swatch {
+  display: inline-block;
+  width: 22px;
+  height: 12px;
+  border-radius: 2px;
+}
+.cal-legend-swatch--sparse { background: var(--cell-sparse); width: 14px; }
+.cal-legend-end { color: var(--text-muted); min-width: 28px; }
+.cal-legend-mid { color: var(--text-muted); }
+.cal-legend-sparse {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+}
+.cal-legend-sparse-text { font-size: 11px; }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 

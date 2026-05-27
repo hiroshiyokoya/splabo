@@ -61,22 +61,27 @@ export function HeatmapChart({
   yLabelTransform?: (s: string) => string
   minSampleSize?:   number
 }) {
+  // ツールチップ位置はマウスの clientX / clientY (viewport 基準)。
+  // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
   const [hover, setHover] = useState<{
-    x: number; y: number; xKey: string; yKey: string; value: number | null; total: number
+    mx: number; my: number; xKey: string; yKey: string; value: number | null; total: number
   } | null>(null)
 
   const group = metricGroup(metric)
 
-  const { xKeys, yKeys, cells, minVal, maxVal } = useMemo(() => {
+  const { xKeys, yKeys, cells, nameMap, minVal, maxVal } = useMemo(() => {
     // X / Y の存在キーを「バトル数合計が多い順」で抽出
     const xTotals = new Map<string, number>()
     const yTotals = new Map<string, number>()
     const cellMap = new Map<string, GroupedStatsRow2D>()
+    const nameMap = new Map<string, string>()  // key → display name
 
     for (const row of data) {
       xTotals.set(row.key_x, (xTotals.get(row.key_x) ?? 0) + row.total)
       yTotals.set(row.key_y, (yTotals.get(row.key_y) ?? 0) + row.total)
       cellMap.set(`${row.key_x}|${row.key_y}`, row)
+      nameMap.set(row.key_x, row.name_x ?? row.key_x)
+      nameMap.set(row.key_y, row.name_y ?? row.key_y)
     }
 
     const xKeys = Array.from(xTotals.entries()).sort((a, b) => b[1] - a[1]).map(e => e[0])
@@ -96,19 +101,38 @@ export function HeatmapChart({
     return {
       xKeys, yKeys,
       cells: cellMap,
+      nameMap,
       minVal: mn === Number.POSITIVE_INFINITY ? 0 : mn,
       maxVal: mx === Number.NEGATIVE_INFINITY ? 0 : mx,
     }
   }, [data, metric, group, minSampleSize])
 
-  const width  = PAD_LEFT + xKeys.length * (CELL_W + GAP) + 8
-  const height = PAD_TOP  + yKeys.length * (CELL_H + GAP) + 8
+  const GRID_H = yKeys.length * (CELL_H + GAP)
+  const width  = Math.max(PAD_LEFT + xKeys.length * (CELL_W + GAP) + 8, 360)
+  const height = PAD_TOP + GRID_H + 8
 
+  /** カラーバー（凡例）用の色順・ラベル */
+  const LEGEND_COUNT  = ['var(--cell-c1)', 'var(--cell-c2)', 'var(--cell-c3)', 'var(--cell-c4)', 'var(--cell-c5)']
+  const LEGEND_RATE   = ['var(--cell-r1)', 'var(--cell-r2)', 'var(--cell-r3)', 'var(--cell-r4)', 'var(--cell-r5)']
+  const legendColors = group === 'rate' ? LEGEND_RATE : LEGEND_COUNT
+  const fmtLegend = (v: number): string => {
+    if (metric === 'win_rate') return `${Math.round(v * 100)}%`
+    if (metric === 'avg_duration') return `${Math.round(v)}s`
+    if (metric === 'total' || metric === 'wins') return Math.round(v).toString()
+    return v.toFixed(1)
+  }
+  const legendLeft  = group === 'rate' ? '0%'  : group === 'count' ? '0' : fmtLegend(minVal)
+  const legendMid   = group === 'rate' ? '50%' : null
+  const legendRight = group === 'rate' ? '100%' : fmtLegend(maxVal)
+
+  // 表示ラベル: nameMap (BE が返す display name) を引いてから、必要ならカテゴリ別に整形。
   function xLabel(k: string): string {
-    return xLabelTransform ? xLabelTransform(k) : k
+    const display = nameMap.get(k) ?? k
+    return xLabelTransform ? xLabelTransform(display) : display
   }
   function yLabel(k: string): string {
-    return yLabelTransform ? yLabelTransform(k) : k
+    const display = nameMap.get(k) ?? k
+    return yLabelTransform ? yLabelTransform(display) : display
   }
 
   return (
@@ -160,21 +184,41 @@ export function HeatmapChart({
                 fill={fill}
                 stroke="var(--surface)"
                 strokeWidth={0.5}
-                onMouseEnter={() => setHover({ x, y, xKey: xk, yKey: yk, value: v, total })}
+                onMouseEnter={(e) => setHover({ mx: e.clientX, my: e.clientY, xKey: xk, yKey: yk, value: v, total })}
+                onMouseMove={(e) => setHover(prev => prev ? { ...prev, mx: e.clientX, my: e.clientY } : prev)}
                 onMouseLeave={() => setHover(null)}
               />
             )
           })
         )}
       </svg>
+      {/* カラーバー (凡例) を SVG の下に HTML として配置 */}
+      <div className="cal-legend">
+        <span className="cal-legend-label">{METRIC_LABELS[metric]}</span>
+        <span className="cal-legend-end">{legendLeft}</span>
+        <span className="cal-legend-bar">
+          {legendColors.map((c, i) => (
+            <span key={i} className="cal-legend-swatch" style={{ background: c }} />
+          ))}
+        </span>
+        {legendMid && <span className="cal-legend-mid">{legendMid}</span>}
+        <span className="cal-legend-end">{legendRight}</span>
+        {(group === 'rate' || group === 'average') && (
+          <span className="cal-legend-sparse">
+            <span className="cal-legend-swatch cal-legend-swatch--sparse" />
+            <span className="cal-legend-sparse-text">サンプル不足</span>
+          </span>
+        )}
+      </div>
       {hover && (
         <div
           className="cal-tooltip"
           style={{
-            position: 'absolute',
-            left:     Math.min(hover.x + 18, width - 180),
-            top:      hover.y + 18,
+            position: 'fixed',
+            left:     Math.min(hover.mx + 14, window.innerWidth  - 220),
+            top:      Math.min(hover.my + 14, window.innerHeight - 100),
             pointerEvents: 'none',
+            zIndex: 1000,
           }}
         >
           <div className="hover-tt-title">{xLabel(hover.xKey)} × {yLabel(hover.yKey)}</div>

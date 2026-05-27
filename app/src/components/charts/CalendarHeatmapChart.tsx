@@ -16,11 +16,25 @@ import { METRIC_LABELS, getMetric, formatMetric, metricGroup } from '../../types
  * - データが無い日は空セル (薄いグレー)
  */
 
-const CELL  = 12
-const GAP   = 2
+const CELL  = 24
+const GAP   = 4
 const PITCH = CELL + GAP
 
 const DOW_LABELS = ['月', '火', '水', '木', '金', '土', '日']
+
+/** カラーバー (凡例) を描画するための、メトリクスグループごとの色順序。
+ *  count / average は 5 段階 (薄い→濃い)、rate は 5 段階 (赤→青) divergent。 */
+const COUNT_COLORS  = ['var(--cell-c1)', 'var(--cell-c2)', 'var(--cell-c3)', 'var(--cell-c4)', 'var(--cell-c5)']
+const AVG_COLORS    = COUNT_COLORS
+const RATE_COLORS   = ['var(--cell-r1)', 'var(--cell-r2)', 'var(--cell-r3)', 'var(--cell-r4)', 'var(--cell-r5)']
+
+/** メトリクス値を凡例ラベル用に短く整形。 */
+function fmtLegend(v: number, metric: MetricKey): string {
+  if (metric === 'win_rate') return `${Math.round(v * 100)}%`
+  if (metric === 'avg_duration') return `${Math.round(v)}s`
+  if (metric === 'total' || metric === 'wins') return Math.round(v).toString()
+  return v.toFixed(1)
+}
 
 /** Date を UTC 基準で yyyy-mm-dd 文字列に。 */
 function toIsoDate(d: Date): string {
@@ -87,7 +101,9 @@ export function CalendarHeatmapChart({
   metric:         MetricKey
   minSampleSize?: number
 }) {
-  const [hover, setHover] = useState<{ x: number; y: number; date: string; value: number | null; total: number } | null>(null)
+  // ツールチップ位置はマウスの clientX / clientY (viewport 基準) を使う。
+  // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
+  const [hover, setHover] = useState<{ mx: number; my: number; date: string; value: number | null; total: number } | null>(null)
 
   const group = metricGroup(metric)
 
@@ -150,8 +166,21 @@ export function CalendarHeatmapChart({
     return averageColor(value, minVal, maxVal)
   }
 
-  const width  = weeks.length * PITCH + 22
-  const height = 7 * PITCH + 16
+  const GRID_TOP = 16
+  const GRID_HEIGHT = 7 * PITCH
+
+  const width  = Math.max(weeks.length * PITCH + 26, 280)
+  const height = GRID_TOP + GRID_HEIGHT + 8
+
+  // 「今日」より後 (未来) のセルは描画しない。UTC ベース。
+  const now = new Date()
+  const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+
+  /** 凡例ラベル: 左端値・中央値・右端値 */
+  const legendColors = group === 'rate' ? RATE_COLORS : group === 'count' ? COUNT_COLORS : AVG_COLORS
+  const legendLeft   = group === 'rate' ? '0%'  : group === 'count' ? '0' : fmtLegend(minVal, metric)
+  const legendMid    = group === 'rate' ? '50%' : null
+  const legendRight  = group === 'rate' ? '100%' : fmtLegend(maxVal, metric)
 
   return (
     <div className="chart-hover-area" style={{ position: 'relative', overflow: 'auto' }}>
@@ -175,6 +204,8 @@ export function CalendarHeatmapChart({
           Array.from({ length: 7 }, (_, di) => {
             const cellDate = new Date(weekStart)
             cellDate.setUTCDate(weekStart.getUTCDate() + di)
+            // 今日より後 (未来) のセルは描画しない
+            if (cellDate > todayUtc) return null
             const dateStr = toIsoDate(cellDate)
             const entry = dataMap.get(dateStr)
             const v = entry?.value ?? null
@@ -192,21 +223,41 @@ export function CalendarHeatmapChart({
                 height={CELL}
                 rx={2}
                 fill={fill}
-                onMouseEnter={() => setHover({ x, y, date: dateStr, value: v, total })}
+                onMouseEnter={(e) => setHover({ mx: e.clientX, my: e.clientY, date: dateStr, value: v, total })}
+                onMouseMove={(e) => setHover(prev => prev ? { ...prev, mx: e.clientX, my: e.clientY } : prev)}
                 onMouseLeave={() => setHover(null)}
               />
             )
           })
         )}
       </svg>
+      {/* カラーバー (凡例) を SVG の下に HTML として配置 */}
+      <div className="cal-legend">
+        <span className="cal-legend-label">{METRIC_LABELS[metric]}</span>
+        <span className="cal-legend-end">{legendLeft}</span>
+        <span className="cal-legend-bar">
+          {legendColors.map((c, i) => (
+            <span key={i} className="cal-legend-swatch" style={{ background: c }} />
+          ))}
+        </span>
+        {legendMid && <span className="cal-legend-mid">{legendMid}</span>}
+        <span className="cal-legend-end">{legendRight}</span>
+        {(group === 'rate' || group === 'average') && (
+          <span className="cal-legend-sparse">
+            <span className="cal-legend-swatch cal-legend-swatch--sparse" />
+            <span className="cal-legend-sparse-text">サンプル不足</span>
+          </span>
+        )}
+      </div>
       {hover && (
         <div
           className="cal-tooltip"
           style={{
-            position: 'absolute',
-            left:     Math.min(hover.x + 18, (weeks.length * PITCH + 22) - 160),
-            top:      hover.y + 18,
+            position: 'fixed',
+            left:     Math.min(hover.mx + 14, window.innerWidth  - 200),
+            top:      Math.min(hover.my + 14, window.innerHeight - 100),
             pointerEvents: 'none',
+            zIndex: 1000,
           }}
         >
           <div className="hover-tt-title">{hover.date}</div>
