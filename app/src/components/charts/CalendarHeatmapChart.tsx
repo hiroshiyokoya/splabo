@@ -87,7 +87,9 @@ export function CalendarHeatmapChart({
   metric:         MetricKey
   minSampleSize?: number
 }) {
-  const [hover, setHover] = useState<{ x: number; y: number; date: string; value: number | null; total: number } | null>(null)
+  // ツールチップ位置はマウスの clientX / clientY (viewport 基準) を使う。
+  // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
+  const [hover, setHover] = useState<{ mx: number; my: number; date: string; value: number | null; total: number } | null>(null)
 
   const group = metricGroup(metric)
 
@@ -192,7 +194,8 @@ export function CalendarHeatmapChart({
                 height={CELL}
                 rx={2}
                 fill={fill}
-                onMouseEnter={() => setHover({ x, y, date: dateStr, value: v, total })}
+                onMouseEnter={(e) => setHover({ mx: e.clientX, my: e.clientY, date: dateStr, value: v, total })}
+                onMouseMove={(e) => setHover(prev => prev ? { ...prev, mx: e.clientX, my: e.clientY } : prev)}
                 onMouseLeave={() => setHover(null)}
               />
             )
@@ -203,10 +206,11 @@ export function CalendarHeatmapChart({
         <div
           className="cal-tooltip"
           style={{
-            position: 'absolute',
-            left:     Math.min(hover.x + 18, (weeks.length * PITCH + 22) - 160),
-            top:      hover.y + 18,
+            position: 'fixed',
+            left:     Math.min(hover.mx + 14, window.innerWidth  - 200),
+            top:      Math.min(hover.my + 14, window.innerHeight - 100),
             pointerEvents: 'none',
+            zIndex: 1000,
           }}
         >
           <div className="hover-tt-title">{hover.date}</div>

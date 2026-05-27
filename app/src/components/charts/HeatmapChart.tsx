@@ -61,8 +61,10 @@ export function HeatmapChart({
   yLabelTransform?: (s: string) => string
   minSampleSize?:   number
 }) {
+  // ツールチップ位置はマウスの clientX / clientY (viewport 基準)。
+  // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
   const [hover, setHover] = useState<{
-    x: number; y: number; xKey: string; yKey: string; value: number | null; total: number
+    mx: number; my: number; xKey: string; yKey: string; value: number | null; total: number
   } | null>(null)
 
   const group = metricGroup(metric)
@@ -160,7 +162,8 @@ export function HeatmapChart({
                 fill={fill}
                 stroke="var(--surface)"
                 strokeWidth={0.5}
-                onMouseEnter={() => setHover({ x, y, xKey: xk, yKey: yk, value: v, total })}
+                onMouseEnter={(e) => setHover({ mx: e.clientX, my: e.clientY, xKey: xk, yKey: yk, value: v, total })}
+                onMouseMove={(e) => setHover(prev => prev ? { ...prev, mx: e.clientX, my: e.clientY } : prev)}
                 onMouseLeave={() => setHover(null)}
               />
             )
@@ -171,10 +174,11 @@ export function HeatmapChart({
         <div
           className="cal-tooltip"
           style={{
-            position: 'absolute',
-            left:     Math.min(hover.x + 18, width - 180),
-            top:      hover.y + 18,
+            position: 'fixed',
+            left:     Math.min(hover.mx + 14, window.innerWidth  - 220),
+            top:      Math.min(hover.my + 14, window.innerHeight - 100),
             pointerEvents: 'none',
+            zIndex: 1000,
           }}
         >
           <div className="hover-tt-title">{xLabel(hover.xKey)} × {yLabel(hover.yKey)}</div>
