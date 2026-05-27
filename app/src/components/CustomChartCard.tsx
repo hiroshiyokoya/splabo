@@ -318,6 +318,8 @@ function renderChartBody(
         hasSize={!!chart.sizeMetric}
         // バトル単位は重なりが多いので透過を強める (ジッタと合わせて密度が見える)
         fillOpacity={isBattle ? 0.6 : 0.85}
+        // サイズメトリクス未指定時の一定サイズ。武器/ステージはドットが少ないので大きめ。
+        constSize={isBattle ? 120 : 280}
       />
     )
   }

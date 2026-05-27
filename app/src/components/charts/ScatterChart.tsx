@@ -27,7 +27,7 @@ export interface ScatterPoint {
 }
 
 export function ScatterChart({
-  points, xLabel, yLabel, xIsRate, yIsRate, hasSize, fillOpacity = 0.85, height = 320,
+  points, xLabel, yLabel, xIsRate, yIsRate, hasSize, fillOpacity = 0.85, constSize = 120, height = 320,
 }: {
   points:       ScatterPoint[]
   xLabel:       string
@@ -37,6 +37,9 @@ export function ScatterChart({
   hasSize?:     boolean
   /** ドットの塗り透過度。バトル単位 (重なり多) では 0.4 程度を渡して密度を見せる。 */
   fillOpacity?: number
+  /** サイズメトリクス未指定時の一定サイズ。武器/ステージは大きめ (280)、バトルは小さめ (120) を想定。
+   *  ZAxis range のピクセル面積。 */
+  constSize?:   number
   height?:      number
 }) {
   const [hover, setHover] = useState<ScatterPoint | null>(null)
@@ -59,8 +62,8 @@ export function ScatterChart({
   const hoverSiblings = hover?.groupKey ? (siblings.get(hover.groupKey) ?? [hover]) : (hover ? [hover] : [])
   const ROW_LIMIT = 12
 
-  // サイズ範囲 (sqrt スケール)。指定なしは ZAxis で一定。
-  const zRange: [number, number] = hasSize ? [40, 600] : [120, 120]
+  // サイズ範囲 (sqrt スケール)。指定なしは ZAxis で一定サイズ。
+  const zRange: [number, number] = hasSize ? [40, 600] : [constSize, constSize]
 
   return (
     <div className="chart-hover-area" style={{ position: 'relative' }}>
