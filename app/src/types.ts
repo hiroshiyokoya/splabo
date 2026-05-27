@@ -208,6 +208,13 @@ export interface WeaponRecord {
   total: number
   wins: number
   draws: number
+  // WeaponRecordQuery 由来 (#49)。未取得武器は null。
+  // FE 側は null を 0 にフォールバックするか「未取得」表示にするか選ぶ。
+  weapon_level: number | null
+  win_count_total: number | null
+  paint_point_total: number | null
+  weapon_power: number | null
+  weapon_power_max: number | null
 }
 
 export interface AiSettings {

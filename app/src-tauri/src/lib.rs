@@ -359,6 +359,15 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
     splatnet3::cache_sub_special_images(&db, &app, &client).await?;
     splatnet3::cache_ability_images(&db, &app, &client).await?;
     splatnet3::cache_all_weapon_images(&db, &app, &client).await?;
+
+    // WeaponRecordQuery (#49) も同じ「武器データを更新」フローで取得する。
+    // ここではユーザー固有統計（熟練度・勝利数・塗りポイント）の upsert と、
+    // 全武器分の主・サブ・SP 画像キャッシュを行う（バトル未登場武器のアイコン欠け解消も兼ねる）。
+    // 失敗してもメインフローは止めない（戻り値の count はそのまま）。
+    if let Err(e) = splatnet3::fetch_and_store_weapon_records(&db, &client, &app).await {
+        log::warn!("[weapon_records] 取得スキップ: {e}");
+    }
+
     Ok(count)
 }
 

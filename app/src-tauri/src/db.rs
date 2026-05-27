@@ -337,6 +337,12 @@ pub struct WeaponRecord {
     pub total: i64,
     pub wins: i64,
     pub draws: i64,
+    // weapon_records からの LEFT JOIN 列 (#49)。未取得武器は NULL。
+    pub weapon_level: Option<i64>,
+    pub win_count_total: Option<i64>,
+    pub paint_point_total: Option<i64>,
+    pub weapon_power: Option<f64>,
+    pub weapon_power_max: Option<f64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -2084,6 +2090,49 @@ pub async fn upsert_weapon(
     Ok(())
 }
 
+/// WeaponRecordQuery で取得したユーザー固有の武器統計を upsert する (#49)。
+/// weapon_id は weapons.name と一致するキー（武器の日本語名）。
+pub async fn upsert_weapon_record(
+    pool: &DbPool,
+    weapon_id: &str,
+    weapon_level: i64,
+    win_count_total: i64,
+    paint_point_total: i64,
+    // 以下は WeaponRecordQuery には含まれないが、将来の別クエリで埋められる想定でカラムだけ用意。
+    big_run_level: Option<i64>,
+    weapon_power: Option<f64>,
+    weapon_power_max: Option<f64>,
+) -> Result<(), String> {
+    let now_ts = chrono::Utc::now().timestamp();
+    sqlx::query(
+        "INSERT INTO weapon_records (
+            weapon_id, weapon_level, big_run_level,
+            win_count_total, paint_point_total,
+            weapon_power, weapon_power_max, last_fetched_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(weapon_id) DO UPDATE SET
+            weapon_level      = excluded.weapon_level,
+            big_run_level     = COALESCE(excluded.big_run_level, weapon_records.big_run_level),
+            win_count_total   = excluded.win_count_total,
+            paint_point_total = excluded.paint_point_total,
+            weapon_power      = COALESCE(excluded.weapon_power, weapon_records.weapon_power),
+            weapon_power_max  = COALESCE(excluded.weapon_power_max, weapon_records.weapon_power_max),
+            last_fetched_at   = excluded.last_fetched_at",
+    )
+    .bind(weapon_id)
+    .bind(weapon_level)
+    .bind(big_run_level)
+    .bind(win_count_total)
+    .bind(paint_point_total)
+    .bind(weapon_power)
+    .bind(weapon_power_max)
+    .bind(now_ts)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| format!("weapon_records upsert 失敗 ({weapon_id}): {e}"))?;
+    Ok(())
+}
+
 /// サブ・スペシャルウェポンの画像 URL を weapons テーブルに保存する。
 /// 既存の値がある場合は上書きしない。
 pub async fn update_weapon_sub_special_images(
@@ -2166,6 +2215,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// version 9: 新 battle テーブルに表示用カラム (knockout/sub_weapon/special_weapon/awards/my_team/other_teams) を追加し、旧 battles から backfill
 /// version 10: 既存バトルの gear_configuration を my_team/other_teams JSON から backfill
 /// version 11: battle.rule_id を nullable に変更し、旧 battles / battle_players テーブルを drop
+/// version 12: WeaponRecordQuery 用 weapon_records テーブル追加 (#49) — 武器熟練度・勝利数・塗りポイント
 pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
     let ver_row = sqlx::query("PRAGMA user_version")
         .fetch_one(pool.as_ref())
@@ -2173,7 +2223,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 11 {
+    if current_version >= 12 {
         return Ok(0); // 最新バージョンに達している
     }
 
@@ -2977,6 +3027,36 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         log::info!("migrate v11: battle.rule_id を nullable 化、旧 battles / battle_players を drop");
     }
 
+    if current_version < 12 {
+        // WeaponRecordQuery 用テーブル (#49)。
+        // weapon_id は weapons.name と一致させる（旧 weapons の PK が name のため、
+        // db_list_weapons の LEFT JOIN がそのまま使える）。
+        // bigRunLevel / weaponPower / weaponPowerMax は WeaponRecordQuery 自体には含まれない
+        // 想定外フィールドだが、将来の別クエリで埋める可能性に備えてカラムだけ用意しておく。
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS weapon_records (
+                weapon_id          TEXT    PRIMARY KEY,
+                weapon_level       INTEGER NOT NULL DEFAULT 0,
+                big_run_level      INTEGER,
+                win_count_total    INTEGER NOT NULL DEFAULT 0,
+                paint_point_total  INTEGER NOT NULL DEFAULT 0,
+                weapon_power       REAL,
+                weapon_power_max   REAL,
+                last_fetched_at    INTEGER
+            )",
+        )
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| format!("v12 weapon_records 作成失敗: {e}"))?;
+
+        sqlx::query("PRAGMA user_version = 12")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        log::info!("migrate v12: weapon_records テーブルを追加");
+    }
+
     Ok(updated)
 }
 
@@ -3067,14 +3147,22 @@ pub fn extract_stage_numeric_id(b64_id: &str) -> String {
 
 #[tauri::command]
 pub async fn db_list_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<WeaponRecord>, String> {
+    // weapon_records は LEFT JOIN なので未取得武器は NULL のまま返す。
+    // FE 側で NULL を 0 にフォールバックするか、未取得表示にするかを選ぶ。
     let rows = sqlx::query_as::<_, WeaponRecord>(
         "SELECT w.name, w.category, w.sub_weapon, w.special_weapon,
                 w.sub_weapon_image, w.special_weapon_image,
                 COUNT(b.id) as total,
                 COALESCE(SUM(CASE WHEN b.result='win'  THEN 1 ELSE 0 END), 0) as wins,
-                COALESCE(SUM(CASE WHEN b.result='draw' THEN 1 ELSE 0 END), 0) as draws
+                COALESCE(SUM(CASE WHEN b.result='draw' THEN 1 ELSE 0 END), 0) as draws,
+                wr.weapon_level      as weapon_level,
+                wr.win_count_total   as win_count_total,
+                wr.paint_point_total as paint_point_total,
+                wr.weapon_power      as weapon_power,
+                wr.weapon_power_max  as weapon_power_max
          FROM weapons w
          LEFT JOIN battles b ON b.weapon = w.name
+         LEFT JOIN weapon_records wr ON wr.weapon_id = w.name
          GROUP BY w.name
          ORDER BY CASE WHEN w.category = '' OR w.category IS NULL THEN 1 ELSE 0 END,
                   w.category, total DESC, w.name",
