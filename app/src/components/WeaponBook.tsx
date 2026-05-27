@@ -1,12 +1,45 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { WeaponRecord } from '../types'
+import type { GroupedStatsRow, WeaponRecord } from '../types'
+import { WeaponDetailModal } from './WeaponDetailModal'
 
 // Dashboard.winRateColor と同期。
 function winRateColor(rate: number): string {
   if (rate >= 0.55) return '#34d399'
   if (rate >= 0.45) return '#fb923c'
   return '#f472b6'
+}
+
+// 大きい数値を「12.3万」短縮表示。
+function shortNum(n: number | null | undefined): string {
+  if (n === null || n === undefined) return '—'
+  if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(2)}億`
+  if (n >= 10_000)      return `${(n / 10_000).toFixed(n >= 100_000 ? 1 : 2)}万`
+  return n.toLocaleString()
+}
+
+/** 平均統計（K/D/A/SP/inked/duration）用の小行。 */
+function statLine(label: string, value: string): { label: string; value: string } {
+  return { label, value }
+}
+
+// カード一覧のソート種別。
+// 仕様：ブキチャレパワー系・ビッグラン熟練度は WeaponRecordQuery で取れないため除外（#149 事前共有）。
+type SortKey =
+  | 'total'           // バトル数（既定）
+  | 'win_rate'        // 勝率
+  | 'weapon_level'    // 熟練度
+  | 'win_count_total' // 勝利数
+  | 'paint_point_total' // 総塗りポイント
+  | 'name'            // 名前（あいうえお）
+
+const SORT_LABELS: Record<SortKey, string> = {
+  total:             'バトル数',
+  win_rate:          '勝率',
+  weapon_level:      '熟練度',
+  win_count_total:   '勝利数',
+  paint_point_total: '総塗',
+  name:              '名前',
 }
 
 export function WeaponBook() {
@@ -18,6 +51,10 @@ export function WeaponBook() {
   const [category,       setCategory]       = useState<string | null>(null)
   const [subWeapon,      setSubWeapon]      = useState<string | null>(null)
   const [specialWeapon,  setSpecialWeapon]  = useState<string | null>(null)
+  const [sortKey,        setSortKey]        = useState<SortKey>('total')
+  const [selected,       setSelected]       = useState<WeaponRecord | null>(null)
+  // 武器ごとの平均統計（K/D/A/SP/inked/duration）。db_grouped_stats(group_by='weapon') を 1 回呼んでマップ化。
+  const [statsByWeapon,  setStatsByWeapon]  = useState<Map<string, GroupedStatsRow>>(new Map())
 
   useEffect(() => {
     invoke<WeaponRecord[]>('db_list_weapons')
@@ -65,17 +102,45 @@ export function WeaponBook() {
       })
       .catch(console.error)
       .finally(() => setLoading(false))
+
+    // 武器ごとの平均統計を 1 回まとめて取得。フィルタ無しで全期間。
+    invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'weapon' })
+      .then(rows => setStatsByWeapon(new Map(rows.map(r => [r.key, r]))))
+      .catch(console.error)
   }, [])
 
   const categories     = [...new Set(weapons.map(w => w.category))].filter(Boolean).sort()
   const subWeapons     = [...new Set(weapons.map(w => w.sub_weapon).filter((s): s is string => !!s))].sort()
   const specialWeapons = [...new Set(weapons.map(w => w.special_weapon).filter((s): s is string => !!s))].sort()
 
-  const filtered = weapons.filter(w =>
-    (!category      || w.category       === category) &&
-    (!subWeapon     || w.sub_weapon     === subWeapon) &&
-    (!specialWeapon || w.special_weapon === specialWeapon)
-  )
+  const filtered = useMemo(() => {
+    const arr = weapons.filter(w =>
+      (!category      || w.category       === category) &&
+      (!subWeapon     || w.sub_weapon     === subWeapon) &&
+      (!specialWeapon || w.special_weapon === specialWeapon)
+    )
+    // ソート：null は常に末尾に流す。
+    const cmpNum = (a: number | null, b: number | null) => {
+      if (a === null && b === null) return 0
+      if (a === null) return  1
+      if (b === null) return -1
+      return b - a // 降順
+    }
+    const winRate = (w: WeaponRecord): number | null => {
+      const dec = w.total - w.draws
+      return dec > 0 ? w.wins / dec : null
+    }
+    return [...arr].sort((a, b) => {
+      switch (sortKey) {
+        case 'total':             return b.total - a.total
+        case 'win_rate':          return cmpNum(winRate(a), winRate(b))
+        case 'weapon_level':      return cmpNum(a.weapon_level,      b.weapon_level)
+        case 'win_count_total':   return cmpNum(a.win_count_total,   b.win_count_total)
+        case 'paint_point_total': return cmpNum(a.paint_point_total, b.paint_point_total)
+        case 'name':              return a.name.localeCompare(b.name, 'ja')
+      }
+    })
+  }, [weapons, category, subWeapon, specialWeapon, sortKey])
 
   const hasFilter = !!(category || subWeapon || specialWeapon)
 
@@ -93,6 +158,18 @@ export function WeaponBook() {
         {hasFilter && (
           <button className="filter-reset-btn" onClick={reset} style={{ marginLeft: 8 }}>✕ リセット</button>
         )}
+        <div className="weapon-book-sort">
+          <label htmlFor="weapon-sort">並び替え</label>
+          <select
+            id="weapon-sort"
+            value={sortKey}
+            onChange={e => setSortKey(e.target.value as SortKey)}
+          >
+            {(Object.keys(SORT_LABELS) as SortKey[]).map(k => (
+              <option key={k} value={k}>{SORT_LABELS[k]}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="category-tabs">
@@ -160,28 +237,67 @@ export function WeaponBook() {
             <WeaponCard
               key={w.name}
               weapon={w}
+              avgStats={statsByWeapon.get(w.name) ?? null}
               image={weaponImages.get(w.name) ?? null}
               subImage={w.sub_weapon ? (subImages.get(w.sub_weapon) ?? null) : null}
               spImage={w.special_weapon ? (spImages.get(w.special_weapon) ?? null) : null}
+              onClick={() => setSelected(w)}
             />
           ))}
         </div>
+      )}
+
+      {selected && (
+        <WeaponDetailModal
+          weapon={selected}
+          image={weaponImages.get(selected.name) ?? null}
+          subImage={selected.sub_weapon ? (subImages.get(selected.sub_weapon) ?? null) : null}
+          spImage={selected.special_weapon ? (spImages.get(selected.special_weapon) ?? null) : null}
+          onClose={() => setSelected(null)}
+        />
       )}
     </div>
   )
 }
 
-function WeaponCard({ weapon, image, subImage, spImage }: {
-  weapon: WeaponRecord
-  image: string | null
+function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
+  weapon:   WeaponRecord
+  avgStats: GroupedStatsRow | null
+  image:    string | null
   subImage: string | null
-  spImage: string | null
+  spImage:  string | null
+  onClick:  () => void
 }) {
   const decisive = weapon.total - weapon.draws
   const winRate = decisive > 0 ? weapon.wins / decisive : null
 
+  // 平均 K/D = K/D 比。0 除算は '—'。
+  const kdStr =
+    !avgStats || avgStats.avg_kill === null || avgStats.avg_death === null
+      ? '—'
+      : avgStats.avg_death === 0
+        ? '∞'
+        : (avgStats.avg_kill / avgStats.avg_death).toFixed(2)
+
+  // 2 列のサマリ：左に公式統計、右に平均統計。バトル 0 戦の武器は最小カードのままにする。
+  const officialRows = weapon.total > 0 ? [
+    statLine('Lv',  weapon.weapon_level    !== null ? String(weapon.weapon_level) : '—'),
+    statLine('勝',  weapon.win_count_total !== null ? weapon.win_count_total.toLocaleString() : '—'),
+    statLine('塗',  shortNum(weapon.paint_point_total)),
+  ] : []
+  const avgRows = (weapon.total > 0 && avgStats) ? [
+    statLine('K',   avgStats.avg_kill    !== null ? avgStats.avg_kill.toFixed(1)    : '—'),
+    statLine('A',   avgStats.avg_assist  !== null ? avgStats.avg_assist.toFixed(1)  : '—'),
+    statLine('D',   avgStats.avg_death   !== null ? avgStats.avg_death.toFixed(1)   : '—'),
+    statLine('K/D', kdStr),
+    statLine('SP',  avgStats.avg_special !== null ? avgStats.avg_special.toFixed(1) : '—'),
+    statLine('塗均', avgStats.avg_inked  !== null ? Math.round(avgStats.avg_inked).toLocaleString() : '—'),
+  ] : []
+
   return (
-    <div className="weapon-card">
+    <div className="weapon-card weapon-card--clickable" onClick={onClick} role="button" tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }}
+    >
       <div className="weapon-card-icon-wrap">
         {image
           ? <img src={image} alt={weapon.name} className="weapon-card-icon" />
@@ -196,13 +312,33 @@ function WeaponCard({ weapon, image, subImage, spImage }: {
       )}
       <div className="weapon-card-name" title={weapon.name}>{weapon.name}</div>
       {weapon.total > 0 ? (
-        <div className="weapon-card-stats">
-          <span className="weapon-card-stat">{weapon.total}試合</span>
-          <span
-            className="weapon-card-stat weapon-card-winrate"
-            style={{ color: winRateColor(winRate!) }}
-          >{(winRate! * 100).toFixed(1)}%</span>
-        </div>
+        <>
+          <div className="weapon-card-stats">
+            <span className="weapon-card-stat">{weapon.total}試合</span>
+            <span
+              className="weapon-card-stat weapon-card-winrate"
+              style={{ color: winRateColor(winRate!) }}
+            >{(winRate! * 100).toFixed(1)}%</span>
+          </div>
+          <div className="weapon-card-stats-grid">
+            <div className="weapon-card-stats-col">
+              {officialRows.map(r => (
+                <div key={r.label} className="weapon-card-mini">
+                  <span className="weapon-card-mini-label">{r.label}</span>
+                  <span className="weapon-card-mini-value">{r.value}</span>
+                </div>
+              ))}
+            </div>
+            <div className="weapon-card-stats-col">
+              {avgRows.map(r => (
+                <div key={r.label} className="weapon-card-mini">
+                  <span className="weapon-card-mini-label">{r.label}</span>
+                  <span className="weapon-card-mini-value">{r.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
       ) : (
         <div className="weapon-card-stats weapon-card-stats--unused">未使用</div>
       )}
