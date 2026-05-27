@@ -104,18 +104,20 @@ body {
 }
 
 .logo {
-  font-family: 'Fredoka', system-ui, 'Segoe UI', Roboto, sans-serif;
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--accent);
-  padding: 0 16px 20px;
-  letter-spacing: 0.02em;
+  padding: 4px 16px 20px;
   background: none;
   border: none;
   cursor: pointer;
   text-align: left;
   width: 100%;
+  display: block;
   transition: opacity 0.15s;
+}
+.logo img {
+  display: block;
+  width: 100%;
+  max-width: 160px;
+  height: auto;
 }
 .logo:hover { opacity: 0.8; }
 
@@ -1368,10 +1370,11 @@ body {
   gap: 12px !important;
 }
 .about-logo {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--accent);
-  letter-spacing: 0.05em;
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+  margin: 0 auto;
 }
 .about-version {
   font-size: 13px;

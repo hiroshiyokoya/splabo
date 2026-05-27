@@ -170,7 +170,9 @@ export default function App() {
   return (
     <div className="app">
       <nav className="sidebar">
-        <button className="logo" onClick={() => setShowAbout(true)}>chartoon</button>
+        <button className="logo" onClick={() => setShowAbout(true)} aria-label="chartoon について">
+          <img src="/chartoon-logo.png" alt="chartoon" />
+        </button>
         <NavItem id="dashboard" icon="📊" label="ダッシュボード" active={tab} onClick={setTab} />
         <NavItem id="battles"   icon="⚔️" label="バトルログ"     active={tab} onClick={setTab} />
         <NavItem id="ai"        icon="🧙" label="AI分析"         active={tab} onClick={setTab} />
