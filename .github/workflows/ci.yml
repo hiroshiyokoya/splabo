@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ── フロントエンド: TypeScript 型チェック + ビルド ────────────
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install app dependencies
+        working-directory: app
+        run: npm ci
+
+      # tsc --noEmit + vite build を実行（package.json の "build" は tsc && vite build）
+      - name: Build (typecheck + vite)
+        working-directory: app
+        run: npm run build
+
+  # ── Rust: cargo check（Tauri バックエンド）──────────────────
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: tools/nxapi-wrapper/package-lock.json
+
+      # Linux: Tauri が要求するシステムライブラリ
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      # nxapi-sidecar をビルド（tauri.conf.json の externalBin として要求されるため、
+      # 存在しないと build.rs の存在チェックで cargo check が失敗する）
+      - name: Build nxapi-wrapper sidecar (linux)
+        working-directory: tools/nxapi-wrapper
+        run: |
+          npm ci
+          npm run build:linux
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: cargo check
+        working-directory: app/src-tauri
+        run: cargo check --all-targets
