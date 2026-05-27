@@ -4,7 +4,8 @@ import { CSS } from '@dnd-kit/utilities'
 import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, MetricKey, BattleMetricKey } from '../types'
 import {
   stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric,
-  METRIC_LABELS, BATTLE_METRIC_LABELS, formatMetric,
+  METRIC_LABELS, BATTLE_METRIC_LABELS, BATTLE_NUMERIC_METRIC_LABELS,
+  GROUP_BY_LABELS, formatMetric,
 } from '../types'
 import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
@@ -334,6 +335,13 @@ function renderChartBody(
     }
     const xT = chart.groupBy  === 'stage' ? stageAbbr : chart.groupBy  === 'mode' ? modeLabel : chart.groupBy  === 'rule' ? ruleLabel : undefined
     const yT = chart.groupBy2 === 'stage' ? stageAbbr : chart.groupBy2 === 'mode' ? modeLabel : chart.groupBy2 === 'rule' ? ruleLabel : undefined
+    // 軸タイトル（#145）：数値メトリクス bin 軸はメトリクス名 (bin 幅併記)、カテゴリ軸は GroupBy ラベル
+    const xTitle = chart.xNumericMetric
+      ? `${BATTLE_NUMERIC_METRIC_LABELS[chart.xNumericMetric]} (bin ${chart.xBinWidth ?? '?'})`
+      : GROUP_BY_LABELS[chart.groupBy]
+    const yTitle = chart.yNumericMetric
+      ? `${BATTLE_NUMERIC_METRIC_LABELS[chart.yNumericMetric]} (bin ${chart.yBinWidth ?? '?'})`
+      : chart.groupBy2 ? GROUP_BY_LABELS[chart.groupBy2] : undefined
     return (
       <HeatmapChart
         data={data2d ?? []}
@@ -342,6 +350,8 @@ function renderChartBody(
         yLabelTransform={yT}
         xNumeric={!!chart.xNumericMetric}
         yNumeric={!!chart.yNumericMetric}
+        xTitle={xTitle}
+        yTitle={yTitle}
       />
     )
   }
