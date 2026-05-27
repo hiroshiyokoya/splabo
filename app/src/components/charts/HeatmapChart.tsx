@@ -103,8 +103,27 @@ export function HeatmapChart({
     }
   }, [data, metric, group, minSampleSize])
 
-  const width  = PAD_LEFT + xKeys.length * (CELL_W + GAP) + 8
-  const height = PAD_TOP  + yKeys.length * (CELL_H + GAP) + 8
+  // 凡例を下に置く分の高さ
+  const LEGEND_H = 32
+  const GRID_H = yKeys.length * (CELL_H + GAP)
+  const LEGEND_TOP = PAD_TOP + GRID_H + 16
+
+  const width  = Math.max(PAD_LEFT + xKeys.length * (CELL_W + GAP) + 8, 360)
+  const height = LEGEND_TOP + LEGEND_H
+
+  /** カラーバー（凡例）用の色順・ラベル */
+  const LEGEND_COUNT  = ['var(--cell-c1)', 'var(--cell-c2)', 'var(--cell-c3)', 'var(--cell-c4)', 'var(--cell-c5)']
+  const LEGEND_RATE   = ['var(--cell-r1)', 'var(--cell-r2)', 'var(--cell-r3)', 'var(--cell-r4)', 'var(--cell-r5)']
+  const legendColors = group === 'rate' ? LEGEND_RATE : LEGEND_COUNT
+  const fmtLegend = (v: number): string => {
+    if (metric === 'win_rate') return `${Math.round(v * 100)}%`
+    if (metric === 'avg_duration') return `${Math.round(v)}s`
+    if (metric === 'total' || metric === 'wins') return Math.round(v).toString()
+    return v.toFixed(1)
+  }
+  const legendLeft  = group === 'rate' ? '0%'  : group === 'count' ? '0' : fmtLegend(minVal)
+  const legendMid   = group === 'rate' ? '50%' : null
+  const legendRight = group === 'rate' ? '100%' : fmtLegend(maxVal)
 
   function xLabel(k: string): string {
     return xLabelTransform ? xLabelTransform(k) : k
@@ -169,6 +188,45 @@ export function HeatmapChart({
             )
           })
         )}
+        {/* カラーバー (凡例) */}
+        {(() => {
+          const swatchW = 22
+          const swatchH = 10
+          const startX = PAD_LEFT
+          return (
+            <>
+              <text x={startX} y={LEGEND_TOP - 4} fontSize={10} fill="var(--text-muted)">
+                {METRIC_LABELS[metric]}
+              </text>
+              {legendColors.map((c, i) => (
+                <rect key={i} x={startX + i * (swatchW + 2)} y={LEGEND_TOP} width={swatchW} height={swatchH} rx={2} fill={c} />
+              ))}
+              <text x={startX} y={LEGEND_TOP + swatchH + 12} fontSize={10} fill="var(--text-muted)" textAnchor="start">{legendLeft}</text>
+              {legendMid && (
+                <text
+                  x={startX + (legendColors.length * (swatchW + 2)) / 2 - 1}
+                  y={LEGEND_TOP + swatchH + 12}
+                  fontSize={10}
+                  fill="var(--text-muted)"
+                  textAnchor="middle"
+                >{legendMid}</text>
+              )}
+              <text
+                x={startX + legendColors.length * (swatchW + 2) - 2}
+                y={LEGEND_TOP + swatchH + 12}
+                fontSize={10}
+                fill="var(--text-muted)"
+                textAnchor="end"
+              >{legendRight}</text>
+              {(group === 'rate' || group === 'average') && (
+                <g transform={`translate(${startX + legendColors.length * (swatchW + 2) + 24}, ${LEGEND_TOP})`}>
+                  <rect width={swatchW * 0.6} height={swatchH} rx={2} fill="var(--cell-sparse)" />
+                  <text x={swatchW * 0.6 + 6} y={swatchH - 1} fontSize={10} fill="var(--text-muted)">サンプル不足</text>
+                </g>
+              )}
+            </>
+          )
+        })()}
       </svg>
       {hover && (
         <div

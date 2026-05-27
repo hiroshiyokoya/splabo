@@ -16,11 +16,25 @@ import { METRIC_LABELS, getMetric, formatMetric, metricGroup } from '../../types
  * - データが無い日は空セル (薄いグレー)
  */
 
-const CELL  = 12
-const GAP   = 2
+const CELL  = 16
+const GAP   = 3
 const PITCH = CELL + GAP
 
 const DOW_LABELS = ['月', '火', '水', '木', '金', '土', '日']
+
+/** カラーバー (凡例) を描画するための、メトリクスグループごとの色順序。
+ *  count / average は 5 段階 (薄い→濃い)、rate は 5 段階 (赤→青) divergent。 */
+const COUNT_COLORS  = ['var(--cell-c1)', 'var(--cell-c2)', 'var(--cell-c3)', 'var(--cell-c4)', 'var(--cell-c5)']
+const AVG_COLORS    = COUNT_COLORS
+const RATE_COLORS   = ['var(--cell-r1)', 'var(--cell-r2)', 'var(--cell-r3)', 'var(--cell-r4)', 'var(--cell-r5)']
+
+/** メトリクス値を凡例ラベル用に短く整形。 */
+function fmtLegend(v: number, metric: MetricKey): string {
+  if (metric === 'win_rate') return `${Math.round(v * 100)}%`
+  if (metric === 'avg_duration') return `${Math.round(v)}s`
+  if (metric === 'total' || metric === 'wins') return Math.round(v).toString()
+  return v.toFixed(1)
+}
 
 /** Date を UTC 基準で yyyy-mm-dd 文字列に。 */
 function toIsoDate(d: Date): string {
@@ -152,8 +166,20 @@ export function CalendarHeatmapChart({
     return averageColor(value, minVal, maxVal)
   }
 
-  const width  = weeks.length * PITCH + 22
-  const height = 7 * PITCH + 16
+  // 凡例 (カラーバー) の配置。グリッド下に 1 行 (高さ ~28px)。
+  const LEGEND_H = 32
+  const GRID_TOP = 16
+  const GRID_HEIGHT = 7 * PITCH
+  const LEGEND_TOP = GRID_TOP + GRID_HEIGHT + 16
+
+  const width  = Math.max(weeks.length * PITCH + 26, 280)
+  const height = LEGEND_TOP + LEGEND_H
+
+  /** 凡例ラベル: 左端値・中央値・右端値 */
+  const legendColors = group === 'rate' ? RATE_COLORS : group === 'count' ? COUNT_COLORS : AVG_COLORS
+  const legendLeft   = group === 'rate' ? '0%'  : group === 'count' ? '0' : fmtLegend(minVal, metric)
+  const legendMid    = group === 'rate' ? '50%' : null
+  const legendRight  = group === 'rate' ? '100%' : fmtLegend(maxVal, metric)
 
   return (
     <div className="chart-hover-area" style={{ position: 'relative', overflow: 'auto' }}>
@@ -201,6 +227,56 @@ export function CalendarHeatmapChart({
             )
           })
         )}
+        {/* カラーバー (凡例) */}
+        {(() => {
+          const swatchW = 22
+          const swatchH = 10
+          const startX = 22
+          return (
+            <>
+              <text x={startX} y={LEGEND_TOP - 4} fontSize={10} fill="var(--text-muted)">
+                {METRIC_LABELS[metric]}
+              </text>
+              {legendColors.map((c, i) => (
+                <rect
+                  key={i}
+                  x={startX + i * (swatchW + 2)}
+                  y={LEGEND_TOP}
+                  width={swatchW}
+                  height={swatchH}
+                  rx={2}
+                  fill={c}
+                />
+              ))}
+              <text x={startX} y={LEGEND_TOP + swatchH + 12} fontSize={10} fill="var(--text-muted)" textAnchor="start">
+                {legendLeft}
+              </text>
+              {legendMid && (
+                <text
+                  x={startX + (legendColors.length * (swatchW + 2)) / 2 - 1}
+                  y={LEGEND_TOP + swatchH + 12}
+                  fontSize={10}
+                  fill="var(--text-muted)"
+                  textAnchor="middle"
+                >{legendMid}</text>
+              )}
+              <text
+                x={startX + legendColors.length * (swatchW + 2) - 2}
+                y={LEGEND_TOP + swatchH + 12}
+                fontSize={10}
+                fill="var(--text-muted)"
+                textAnchor="end"
+              >{legendRight}</text>
+              {/* サンプル不足の凡例 (率/平均のみ) */}
+              {(group === 'rate' || group === 'average') && (
+                <g transform={`translate(${startX + legendColors.length * (swatchW + 2) + 24}, ${LEGEND_TOP})`}>
+                  <rect width={swatchW * 0.6} height={swatchH} rx={2} fill="var(--cell-sparse)" />
+                  <text x={swatchW * 0.6 + 6} y={swatchH - 1} fontSize={10} fill="var(--text-muted)">サンプル不足</text>
+                </g>
+              )}
+            </>
+          )
+        })()}
       </svg>
       {hover && (
         <div
