@@ -1559,8 +1559,11 @@ async fn db_grouped_stats_by_player_weapon(
          FROM (
              SELECT DISTINCT
                  bp.battle_id,
-                 w_bp.key                              as bp_w_key,
-                 COALESCE(w_bp.name_ja, w_bp.key)      as bp_w_name
+                 w_bp.key as bp_w_key,
+                 -- 表示名にもスラッグ（key）を使う。
+                 -- weaponImages がスラッグでキー付けされており、Japanese 名にすると一部しか
+                 -- マッチせずアイコンとテキストが混在してしまうため、ここで揃える。
+                 w_bp.key as bp_w_name
              FROM battle_player bp
              JOIN weapon w_bp ON w_bp.id = bp.weapon_id
              WHERE {bp_where}
