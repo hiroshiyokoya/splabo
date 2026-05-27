@@ -352,8 +352,12 @@ function renderChartBody(
       </div>
     )
   }
-  // X 軸が武器のときだけ画像 tick を有効化。他の groupBy では undefined。
-  const images = chart.groupBy === 'weapon' ? weaponImages : undefined
+  // X 軸が武器系（自分・味方・相手）のときだけ画像 tick を有効化。他の groupBy では undefined。
+  const isWeaponAxis =
+    chart.groupBy === 'weapon' ||
+    chart.groupBy === 'ally_weapon' ||
+    chart.groupBy === 'enemy_weapon'
+  const images = isWeaponAxis ? weaponImages : undefined
 
   if (chart.yComposition === 'single_metric' && chart.metric) {
     return <SimpleBarChart data={data} metric={chart.metric} nameTransform={nameTransform} tickAngle={tickAngle} images={images} />

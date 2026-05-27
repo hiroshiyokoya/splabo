@@ -1382,6 +1382,14 @@ pub async fn db_grouped_stats(
     let mode = translate_mode_filter(mode);
     let rule = translate_rule_filter(rule);
 
+    // 味方武器 / 相手武器の集計は battle_player 経由なので別 SQL に分岐する。
+    if group_by == "ally_weapon" || group_by == "enemy_weapon" {
+        return db_grouped_stats_by_player_weapon(
+            &db, &group_by, &since, &until, &mode, &rule,
+            &result_filter, &weapon, &stage,
+        ).await;
+    }
+
     // group_by を新スキーマ用の (GROUP BY 式, display 用列) に翻訳する。
     // FROM 句は全 group_by 共通で battle + 5 マスター JOIN。
     // rule/mode はフロント期待値（'turf_war' / 'x' ...）へ逆翻訳して返す。
@@ -1457,6 +1465,126 @@ pub async fn db_grouped_stats(
         .bind(&result_filter).bind(&result_filter)
         .bind(&weapon).bind(&weapon)
         .bind(&stage).bind(&stage)
+        .fetch_all(db.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|r| {
+        let total: i64                = r.get("total");
+        let wins: i64                 = r.get("wins");
+        let draws: i64                = r.get("draws");
+        let decisive                  = total - draws;
+        let win_rate                  = if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 };
+        let name: String              = r.try_get("display_name").unwrap_or_else(|_| r.get::<String, _>("key"));
+        serde_json::json!({
+            "key":          r.get::<String, _>("key"),
+            "name":         name,
+            "total":        total,
+            "wins":         wins,
+            "draws":        draws,
+            "win_rate":     win_rate,
+            "avg_kill":     r.try_get::<f64, _>("avg_kill").ok(),
+            "avg_death":    r.try_get::<f64, _>("avg_death").ok(),
+            "avg_assist":   r.try_get::<f64, _>("avg_assist").ok(),
+            "avg_special":  r.try_get::<f64, _>("avg_special").ok(),
+            "avg_inked":    r.try_get::<f64, _>("avg_inked").ok(),
+            "avg_duration": r.try_get::<f64, _>("avg_duration").ok(),
+        })
+    }).collect())
+}
+
+/// `ally_weapon` / `enemy_weapon` 専用の集計。
+///
+/// 通常の `db_grouped_stats` は `battle.weapon_id`（自分の武器）でグループ化するが、
+/// こちらは `battle_player` を経由してチームメイト / 対戦相手の武器でグループ化する。
+///
+/// セマンティクス（#118）：
+/// - **同一バトル内で同一武器が複数いた場合は 1 として数える**
+///   → 内側のサブクエリで `DISTINCT (battle_id, weapon_key)` を取り、外側で COUNT
+/// - **ally_weapon は自分を除く**（`is_me=0`）
+/// - **1 バトルが複数バケットに寄与する**：味方 3 人が A/B/C なら A・B・C の 3 バケット
+///   それぞれに +1 する（=「武器ごとのバトル数合計」は実バトル数の最大 3 〜 4 倍）
+///
+/// 平均系メトリクス（K/D/A/SP/塗り/時間）はバトルテーブルの自分のスタッツを
+/// (battle, weapon) ペア単位で平均する：同じバトルに複数の対象武器がいると
+/// その武器バケットごとに重複カウントされるが、これは「その武器がいた時の自分の戦績」を
+/// 表す意味で正しい（バケット内では各バトル 1 回ずつなので DISTINCT 不要）。
+async fn db_grouped_stats_by_player_weapon(
+    db: &tauri::State<'_, DbPool>,
+    group_by: &str,
+    since: &Option<String>,
+    until: &Option<String>,
+    mode: &Option<String>,
+    rule: &Option<String>,
+    result_filter: &Option<String>,
+    weapon: &Option<String>,
+    stage: &Option<String>,
+) -> Result<Vec<serde_json::Value>, String> {
+    // ally → is_our_team=1 かつ is_me=0、enemy → is_our_team=0
+    let (is_our_team_val, exclude_self) = if group_by == "ally_weapon" {
+        (1i64, true)
+    } else {
+        (0i64, false)
+    };
+    let bp_where = if exclude_self {
+        "bp.is_our_team = ? AND bp.is_me = 0"
+    } else {
+        "bp.is_our_team = ?"
+    };
+
+    let filter_where =
+        "(? IS NULL OR b.played_at >= ?)
+           AND (? IS NULL OR b.played_at <= ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
+           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR res.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)";
+
+    // 内側サブクエリ d：(battle_id, weapon_key, weapon_display) を DISTINCT で取得。
+    // これで「同一バトル内で同一武器が複数」は 1 にまとめられる。
+    let sql = format!(
+        "SELECT
+            d.bp_w_key                                                as key,
+            MAX(d.bp_w_name)                                          as display_name,
+            COUNT(*)                                                  as total,
+            SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END)           as wins,
+            SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END)           as draws,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.kill     END)   as avg_kill,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.death    END)   as avg_death,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.assist   END)   as avg_assist,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.special  END)   as avg_special,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.inked    END)   as avg_inked,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.duration END)   as avg_duration
+         FROM (
+             SELECT DISTINCT
+                 bp.battle_id,
+                 w_bp.key                              as bp_w_key,
+                 COALESCE(w_bp.name_ja, w_bp.key)      as bp_w_name
+             FROM battle_player bp
+             JOIN weapon w_bp ON w_bp.id = bp.weapon_id
+             WHERE {bp_where}
+         ) d
+         JOIN battle b   ON b.id   = d.battle_id
+         JOIN lobby  l   ON l.id   = b.lobby_id
+         JOIN rule   r   ON r.id   = b.rule_id
+         JOIN result res ON res.id = b.result_id
+         JOIN weapon w   ON w.id   = b.weapon_id
+         JOIN map    m   ON m.id   = b.map_id
+         WHERE {filter_where}
+         GROUP BY d.bp_w_key
+         ORDER BY total DESC"
+    );
+
+    let rows = sqlx::query(&sql)
+        .bind(is_our_team_val)
+        .bind(since).bind(since)
+        .bind(until).bind(until)
+        .bind(mode).bind(mode)
+        .bind(rule).bind(rule)
+        .bind(result_filter).bind(result_filter)
+        .bind(weapon).bind(weapon)
+        .bind(stage).bind(stage)
         .fetch_all(db.as_ref())
         .await
         .map_err(|e| e.to_string())?;

@@ -329,6 +329,8 @@ export type GroupByKey =
   | 'special_weapon'
   | 'weapon_category'
   | 'result'
+  | 'ally_weapon'
+  | 'enemy_weapon'
   // 時系列バケット（線グラフ・カレンダーで使用）。全て 9 時境界。
   | 'day'        // 1 日（9:00–翌 8:59）
   | 'three_day'  // 3 日（直近基準で遡る）
@@ -587,6 +589,8 @@ export const GROUP_BY_LABELS: Record<GroupByKey, string> = {
   special_weapon:  'スペシャル',
   weapon_category: '武器カテゴリ',
   result:          '結果',
+  ally_weapon:     '味方武器',
+  enemy_weapon:    '相手武器',
   day:             '日',
   three_day:       '3 日',
   week:            '週',
