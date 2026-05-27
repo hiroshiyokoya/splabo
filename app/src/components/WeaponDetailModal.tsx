@@ -128,32 +128,6 @@ export function WeaponDetailModal({
             </div>
           </section>
 
-          {/* ステージ Top 5 */}
-          <section className="modal-section">
-            <h3 className="modal-section-title">よく戦うステージ Top 5</h3>
-            {loading && <div className="loading">読み込み中...</div>}
-            {!loading && error && <div className="empty">読み込み失敗: {error}</div>}
-            {!loading && !error && topStages.length === 0 && <div className="empty">この武器のバトル記録がありません。</div>}
-            {!loading && !error && topStages.length > 0 && (
-              <div className="weapon-modal-stage-list">
-                {topStages.map(r => {
-                  const dec = r.total - r.draws
-                  const wr  = dec > 0 ? r.wins / dec : null
-                  return (
-                    <div key={r.key} className="weapon-modal-stage-row">
-                      <span className="weapon-modal-stage-name" title={r.name}>{stageAbbr(r.name)}</span>
-                      <span className="weapon-modal-stage-count">{r.total} 戦</span>
-                      <span
-                        className="weapon-modal-stage-rate"
-                        style={{ color: wr !== null ? winRateColor(wr) : 'var(--text-muted)' }}
-                      >{wr !== null ? `${(wr * 100).toFixed(1)}%` : '—'}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </section>
-
           {/* ルール別勝率（横棒） */}
           <section className="modal-section">
             <h3 className="modal-section-title">ルール別勝率</h3>
@@ -180,6 +154,32 @@ export function WeaponDetailModal({
                         {wr !== null ? `${(wr * 100).toFixed(1)}%` : '—'}
                         <span className="weapon-modal-rule-count"> ({row?.total ?? 0})</span>
                       </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* ステージ Top 5 */}
+          <section className="modal-section">
+            <h3 className="modal-section-title">よく戦うステージ Top 5</h3>
+            {loading && <div className="loading">読み込み中...</div>}
+            {!loading && error && <div className="empty">読み込み失敗: {error}</div>}
+            {!loading && !error && topStages.length === 0 && <div className="empty">この武器のバトル記録がありません。</div>}
+            {!loading && !error && topStages.length > 0 && (
+              <div className="weapon-modal-stage-list">
+                {topStages.map(r => {
+                  const dec = r.total - r.draws
+                  const wr  = dec > 0 ? r.wins / dec : null
+                  return (
+                    <div key={r.key} className="weapon-modal-stage-row">
+                      <span className="weapon-modal-stage-name" title={r.name}>{stageAbbr(r.name)}</span>
+                      <span className="weapon-modal-stage-count">{r.total} 戦</span>
+                      <span
+                        className="weapon-modal-stage-rate"
+                        style={{ color: wr !== null ? winRateColor(wr) : 'var(--text-muted)' }}
+                      >{wr !== null ? `${(wr * 100).toFixed(1)}%` : '—'}</span>
                     </div>
                   )
                 })}
