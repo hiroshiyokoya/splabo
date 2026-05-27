@@ -1955,37 +1955,35 @@ async fn db_grouped_stats_2d_with_bp(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 武器軸（自分/味方/相手）の Top N 絞り込み。X 軸を優先する。
+    // 武器軸（自分/味方/相手）の Top N 絞り込み。X 軸・Y 軸それぞれ独立に判定。
+    // 両軸が武器系（ally × enemy など）のときも両方に Top N が効くようにする。
     let top_n_value = top_n.unwrap_or(20).max(1) as usize;
     let is_weapon_x = x_is_bp || group_by_x == "weapon";
     let is_weapon_y = y_is_bp || group_by_y == "weapon";
-    let weapon_axis: Option<bool> =
-        if      is_weapon_x { Some(true) }
-        else if is_weapon_y { Some(false) }
-        else                { None };
 
-    let kept_weapon_keys: Option<std::collections::HashSet<String>> = weapon_axis.map(|x_is_weapon| {
+    // 各軸ごとに「その軸でのバトル数合計」で上位 N 件を抽出。
+    fn top_n_set(rows: &[sqlx::sqlite::SqliteRow], x_axis: bool, n: usize) -> std::collections::HashSet<String> {
         let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
-        for r in &rows {
-            let key: String = if x_is_weapon { r.get("key_x") } else { r.get("key_y") };
+        for r in rows {
+            let key: String = if x_axis { r.get("key_x") } else { r.get("key_y") };
             let t: i64 = r.get("total");
             *counts.entry(key).or_default() += t;
         }
         let mut pairs: Vec<(String, i64)> = counts.into_iter().collect();
         pairs.sort_by(|a, b| b.1.cmp(&a.1));
-        pairs.into_iter().take(top_n_value).map(|(k, _)| k).collect()
-    });
+        pairs.into_iter().take(n).map(|(k, _)| k).collect()
+    }
+    let kept_x: Option<std::collections::HashSet<String>> =
+        if is_weapon_x { Some(top_n_set(&rows, true,  top_n_value)) } else { None };
+    let kept_y: Option<std::collections::HashSet<String>> =
+        if is_weapon_y { Some(top_n_set(&rows, false, top_n_value)) } else { None };
 
     let result: Vec<serde_json::Value> = rows.into_iter().filter_map(|r| {
         let key_x: String = r.get("key_x");
         let key_y: String = r.get("key_y");
 
-        if let Some(ref keys) = kept_weapon_keys {
-            let weapon_key = if weapon_axis == Some(true) { &key_x } else { &key_y };
-            if !keys.contains(weapon_key) {
-                return None;
-            }
-        }
+        if let Some(ref keys) = kept_x { if !keys.contains(&key_x) { return None; } }
+        if let Some(ref keys) = kept_y { if !keys.contains(&key_y) { return None; } }
 
         let total: i64 = r.get("total");
         let wins:  i64 = r.get("wins");
