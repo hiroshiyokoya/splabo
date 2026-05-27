@@ -27,17 +27,21 @@ function statLine(label: string, value: string): { label: string; value: string 
 // 仕様：ブキチャレパワー系・ビッグラン熟練度は WeaponRecordQuery で取れないため除外（#149 事前共有）。
 type SortKey =
   | 'total'           // バトル数（既定）
+  | 'wins'            // 勝数（DB バトル集計）
   | 'win_rate'        // 勝率
-  | 'weapon_level'    // 熟練度
-  | 'win_count_total' // 勝利数
-  | 'paint_point_total' // 総塗りポイント
+  | 'avg_kill'        // 平均キル数（db_grouped_stats から）
+  | 'weapon_level'    // 熟練度（WeaponRecord）
+  | 'win_count_total' // 通算勝利数（WeaponRecord）
+  | 'paint_point_total' // 総塗りポイント（WeaponRecord）
   | 'name'            // 名前（あいうえお）
 
 const SORT_LABELS: Record<SortKey, string> = {
   total:             'バトル数',
+  wins:              '勝数',
   win_rate:          '勝率',
+  avg_kill:          '平均キル',
   weapon_level:      '熟練度',
-  win_count_total:   '勝利数',
+  win_count_total:   '通算勝利数',
   paint_point_total: '総塗',
   name:              '名前',
 }
@@ -130,17 +134,21 @@ export function WeaponBook() {
       const dec = w.total - w.draws
       return dec > 0 ? w.wins / dec : null
     }
+    const avgKill = (w: WeaponRecord): number | null =>
+      statsByWeapon.get(w.name)?.avg_kill ?? null
     return [...arr].sort((a, b) => {
       switch (sortKey) {
         case 'total':             return b.total - a.total
+        case 'wins':              return b.wins  - a.wins
         case 'win_rate':          return cmpNum(winRate(a), winRate(b))
+        case 'avg_kill':          return cmpNum(avgKill(a), avgKill(b))
         case 'weapon_level':      return cmpNum(a.weapon_level,      b.weapon_level)
         case 'win_count_total':   return cmpNum(a.win_count_total,   b.win_count_total)
         case 'paint_point_total': return cmpNum(a.paint_point_total, b.paint_point_total)
         case 'name':              return a.name.localeCompare(b.name, 'ja')
       }
     })
-  }, [weapons, category, subWeapon, specialWeapon, sortKey])
+  }, [weapons, category, subWeapon, specialWeapon, sortKey, statsByWeapon])
 
   const hasFilter = !!(category || subWeapon || specialWeapon)
 
