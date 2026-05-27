@@ -1,3 +1,5 @@
+<img src="app/public/chartoon-logo.png" alt="chartoon" height="300">
+
 # チャートゥーン (chartoon)
 
 Nintendo アカウントから [nxapi](https://github.com/samuelthomas2774/nxapi) が解析した非公式 API 経由で Splatoon 3 のバトル履歴を取得し、グラフで可視化する OSS の PC アプリです。任天堂株式会社とは無関係です。
@@ -20,16 +22,10 @@ chartoon/
 
 ## スクリーンショット
 
-![ダッシュボード](docs/screenshots/dashboard.png)
-
-総バトル数・勝率・平均キル/デスといった主要指標と、武器・ステージ・ルール・モード別の集計グラフをひと目で確認できます。
-
-<p>
-  <img src="docs/screenshots/calendar.png" width="49%" alt="バトル数カレンダーヒートマップ" />
-  <img src="docs/screenshots/scatter.png"  width="49%" alt="ステージ別 平均キル × 平均デス 散布図" />
-</p>
-
-集計軸（武器・ステージ・期間など）と表示メトリクス（バトル数・勝率・平均キル等）を自由に組み合わせて、棒・線・ヒートマップ・カレンダー・散布図のカスタムグラフを追加できます。
+| ダッシュボード | カレンダーヒートマップ | 散布図 |
+|---|---|---|
+| ![ダッシュボード](docs/screenshots/dashboard.png) | ![カレンダーヒートマップ](docs/screenshots/calendar.png) | ![散布図](docs/screenshots/scatter.png) |
+| 主要指標と武器・ステージ・ルール・モード別の集計を一覧 | 日別バトル数をカレンダー形式で可視化 | ステージ別 平均キル × 平均デス（バトル数 = バブル径） |
 
 ## 必要なもの
 
