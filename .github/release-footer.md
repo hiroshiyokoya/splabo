@@ -25,3 +25,7 @@ xattr -cr /Applications/chartoon.app
 ---
 
 📄 [README](https://github.com/hiroshiyokoya/chartoon/blob/vVERSION/README.md)
+
+<br>
+
+バグ報告・機能要望・感想など、フィードバックは[フィードバックフォーム](https://docs.google.com/forms/d/e/1FAIpQLScAP6LH9JDHaJGs4c7UJakF-YNU1UJRN10H4uSePqiknN-apQ/viewform)からお気軽にどうぞ（匿名可）。
