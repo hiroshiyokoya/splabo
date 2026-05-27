@@ -1385,6 +1385,13 @@ pub async fn db_grouped_stats(
     // group_by を新スキーマ用の (GROUP BY 式, display 用列) に翻訳する。
     // FROM 句は全 group_by 共通で battle + 5 マスター JOIN。
     // rule/mode はフロント期待値（'turf_war' / 'x' ...）へ逆翻訳して返す。
+    // 時系列キー (day/three_day/week/month) は全粒度で「9 時境界の Splatoon 日」基準。
+    // SplatNet 3 の playedTime は UTC で来るので、UTC 0:00 = JST 9:00 = Splatoon 日境界
+    // となり、追加シフトせず strftime で日付抽出すれば 9 時境界バケットが得られる。
+    // three_day だけは「今日基準で 3 日ごとに遡る」ためバケット開始日を計算する。
+    const THREE_DAY_BUCKET: &str =
+        "DATE(DATE('now'), \
+              '-' || (3 * CAST((julianday(DATE('now')) - julianday(DATE(b.played_at))) / 3 AS INTEGER) + 2) || ' days')";
     let (group_expr, display_expr): (&str, &str) = match group_by.as_str() {
         "weapon"          => ("w.key",                                                                                "COALESCE(w.name_ja, w.key)"),
         "stage"           => ("m.key",                                                                                "COALESCE(MAX(m.name_ja), m.key)"),
@@ -1395,7 +1402,18 @@ pub async fn db_grouped_stats(
         "special_weapon"  => ("COALESCE(w.special_key, '(不明)')",                                                     "COALESCE(w.special_key, '(不明)')"),
         "weapon_category" => ("COALESCE(NULLIF(w.category_key, ''), '(未分類)')",                                      "COALESCE(NULLIF(w.category_key, ''), '(未分類)')"),
         "result"          => ("res.key",                                                                              "res.key"),
+        // 時系列バケット（線グラフ / カレンダー用）。すべて返値は ISO 日付 or `YYYY-Www` / `YYYY-MM` 文字列。
+        "day"             => ("strftime('%Y-%m-%d', b.played_at)",                                                    "strftime('%Y-%m-%d', b.played_at)"),
+        "three_day"       => (THREE_DAY_BUCKET,                                                                       THREE_DAY_BUCKET),
+        "week"            => ("strftime('%Y-W%W', b.played_at)",                                                      "strftime('%Y-W%W', b.played_at)"),
+        "month"           => ("strftime('%Y-%m', b.played_at)",                                                       "strftime('%Y-%m', b.played_at)"),
         _ => return Err(format!("未対応の group_by: {group_by}")),
+    };
+
+    // 時系列キーは古い → 新しいの順、それ以外はバトル数の多い順。
+    let order_by: &str = match group_by.as_str() {
+        "day" | "three_day" | "week" | "month" => "key ASC",
+        _ => "total DESC",
     };
 
     let filter_where =
@@ -1428,7 +1446,7 @@ pub async fn db_grouped_stats(
          JOIN map    m   ON m.id   = b.map_id
          WHERE {filter_where}
          GROUP BY {group_expr}
-         ORDER BY total DESC"
+         ORDER BY {order_by}"
     );
 
     let rows = sqlx::query(&sql)

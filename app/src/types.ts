@@ -329,6 +329,17 @@ export type GroupByKey =
   | 'special_weapon'
   | 'weapon_category'
   | 'result'
+  // 時系列バケット（線グラフ・カレンダーで使用）。全て 9 時境界。
+  | 'day'        // 1 日（9:00–翌 8:59）
+  | 'three_day'  // 3 日（直近基準で遡る）
+  | 'week'       // 週（月曜 9:00 開始）
+  | 'month'      // 月（月初 9:00 開始）
+
+/** 時系列バケット用の GroupByKey 判定。 */
+export const TIME_BUCKET_GROUP_BYS: GroupByKey[] = ['day', 'three_day', 'week', 'month']
+export function isTimeBucketGroupBy(g: GroupByKey): boolean {
+  return TIME_BUCKET_GROUP_BYS.includes(g)
+}
 
 /** シンプル棒チャートで Y 軸に使えるメトリクス。 */
 export type MetricKey =
@@ -391,8 +402,9 @@ export const Y_COMPOSITION_LABELS: Record<YComposition, string> = {
   attack_defense:  'キル vs デス',
 }
 
-/** v1.0.0 で実装済みの shape。それ以外は UI で disabled。 */
-export const IMPLEMENTED_SHAPES: ChartShape[] = ['bar']
+/** 実装済みの shape。それ以外は UI で disabled。
+ *  v1.0.0: bar / line。scatter / heatmap は後続 PR。 */
+export const IMPLEMENTED_SHAPES: ChartShape[] = ['bar', 'line']
 
 /** v1.0.0 で実装済みの yComposition（全 shape 共通で扱う最大集合）。 */
 export const IMPLEMENTED_Y_COMPOSITIONS: YComposition[] = ['single_metric', 'stacked_winrate', 'attack_defense']
@@ -444,6 +456,10 @@ export const GROUP_BY_LABELS: Record<GroupByKey, string> = {
   special_weapon:  'スペシャル',
   weapon_category: '武器カテゴリ',
   result:          '結果',
+  day:             '日',
+  three_day:       '3 日',
+  week:            '週',
+  month:           '月',
 }
 
 export const METRIC_LABELS: Record<MetricKey, string> = {
