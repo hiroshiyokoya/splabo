@@ -8,3 +8,12 @@ tools/nxapi-wrapper/dist/
 .env
 .claude/worktrees/
 .claude/settings.local.json
+
+# ロゴ・ファビコン生成ツール（ローカル作業用・git 管理外）
+# 使い方: ブラウザで app/gen-logo.html / app/gen-favicon.html を開いて
+# 装飾画像と位置・サイズを調整、PNG をダウンロード → public/ に配置。
+app/gen-*.html
+app/gen-*.mjs
+# ローカル生成された PNG 中間ファイル（tauri icon の入力用）
+app/favicon.png
+app/src-tauri/app-icon.png
