@@ -16,8 +16,8 @@ import { METRIC_LABELS, getMetric, formatMetric, metricGroup } from '../../types
  * - データが無い日は空セル (薄いグレー)
  */
 
-const CELL  = 16
-const GAP   = 3
+const CELL  = 20
+const GAP   = 4
 const PITCH = CELL + GAP
 
 const DOW_LABELS = ['月', '火', '水', '木', '金', '土', '日']
