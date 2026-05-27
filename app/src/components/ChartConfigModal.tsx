@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey } from '../types'
 import {
   GROUP_BY_LABELS, METRIC_LABELS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
-  IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, autoChartTitle,
+  IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy,
 } from '../types'
 
 /** 各 yComposition のヒント説明。 */
@@ -73,9 +73,6 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
     if (shape === 'scatter') setGroupBy(dotUnit)
   }, [dotUnit, shape])
 
-  // 現在の軸から算出するタイトル（モーダル上部にプレビュー表示）
-  const previewTitle = autoChartTitle({ groupBy, yComposition, metric })
-
   // ESC で閉じる
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -112,11 +109,6 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
         </div>
 
         <div className="modal-body chart-config-body">
-          <div className="form-field">
-            <label className="form-label">タイトル <span className="form-label-note">（軸から自動）</span></label>
-            <div className="form-preview-title">{previewTitle}</div>
-          </div>
-
           <div className="form-field">
             <label className="form-label">形（グラフの種類）</label>
             <select className="form-input" value={shape} onChange={e => setShape(e.target.value as ChartShape)}>

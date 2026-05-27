@@ -1526,8 +1526,20 @@ pub async fn db_grouped_stats_2d(
         })
     }
 
+    /// 表示用ラベル (name_x / name_y) を返す SQL 式。weapon / stage はマスターの
+    /// 日本語名を、それ以外は key と同じ値を使う。GROUP BY 集約のため MAX で包む。
+    fn axis_display_expr(axis: &str) -> Result<&'static str, String> {
+        Ok(match axis {
+            "weapon" => "COALESCE(MAX(w.name_ja), w.key)",
+            "stage"  => "COALESCE(MAX(m.name_ja), m.key)",
+            _        => axis_expr(axis)?,  // 他は key そのまま
+        })
+    }
+
     let x_expr = axis_expr(&group_by_x)?;
     let y_expr = axis_expr(&group_by_y)?;
+    let x_display = axis_display_expr(&group_by_x)?;
+    let y_display = axis_display_expr(&group_by_y)?;
 
     let filter_where =
         "(? IS NULL OR b.played_at >= ?)
@@ -1542,6 +1554,8 @@ pub async fn db_grouped_stats_2d(
         "SELECT
             {x_expr} as key_x,
             {y_expr} as key_y,
+            {x_display} as name_x,
+            {y_display} as name_y,
             COUNT(*)                                                  as total,
             SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END)           as wins,
             SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END)           as draws,
@@ -1614,8 +1628,8 @@ pub async fn db_grouped_stats_2d(
         Some(serde_json::json!({
             "key_x":        key_x,
             "key_y":        key_y,
-            "name_x":       key_x.clone(),
-            "name_y":       key_y.clone(),
+            "name_x":       r.try_get::<String, _>("name_x").unwrap_or_else(|_| key_x.clone()),
+            "name_y":       r.try_get::<String, _>("name_y").unwrap_or_else(|_| key_y.clone()),
             "total":        total,
             "wins":         wins,
             "draws":        draws,

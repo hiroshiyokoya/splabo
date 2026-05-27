@@ -484,14 +484,43 @@ export const IMPLEMENTED_Y_COMPOSITIONS: YComposition[] = ['single_metric', 'sta
  *
  * ユーザーが ChartConfigModal でタイトル入力を空にしたとき、これを使って自動採用する。
  */
-export function autoChartTitle(spec: { groupBy: GroupByKey; yComposition: YComposition; metric?: MetricKey }): string {
+export function autoChartTitle(spec: {
+  shape?:        ChartShape
+  groupBy:       GroupByKey
+  groupBy2?:     GroupByKey
+  yComposition:  YComposition
+  metric?:       MetricKey
+  dotUnit?:      'weapon' | 'stage'
+  xMetric?:      MetricKey
+  yMetric?:      MetricKey
+}): string {
+  const metricLabel = spec.metric ? METRIC_LABELS[spec.metric] : 'メトリクス'
+
+  if (spec.shape === 'calendar_heatmap') {
+    return `${metricLabel} カレンダー`
+  }
+  if (spec.shape === 'heatmap') {
+    const x = GROUP_BY_LABELS[spec.groupBy]
+    const y = spec.groupBy2 ? GROUP_BY_LABELS[spec.groupBy2] : '?'
+    return `${x} × ${y}: ${metricLabel}`
+  }
+  if (spec.shape === 'scatter') {
+    const unit = spec.dotUnit === 'stage' ? 'ステージ' : '武器'
+    const x = spec.xMetric ? METRIC_LABELS[spec.xMetric] : '?'
+    const y = spec.yMetric ? METRIC_LABELS[spec.yMetric] : '?'
+    return `${unit}別 ${y} × ${x}`
+  }
+  if (spec.shape === 'line') {
+    const bucket = GROUP_BY_LABELS[spec.groupBy]
+    return `${metricLabel} の推移 (${bucket})`
+  }
+
+  // bar (デフォルト)
   const xLabel = GROUP_BY_LABELS[spec.groupBy]
   const yLabel =
-    spec.yComposition === 'single_metric'
-      ? (spec.metric ? METRIC_LABELS[spec.metric] : 'メトリクス')
-      : spec.yComposition === 'stacked_winrate'
-      ? 'バトル数 & 勝率'
-      : 'キル vs デス'
+    spec.yComposition === 'single_metric'   ? metricLabel
+    : spec.yComposition === 'stacked_winrate' ? 'バトル数 & 勝率'
+    :                                            'キル vs デス'
   return `${xLabel}別 ${yLabel}`
 }
 

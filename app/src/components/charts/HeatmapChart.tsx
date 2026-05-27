@@ -69,16 +69,19 @@ export function HeatmapChart({
 
   const group = metricGroup(metric)
 
-  const { xKeys, yKeys, cells, minVal, maxVal } = useMemo(() => {
+  const { xKeys, yKeys, cells, nameMap, minVal, maxVal } = useMemo(() => {
     // X / Y の存在キーを「バトル数合計が多い順」で抽出
     const xTotals = new Map<string, number>()
     const yTotals = new Map<string, number>()
     const cellMap = new Map<string, GroupedStatsRow2D>()
+    const nameMap = new Map<string, string>()  // key → display name
 
     for (const row of data) {
       xTotals.set(row.key_x, (xTotals.get(row.key_x) ?? 0) + row.total)
       yTotals.set(row.key_y, (yTotals.get(row.key_y) ?? 0) + row.total)
       cellMap.set(`${row.key_x}|${row.key_y}`, row)
+      nameMap.set(row.key_x, row.name_x ?? row.key_x)
+      nameMap.set(row.key_y, row.name_y ?? row.key_y)
     }
 
     const xKeys = Array.from(xTotals.entries()).sort((a, b) => b[1] - a[1]).map(e => e[0])
@@ -98,6 +101,7 @@ export function HeatmapChart({
     return {
       xKeys, yKeys,
       cells: cellMap,
+      nameMap,
       minVal: mn === Number.POSITIVE_INFINITY ? 0 : mn,
       maxVal: mx === Number.NEGATIVE_INFINITY ? 0 : mx,
     }
@@ -121,11 +125,14 @@ export function HeatmapChart({
   const legendMid   = group === 'rate' ? '50%' : null
   const legendRight = group === 'rate' ? '100%' : fmtLegend(maxVal)
 
+  // 表示ラベル: nameMap (BE が返す display name) を引いてから、必要ならカテゴリ別に整形。
   function xLabel(k: string): string {
-    return xLabelTransform ? xLabelTransform(k) : k
+    const display = nameMap.get(k) ?? k
+    return xLabelTransform ? xLabelTransform(display) : display
   }
   function yLabel(k: string): string {
-    return yLabelTransform ? yLabelTransform(k) : k
+    const display = nameMap.get(k) ?? k
+    return yLabelTransform ? yLabelTransform(display) : display
   }
 
   return (
