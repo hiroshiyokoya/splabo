@@ -311,7 +311,7 @@ function renderChartBody(
         yIsRate={chart.yMetric === 'win_rate'}
         hasSize={!!chart.sizeMetric}
         // バトル単位は重なりが多いので透過を強める (ジッタと合わせて密度が見える)
-        fillOpacity={isBattle ? 0.4 : 0.85}
+        fillOpacity={isBattle ? 0.6 : 0.85}
       />
     )
   }
