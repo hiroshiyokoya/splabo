@@ -1446,6 +1446,10 @@ pub async fn db_grouped_stats(
             COUNT(*)                                                  as total,
             SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END)           as wins,
             SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END)           as draws,
+            -- 自チーム KO 勝ち / 相手 KO による負け数。
+            -- is_knockout は 1 (自分側 WIN を KO で取った) / 0 (KO で負けた) / NULL (時間切れ) の三値。
+            SUM(CASE WHEN b.is_knockout = 1 THEN 1 ELSE 0 END)        as knockout_win,
+            SUM(CASE WHEN b.is_knockout = 0 THEN 1 ELSE 0 END)        as knockout_lose,
             AVG(CASE WHEN b.detail_fetched = 1 THEN b.kill     END)   as avg_kill,
             AVG(CASE WHEN b.detail_fetched = 1 THEN b.death    END)   as avg_death,
             AVG(CASE WHEN b.detail_fetched = 1 THEN b.assist   END)   as avg_assist,
@@ -1482,19 +1486,23 @@ pub async fn db_grouped_stats(
         let decisive                  = total - draws;
         let win_rate                  = if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 };
         let name: String              = r.try_get("display_name").unwrap_or_else(|_| r.get::<String, _>("key"));
+        let knockout_win:  i64 = r.try_get("knockout_win").unwrap_or(0);
+        let knockout_lose: i64 = r.try_get("knockout_lose").unwrap_or(0);
         serde_json::json!({
-            "key":          r.get::<String, _>("key"),
-            "name":         name,
-            "total":        total,
-            "wins":         wins,
-            "draws":        draws,
-            "win_rate":     win_rate,
-            "avg_kill":     r.try_get::<f64, _>("avg_kill").ok(),
-            "avg_death":    r.try_get::<f64, _>("avg_death").ok(),
-            "avg_assist":   r.try_get::<f64, _>("avg_assist").ok(),
-            "avg_special":  r.try_get::<f64, _>("avg_special").ok(),
-            "avg_inked":    r.try_get::<f64, _>("avg_inked").ok(),
-            "avg_duration": r.try_get::<f64, _>("avg_duration").ok(),
+            "key":           r.get::<String, _>("key"),
+            "name":          name,
+            "total":         total,
+            "wins":          wins,
+            "draws":         draws,
+            "win_rate":      win_rate,
+            "knockout_win":  knockout_win,
+            "knockout_lose": knockout_lose,
+            "avg_kill":      r.try_get::<f64, _>("avg_kill").ok(),
+            "avg_death":     r.try_get::<f64, _>("avg_death").ok(),
+            "avg_assist":    r.try_get::<f64, _>("avg_assist").ok(),
+            "avg_special":   r.try_get::<f64, _>("avg_special").ok(),
+            "avg_inked":     r.try_get::<f64, _>("avg_inked").ok(),
+            "avg_duration":  r.try_get::<f64, _>("avg_duration").ok(),
         })
     }).collect())
 }
@@ -1556,6 +1564,8 @@ async fn db_grouped_stats_by_player_weapon(
             COUNT(*)                                                  as total,
             SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END)           as wins,
             SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END)           as draws,
+            SUM(CASE WHEN b.is_knockout = 1 THEN 1 ELSE 0 END)        as knockout_win,
+            SUM(CASE WHEN b.is_knockout = 0 THEN 1 ELSE 0 END)        as knockout_lose,
             AVG(CASE WHEN b.detail_fetched = 1 THEN b.kill     END)   as avg_kill,
             AVG(CASE WHEN b.detail_fetched = 1 THEN b.death    END)   as avg_death,
             AVG(CASE WHEN b.detail_fetched = 1 THEN b.assist   END)   as avg_assist,
@@ -1605,19 +1615,23 @@ async fn db_grouped_stats_by_player_weapon(
         let decisive                  = total - draws;
         let win_rate                  = if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 };
         let name: String              = r.try_get("display_name").unwrap_or_else(|_| r.get::<String, _>("key"));
+        let knockout_win:  i64 = r.try_get("knockout_win").unwrap_or(0);
+        let knockout_lose: i64 = r.try_get("knockout_lose").unwrap_or(0);
         serde_json::json!({
-            "key":          r.get::<String, _>("key"),
-            "name":         name,
-            "total":        total,
-            "wins":         wins,
-            "draws":        draws,
-            "win_rate":     win_rate,
-            "avg_kill":     r.try_get::<f64, _>("avg_kill").ok(),
-            "avg_death":    r.try_get::<f64, _>("avg_death").ok(),
-            "avg_assist":   r.try_get::<f64, _>("avg_assist").ok(),
-            "avg_special":  r.try_get::<f64, _>("avg_special").ok(),
-            "avg_inked":    r.try_get::<f64, _>("avg_inked").ok(),
-            "avg_duration": r.try_get::<f64, _>("avg_duration").ok(),
+            "key":           r.get::<String, _>("key"),
+            "name":          name,
+            "total":         total,
+            "wins":          wins,
+            "draws":         draws,
+            "win_rate":      win_rate,
+            "knockout_win":  knockout_win,
+            "knockout_lose": knockout_lose,
+            "avg_kill":      r.try_get::<f64, _>("avg_kill").ok(),
+            "avg_death":     r.try_get::<f64, _>("avg_death").ok(),
+            "avg_assist":    r.try_get::<f64, _>("avg_assist").ok(),
+            "avg_special":   r.try_get::<f64, _>("avg_special").ok(),
+            "avg_inked":     r.try_get::<f64, _>("avg_inked").ok(),
+            "avg_duration":  r.try_get::<f64, _>("avg_duration").ok(),
         })
     }).collect())
 }

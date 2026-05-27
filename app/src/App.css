@@ -998,6 +998,104 @@ body {
 .weapon-card-stat { font-size: 11px; color: var(--text-muted); }
 .weapon-card-winrate { font-weight: 600; }
 
+/* ── Stage Book ── */
+.stage-book { max-width: 1200px; }
+
+.stage-book-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.stage-book-header h2 { font-size: 16px; }
+
+.stage-sort {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.stage-sort-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.stage-sort-select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.stage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.stage-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.12s;
+}
+.stage-card:hover { border-color: var(--text-muted); }
+
+.stage-card-image-wrap {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface2);
+}
+.stage-card-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.stage-card-image--placeholder {
+  background: var(--surface2);
+}
+
+.stage-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.3;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.stage-card-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px 12px;
+}
+.stage-card-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+}
+.stage-card-stat-label {
+  color: var(--text-muted);
+}
+.stage-card-stat-value {
+  color: var(--text);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.stage-card-winrate { font-weight: 600; }
+
 /* ── AI Analysis ── */
 .ai-panel { max-width: 740px; }
 .ai-panel h2 { margin-bottom: 8px; }
