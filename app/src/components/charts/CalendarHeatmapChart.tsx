@@ -172,6 +172,10 @@ export function CalendarHeatmapChart({
   const width  = Math.max(weeks.length * PITCH + 26, 280)
   const height = GRID_TOP + GRID_HEIGHT + 8
 
+  // 「今日」より後 (未来) のセルは描画しない。UTC ベース。
+  const now = new Date()
+  const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+
   /** 凡例ラベル: 左端値・中央値・右端値 */
   const legendColors = group === 'rate' ? RATE_COLORS : group === 'count' ? COUNT_COLORS : AVG_COLORS
   const legendLeft   = group === 'rate' ? '0%'  : group === 'count' ? '0' : fmtLegend(minVal, metric)
@@ -200,6 +204,8 @@ export function CalendarHeatmapChart({
           Array.from({ length: 7 }, (_, di) => {
             const cellDate = new Date(weekStart)
             cellDate.setUTCDate(weekStart.getUTCDate() + di)
+            // 今日より後 (未来) のセルは描画しない
+            if (cellDate > todayUtc) return null
             const dateStr = toIsoDate(cellDate)
             const entry = dataMap.get(dateStr)
             const v = entry?.value ?? null

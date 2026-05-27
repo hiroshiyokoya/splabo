@@ -19,7 +19,7 @@
      sequential は「ほぼ白 → accent (ライム)」、
      divergent は「青 ← 白 → 赤」で、中央が暗くならないように白を通す */
   --cell-empty:    #565666;  /* 空 (バトル無し) */
-  --cell-sparse:   #6a6a78;  /* サンプル不足のグレーアウト */
+  --cell-sparse:   #9c9caa;  /* サンプル不足のグレーアウト (明るめ) */
   --cell-c1:       #f3f6e6;  /* 最薄 = ほぼ白 */
   --cell-c2:       #e2efb6;
   --cell-c3:       #d6ea7d;
