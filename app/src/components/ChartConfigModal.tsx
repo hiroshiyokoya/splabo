@@ -146,31 +146,34 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             )}
           </div>
 
-          <div className="form-field">
-            <label className="form-label">X 軸（集計キー）</label>
-            <select
-              className="form-input"
-              value={groupBy}
-              onChange={e => setGroupBy(e.target.value as GroupByKey)}
-              disabled={shape === 'calendar_heatmap'}
-            >
-              {(Object.keys(GROUP_BY_LABELS) as GroupByKey[])
-                .filter(g =>
-                  shape === 'line' ? isTimeBucketGroupBy(g) :
-                  shape === 'calendar_heatmap' ? g === 'day' :
-                  !isTimeBucketGroupBy(g)
-                )
-                .map(g => (
-                  <option key={g} value={g}>{GROUP_BY_LABELS[g]}</option>
-                ))}
-            </select>
-            {shape === 'line' && (
-              <p className="form-hint">線グラフは時系列のみ。粒度は {TIME_BUCKET_GROUP_BYS.map(k => GROUP_BY_LABELS[k]).join(' / ')} から選びます。</p>
-            )}
-            {shape === 'calendar_heatmap' && (
-              <p className="form-hint">カレンダーは「日」固定（GitHub 風コントリビューショングラフ）。</p>
-            )}
-          </div>
+          {/* scatter は X 軸 (集計キー) と Y 軸の構成・メトリクスを使わないので、shape ごとに分岐 */}
+          {shape !== 'scatter' && (
+            <div className="form-field">
+              <label className="form-label">X 軸（集計キー）</label>
+              <select
+                className="form-input"
+                value={groupBy}
+                onChange={e => setGroupBy(e.target.value as GroupByKey)}
+                disabled={shape === 'calendar_heatmap'}
+              >
+                {(Object.keys(GROUP_BY_LABELS) as GroupByKey[])
+                  .filter(g =>
+                    shape === 'line' ? isTimeBucketGroupBy(g) :
+                    shape === 'calendar_heatmap' ? g === 'day' :
+                    !isTimeBucketGroupBy(g)
+                  )
+                  .map(g => (
+                    <option key={g} value={g}>{GROUP_BY_LABELS[g]}</option>
+                  ))}
+              </select>
+              {shape === 'line' && (
+                <p className="form-hint">線グラフは時系列のみ。粒度は {TIME_BUCKET_GROUP_BYS.map(k => GROUP_BY_LABELS[k]).join(' / ')} から選びます。</p>
+              )}
+              {shape === 'calendar_heatmap' && (
+                <p className="form-hint">カレンダーは「日」固定（GitHub 風コントリビューショングラフ）。</p>
+              )}
+            </div>
+          )}
 
           {shape === 'heatmap' && (
             <div className="form-field">
@@ -202,6 +205,19 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 onChange={e => setTopN(Math.max(1, Math.min(200, Number(e.target.value) || 20)))}
               />
               <p className="form-hint">バトル数の多い武器を上位 N 種に絞ります（デフォルト 20）。</p>
+            </div>
+          )}
+
+          {/* メトリクス: scatter 以外で、yComposition = single_metric のとき表示。
+              X 軸の直後 (or heatmap の場合は軸 2 個の直後) に置く。 */}
+          {shape !== 'scatter' && yComposition === 'single_metric' && (
+            <div className="form-field">
+              <label className="form-label">メトリクス</label>
+              <select className="form-input" value={metric} onChange={e => setMetric(e.target.value as MetricKey)}>
+                {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
+                  <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+                ))}
+              </select>
             </div>
           )}
 
@@ -260,35 +276,21 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             </>
           )}
 
-          <div className="form-field">
-            <label className="form-label">Y 軸の構成</label>
-            <select
-              className="form-input"
-              value={yComposition}
-              onChange={e => setYComposition(e.target.value as YComposition)}
-              disabled={shape === 'line' || shape === 'calendar_heatmap' || shape === 'heatmap'}
-            >
-              {(Object.keys(Y_COMPOSITION_LABELS) as YComposition[]).map(y => (
-                <option key={y} value={y}>{Y_COMPOSITION_LABELS[y]}</option>
-              ))}
-            </select>
-            <p className="form-hint">{Y_COMPOSITION_DESCRIPTIONS[yComposition]}</p>
-            {shape === 'line' && (
-              <p className="form-hint form-hint--warn">線グラフは現在「単一メトリクス」のみ対応です（多系列・2 軸は後続 PR）。</p>
-            )}
-            {shape === 'calendar_heatmap' && (
-              <p className="form-hint form-hint--warn">カレンダーは「単一メトリクス」専用。メトリクスごとに色スケールが自動切替されます。</p>
-            )}
-          </div>
-
-          {yComposition === 'single_metric' && (
+          {/* Y 軸の構成: bar shape のみで意味がある (line/calendar/heatmap/scatter は single_metric 固定)。
+              他の shape では非表示。 */}
+          {shape === 'bar' && (
             <div className="form-field">
-              <label className="form-label">メトリクス</label>
-              <select className="form-input" value={metric} onChange={e => setMetric(e.target.value as MetricKey)}>
-                {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
-                  <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+              <label className="form-label">Y 軸の構成</label>
+              <select
+                className="form-input"
+                value={yComposition}
+                onChange={e => setYComposition(e.target.value as YComposition)}
+              >
+                {(Object.keys(Y_COMPOSITION_LABELS) as YComposition[]).map(y => (
+                  <option key={y} value={y}>{Y_COMPOSITION_LABELS[y]}</option>
                 ))}
               </select>
+              <p className="form-hint">{Y_COMPOSITION_DESCRIPTIONS[yComposition]}</p>
             </div>
           )}
 
