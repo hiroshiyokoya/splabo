@@ -9,6 +9,7 @@ import { StackedWinrateChart } from './charts/StackedWinrateChart'
 import { LineChart } from './charts/LineChart'
 import { CalendarHeatmapChart } from './charts/CalendarHeatmapChart'
 import { HeatmapChart } from './charts/HeatmapChart'
+import { ScatterChart } from './charts/ScatterChart'
 
 /** yComposition ごとに用意する並び替えオプション。
  *  - stacked_winrate: バトル数 / 勝数 / 勝率
@@ -87,8 +88,8 @@ export function CustomChartCard({
   const tickAngle = chart.groupBy === 'stage' ? 30 : undefined
 
   // 上位 14 件を取って選択されたキーでソート。
-  // 線グラフ・カレンダーは全データが必要なので slice しない。
-  const sliced = (chart.shape === 'line' || chart.shape === 'calendar_heatmap')
+  // 線・カレンダー・散布図・ヒートマップは全データが必要なので slice しない。
+  const sliced = (chart.shape === 'line' || chart.shape === 'calendar_heatmap' || chart.shape === 'scatter' || chart.shape === 'heatmap')
     ? data
     : sortAndSlice(data, sortKey)
 
@@ -159,6 +160,23 @@ function renderChartBody(
       <div className="chart-not-implemented">
         カレンダーヒートマップは「単一メトリクス」を選んでください。
       </div>
+    )
+  }
+
+  // scatter: 1 ドット = 1 カテゴリ (武器 or ステージ)。
+  if (chart.shape === 'scatter') {
+    if (!chart.xMetric || !chart.yMetric) {
+      return <div className="chart-not-implemented">散布図には X / Y メトリクスを選んでください。</div>
+    }
+    return (
+      <ScatterChart
+        data={data}
+        xMetric={chart.xMetric}
+        yMetric={chart.yMetric}
+        sizeMetric={chart.sizeMetric}
+        colorMetric={chart.colorMetric}
+        nameTransform={nameTransform}
+      />
     )
   }
 
