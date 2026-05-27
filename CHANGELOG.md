@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+## [0.4.1] — 2026-05-27
+
+### Added
+- フィードバックフォーム（Google Form）へのリンクを 3 ヶ所に追加: README / 紹介ページ (chartoon.pages.dev) / リリースノートフッター
+
 ## [0.4.0] — 2026-05-27
 
 chartoon 初回リリース。
