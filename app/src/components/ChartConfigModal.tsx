@@ -35,12 +35,16 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   const [groupBy,      setGroupBy]      = useState<GroupByKey>(initial?.groupBy      ?? 'weapon')
   const [metric,       setMetric]       = useState<MetricKey>(initial?.metric       ?? 'win_rate')
 
-  // shape='line' は時系列バケットのみ。shape を line に切り替えたとき groupBy が
-  // 時系列でなければ自動で 'day' に補正する。逆に line 以外へ戻したとき時系列
-  // groupBy のままだと bar 等で意味不明になるので 'weapon' に補正する。
+  // shape ごとに groupBy / yComposition を適切に補正する：
+  //   - line: 時系列バケット (day/three_day/week/month) + single_metric
+  //   - calendar_heatmap: day 固定 + single_metric
+  //   - その他 (bar など): 時系列でないカテゴリ系へ戻す
   useEffect(() => {
     if (shape === 'line') {
       if (!isTimeBucketGroupBy(groupBy)) setGroupBy('day')
+      if (yComposition !== 'single_metric') setYComposition('single_metric')
+    } else if (shape === 'calendar_heatmap') {
+      if (groupBy !== 'day') setGroupBy('day')
       if (yComposition !== 'single_metric') setYComposition('single_metric')
     } else {
       if (isTimeBucketGroupBy(groupBy)) setGroupBy('weapon')
@@ -105,15 +109,27 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
 
           <div className="form-field">
             <label className="form-label">X 軸（集計キー）</label>
-            <select className="form-input" value={groupBy} onChange={e => setGroupBy(e.target.value as GroupByKey)}>
+            <select
+              className="form-input"
+              value={groupBy}
+              onChange={e => setGroupBy(e.target.value as GroupByKey)}
+              disabled={shape === 'calendar_heatmap'}
+            >
               {(Object.keys(GROUP_BY_LABELS) as GroupByKey[])
-                .filter(g => shape === 'line' ? isTimeBucketGroupBy(g) : !isTimeBucketGroupBy(g))
+                .filter(g =>
+                  shape === 'line' ? isTimeBucketGroupBy(g) :
+                  shape === 'calendar_heatmap' ? g === 'day' :
+                  !isTimeBucketGroupBy(g)
+                )
                 .map(g => (
                   <option key={g} value={g}>{GROUP_BY_LABELS[g]}</option>
                 ))}
             </select>
             {shape === 'line' && (
               <p className="form-hint">線グラフは時系列のみ。粒度は {TIME_BUCKET_GROUP_BYS.map(k => GROUP_BY_LABELS[k]).join(' / ')} から選びます。</p>
+            )}
+            {shape === 'calendar_heatmap' && (
+              <p className="form-hint">カレンダーは「日」固定（GitHub 風コントリビューショングラフ）。</p>
             )}
           </div>
 
@@ -123,7 +139,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               className="form-input"
               value={yComposition}
               onChange={e => setYComposition(e.target.value as YComposition)}
-              disabled={shape === 'line'}
+              disabled={shape === 'line' || shape === 'calendar_heatmap'}
             >
               {(Object.keys(Y_COMPOSITION_LABELS) as YComposition[]).map(y => (
                 <option key={y} value={y}>{Y_COMPOSITION_LABELS[y]}</option>
@@ -132,6 +148,9 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             <p className="form-hint">{Y_COMPOSITION_DESCRIPTIONS[yComposition]}</p>
             {shape === 'line' && (
               <p className="form-hint form-hint--warn">線グラフは現在「単一メトリクス」のみ対応です（多系列・2 軸は後続 PR）。</p>
+            )}
+            {shape === 'calendar_heatmap' && (
+              <p className="form-hint form-hint--warn">カレンダーは「単一メトリクス」専用。メトリクスごとに色スケールが自動切替されます。</p>
             )}
           </div>
 

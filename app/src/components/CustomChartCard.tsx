@@ -7,6 +7,7 @@ import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
 import { StackedWinrateChart } from './charts/StackedWinrateChart'
 import { LineChart } from './charts/LineChart'
+import { CalendarHeatmapChart } from './charts/CalendarHeatmapChart'
 
 /** yComposition ごとに用意する並び替えオプション。
  *  - stacked_winrate: バトル数 / 勝数 / 勝率
@@ -82,8 +83,11 @@ export function CustomChartCard({
                                 undefined
   const tickAngle = chart.groupBy === 'stage' ? 30 : undefined
 
-  // 上位 14 件を取って選択されたキーでソート
-  const sliced = sortAndSlice(data, sortKey)
+  // 上位 14 件を取って選択されたキーでソート。
+  // 線グラフ・カレンダーは全データが必要なので slice しない。
+  const sliced = (chart.shape === 'line' || chart.shape === 'calendar_heatmap')
+    ? data
+    : sortAndSlice(data, sortKey)
 
   return (
     <div className="chart-card custom-chart-card" ref={setNodeRef} style={style}>
@@ -138,6 +142,18 @@ function renderChartBody(
       <div className="chart-not-implemented">
         この組み合わせ（line × {chart.yComposition}）はまだ未対応です。<br />
         「単一メトリクス」を選んでください。
+      </div>
+    )
+  }
+
+  // calendar_heatmap: 日別のみ。yComposition は single_metric 前提。
+  if (chart.shape === 'calendar_heatmap') {
+    if (chart.yComposition === 'single_metric' && chart.metric) {
+      return <CalendarHeatmapChart data={data} metric={chart.metric} />
+    }
+    return (
+      <div className="chart-not-implemented">
+        カレンダーヒートマップは「単一メトリクス」を選んでください。
       </div>
     )
   }
