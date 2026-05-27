@@ -13,7 +13,7 @@ import {
 import {
   SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable'
-import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats, GroupedStatsRow, CustomChart, GroupByKey } from '../types'
+import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats, GroupedStatsRow, GroupedStatsRow2D, CustomChart, GroupByKey } from '../types'
 import { filtersToRange, stageAbbr, modeLabel, ruleLabel, avgKillRatio } from '../types'
 import { CustomChartCard } from './CustomChartCard'
 import { ChartConfigModal } from './ChartConfigModal'
@@ -86,6 +86,8 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
   const [customCharts, setCustomCharts] = useState<CustomChart[]>(() => loadCustomCharts())
   // 各 groupBy のデータをキャッシュ（同じキーを複数カードで参照するので 1 回で済ませる）。
   const [groupedStatsCache, setGroupedStatsCache] = useState<Partial<Record<GroupByKey, GroupedStatsRow[]>>>({})
+  // ヒートマップ用の 2D キャッシュ。キーは `${groupBy}|${groupBy2}|${topN}`。
+  const [grouped2dCache, setGrouped2dCache] = useState<Record<string, GroupedStatsRow2D[]>>({})
   // モーダル状態：null=閉じる、{ chart: null }=新規、{ chart: 既存 }=編集
   const [modalState, setModalState] = useState<{ chart: CustomChart | null } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -114,19 +116,39 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
       stage: filters.stage.length > 0 ? filters.stage.join('|') : null,
     }
     // カスタムグラフが必要としている group_by を unique にまとめて 1 回ずつ取得。
-    const neededGroups = Array.from(new Set(customCharts.map(c => c.groupBy)))
+    // 1D: heatmap 以外。 2D: heatmap のみ。
+    const neededGroups = Array.from(new Set(customCharts.filter(c => c.shape !== 'heatmap').map(c => c.groupBy)))
+    const needed2dKeys = Array.from(new Set(
+      customCharts
+        .filter(c => c.shape === 'heatmap' && c.groupBy2)
+        .map(c => `${c.groupBy}|${c.groupBy2}|${c.topN ?? 20}`)
+    ))
     Promise.all([
       invoke<Summary>('db_summary', filterArgs),
       invoke<BattleStats>('db_battle_stats', filterArgs),
       ...neededGroups.map(g => invoke<GroupedStatsRow[]>('db_grouped_stats', { ...filterArgs, groupBy: g }).then(rows => [g, rows] as const)),
+      ...needed2dKeys.map(key => {
+        const [gx, gy, tnStr] = key.split('|')
+        return invoke<GroupedStatsRow2D[]>('db_grouped_stats_2d', {
+          ...filterArgs,
+          groupByX: gx,
+          groupByY: gy,
+          topN: Number(tnStr),
+        }).then(rows => [key, rows] as const)
+      }),
     ])
       .then((results) => {
-        const [s, st, ...gpairs] = results as [Summary, BattleStats, ...(readonly [GroupByKey, GroupedStatsRow[]])[]]
+        const [s, st, ...rest] = results as [Summary, BattleStats, ...unknown[]]
+        const gpairs = rest.slice(0, neededGroups.length) as (readonly [GroupByKey, GroupedStatsRow[]])[]
+        const pairs2d = rest.slice(neededGroups.length) as (readonly [string, GroupedStatsRow2D[]])[]
         setSummary(s)
         setStats(st)
         const cache: Partial<Record<GroupByKey, GroupedStatsRow[]>> = {}
         for (const [g, rows] of gpairs) cache[g] = rows
         setGroupedStatsCache(cache)
+        const cache2d: Record<string, GroupedStatsRow2D[]> = {}
+        for (const [k, rows] of pairs2d) cache2d[k] = rows
+        setGrouped2dCache(cache2d)
       })
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -252,6 +274,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
                     key={c.id}
                     chart={c}
                     data={groupedStatsCache[c.groupBy] ?? []}
+                    data2d={c.shape === 'heatmap' && c.groupBy2 ? grouped2dCache[`${c.groupBy}|${c.groupBy2}|${c.topN ?? 20}`] ?? [] : undefined}
                     onEdit={() => handleEdit(c.id)}
                     onDelete={() => handleDelete(c.id)}
                     weaponImages={weaponImages}

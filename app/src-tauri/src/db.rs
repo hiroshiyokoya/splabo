@@ -1485,6 +1485,153 @@ pub async fn db_grouped_stats(
     }).collect())
 }
 
+/// 2 軸でクロス集計する。ヒートマップ用。
+///
+/// 返す JSON 形式: `[{ key_x, key_y, name_x, name_y, total, wins, draws, win_rate,
+/// avg_kill, avg_death, avg_assist, avg_special, avg_inked, avg_duration }, ...]`
+///
+/// X / Y どちらかが `weapon` のときは武器のバトル数 Top N で絞り込む。
+/// それ以外のカテゴリはそのまま全件返す。
+#[tauri::command]
+pub async fn db_grouped_stats_2d(
+    db: tauri::State<'_, DbPool>,
+    group_by_x: String,
+    group_by_y: String,
+    since: Option<String>,
+    until: Option<String>,
+    mode: Option<String>,
+    rule: Option<String>,
+    result_filter: Option<String>,  // JS: resultFilter
+    weapon: Option<String>,
+    stage: Option<String>,
+    top_n: Option<i64>,             // 武器軸の Top N。指定なければ 20。
+) -> Result<Vec<serde_json::Value>, String> {
+    if group_by_x == group_by_y {
+        return Err(format!("X 軸と Y 軸に同じカテゴリを指定できません: {group_by_x}"));
+    }
+    let mode = translate_mode_filter(mode);
+    let rule = translate_rule_filter(rule);
+
+    fn axis_expr(axis: &str) -> Result<&'static str, String> {
+        Ok(match axis {
+            "weapon"          => "w.key",
+            "stage"           => "m.key",
+            "rule"            => RULE_KEY_AS_OLD,
+            "mode"            => "CASE WHEN l.key LIKE 'bankara%' THEN 'bankara' ELSE (CASE l.key WHEN 'xmatch' THEN 'x' ELSE l.key END) END",
+            "sub_weapon"      => "COALESCE(w.sub_key, '(不明)')",
+            "special_weapon"  => "COALESCE(w.special_key, '(不明)')",
+            "weapon_category" => "COALESCE(NULLIF(w.category_key, ''), '(未分類)')",
+            "result"          => "res.key",
+            _ => return Err(format!("未対応の group_by: {axis}")),
+        })
+    }
+
+    let x_expr = axis_expr(&group_by_x)?;
+    let y_expr = axis_expr(&group_by_y)?;
+
+    let filter_where =
+        "(? IS NULL OR b.played_at >= ?)
+           AND (? IS NULL OR b.played_at <= ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
+           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR res.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)";
+
+    let sql = format!(
+        "SELECT
+            {x_expr} as key_x,
+            {y_expr} as key_y,
+            COUNT(*)                                                  as total,
+            SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END)           as wins,
+            SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END)           as draws,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.kill     END)   as avg_kill,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.death    END)   as avg_death,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.assist   END)   as avg_assist,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.special  END)   as avg_special,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.inked    END)   as avg_inked,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.duration END)   as avg_duration
+         FROM battle b
+         JOIN lobby  l   ON l.id   = b.lobby_id
+         JOIN rule   r   ON r.id   = b.rule_id
+         JOIN result res ON res.id = b.result_id
+         JOIN weapon w   ON w.id   = b.weapon_id
+         JOIN map    m   ON m.id   = b.map_id
+         WHERE {filter_where}
+         GROUP BY {x_expr}, {y_expr}
+         ORDER BY total DESC"
+    );
+
+    let rows = sqlx::query(&sql)
+        .bind(&since).bind(&since)
+        .bind(&until).bind(&until)
+        .bind(&mode).bind(&mode)
+        .bind(&rule).bind(&rule)
+        .bind(&result_filter).bind(&result_filter)
+        .bind(&weapon).bind(&weapon)
+        .bind(&stage).bind(&stage)
+        .fetch_all(db.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 武器軸の Top N 絞り込み（バトル数の合計で上位 N の武器のみ残す）。
+    let top_n_value = top_n.unwrap_or(20).max(1) as usize;
+    let weapon_axis: Option<bool> =
+        if      group_by_x == "weapon" { Some(true) }   // x 軸が weapon
+        else if group_by_y == "weapon" { Some(false) }  // y 軸が weapon
+        else                           { None };
+
+    let kept_weapon_keys: Option<std::collections::HashSet<String>> = weapon_axis.map(|x_is_weapon| {
+        let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+        for r in &rows {
+            let key: String = if x_is_weapon { r.get("key_x") } else { r.get("key_y") };
+            let t: i64 = r.get("total");
+            *counts.entry(key).or_default() += t;
+        }
+        let mut pairs: Vec<(String, i64)> = counts.into_iter().collect();
+        pairs.sort_by(|a, b| b.1.cmp(&a.1));
+        pairs.into_iter().take(top_n_value).map(|(k, _)| k).collect()
+    });
+
+    let result: Vec<serde_json::Value> = rows.into_iter().filter_map(|r| {
+        let key_x: String = r.get("key_x");
+        let key_y: String = r.get("key_y");
+
+        // Top N 絞り込み
+        if let Some(ref keys) = kept_weapon_keys {
+            let weapon_key = if weapon_axis == Some(true) { &key_x } else { &key_y };
+            if !keys.contains(weapon_key) {
+                return None;
+            }
+        }
+
+        let total: i64 = r.get("total");
+        let wins:  i64 = r.get("wins");
+        let draws: i64 = r.get("draws");
+        let decisive   = total - draws;
+        let win_rate   = if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 };
+
+        Some(serde_json::json!({
+            "key_x":        key_x,
+            "key_y":        key_y,
+            "name_x":       key_x.clone(),
+            "name_y":       key_y.clone(),
+            "total":        total,
+            "wins":         wins,
+            "draws":        draws,
+            "win_rate":     win_rate,
+            "avg_kill":     r.try_get::<f64, _>("avg_kill").ok(),
+            "avg_death":    r.try_get::<f64, _>("avg_death").ok(),
+            "avg_assist":   r.try_get::<f64, _>("avg_assist").ok(),
+            "avg_special":  r.try_get::<f64, _>("avg_special").ok(),
+            "avg_inked":    r.try_get::<f64, _>("avg_inked").ok(),
+            "avg_duration": r.try_get::<f64, _>("avg_duration").ok(),
+        }))
+    }).collect();
+
+    Ok(result)
+}
+
 // ---------------------------------------------------------------------------
 // 武器マスター
 // ---------------------------------------------------------------------------

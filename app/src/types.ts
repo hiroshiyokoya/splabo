@@ -387,6 +387,47 @@ export interface CustomChart {
   groupBy:      GroupByKey
   /** yComposition='single_metric' のときのみ必要。それ以外は無視される。 */
   metric?:      MetricKey
+  /** shape='heatmap' のときの Y 軸。groupBy が X 軸となる。 */
+  groupBy2?:    GroupByKey
+  /** shape='heatmap' で武器軸を選んだときに表示する上位 N。デフォルト 20。 */
+  topN?:        number
+}
+
+/** ヒートマップ用の 2D 集計行（db_grouped_stats_2d の返り値）。 */
+export interface GroupedStatsRow2D {
+  key_x:        string
+  key_y:        string
+  name_x:       string
+  name_y:       string
+  total:        number
+  wins:         number
+  draws:        number
+  win_rate:     number
+  avg_kill:     number | null
+  avg_death:    number | null
+  avg_assist:   number | null
+  avg_special:  number | null
+  avg_inked:    number | null
+  avg_duration: number | null
+}
+
+/** GroupedStatsRow2D から指定メトリクスの値を取り出す。`avg_kd` は計算合成。 */
+export function getMetric2D(row: GroupedStatsRow2D, metric: MetricKey): number | null {
+  switch (metric) {
+    case 'total':        return row.total
+    case 'wins':         return row.wins
+    case 'win_rate':     return row.win_rate
+    case 'avg_kill':     return row.avg_kill
+    case 'avg_death':    return row.avg_death
+    case 'avg_assist':   return row.avg_assist
+    case 'avg_kd':
+      if (row.avg_kill === null || row.avg_death === null) return null
+      if (row.avg_death === 0) return null
+      return row.avg_kill / row.avg_death
+    case 'avg_special':  return row.avg_special
+    case 'avg_inked':    return row.avg_inked
+    case 'avg_duration': return row.avg_duration
+  }
 }
 
 /** UI ラベル。 */
@@ -405,8 +446,8 @@ export const Y_COMPOSITION_LABELS: Record<YComposition, string> = {
 }
 
 /** 実装済みの shape。それ以外は UI で disabled。
- *  v1.0.0: bar / line / calendar_heatmap。scatter / heatmap は後続 PR。 */
-export const IMPLEMENTED_SHAPES: ChartShape[] = ['bar', 'line', 'calendar_heatmap']
+ *  v1.0.0: bar / line / calendar_heatmap / heatmap。scatter は後続 PR。 */
+export const IMPLEMENTED_SHAPES: ChartShape[] = ['bar', 'line', 'calendar_heatmap', 'heatmap']
 
 /**
  * メトリクスを「色スケールのグループ」に分類する。
