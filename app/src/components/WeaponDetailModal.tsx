@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { GroupedStatsRow, WeaponRecord } from '../types'
-import { RULE_LABELS, ruleLabel, stageAbbr } from '../types'
+import { RULE_LABELS, ruleLabel } from '../types'
 
 // Dashboard.winRateColor / WeaponBook.winRateColor と同期。
 function winRateColor(rate: number): string {
@@ -10,32 +10,36 @@ function winRateColor(rate: number): string {
   return '#f472b6'
 }
 
-// 大きい数値を「1.23万」「12.3万」「1.2百万」短縮表示にする。
-function shortNum(n: number | null | undefined): string {
+function fmtNum(n: number | null | undefined, digits = 2): string {
   if (n === null || n === undefined) return '—'
-  if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(2)}億`
-  if (n >= 10_000)      return `${(n / 10_000).toFixed(n >= 100_000 ? 1 : 2)}万`
-  return n.toLocaleString()
+  return n.toFixed(digits)
+}
+
+function fmtRatio(num: number | null | undefined, den: number | null | undefined): string {
+  if (num === null || num === undefined || den === null || den === undefined || den === 0) return '—'
+  return (num / den).toFixed(2)
 }
 
 /**
  * 武器図鑑カードをクリックして開く詳細モーダル。
  *
- * - 公式統計（熟練度 / 勝利数 / 総塗）は WeaponRecord（#49 で拡張済み）から表示。
+ * - バトル統計（バトル数 / W/L/D / 勝率 / 平均K/D/塗り / キルレシオ）は DB 集計。
+ *   親 (WeaponBook) が statsByWeapon から該当行を `stats` prop として渡す。
  * - ステージ Top 5 とルール別勝率は `db_grouped_stats(group_by, weapon=武器スラッグ)` を 2 回呼んで取得。
  *   武器スラッグは `weapons.name`（旧テーブル）= `weapon.key`（新テーブル）= stat.ink キー。
  *   FE 側で持っている `WeaponRecord.name` をそのまま `weapon` フィルタとして渡せる。
  * - 直近 30 バトルの線グラフは仕様により非実装（#149）。
- * - 現/最高ブキチャレパワー・ビッグラン熟練度は WeaponRecordQuery に含まれないため
- *   現状は DB が空。混乱を避けるため今 PR では表示しない（#149 の事前共有差分）。
+ * - WeaponRecordQuery 由来の公式アプリ統計（熟練度・通算勝利数・総塗）は #162 廃止中のため
+ *   今 PR では表示しない（混乱回避）。
  */
 export function WeaponDetailModal({
-  weapon, image, subImage, spImage, onClose,
+  weapon, image, subImage, spImage, stats, onClose,
 }: {
   weapon:   WeaponRecord
   image:    string | null
   subImage: string | null
   spImage:  string | null
+  stats:    GroupedStatsRow | null
   onClose:  () => void
 }) {
   const [stageRows, setStageRows] = useState<GroupedStatsRow[] | null>(null)
@@ -68,8 +72,9 @@ export function WeaponDetailModal({
       .finally(() => setLoading(false))
   }, [weapon.name])
 
-  const decisive = weapon.total - weapon.draws
+  const decisive       = weapon.total - weapon.draws
   const overallWinRate = decisive > 0 ? weapon.wins / decisive : null
+  const losses         = weapon.total - weapon.wins - weapon.draws
 
   // ステージ Top 5（バトル数降順、既に db 側でソート済み）
   const topStages = (stageRows ?? []).slice(0, 5)
@@ -107,24 +112,24 @@ export function WeaponDetailModal({
                   <span>SP: {weapon.special_weapon}</span>
                 </div>
               )}
-              <div className="weapon-modal-hero-row weapon-modal-hero-overall">
-                <span>{weapon.total} 試合</span>
-                {overallWinRate !== null && (
-                  <span style={{ color: winRateColor(overallWinRate), fontWeight: 600 }}>
-                    勝率 {(overallWinRate * 100).toFixed(1)}%
-                  </span>
-                )}
-              </div>
             </div>
           </section>
 
-          {/* 公式統計：熟練度・勝利数・総塗（#149 の事前共有により現/最高パワーは未表示） */}
+          {/* バトル統計：7 パネル（4×2 グリッド） */}
           <section className="modal-section">
-            <h3 className="modal-section-title">公式アプリ統計</h3>
-            <div className="weapon-modal-official-grid">
-              <OfficialStat label="熟練度"       value={weapon.weapon_level !== null ? `Lv. ${weapon.weapon_level}` : '—'} />
-              <OfficialStat label="勝利数"       value={weapon.win_count_total !== null ? weapon.win_count_total.toLocaleString() : '—'} />
-              <OfficialStat label="総塗りポイント" value={shortNum(weapon.paint_point_total)} />
+            <h3 className="modal-section-title">バトル統計</h3>
+            <div className="weapon-modal-stats-grid">
+              <StatPanel label="バトル数"  value={weapon.total.toLocaleString()} />
+              <StatPanel label="Win / Lose (Draw)" value={`${weapon.wins} / ${losses} (${weapon.draws})`} />
+              <StatPanel
+                label="勝率"
+                value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '—'}
+                color={overallWinRate !== null ? winRateColor(overallWinRate) : undefined}
+              />
+              <StatPanel label="平均キル" value={fmtNum(stats?.avg_kill, 2)} />
+              <StatPanel label="平均デス" value={fmtNum(stats?.avg_death, 2)} />
+              <StatPanel label="キルレシオ" value={fmtRatio(stats?.avg_kill, stats?.avg_death)} />
+              <StatPanel label="平均塗り" value={fmtNum(stats?.avg_inked, 0)} />
             </div>
           </section>
 
@@ -174,7 +179,7 @@ export function WeaponDetailModal({
                   const wr  = dec > 0 ? r.wins / dec : null
                   return (
                     <div key={r.key} className="weapon-modal-stage-row">
-                      <span className="weapon-modal-stage-name" title={r.name}>{stageAbbr(r.name)}</span>
+                      <span className="weapon-modal-stage-name" title={r.name}>{r.name}</span>
                       <span className="weapon-modal-stage-count">{r.total} 戦</span>
                       <span
                         className="weapon-modal-stage-rate"
@@ -192,11 +197,11 @@ export function WeaponDetailModal({
   )
 }
 
-function OfficialStat({ label, value }: { label: string; value: string }) {
+function StatPanel({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <div className="weapon-modal-official-item">
-      <div className="weapon-modal-official-label">{label}</div>
-      <div className="weapon-modal-official-value">{value}</div>
+    <div className="weapon-modal-stat-panel">
+      <div className="weapon-modal-stat-label">{label}</div>
+      <div className="weapon-modal-stat-value" style={color ? { color } : undefined}>{value}</div>
     </div>
   )
 }
