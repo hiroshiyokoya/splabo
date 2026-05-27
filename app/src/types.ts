@@ -1,4 +1,4 @@
-export type Tab = 'dashboard' | 'battles' | 'weapons' | 'ai' | 'settings'
+export type Tab = 'dashboard' | 'battles' | 'weapons' | 'stages' | 'ai' | 'settings'
 
 export type Period = 'all' | 'current_season' | '30d' | '7d' | 'custom'
 
@@ -611,7 +611,10 @@ export function autoChartTitle(spec: {
 }
 
 /** db_grouped_stats の返却 1 行分。
- *  `avg_*` は detail_fetched=1 のバトルだけで集計しているため、未取得しかない場合は null。 */
+ *  `avg_*` は detail_fetched=1 のバトルだけで集計しているため、未取得しかない場合は null。
+ *
+ *  `knockout_win` / `knockout_lose` は battle.is_knockout (1/0/NULL) ベースで集計した
+ *  自チーム KO 勝ち数 / 被 KO 負け数。時間切れ (NULL) は両方とも 0 になる。 */
 export interface GroupedStatsRow {
   key:           string
   name:          string
@@ -619,6 +622,8 @@ export interface GroupedStatsRow {
   wins:          number
   draws:         number
   win_rate:      number
+  knockout_win:  number
+  knockout_lose: number
   avg_kill:      number | null
   avg_death:     number | null
   avg_assist:    number | null
