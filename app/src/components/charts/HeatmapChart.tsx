@@ -17,8 +17,9 @@ import { METRIC_LABELS, getMetric2D, formatMetric, metricGroup } from '../../typ
 const CELL_W  = 32
 const CELL_H  = 24
 const GAP     = 1
-const PAD_LEFT = 110  // Y 軸ラベルスペース
-const PAD_TOP  = 80   // X 軸ラベルスペース
+const PAD_LEFT_BASE = 110  // Y 軸 tick ラベルスペース
+const PAD_TOP_BASE  = 80   // X 軸 tick ラベルスペース
+const TITLE_PAD     = 22   // 軸タイトル（xTitle / yTitle）がある場合の追加スペース
 
 function cellColor(value: number | null, group: ReturnType<typeof metricGroup>, min: number, max: number, total: number, minSampleSize: number): string {
   if (value === null || total === 0) return 'var(--cell-empty)'
@@ -54,7 +55,7 @@ function cellColor(value: number | null, group: ReturnType<typeof metricGroup>, 
 
 export function HeatmapChart({
   data, metric, xLabelTransform, yLabelTransform, minSampleSize = 5,
-  xNumeric = false, yNumeric = false,
+  xNumeric = false, yNumeric = false, xTitle, yTitle,
 }: {
   data:             GroupedStatsRow2D[]
   metric:           MetricKey
@@ -64,7 +65,13 @@ export function HeatmapChart({
   /** X 軸が数値メトリクス bin の場合 true（並び順を数値昇順にする、#134）。 */
   xNumeric?:        boolean
   yNumeric?:        boolean
+  /** X 軸タイトル（軸ラベルの上に表示）。#145 */
+  xTitle?:          string
+  yTitle?:          string
 }) {
+  // 軸タイトルがある場合は、tick ラベルスペースに追加で TITLE_PAD ぶん確保する。
+  const PAD_LEFT = PAD_LEFT_BASE + (yTitle ? TITLE_PAD : 0)
+  const PAD_TOP  = PAD_TOP_BASE  + (xTitle ? TITLE_PAD : 0)
   // ツールチップ位置はマウスの clientX / clientY (viewport 基準)。
   // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
   const [hover, setHover] = useState<{
@@ -148,6 +155,31 @@ export function HeatmapChart({
   return (
     <div className="chart-hover-area" style={{ position: 'relative', overflow: 'auto' }}>
       <svg width={width} height={height} role="img" aria-label="ヒートマップ">
+        {/* 軸タイトル（#145）。tick ラベルの上 / 左に表示。 */}
+        {xTitle && (
+          <text
+            x={PAD_LEFT + (xKeys.length * (CELL_W + GAP)) / 2}
+            y={14}
+            fontSize={12}
+            fontWeight={600}
+            fill="var(--text)"
+            textAnchor="middle"
+          >{xTitle}</text>
+        )}
+        {yTitle && (() => {
+          const cy = PAD_TOP + GRID_H / 2
+          return (
+            <text
+              x={14}
+              y={cy}
+              fontSize={12}
+              fontWeight={600}
+              fill="var(--text)"
+              textAnchor="middle"
+              transform={`rotate(-90 14 ${cy})`}
+            >{yTitle}</text>
+          )
+        })()}
         {/* X 軸ラベル（上に斜め配置） */}
         {xKeys.map((k, i) => {
           const x = PAD_LEFT + i * (CELL_W + GAP) + CELL_W / 2
