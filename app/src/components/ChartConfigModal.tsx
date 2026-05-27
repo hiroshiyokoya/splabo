@@ -212,9 +212,49 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             </div>
           )}
 
-          {/* メトリクス: scatter 以外で、yComposition = single_metric のとき表示。
-              X 軸の直後 (or heatmap の場合は軸 2 個の直後) に置く。 */}
-          {shape !== 'scatter' && yComposition === 'single_metric' && (
+          {/* 棒グラフ: Y 軸を「メトリクス + 複合構成」統合の 1 セレクトで選ぶ。
+              line/heatmap/calendar は yComposition が常に single_metric なので、
+              メトリクスだけのシンプルな select を出す（下のブロック）。 */}
+          {shape === 'bar' && (() => {
+            // 統合 select の現在値：single_metric のときは metric、それ以外は yComposition
+            const barYAxisValue = yComposition === 'single_metric' ? metric : yComposition
+            const isComposite = yComposition !== 'single_metric'
+            return (
+              <div className="form-field">
+                <label className="form-label">Y 軸</label>
+                <select
+                  className="form-input"
+                  value={barYAxisValue}
+                  onChange={e => {
+                    const v = e.target.value
+                    if (v === 'stacked_winrate' || v === 'attack_defense') {
+                      setYComposition(v as YComposition)
+                    } else {
+                      setYComposition('single_metric')
+                      setMetric(v as MetricKey)
+                    }
+                  }}
+                >
+                  <optgroup label="単一メトリクス">
+                    {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
+                      <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="複合">
+                    <option value="stacked_winrate">{Y_COMPOSITION_LABELS.stacked_winrate}</option>
+                    <option value="attack_defense">{Y_COMPOSITION_LABELS.attack_defense}</option>
+                  </optgroup>
+                </select>
+                <p className="form-hint">
+                  {isComposite ? Y_COMPOSITION_DESCRIPTIONS[yComposition] : '単一メトリクスの棒グラフ。'}
+                </p>
+              </div>
+            )
+          })()}
+
+          {/* line / heatmap / calendar_heatmap 用のメトリクス選択。
+              これらは yComposition が常に single_metric に固定されている。 */}
+          {shape !== 'scatter' && shape !== 'bar' && yComposition === 'single_metric' && (
             <div className="form-field">
               <label className="form-label">メトリクス</label>
               <select className="form-input" value={metric} onChange={e => setMetric(e.target.value as MetricKey)}>
@@ -280,23 +320,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             </>
           )}
 
-          {/* Y 軸の構成: bar shape のみで意味がある (line/calendar/heatmap/scatter は single_metric 固定)。
-              他の shape では非表示。 */}
-          {shape === 'bar' && (
-            <div className="form-field">
-              <label className="form-label">Y 軸の構成</label>
-              <select
-                className="form-input"
-                value={yComposition}
-                onChange={e => setYComposition(e.target.value as YComposition)}
-              >
-                {(Object.keys(Y_COMPOSITION_LABELS) as YComposition[]).map(y => (
-                  <option key={y} value={y}>{Y_COMPOSITION_LABELS[y]}</option>
-                ))}
-              </select>
-              <p className="form-hint">{Y_COMPOSITION_DESCRIPTIONS[yComposition]}</p>
-            </div>
-          )}
+          {/* bar の「Y 軸の構成 + メトリクス」は上の統合 Y 軸 select に集約済み。 */}
 
           <div className="modal-actions">
             <button className="btn-secondary" onClick={onClose}>キャンセル</button>
