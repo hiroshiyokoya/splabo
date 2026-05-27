@@ -683,6 +683,106 @@ pub async fn fetch_and_store_weapons(
     Ok(count)
 }
 
+/// WeaponRecordQuery (#49) を nxapi-sidecar 経由で実行し、weapon_records テーブルに upsert する。
+/// 同時に全武器の主・サブ・SP 画像をキャッシュする（バトルに登場しない武器のアイコン欠け対策）。
+///
+/// レスポンス構造 (data.weaponRecords.nodes[]):
+///   name, image2d.url, weaponId, stats.{level, paint, win, vibes, ...},
+///   subWeapon.{name, image.url}, specialWeapon.{name, image.url}, weaponCategory.{...}
+///
+/// 戻り値は upsert 件数。
+pub async fn fetch_and_store_weapon_records(
+    pool: &crate::db::DbPool,
+    client: &reqwest::Client,
+    app: &tauri::AppHandle,
+) -> Result<usize, String> {
+    // nxapi-sidecar に WeaponRecordQuery を実行させ、最新の query hash を利用する。
+    let data = crate::nxapi::nxapi_fetch_weapon_records(app).await?;
+
+    let nodes = data
+        .pointer("/weaponRecords/nodes")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| {
+            let head = data.to_string();
+            format!(
+                "WeaponRecordQuery レスポンスに weaponRecords.nodes が無い。先頭: {}",
+                &head[..head.len().min(300)]
+            )
+        })?;
+
+    let mut count = 0usize;
+
+    for node in nodes {
+        let name = node.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        if name.is_empty() {
+            continue;
+        }
+
+        // ユーザー固有統計
+        let level   = node.pointer("/stats/level").and_then(|v| v.as_i64()).unwrap_or(0);
+        let win     = node.pointer("/stats/win").and_then(|v| v.as_i64()).unwrap_or(0);
+        let paint   = node.pointer("/stats/paint").and_then(|v| v.as_i64()).unwrap_or(0);
+
+        // WeaponRecordQuery には big_run_level / weapon_power / weapon_power_max が無い。
+        // 将来別クエリ（HistoryRecordQuery 等）が見つかったらここで埋める。今は None。
+        let big_run_level: Option<i64> = None;
+        let weapon_power: Option<f64>  = None;
+        let weapon_power_max: Option<f64> = None;
+
+        if let Err(e) = crate::db::upsert_weapon_record(
+            pool, name, level, win, paint, big_run_level, weapon_power, weapon_power_max,
+        ).await {
+            log::warn!("weapon_records upsert スキップ ({name}): {e}");
+            continue;
+        }
+        count += 1;
+
+        // 主武器画像（image2d を優先、なければ image / image3d でフォールバック）。
+        let weapon_url = node
+            .pointer("/image2d/url")
+            .and_then(|v| v.as_str())
+            .or_else(|| node.pointer("/image/url").and_then(|v| v.as_str()))
+            .or_else(|| node.pointer("/image2dThumbnail/url").and_then(|v| v.as_str()))
+            .or_else(|| node.pointer("/image3d/url").and_then(|v| v.as_str()));
+        if let Some(url) = weapon_url {
+            if let Err(e) = crate::images::download_and_cache(app, client, "weapon", name, url).await {
+                log::warn!("主武器画像キャッシュ失敗 ({name}): {e}");
+            }
+        }
+
+        // サブ
+        let sub_name = node.pointer("/subWeapon/name").and_then(|v| v.as_str());
+        let sub_url  = node.pointer("/subWeapon/image/url").and_then(|v| v.as_str());
+        if let (Some(sname), Some(surl)) = (sub_name, sub_url) {
+            if let Err(e) = crate::images::download_and_cache(app, client, "sub_weapon", sname, surl).await {
+                log::warn!("サブウェポン画像キャッシュ失敗 ({sname}): {e}");
+            }
+        }
+
+        // SP
+        let sp_name = node.pointer("/specialWeapon/name").and_then(|v| v.as_str());
+        let sp_url  = node.pointer("/specialWeapon/image/url").and_then(|v| v.as_str());
+        if let (Some(sname), Some(surl)) = (sp_name, sp_url) {
+            if let Err(e) = crate::images::download_and_cache(app, client, "special_weapon", sname, surl).await {
+                log::warn!("スペシャルウェポン画像キャッシュ失敗 ({sname}): {e}");
+            }
+        }
+
+        // 旧 weapons テーブルにも sub / sp 名と画像を補完しておく（db_list_weapons 用）。
+        // ここで上書きしないように COALESCE。
+        if sub_name.is_some() || sp_name.is_some() {
+            if let Err(e) = crate::db::update_weapon_sub_special_images(
+                pool, name, sub_url, sp_url,
+            ).await {
+                log::warn!("武器画像URL更新失敗 ({name}): {e}");
+            }
+        }
+    }
+
+    log::info!("[weapon_records] WeaponRecordQuery 取得 {} 件", count);
+    Ok(count)
+}
+
 /// 保存済みバトルの my_team / other_teams JSON から **全プレイヤーのメイン武器画像** をキャッシュする (#136)。
 ///
 /// `fetch_and_store_weapons`（HistoryRecordQuery）は自分が使ったことのある武器しか返さない。

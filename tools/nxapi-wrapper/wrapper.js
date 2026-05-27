@@ -6,6 +6,7 @@
  *   node wrapper.js setup <session_token> <data_dir>
  *   node wrapper.js get_bullet_token <data_dir>
  *   node wrapper.js check_login <data_dir>
+ *   node wrapper.js weapon_records <data_dir>
  *
  * 結果は stdout に 1行の JSON で出力する。
  * エラー時は {"ok": false, "error": "<message>"} を stdout に出力し、exit code 1 で終了。
@@ -71,6 +72,9 @@ async function main() {
       break;
     case 'check_login':
       await cmdCheckLogin(args);
+      break;
+    case 'weapon_records':
+      await cmdWeaponRecords(args);
       break;
     default:
       respond({ ok: false, error: `不明なコマンド: ${cmd ?? '(なし)'}` });
@@ -145,6 +149,37 @@ async function cmdCheckLogin([dataDir]) {
   }
   const token = await storage.getItem('NintendoAccountToken.' + nsid);
   respond({ ok: true, logged_in: !!token, nsid });
+}
+
+/**
+ * weapon_records <data_dir>
+ * SplatNet 3 の WeaponRecordQuery を実行し、レスポンス全体を返す。
+ *
+ * レスポンスの形 (data.weaponRecords.nodes[]):
+ *   { name, image2d{url}, image3d{url}, weaponId, stats{level,paint,win,vibes,...},
+ *     subWeapon{name,image{url}}, specialWeapon{name,image{url}}, weaponCategory{...} }
+ *
+ * 武器熟練度 (stats.level)・通算勝利数 (stats.win)・総塗りポイント (stats.paint) はここで取れる。
+ * ブキチャレパワー / ビッグラン熟練度は WeaponRecordQuery には含まれない（別クエリの領域）。
+ */
+async function cmdWeaponRecords([dataDir]) {
+  if (!dataDir) throw new Error('usage: weapon_records <data_dir>');
+
+  const storage = await initStorage(dataDir);
+  const nsid = await storage.getItem('SelectedUser');
+  if (!nsid) throw new Error('未ログインです（先に setup を実行してください）');
+
+  const sessionToken = await storage.getItem('NintendoAccountToken.' + nsid);
+  if (!sessionToken) throw new Error('session_token が見つかりません');
+
+  process.stderr.write('WeaponRecordQuery を実行中...\n');
+  const { getBulletToken } = await import('./node_modules/nxapi/dist/common/auth/splatnet3.js');
+  // 第 4 引数 allow_fetch_token=true により bullet_token が無ければ自動取得する。
+  const { splatnet } = await getBulletToken(storage, sessionToken, undefined, true);
+
+  const result = await splatnet.getWeaponRecords();
+  // result は { data, ... }。data.weaponRecords.nodes が本体。
+  respond({ ok: true, data: result.data });
 }
 
 // ── ユーティリティ ─────────────────────────────────────────

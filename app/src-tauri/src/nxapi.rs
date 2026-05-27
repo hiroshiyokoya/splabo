@@ -64,6 +64,32 @@ pub async fn nxapi_get_bullet_token(app: &AppHandle) -> Result<BulletTokenResult
     })
 }
 
+/// nxapi-sidecar 経由で WeaponRecordQuery を実行し、`data` フィールドを返す (#49)。
+/// 戻り値はおおよそ `{ "weaponRecords": { "nodes": [...] } }` の serde_json::Value。
+pub async fn nxapi_fetch_weapon_records(app: &AppHandle) -> Result<serde_json::Value, String> {
+    let data_dir = nxapi_data_dir(app)?;
+
+    let output = app
+        .shell()
+        .sidecar("nxapi-sidecar")
+        .map_err(|e| format!("サイドカー起動失敗: {e}"))?
+        .args(["weapon_records", &data_dir])
+        .output()
+        .await
+        .map_err(|e| format!("サイドカー実行失敗: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let result: serde_json::Value = serde_json::from_str(stdout.trim())
+        .map_err(|e| format!("WeaponRecordQuery 出力解析失敗: {e}\nstdout: {stdout}"))?;
+
+    if result["ok"].as_bool() != Some(true) {
+        let err = result["error"].as_str().unwrap_or("不明なエラー");
+        return Err(format!("WeaponRecordQuery 失敗: {err}"));
+    }
+
+    Ok(result["data"].clone())
+}
+
 fn nxapi_data_dir(app: &AppHandle) -> Result<String, String> {
     app.path()
         .app_data_dir()
