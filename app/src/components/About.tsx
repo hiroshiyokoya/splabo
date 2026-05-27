@@ -28,7 +28,7 @@ export function About({ onClose }: Props) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body about-body">
-          <div className="about-logo">chartoon</div>
+          <img className="about-logo" src="/chartoon-logo.png" alt="chartoon" />
           {version && <div className="about-version">v{version}</div>}
           <p className="about-desc">
             Splatoon 3 のバトルデータを記録・分析するデスクトップアプリです。
