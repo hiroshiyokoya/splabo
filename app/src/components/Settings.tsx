@@ -18,6 +18,8 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   const [themeId, setThemeId] = useState(getThemeId)
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<string | null>(null)
+  const [weaponUpdating, setWeaponUpdating] = useState(false)
+  const [weaponUpdateResult, setWeaponUpdateResult] = useState<string | null>(null)
 
   useEffect(() => {
     invoke<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
@@ -74,6 +76,19 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
       console.error('ログアウト失敗:', e)
     } finally {
       setAuthLoading(false)
+    }
+  }
+
+  async function handleUpdateWeapons() {
+    setWeaponUpdating(true)
+    setWeaponUpdateResult(null)
+    try {
+      const count = await invoke<number>('fetch_weapons')
+      setWeaponUpdateResult(`武器マスター ${count} 件取得しました`)
+    } catch (e) {
+      setWeaponUpdateResult(`エラー: ${String(e)}`)
+    } finally {
+      setWeaponUpdating(false)
     }
   }
 
@@ -266,6 +281,32 @@ async function handleUploadStatink() {
         >
           カスタムグラフをすべて削除（ダッシュボードをリセット）
         </button>
+      </section>
+
+      <section className="settings-section">
+        <h3>マスターデータ</h3>
+        <div className="settings-help" style={{ marginBottom: 12 }}>
+          武器・サブ・SP・カテゴリ等のマスターデータを SplatNet 3 から取得します。
+          起動時に 24 時間ごとに自動取得しますが、手動でも実行できます。
+        </div>
+        <button
+          className="btn-primary"
+          onClick={handleUpdateWeapons}
+          disabled={weaponUpdating || !loggedIn}
+        >
+          {weaponUpdating ? '取得中...' : '武器データを更新'}
+        </button>
+        {weaponUpdateResult && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: weaponUpdateResult.startsWith('エラー') ? 'var(--accent2)' : 'var(--text-muted)',
+            }}
+          >
+            {weaponUpdateResult}
+          </div>
+        )}
       </section>
 
       <section className="settings-section">
