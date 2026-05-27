@@ -144,6 +144,26 @@ export function WeaponBook() {
 
   const hasFilter = !!(category || subWeapon || specialWeapon)
 
+  // 公式統計（熟練度・勝利数・塗りポイント）が 1 件でも取得できているか。
+  // WeaponRecordQuery が nxapi 同梱ハッシュ廃止（#162）で取れていない場合、
+  // 全武器 0/null になるためソート項目から外す。
+  const hasOfficialStats = useMemo(
+    () => weapons.some(w =>
+      (w.weapon_level     !== null && w.weapon_level     > 0) ||
+      (w.win_count_total  !== null && w.win_count_total  > 0) ||
+      (w.paint_point_total!== null && w.paint_point_total> 0)
+    ),
+    [weapons]
+  )
+
+  // 取得できないキーが選択されていたら 'total' に戻す。
+  useEffect(() => {
+    if (!hasOfficialStats &&
+        (sortKey === 'weapon_level' || sortKey === 'win_count_total' || sortKey === 'paint_point_total')) {
+      setSortKey('total')
+    }
+  }, [hasOfficialStats, sortKey])
+
   function reset() {
     setCategory(null)
     setSubWeapon(null)
@@ -165,9 +185,11 @@ export function WeaponBook() {
             value={sortKey}
             onChange={e => setSortKey(e.target.value as SortKey)}
           >
-            {(Object.keys(SORT_LABELS) as SortKey[]).map(k => (
-              <option key={k} value={k}>{SORT_LABELS[k]}</option>
-            ))}
+            {(Object.keys(SORT_LABELS) as SortKey[]).map(k => {
+              const isOfficial = k === 'weapon_level' || k === 'win_count_total' || k === 'paint_point_total'
+              if (isOfficial && !hasOfficialStats) return null
+              return <option key={k} value={k}>{SORT_LABELS[k]}</option>
+            })}
           </select>
         </div>
       </div>

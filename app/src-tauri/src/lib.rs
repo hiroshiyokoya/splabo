@@ -365,7 +365,15 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
     // 全武器分の主・サブ・SP 画像キャッシュを行う（バトル未登場武器のアイコン欠け解消も兼ねる）。
     // 失敗してもメインフローは止めない（戻り値の count はそのまま）。
     if let Err(e) = splatnet3::fetch_and_store_weapon_records(&db, &client, &app).await {
-        log::warn!("[weapon_records] 取得スキップ: {e}");
+        // nxapi 同梱の WeaponRecordQuery 持続クエリハッシュが Nintendo 側で廃止された場合は、
+        // 外部依存待ちの既知問題なので warn ではなく info に落とす（chartoon Issue #162 で追跡）。
+        if e.contains("persisted query") && e.contains("does not exist") {
+            log::info!(
+                "[weapon_records] スキップ: nxapi 同梱の WeaponRecordQuery 持続クエリハッシュが Nintendo 側で廃止。nxapi 更新待ち。"
+            );
+        } else {
+            log::warn!("[weapon_records] 取得スキップ: {e}");
+        }
     }
 
     Ok(count)
