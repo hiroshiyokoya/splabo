@@ -235,14 +235,14 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                     }
                   }}
                 >
+                  <optgroup label="複合">
+                    <option value="stacked_winrate">{Y_COMPOSITION_LABELS.stacked_winrate}</option>
+                    <option value="attack_defense">{Y_COMPOSITION_LABELS.attack_defense}</option>
+                  </optgroup>
                   <optgroup label="単一メトリクス">
                     {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
                       <option key={m} value={m}>{METRIC_LABELS[m]}</option>
                     ))}
-                  </optgroup>
-                  <optgroup label="複合">
-                    <option value="stacked_winrate">{Y_COMPOSITION_LABELS.stacked_winrate}</option>
-                    <option value="attack_defense">{Y_COMPOSITION_LABELS.attack_defense}</option>
                   </optgroup>
                 </select>
                 <p className="form-hint">
