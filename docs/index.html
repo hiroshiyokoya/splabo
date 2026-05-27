@@ -274,6 +274,37 @@
       margin-top: 0.75rem;
     }
 
+    /* ── Feedback ── */
+    .feedback {
+      background: var(--surface);
+      padding: 3rem 2rem;
+    }
+    .feedback-inner {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .feedback-inner p {
+      font-size: 0.87rem;
+      color: var(--text-muted);
+      margin-top: 0.75rem;
+    }
+    .feedback-inner .btn-discuss {
+      display: inline-block;
+      margin-top: 1.25rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--accent);
+      padding: 0.6rem 1.6rem;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      transition: background 0.15s;
+    }
+    .feedback-inner .btn-discuss:hover {
+      background: var(--border);
+      text-decoration: none;
+    }
+
     /* ── Footer ── */
     footer {
       background: var(--surface);
@@ -414,6 +445,18 @@
     <p>本ツールが外部に送信するのは、Nintendo 認証に必要な情報（nxapi の仕様に基づく f-token 生成）と、設定で有効にした場合の stat.ink へのバトルデータのみです。氏名・メールアドレス等の個人情報を収集・記録することはありません。</p>
     <p>AI 分析機能を使用する場合は、選択したプロバイダ（OpenAI / Gemini / Anthropic / Grok）へバトル集計データが送信されます。</p>
     <p>詳細は <a href="https://github.com/hiroshiyokoya/chartoon#プライバシーポリシー">プライバシーポリシー（README）</a> を参照してください。</p>
+  </section>
+
+  <!-- Feedback -->
+  <section class="feedback">
+    <div class="feedback-inner">
+      <h2 class="section-title">フィードバック・ご意見</h2>
+      <p>バグ報告・機能要望・感想など、どんなフィードバックも歓迎します。<br>
+         匿名で送信できます。返信希望の場合はメールアドレスをご記入ください。</p>
+      <a class="btn-discuss" href="https://docs.google.com/forms/d/e/1FAIpQLScAP6LH9JDHaJGs4c7UJakF-YNU1UJRN10H4uSePqiknN-apQ/viewform" target="_blank" rel="noopener">
+        フィードバックフォームを開く
+      </a>
+    </div>
   </section>
 
   <!-- Lightbox -->
