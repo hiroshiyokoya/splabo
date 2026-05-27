@@ -1726,10 +1726,12 @@ pub async fn db_grouped_stats_2d(
            AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)";
 
+    // key_x / key_y は Rust 側で String として読み取るので、INTEGER 系の数値軸（#134）でも
+    // 必ず TEXT になるよう SELECT で CAST する。GROUP BY は元の式（数値）のまま。
     let sql = format!(
         "SELECT
-            {x_expr} as key_x,
-            {y_expr} as key_y,
+            CAST({x_expr} AS TEXT) as key_x,
+            CAST({y_expr} AS TEXT) as key_y,
             {x_display} as name_x,
             {y_display} as name_y,
             COUNT(*)                                                  as total,
