@@ -214,10 +214,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                   <input
                     type="number"
                     className="form-input"
-                    min={0.1}
-                    step={xBinWidth < 10 ? 0.5 : 10}
+                    min={1}
+                    step={1}
                     value={xBinWidth}
-                    onChange={e => setXBinWidth(Math.max(0.1, Number(e.target.value) || 1))}
+                    onChange={e => setXBinWidth(Math.max(1, Math.floor(Number(e.target.value)) || 1))}
                   />
                   <p className="form-hint">{BATTLE_NUMERIC_METRIC_LABELS[xNumericMetric]} を {xBinWidth} 刻みで bin 集計します。</p>
                 </div>
@@ -264,10 +264,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                   <input
                     type="number"
                     className="form-input"
-                    min={0.1}
-                    step={yBinWidth < 10 ? 0.5 : 10}
+                    min={1}
+                    step={1}
                     value={yBinWidth}
-                    onChange={e => setYBinWidth(Math.max(0.1, Number(e.target.value) || 1))}
+                    onChange={e => setYBinWidth(Math.max(1, Math.floor(Number(e.target.value)) || 1))}
                   />
                   <p className="form-hint">{BATTLE_NUMERIC_METRIC_LABELS[yNumericMetric]} を {yBinWidth} 刻みで bin 集計します。</p>
                 </div>
