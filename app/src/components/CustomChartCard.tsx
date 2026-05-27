@@ -92,11 +92,13 @@ function buildAggScatterPoints(
   })
 }
 
-/** バトル単位の散布図ポイントを作る。 */
+/** バトル単位の散布図ポイントを作る。整数軸 (キル/デス等) の重なりを見やすくするため
+ *  ±0.3 のジッタを乗せる。表示上の位置だけずらして、ホバーには元の値を表示する。 */
 function buildBattleScatterPoints(
   data: BattleRow[],
   xKey: string, yKey: string, sizeKey?: string, colorKey?: string,
 ): ScatterPoint[] {
+  const jitter = () => (Math.random() - 0.5) * 0.6  // ±0.3
   return data.map(b => {
     const x = getBattleMetric(b, xKey as BattleMetricKey)
     const y = getBattleMetric(b, yKey as BattleMetricKey)
@@ -113,8 +115,13 @@ function buildBattleScatterPoints(
     const fmtBattle = (v: number | null) => v === null ? '—' : (typeof v === 'number' ? (Number.isInteger(v) ? v.toString() : v.toFixed(2)) : String(v))
     return {
       name:  `${b.played_at.slice(0, 10)} / ${b.weapon}`,
-      x, y, size, color,
+      // 表示位置にジッタを乗せる (x/y が null のときは null のまま)
+      x: x === null ? null : x + jitter(),
+      y: y === null ? null : y + jitter(),
+      size,
+      color,
       tooltipRows: [
+        // ツールチップには元の値 (ジッタ前) を表示
         { label: metricLabelOf(xKey), value: fmtBattle(x) },
         { label: metricLabelOf(yKey), value: fmtBattle(y) },
         ...(sizeKey ? [{ label: metricLabelOf(sizeKey), value: fmtBattle(size), muted: true }] : []),
@@ -300,6 +307,8 @@ function renderChartBody(
         xIsRate={chart.xMetric === 'win_rate'}
         yIsRate={chart.yMetric === 'win_rate'}
         hasSize={!!chart.sizeMetric}
+        // バトル単位は重なりが多いので透過を強める (ジッタと合わせて密度が見える)
+        fillOpacity={isBattle ? 0.4 : 0.85}
       />
     )
   }

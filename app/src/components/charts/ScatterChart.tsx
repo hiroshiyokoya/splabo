@@ -21,15 +21,17 @@ export interface ScatterPoint {
 }
 
 export function ScatterChart({
-  points, xLabel, yLabel, xIsRate, yIsRate, hasSize, height = 300,
+  points, xLabel, yLabel, xIsRate, yIsRate, hasSize, fillOpacity = 0.85, height = 320,
 }: {
-  points:    ScatterPoint[]
-  xLabel:    string
-  yLabel:    string
-  xIsRate?:  boolean
-  yIsRate?:  boolean
-  hasSize?:  boolean
-  height?:   number
+  points:       ScatterPoint[]
+  xLabel:       string
+  yLabel:       string
+  xIsRate?:     boolean
+  yIsRate?:     boolean
+  hasSize?:     boolean
+  /** ドットの塗り透過度。バトル単位 (重なり多) では 0.4 程度を渡して密度を見せる。 */
+  fillOpacity?: number
+  height?:      number
 }) {
   const [hover, setHover] = useState<ScatterPoint | null>(null)
 
@@ -43,7 +45,7 @@ export function ScatterChart({
     <div className="chart-hover-area" style={{ position: 'relative' }}>
     <ResponsiveContainer width="100%" height={height}>
       <RScatterChart
-        margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
+        margin={{ top: 4, right: 8, left: 0, bottom: 24 }}
         onMouseLeave={() => setHover(null)}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -54,15 +56,17 @@ export function ScatterChart({
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}
           tickFormatter={xIsRate ? (v: number) => `${(v * 100).toFixed(0)}%` : undefined}
           domain={xIsRate ? [0, 1] : ['auto', 'auto']}
+          label={{ value: xLabel, position: 'insideBottom', offset: -10, fill: 'var(--text-muted)', fontSize: 11 } as object}
         />
         <YAxis
           type="number"
           dataKey="y"
           name={yLabel}
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}
-          width={48}
+          width={56}
           tickFormatter={yIsRate ? (v: number) => `${(v * 100).toFixed(0)}%` : undefined}
           domain={yIsRate ? [0, 1] : ['auto', 'auto']}
+          label={{ value: yLabel, angle: -90, position: 'insideLeft', offset: 12, fill: 'var(--text-muted)', fontSize: 11, style: { textAnchor: 'middle' } } as object}
         />
         <ZAxis type="number" dataKey="size" range={zRange} />
         <Scatter
@@ -71,7 +75,7 @@ export function ScatterChart({
           isAnimationActive={false}
         >
           {drawable.map((p, i) => (
-            <Cell key={i} fill={p.color} fillOpacity={0.85} stroke="var(--surface)" strokeWidth={0.5} />
+            <Cell key={i} fill={p.color} fillOpacity={fillOpacity} stroke="var(--surface)" strokeWidth={0.5} />
           ))}
         </Scatter>
       </RScatterChart>
