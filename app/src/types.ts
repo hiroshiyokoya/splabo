@@ -391,16 +391,48 @@ export interface CustomChart {
   groupBy2?:    GroupByKey
   /** shape='heatmap' で武器軸を選んだときに表示する上位 N。デフォルト 20。 */
   topN?:        number
-  /** shape='scatter' で 1 ドット = 何の単位か。v1.0.0 は weapon / stage のみ実装（battle 単位は後続）。 */
-  dotUnit?:     'weapon' | 'stage'
-  /** scatter の X 軸メトリクス。 */
-  xMetric?:     MetricKey
+  /** shape='scatter' で 1 ドット = 何の単位か。バトル / 武器 / ステージ。 */
+  dotUnit?:     'battle' | 'weapon' | 'stage'
+  /** scatter の X 軸メトリクス。ドット単位がバトルなら BattleMetricKey、カテゴリなら MetricKey。 */
+  xMetric?:     string
   /** scatter の Y 軸メトリクス。 */
-  yMetric?:     MetricKey
-  /** scatter のサイズメトリクス。バブルチャート化。指定なければ一定サイズ。 */
-  sizeMetric?:  MetricKey
-  /** scatter の色メトリクス。指定なければ単色。 */
-  colorMetric?: MetricKey
+  yMetric?:     string
+  /** scatter のサイズメトリクス。指定なければ一定サイズ。 */
+  sizeMetric?:  string
+  /** scatter の色メトリクス。バトル単位のときは 'win_lose' も指定可。 */
+  colorMetric?: string
+}
+
+/** 1 バトル単位の散布図で使えるメトリクス。 */
+export type BattleMetricKey =
+  | 'kill'
+  | 'death'
+  | 'assist'
+  | 'kd'      // kill / death (D=0 は null)
+  | 'inked'
+  | 'special'
+
+export const BATTLE_METRIC_LABELS: Record<BattleMetricKey, string> = {
+  kill:    'キル',
+  death:   'デス',
+  assist:  'アシスト',
+  kd:      'キルレ (K/D)',
+  inked:   '塗り',
+  special: 'スペシャル',
+}
+
+/** カテゴリ単位 (武器/ステージ) の散布図で使えるメトリクス。 */
+export const SCATTER_AGG_METRIC_KEYS: MetricKey[] = [
+  'total', 'wins', 'win_rate',
+  'avg_kill', 'avg_death', 'avg_kd', 'avg_assist', 'avg_inked', 'avg_special',
+]
+
+/** ドット単位ごとの「X 軸 / Y 軸 / サイズ」で選べるメトリクスキー一覧。 */
+export function scatterMetricOptions(dotUnit: 'battle' | 'weapon' | 'stage'): { key: string; label: string }[] {
+  if (dotUnit === 'battle') {
+    return (Object.keys(BATTLE_METRIC_LABELS) as BattleMetricKey[]).map(k => ({ key: k, label: BATTLE_METRIC_LABELS[k] }))
+  }
+  return SCATTER_AGG_METRIC_KEYS.map(k => ({ key: k, label: METRIC_LABELS[k] }))
 }
 
 /** ヒートマップ用の 2D 集計行（db_grouped_stats_2d の返り値）。 */
@@ -490,9 +522,9 @@ export function autoChartTitle(spec: {
   groupBy2?:     GroupByKey
   yComposition:  YComposition
   metric?:       MetricKey
-  dotUnit?:      'weapon' | 'stage'
-  xMetric?:      MetricKey
-  yMetric?:      MetricKey
+  dotUnit?:      'battle' | 'weapon' | 'stage'
+  xMetric?:      string
+  yMetric?:      string
 }): string {
   const metricLabel = spec.metric ? METRIC_LABELS[spec.metric] : 'メトリクス'
 
@@ -505,10 +537,14 @@ export function autoChartTitle(spec: {
     return `${x} × ${y}: ${metricLabel}`
   }
   if (spec.shape === 'scatter') {
-    const unit = spec.dotUnit === 'stage' ? 'ステージ' : '武器'
-    const x = spec.xMetric ? METRIC_LABELS[spec.xMetric] : '?'
-    const y = spec.yMetric ? METRIC_LABELS[spec.yMetric] : '?'
-    return `${unit}別 ${y} × ${x}`
+    const unit = spec.dotUnit === 'battle' ? 'バトル' : spec.dotUnit === 'stage' ? 'ステージ' : '武器'
+    const labelOf = (k?: string): string => {
+      if (!k) return '?'
+      if (k in BATTLE_METRIC_LABELS) return BATTLE_METRIC_LABELS[k as BattleMetricKey]
+      if (k in METRIC_LABELS) return METRIC_LABELS[k as MetricKey]
+      return k
+    }
+    return `${unit}別 ${labelOf(spec.yMetric)} × ${labelOf(spec.xMetric)}`
   }
   if (spec.shape === 'line') {
     const bucket = GROUP_BY_LABELS[spec.groupBy]

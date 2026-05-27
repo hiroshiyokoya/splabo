@@ -1,15 +1,131 @@
 import { useState, type ReactNode } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, MetricKey } from '../types'
-import { stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric } from '../types'
+import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, MetricKey, BattleMetricKey } from '../types'
+import {
+  stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric,
+  METRIC_LABELS, BATTLE_METRIC_LABELS, formatMetric,
+} from '../types'
 import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
 import { StackedWinrateChart } from './charts/StackedWinrateChart'
 import { LineChart } from './charts/LineChart'
 import { CalendarHeatmapChart } from './charts/CalendarHeatmapChart'
 import { HeatmapChart } from './charts/HeatmapChart'
-import { ScatterChart } from './charts/ScatterChart'
+import { ScatterChart, type ScatterPoint } from './charts/ScatterChart'
+
+/** 1 バトル単位の散布図メトリクス値を BattleRow から計算する。 */
+function getBattleMetric(b: BattleRow, k: BattleMetricKey): number | null {
+  switch (k) {
+    case 'kill':    return b.kill
+    case 'death':   return b.death
+    case 'assist':  return b.assist
+    case 'kd':      return b.death === 0 ? null : b.kill / b.death
+    case 'inked':   return b.inked
+    case 'special': return b.special
+  }
+}
+
+/** メトリクスキーから表示ラベル取得。バトル系・集計系の両方を扱う。 */
+function metricLabelOf(k: string): string {
+  if (k === 'win_lose')                  return '勝敗'
+  if (k in BATTLE_METRIC_LABELS)         return BATTLE_METRIC_LABELS[k as BattleMetricKey]
+  if (k in METRIC_LABELS)                return METRIC_LABELS[k as MetricKey]
+  return k
+}
+
+/** 値の色マッピング。勝率は divergent、その他は accent 濃淡。 */
+function colorOfValue(value: number | null, isRate: boolean, min: number, max: number): string {
+  if (value === null) return 'var(--cell-empty)'
+  if (isRate) {
+    const t = (value - 0.5) * 2
+    if (t < -0.4) return 'var(--cell-r1)'
+    if (t < -0.1) return 'var(--cell-r2)'
+    if (t <=  0.1) return 'var(--cell-r3)'
+    if (t <=  0.4) return 'var(--cell-r4)'
+    return 'var(--cell-r5)'
+  }
+  if (max <= min) return 'var(--cell-c3)'
+  const t = (value - min) / (max - min)
+  if (t <= 0.2) return 'var(--cell-c1)'
+  if (t <= 0.4) return 'var(--cell-c2)'
+  if (t <= 0.6) return 'var(--cell-c3)'
+  if (t <= 0.8) return 'var(--cell-c4)'
+  return 'var(--cell-c5)'
+}
+
+/** カテゴリ単位 (武器/ステージ) の散布図ポイントを作る。 */
+function buildAggScatterPoints(
+  data: GroupedStatsRow[],
+  xKey: string, yKey: string, sizeKey?: string, colorKey?: string,
+): ScatterPoint[] {
+  const filtered = data.filter(d => d.total > 0)
+  // 色マッピング用 min/max
+  const colorIsRate = colorKey === 'win_rate'
+  let cmin = Infinity, cmax = -Infinity
+  if (colorKey) {
+    for (const d of filtered) {
+      const v = getMetric(d, colorKey as MetricKey)
+      if (v === null) continue
+      if (v < cmin) cmin = v
+      if (v > cmax) cmax = v
+    }
+  }
+  return filtered.map(d => {
+    const x = getMetric(d, xKey as MetricKey)
+    const y = getMetric(d, yKey as MetricKey)
+    const size = sizeKey ? getMetric(d, sizeKey as MetricKey) : null
+    const colorVal = colorKey ? getMetric(d, colorKey as MetricKey) : null
+    return {
+      name:  d.name,
+      x,
+      y,
+      size,
+      color: colorKey ? colorOfValue(colorVal, colorIsRate, cmin, cmax) : 'var(--accent)',
+      tooltipRows: [
+        { label: metricLabelOf(xKey), value: formatMetric(x, xKey as MetricKey) },
+        { label: metricLabelOf(yKey), value: formatMetric(y, yKey as MetricKey) },
+        ...(sizeKey ? [{ label: metricLabelOf(sizeKey), value: formatMetric(size, sizeKey as MetricKey), muted: true }] : []),
+        ...(colorKey ? [{ label: metricLabelOf(colorKey), value: formatMetric(colorVal, colorKey as MetricKey), muted: true }] : []),
+      ],
+    }
+  })
+}
+
+/** バトル単位の散布図ポイントを作る。 */
+function buildBattleScatterPoints(
+  data: BattleRow[],
+  xKey: string, yKey: string, sizeKey?: string, colorKey?: string,
+): ScatterPoint[] {
+  return data.map(b => {
+    const x = getBattleMetric(b, xKey as BattleMetricKey)
+    const y = getBattleMetric(b, yKey as BattleMetricKey)
+    const size = sizeKey ? getBattleMetric(b, sizeKey as BattleMetricKey) : null
+    let color = 'var(--accent)'
+    if (colorKey === 'win_lose') {
+      color = b.result === 'win'  ? 'var(--win)'
+            : b.result === 'lose' ? 'var(--lose)'
+            : 'var(--draw)'
+    } else if (colorKey) {
+      // バトル単位の連続値メトリクス。min/max は呼び出しごとに簡易計算 (ここでは accent 単色)
+      color = 'var(--accent)'
+    }
+    const fmtBattle = (v: number | null) => v === null ? '—' : (typeof v === 'number' ? (Number.isInteger(v) ? v.toString() : v.toFixed(2)) : String(v))
+    return {
+      name:  `${b.played_at.slice(0, 10)} / ${b.weapon}`,
+      x, y, size, color,
+      tooltipRows: [
+        { label: metricLabelOf(xKey), value: fmtBattle(x) },
+        { label: metricLabelOf(yKey), value: fmtBattle(y) },
+        ...(sizeKey ? [{ label: metricLabelOf(sizeKey), value: fmtBattle(size), muted: true }] : []),
+        ...(colorKey === 'win_lose'
+          ? [{ label: '勝敗', value: b.result, muted: true }]
+          : (colorKey ? [{ label: metricLabelOf(colorKey), value: fmtBattle(getBattleMetric(b, colorKey as BattleMetricKey)), muted: true }] : [])
+        ),
+      ],
+    }
+  })
+}
 
 /** yComposition ごとに用意する並び替えオプション。
  *  - stacked_winrate: バトル数 / 勝数 / 勝率
@@ -51,12 +167,14 @@ function sortAndSlice(rows: GroupedStatsRow[], sortKey: MetricKey | null): Group
  *   （stacked_winrate / attack_defense のとき）。
  */
 export function CustomChartCard({
-  chart, data, data2d, onEdit, onDelete, weaponImages,
+  chart, data, data2d, battleData, onEdit, onDelete, weaponImages,
 }: {
   chart:    CustomChart
   data:     GroupedStatsRow[]
   /** shape='heatmap' のときだけ使う 2D データ。 */
   data2d?:  GroupedStatsRow2D[]
+  /** shape='scatter' で dotUnit='battle' のときの 1 バトル単位データ。 */
+  battleData?: BattleRow[]
   onEdit:   () => void
   onDelete: () => void
   /** 武器名 → 画像 URL の対応。X 軸が `weapon` のときラベルをアイコンに置換する。 */
@@ -122,7 +240,7 @@ export function CustomChartCard({
           </div>
         )}
       </div>
-      {renderChartBody(chart, sliced, data2d, nameTransform, tickAngle, weaponImages)}
+      {renderChartBody(chart, sliced, data2d, battleData, nameTransform, tickAngle, weaponImages)}
     </div>
   )
 }
@@ -134,6 +252,7 @@ function renderChartBody(
   chart:         CustomChart,
   data:          GroupedStatsRow[],
   data2d:        GroupedStatsRow2D[] | undefined,
+  battleData:    BattleRow[] | undefined,
   nameTransform: ((s: string) => string) | undefined,
   tickAngle:     number | undefined,
   weaponImages:  Map<string, string> | undefined,
@@ -163,19 +282,24 @@ function renderChartBody(
     )
   }
 
-  // scatter: 1 ドット = 1 カテゴリ (武器 or ステージ)。
+  // scatter: ドット単位ごとに別データ。バトル単位 = battleData (BattleRow[])、
+  // 武器/ステージ単位 = data (GroupedStatsRow[])。
   if (chart.shape === 'scatter') {
     if (!chart.xMetric || !chart.yMetric) {
-      return <div className="chart-not-implemented">散布図には X / Y メトリクスを選んでください。</div>
+      return <div className="chart-not-implemented">散布図には X 軸 / Y 軸 を選んでください。</div>
     }
+    const isBattle = chart.dotUnit === 'battle'
+    const points = isBattle
+      ? buildBattleScatterPoints(battleData ?? [], chart.xMetric, chart.yMetric, chart.sizeMetric, chart.colorMetric)
+      : buildAggScatterPoints(data, chart.xMetric, chart.yMetric, chart.sizeMetric, chart.colorMetric)
     return (
       <ScatterChart
-        data={data}
-        xMetric={chart.xMetric}
-        yMetric={chart.yMetric}
-        sizeMetric={chart.sizeMetric}
-        colorMetric={chart.colorMetric}
-        nameTransform={nameTransform}
+        points={points}
+        xLabel={metricLabelOf(chart.xMetric)}
+        yLabel={metricLabelOf(chart.yMetric)}
+        xIsRate={chart.xMetric === 'win_rate'}
+        yIsRate={chart.yMetric === 'win_rate'}
+        hasSize={!!chart.sizeMetric}
       />
     )
   }

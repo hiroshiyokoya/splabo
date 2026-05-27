@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey } from '../types'
 import {
   GROUP_BY_LABELS, METRIC_LABELS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
-  IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy,
+  IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, scatterMetricOptions,
 } from '../types'
 
 /** 各 yComposition のヒント説明。 */
@@ -36,12 +36,12 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   const [groupBy2,     setGroupBy2]     = useState<GroupByKey>(initial?.groupBy2     ?? 'stage')
   const [metric,       setMetric]       = useState<MetricKey>(initial?.metric       ?? 'win_rate')
   const [topN,         setTopN]         = useState<number>(initial?.topN ?? 20)
-  // scatter 用
-  const [dotUnit,      setDotUnit]      = useState<'weapon' | 'stage'>(initial?.dotUnit ?? 'weapon')
-  const [xMetric,      setXMetric]      = useState<MetricKey>(initial?.xMetric ?? 'avg_kill')
-  const [yMetric,      setYMetric]      = useState<MetricKey>(initial?.yMetric ?? 'win_rate')
-  const [sizeMetric,   setSizeMetric]   = useState<MetricKey | ''>(initial?.sizeMetric ?? 'total')
-  const [colorMetric,  setColorMetric]  = useState<MetricKey | ''>(initial?.colorMetric ?? '')
+  // scatter 用 (キーはドット単位ごとに別系統なので string で持つ)
+  const [dotUnit,      setDotUnit]      = useState<'battle' | 'weapon' | 'stage'>(initial?.dotUnit ?? 'weapon')
+  const [xMetric,      setXMetric]      = useState<string>(initial?.xMetric ?? 'avg_kill')
+  const [yMetric,      setYMetric]      = useState<string>(initial?.yMetric ?? 'win_rate')
+  const [sizeMetric,   setSizeMetric]   = useState<string>(initial?.sizeMetric ?? 'total')
+  const [colorMetric,  setColorMetric]  = useState<string>(initial?.colorMetric ?? '')
 
   // shape ごとに groupBy / yComposition を適切に補正する：
   //   - line: 時系列バケット (day/three_day/week/month) + single_metric
@@ -60,17 +60,35 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       if (isTimeBucketGroupBy(groupBy2)) setGroupBy2('stage')
       if (yComposition !== 'single_metric') setYComposition('single_metric')
     } else if (shape === 'scatter') {
-      // ドット単位 (weapon/stage) = groupBy として扱う
-      setGroupBy(dotUnit)
+      // groupBy はデータプリフェッチに使う。battle は db_list_battles で別取得するので
+      // 任意の値で OK だが、weapon/stage と整合させておく。
+      if (dotUnit !== 'battle') setGroupBy(dotUnit)
       if (yComposition !== 'single_metric') setYComposition('single_metric')
     } else {
       if (isTimeBucketGroupBy(groupBy)) setGroupBy('weapon')
     }
   }, [shape])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // scatter のドット単位を変えたら groupBy も同期させる（プリフェッチのキー連動のため）
+  // scatter のドット単位を変えたら groupBy も同期させる（カテゴリ単位のプリフェッチキー連動）。
+  // dotUnit='battle' の場合は別経路で battle データを取るので groupBy は触らない。
   useEffect(() => {
-    if (shape === 'scatter') setGroupBy(dotUnit)
+    if (shape === 'scatter' && dotUnit !== 'battle') setGroupBy(dotUnit)
+  }, [dotUnit, shape])
+
+  // dotUnit を切り替えたとき X / Y / size / color の選択肢系統が変わるのでデフォルトに戻す
+  useEffect(() => {
+    if (shape !== 'scatter') return
+    if (dotUnit === 'battle') {
+      setXMetric('kill')
+      setYMetric('death')
+      setSizeMetric('')
+      setColorMetric('win_lose')
+    } else {
+      setXMetric('avg_kill')
+      setYMetric('win_rate')
+      setSizeMetric('total')
+      setColorMetric('')
+    }
   }, [dotUnit, shape])
 
   // ESC で閉じる
@@ -92,8 +110,8 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       dotUnit:      shape === 'scatter' ? dotUnit : undefined,
       xMetric:      shape === 'scatter' ? xMetric : undefined,
       yMetric:      shape === 'scatter' ? yMetric : undefined,
-      sizeMetric:   shape === 'scatter' && sizeMetric  ? (sizeMetric  as MetricKey) : undefined,
-      colorMetric:  shape === 'scatter' && colorMetric ? (colorMetric as MetricKey) : undefined,
+      sizeMetric:   shape === 'scatter' && sizeMetric  ? sizeMetric  : undefined,
+      colorMetric:  shape === 'scatter' && colorMetric ? colorMetric : undefined,
     }
     onSave(chart)
   }
@@ -191,47 +209,53 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             <>
               <div className="form-field">
                 <label className="form-label">ドット単位</label>
-                <select className="form-input" value={dotUnit} onChange={e => setDotUnit(e.target.value as 'weapon' | 'stage')}>
+                <select className="form-input" value={dotUnit} onChange={e => setDotUnit(e.target.value as 'battle' | 'weapon' | 'stage')}>
+                  <option value="battle">バトル</option>
                   <option value="weapon">武器</option>
                   <option value="stage">ステージ</option>
                 </select>
-                <p className="form-hint">1 ドット = 1 {dotUnit === 'weapon' ? '武器' : 'ステージ'}（バトル単位は後続 PR）。</p>
+                <p className="form-hint">1 ドット = 1 {dotUnit === 'battle' ? 'バトル' : dotUnit === 'weapon' ? '武器' : 'ステージ'}。</p>
               </div>
               <div className="form-field">
-                <label className="form-label">X 軸メトリクス</label>
-                <select className="form-input" value={xMetric} onChange={e => setXMetric(e.target.value as MetricKey)}>
-                  {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
-                    <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+                <label className="form-label">X 軸</label>
+                <select className="form-input" value={xMetric} onChange={e => setXMetric(e.target.value)}>
+                  {scatterMetricOptions(dotUnit).map(o => (
+                    <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
               </div>
               <div className="form-field">
-                <label className="form-label">Y 軸メトリクス</label>
-                <select className="form-input" value={yMetric} onChange={e => setYMetric(e.target.value as MetricKey)}>
-                  {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
-                    <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+                <label className="form-label">Y 軸</label>
+                <select className="form-input" value={yMetric} onChange={e => setYMetric(e.target.value)}>
+                  {scatterMetricOptions(dotUnit).map(o => (
+                    <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
               </div>
               <div className="form-field">
-                <label className="form-label">サイズメトリクス（任意）</label>
-                <select className="form-input" value={sizeMetric} onChange={e => setSizeMetric((e.target.value || '') as MetricKey | '')}>
+                <label className="form-label">サイズ（任意）</label>
+                <select className="form-input" value={sizeMetric} onChange={e => setSizeMetric(e.target.value)}>
                   <option value="">（一定サイズ）</option>
-                  {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
-                    <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+                  {scatterMetricOptions(dotUnit).map(o => (
+                    <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
-                <p className="form-hint">バトル数を選ぶとサンプル多いカテゴリほど大きく見える（sqrt スケール）。</p>
+                <p className="form-hint">値が大きいほど大きく見える（sqrt スケール）。</p>
               </div>
               <div className="form-field">
-                <label className="form-label">色メトリクス（任意）</label>
-                <select className="form-input" value={colorMetric} onChange={e => setColorMetric((e.target.value || '') as MetricKey | '')}>
+                <label className="form-label">色（任意）</label>
+                <select className="form-input" value={colorMetric} onChange={e => setColorMetric(e.target.value)}>
                   <option value="">（単色 = アクセント）</option>
-                  {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
-                    <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+                  {dotUnit === 'battle' && <option value="win_lose">勝敗</option>}
+                  {scatterMetricOptions(dotUnit).map(o => (
+                    <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
-                <p className="form-hint">勝率は divergent (赤↔青)、それ以外は accent の濃淡。</p>
+                <p className="form-hint">
+                  {dotUnit === 'battle'
+                    ? '勝敗を選ぶと勝/負/分で 3 色に塗り分け。'
+                    : '勝率は divergent (赤↔青)、それ以外は accent の濃淡。'}
+                </p>
               </div>
             </>
           )}
