@@ -393,6 +393,13 @@ export interface CustomChart {
   groupBy2?:    GroupByKey
   /** shape='heatmap' で武器軸を選んだときに表示する上位 N。デフォルト 20。 */
   topN?:        number
+  /** shape='heatmap' で X 軸を「数値メトリクス bin」にする場合のメトリクス。
+   *  指定があれば groupBy を無視して battle 単位の数値ヒストグラム軸を使う (#134)。 */
+  xNumericMetric?: BattleNumericMetric
+  xBinWidth?:      number
+  /** shape='heatmap' で Y 軸を「数値メトリクス bin」にする場合のメトリクス。 */
+  yNumericMetric?: BattleNumericMetric
+  yBinWidth?:      number
   /** shape='scatter' で 1 ドット = 何の単位か。バトル / 武器 / ステージ。 */
   dotUnit?:     'battle' | 'weapon' | 'stage'
   /** scatter の X 軸メトリクス。ドット単位がバトルなら BattleMetricKey、カテゴリなら MetricKey。 */
@@ -403,6 +410,38 @@ export interface CustomChart {
   sizeMetric?:  string
   /** scatter の色メトリクス。バトル単位のときは 'win_lose' も指定可。 */
   colorMetric?: string
+}
+
+/** 数値メトリクス bin 軸（ヒートマップで battle 単位の値を離散化）で使えるカラム (#134)。
+ *  battle テーブルに直接ある INTEGER 列のみ（ratio や avg_ は集計後なので含めない）。 */
+export type BattleNumericMetric =
+  | 'kill'
+  | 'death'
+  | 'assist'
+  | 'kill_or_assist'
+  | 'special'
+  | 'inked'
+  | 'duration'
+
+export const BATTLE_NUMERIC_METRIC_LABELS: Record<BattleNumericMetric, string> = {
+  kill:            'キル',
+  death:           'デス',
+  assist:          'アシスト',
+  kill_or_assist:  'キル + アシスト',
+  special:         'スペシャル',
+  inked:           '塗り',
+  duration:        'バトル時間',
+}
+
+/** メトリクスごとの推奨 bin 幅（既定値）。 */
+export const BATTLE_NUMERIC_DEFAULT_BIN: Record<BattleNumericMetric, number> = {
+  kill:           1,
+  death:          1,
+  assist:         1,
+  kill_or_assist: 1,
+  special:        1,
+  inked:          100,
+  duration:       30,
 }
 
 /** 1 バトル単位の散布図で使えるメトリクス。 */
@@ -519,14 +558,18 @@ export const IMPLEMENTED_Y_COMPOSITIONS: YComposition[] = ['single_metric', 'sta
  * ユーザーが ChartConfigModal でタイトル入力を空にしたとき、これを使って自動採用する。
  */
 export function autoChartTitle(spec: {
-  shape?:        ChartShape
-  groupBy:       GroupByKey
-  groupBy2?:     GroupByKey
-  yComposition:  YComposition
-  metric?:       MetricKey
-  dotUnit?:      'battle' | 'weapon' | 'stage'
-  xMetric?:      string
-  yMetric?:      string
+  shape?:           ChartShape
+  groupBy:          GroupByKey
+  groupBy2?:        GroupByKey
+  yComposition:     YComposition
+  metric?:          MetricKey
+  dotUnit?:         'battle' | 'weapon' | 'stage'
+  xMetric?:         string
+  yMetric?:         string
+  xNumericMetric?:  BattleNumericMetric
+  yNumericMetric?:  BattleNumericMetric
+  xBinWidth?:       number
+  yBinWidth?:       number
 }): string {
   const metricLabel = spec.metric ? METRIC_LABELS[spec.metric] : 'メトリクス'
 
@@ -534,8 +577,13 @@ export function autoChartTitle(spec: {
     return `${metricLabel} カレンダー`
   }
   if (spec.shape === 'heatmap') {
-    const x = GROUP_BY_LABELS[spec.groupBy]
-    const y = spec.groupBy2 ? GROUP_BY_LABELS[spec.groupBy2] : '?'
+    // 数値メトリクス bin 軸（#134）はラベルを置換。bin 幅を併記する。
+    const x = spec.xNumericMetric
+      ? `${BATTLE_NUMERIC_METRIC_LABELS[spec.xNumericMetric]} (bin ${spec.xBinWidth ?? BATTLE_NUMERIC_DEFAULT_BIN[spec.xNumericMetric]})`
+      : GROUP_BY_LABELS[spec.groupBy]
+    const y = spec.yNumericMetric
+      ? `${BATTLE_NUMERIC_METRIC_LABELS[spec.yNumericMetric]} (bin ${spec.yBinWidth ?? BATTLE_NUMERIC_DEFAULT_BIN[spec.yNumericMetric]})`
+      : spec.groupBy2 ? GROUP_BY_LABELS[spec.groupBy2] : '?'
     return `${x} × ${y}: ${metricLabel}`
   }
   if (spec.shape === 'scatter') {

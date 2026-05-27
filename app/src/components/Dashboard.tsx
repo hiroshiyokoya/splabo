@@ -14,6 +14,7 @@ import {
   SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable'
 import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats, BattleRow, GroupedStatsRow, GroupedStatsRow2D, CustomChart, GroupByKey } from '../types'
+import { BATTLE_NUMERIC_DEFAULT_BIN } from '../types'
 import { filtersToRange, stageAbbr, modeLabel, ruleLabel, avgKillRatio } from '../types'
 import { CustomChartCard } from './CustomChartCard'
 import { ChartConfigModal } from './ChartConfigModal'
@@ -120,26 +121,42 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
     // カスタムグラフが必要としている group_by を unique にまとめて 1 回ずつ取得。
     // 1D: heatmap 以外。 2D: heatmap のみ。 BattleRow: scatter で dotUnit='battle' のみ。
     const neededGroups = Array.from(new Set(customCharts.filter(c => c.shape !== 'heatmap').map(c => c.groupBy)))
-    const needed2dKeys = Array.from(new Set(
-      customCharts
-        .filter(c => c.shape === 'heatmap' && c.groupBy2)
-        .map(c => `${c.groupBy}|${c.groupBy2}|${c.topN ?? 20}`)
-    ))
+    // 2D 用：軸タイプ・bin 幅・topN まで含めた完全なキーで集約。
+    // 数値軸 (#134) のときは `numeric:metric` を BE に送り、bin_width も併送。
+    function axisKey(c: CustomChart, side: 'x' | 'y'): { gb: string; bin: number | null } {
+      if (side === 'x') {
+        return c.xNumericMetric
+          ? { gb: `numeric:${c.xNumericMetric}`, bin: c.xBinWidth ?? BATTLE_NUMERIC_DEFAULT_BIN[c.xNumericMetric] }
+          : { gb: c.groupBy,  bin: null }
+      } else {
+        return c.yNumericMetric
+          ? { gb: `numeric:${c.yNumericMetric}`, bin: c.yBinWidth ?? BATTLE_NUMERIC_DEFAULT_BIN[c.yNumericMetric] }
+          : { gb: c.groupBy2 ?? 'stage', bin: null }
+      }
+    }
+    const heatmapSpecs = customCharts.filter(c =>
+      c.shape === 'heatmap' && (c.groupBy2 || c.xNumericMetric || c.yNumericMetric)
+    ).map(c => {
+      const xa = axisKey(c, 'x')
+      const ya = axisKey(c, 'y')
+      const tn = c.topN ?? 20
+      return { c, xa, ya, tn, key: `${xa.gb}|${xa.bin ?? ''}|${ya.gb}|${ya.bin ?? ''}|${tn}` }
+    })
+    const needed2dKeys = Array.from(new Map(heatmapSpecs.map(s => [s.key, s])).values())
     const needsBattleData = customCharts.some(c => c.shape === 'scatter' && c.dotUnit === 'battle')
 
     Promise.all([
       invoke<Summary>('db_summary', filterArgs),
       invoke<BattleStats>('db_battle_stats', filterArgs),
       ...neededGroups.map(g => invoke<GroupedStatsRow[]>('db_grouped_stats', { ...filterArgs, groupBy: g }).then(rows => [g, rows] as const)),
-      ...needed2dKeys.map(key => {
-        const [gx, gy, tnStr] = key.split('|')
-        return invoke<GroupedStatsRow2D[]>('db_grouped_stats_2d', {
-          ...filterArgs,
-          groupByX: gx,
-          groupByY: gy,
-          topN: Number(tnStr),
-        }).then(rows => [key, rows] as const)
-      }),
+      ...needed2dKeys.map(s => invoke<GroupedStatsRow2D[]>('db_grouped_stats_2d', {
+        ...filterArgs,
+        groupByX:   s.xa.gb,
+        groupByY:   s.ya.gb,
+        topN:       s.tn,
+        xBinWidth:  s.xa.bin,
+        yBinWidth:  s.ya.bin,
+      }).then(rows => [s.key, rows] as const)),
       needsBattleData
         ? invoke<BattleRow[]>('db_list_battles', { ...filterArgs, limit: 10000, offset: 0, orderBy: 'played_at', orderAsc: false })
         : Promise.resolve([] as BattleRow[]),
@@ -278,18 +295,32 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
             {/* #86 PR B: カスタムグラフ。ドラッグで並び替え可能、⚙で編集・✕で削除 */}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={customCharts.map(c => c.id)} strategy={rectSortingStrategy}>
-                {customCharts.map(c => (
-                  <CustomChartCard
-                    key={c.id}
-                    chart={c}
-                    data={groupedStatsCache[c.groupBy] ?? []}
-                    data2d={c.shape === 'heatmap' && c.groupBy2 ? grouped2dCache[`${c.groupBy}|${c.groupBy2}|${c.topN ?? 20}`] ?? [] : undefined}
-                    battleData={c.shape === 'scatter' && c.dotUnit === 'battle' ? battleData : undefined}
-                    onEdit={() => handleEdit(c.id)}
-                    onDelete={() => handleDelete(c.id)}
-                    weaponImages={weaponImages}
-                  />
-                ))}
+                {customCharts.map(c => {
+                  // 2D キャッシュキーは fetch 時と同じ規則で再構築。
+                  let data2d: GroupedStatsRow2D[] | undefined
+                  if (c.shape === 'heatmap' && (c.groupBy2 || c.xNumericMetric || c.yNumericMetric)) {
+                    const xa = c.xNumericMetric
+                      ? { gb: `numeric:${c.xNumericMetric}`, bin: c.xBinWidth ?? BATTLE_NUMERIC_DEFAULT_BIN[c.xNumericMetric] }
+                      : { gb: c.groupBy, bin: null as number | null }
+                    const ya = c.yNumericMetric
+                      ? { gb: `numeric:${c.yNumericMetric}`, bin: c.yBinWidth ?? BATTLE_NUMERIC_DEFAULT_BIN[c.yNumericMetric] }
+                      : { gb: c.groupBy2 ?? 'stage', bin: null as number | null }
+                    const key = `${xa.gb}|${xa.bin ?? ''}|${ya.gb}|${ya.bin ?? ''}|${c.topN ?? 20}`
+                    data2d = grouped2dCache[key] ?? []
+                  }
+                  return (
+                    <CustomChartCard
+                      key={c.id}
+                      chart={c}
+                      data={groupedStatsCache[c.groupBy] ?? []}
+                      data2d={data2d}
+                      battleData={c.shape === 'scatter' && c.dotUnit === 'battle' ? battleData : undefined}
+                      onEdit={() => handleEdit(c.id)}
+                      onDelete={() => handleDelete(c.id)}
+                      weaponImages={weaponImages}
+                    />
+                  )
+                })}
               </SortableContext>
             </DndContext>
 
