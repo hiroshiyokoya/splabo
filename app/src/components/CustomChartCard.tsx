@@ -93,13 +93,14 @@ function buildAggScatterPoints(
 }
 
 /** バトル単位の散布図ポイントを作る。整数軸 (キル/デス等) の重なりを見やすくするため
- *  ±0.1 のジッタを乗せる。表示上の位置だけずらして、ホバーには元の値を表示する。
- *  ジッタ後に 0 未満になる場合は 0 でクランプ (キル等の非負値メトリクス向け)。 */
+ *  ±0.15 のジッタを乗せる。表示上の位置だけずらして、ホバーには元の値を表示する。
+ *  ジッタ後に 0 未満になる場合は 0 でクランプ (キル等の非負値メトリクス向け)。
+ *  groupKey は (元の x, y) で重なり判定し、ツールチップで全件を並べて表示する。 */
 function buildBattleScatterPoints(
   data: BattleRow[],
   xKey: string, yKey: string, sizeKey?: string, colorKey?: string,
 ): ScatterPoint[] {
-  const jitter = () => (Math.random() - 0.5) * 0.2  // ±0.1
+  const jitter = () => (Math.random() - 0.5) * 0.3  // ±0.15
   const applyJitter = (v: number | null): number | null =>
     v === null ? null : Math.max(0, v + jitter())
   return data.map(b => {
@@ -116,13 +117,18 @@ function buildBattleScatterPoints(
       color = 'var(--accent)'
     }
     const fmtBattle = (v: number | null) => v === null ? '—' : (typeof v === 'number' ? (Number.isInteger(v) ? v.toString() : v.toFixed(2)) : String(v))
+    const name = `${b.played_at.slice(0, 10)} / ${b.weapon}`
     return {
-      name:  `${b.played_at.slice(0, 10)} / ${b.weapon}`,
+      name,
       // 表示位置にジッタを乗せる (0 未満にはしない)
       x: applyJitter(x),
       y: applyJitter(y),
       size,
       color,
+      // 重なり判定: 元の (x, y) が同じ点を 1 グループに
+      groupKey: `${x ?? 'null'}|${y ?? 'null'}`,
+      // 複数件表示時の 1 行: 日付・武器・勝敗
+      rowText: `${b.played_at.slice(5, 10)} ${b.weapon}${colorKey === 'win_lose' ? '' : ` (${b.result})`}`,
       tooltipRows: [
         // ツールチップには元の値 (ジッタ前) を表示
         { label: metricLabelOf(xKey), value: fmtBattle(x) },
