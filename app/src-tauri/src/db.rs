@@ -1636,6 +1636,10 @@ pub async fn db_grouped_stats_2d(
     weapon: Option<String>,
     stage: Option<String>,
     top_n: Option<i64>,             // 武器軸の Top N。指定なければ 20。
+    // 数値メトリクス軸（"numeric:kill" 等）のとき、X 軸の bin 幅。
+    x_bin_width: Option<f64>,
+    // 数値メトリクス軸のとき、Y 軸の bin 幅。
+    y_bin_width: Option<f64>,
 ) -> Result<Vec<serde_json::Value>, String> {
     if group_by_x == group_by_y {
         return Err(format!("X 軸と Y 軸に同じカテゴリを指定できません: {group_by_x}"));
@@ -1653,34 +1657,65 @@ pub async fn db_grouped_stats_2d(
     let mode = translate_mode_filter(mode);
     let rule = translate_rule_filter(rule);
 
-    fn axis_expr(axis: &str) -> Result<&'static str, String> {
+    /// 数値メトリクス軸用の SQL 式を作る (#134)。
+    /// 軸キーが "numeric:foo" のとき、battle カラム foo を bin_w 幅で離散化する式を返す。
+    /// 例: bin_w=1, foo=kill → CAST(b.kill / 1.0 AS INTEGER) * 1.0 = 「キル数の bin 開始値」
+    fn numeric_axis_expr(metric: &str, bin_w: f64) -> Result<String, String> {
+        let col = match metric {
+            "kill"           => "b.kill",
+            "death"          => "b.death",
+            "assist"         => "b.assist",
+            "kill_or_assist" => "(b.kill + b.assist)",
+            "special"        => "b.special",
+            "inked"          => "b.inked",
+            "duration"       => "b.duration",
+            _ => return Err(format!("未対応の数値メトリクス: {metric}")),
+        };
+        // bin_w は f64 リテラルとして埋め込む。負・ゼロは弾く。
+        if !(bin_w.is_finite()) || bin_w <= 0.0 {
+            return Err(format!("無効な bin 幅: {bin_w}"));
+        }
+        // SQLite は数値リテラルとして 1 や 1.5 を受け取る。Rust の {} は f64=1.0 → "1"
+        // となるが整数として解釈されるだけなので問題ない。
+        Ok(format!("CAST({col} * 1.0 / {bin_w} AS INTEGER) * {bin_w}"))
+    }
+
+    fn axis_expr_dyn(axis: &str, bin_w: Option<f64>) -> Result<String, String> {
+        if let Some(metric) = axis.strip_prefix("numeric:") {
+            let w = bin_w.ok_or_else(|| format!("数値軸 {axis} には bin_width が必要"))?;
+            return numeric_axis_expr(metric, w);
+        }
         Ok(match axis {
-            "weapon"          => "w.key",
-            "stage"           => "m.key",
-            "rule"            => RULE_KEY_AS_OLD,
-            "mode"            => "CASE WHEN l.key LIKE 'bankara%' THEN 'bankara' ELSE (CASE l.key WHEN 'xmatch' THEN 'x' ELSE l.key END) END",
-            "sub_weapon"      => "COALESCE(w.sub_key, '(不明)')",
-            "special_weapon"  => "COALESCE(w.special_key, '(不明)')",
-            "weapon_category" => "COALESCE(NULLIF(w.category_key, ''), '(未分類)')",
-            "result"          => "res.key",
+            "weapon"          => "w.key".to_string(),
+            "stage"           => "m.key".to_string(),
+            "rule"            => RULE_KEY_AS_OLD.to_string(),
+            "mode"            => "CASE WHEN l.key LIKE 'bankara%' THEN 'bankara' ELSE (CASE l.key WHEN 'xmatch' THEN 'x' ELSE l.key END) END".to_string(),
+            "sub_weapon"      => "COALESCE(w.sub_key, '(不明)')".to_string(),
+            "special_weapon"  => "COALESCE(w.special_key, '(不明)')".to_string(),
+            "weapon_category" => "COALESCE(NULLIF(w.category_key, ''), '(未分類)')".to_string(),
+            "result"          => "res.key".to_string(),
             _ => return Err(format!("未対応の group_by: {axis}")),
         })
     }
 
     /// 表示用ラベル (name_x / name_y) を返す SQL 式。weapon / stage はマスターの
     /// 日本語名を、それ以外は key と同じ値を使う。GROUP BY 集約のため MAX で包む。
-    fn axis_display_expr(axis: &str) -> Result<&'static str, String> {
+    /// 数値軸は GROUP BY 式そのものを文字列化して MAX で包む。
+    fn axis_display_expr(axis: &str, group_expr: &str) -> Result<String, String> {
+        if axis.starts_with("numeric:") {
+            return Ok(format!("CAST(MAX({group_expr}) AS TEXT)"));
+        }
         Ok(match axis {
-            "weapon" => "COALESCE(MAX(w.name_ja), w.key)",
-            "stage"  => "COALESCE(MAX(m.name_ja), m.key)",
-            _        => axis_expr(axis)?,  // 他は key そのまま
+            "weapon" => "COALESCE(MAX(w.name_ja), w.key)".to_string(),
+            "stage"  => "COALESCE(MAX(m.name_ja), m.key)".to_string(),
+            _        => group_expr.to_string(),  // 他は key そのまま
         })
     }
 
-    let x_expr = axis_expr(&group_by_x)?;
-    let y_expr = axis_expr(&group_by_y)?;
-    let x_display = axis_display_expr(&group_by_x)?;
-    let y_display = axis_display_expr(&group_by_y)?;
+    let x_expr     = axis_expr_dyn(&group_by_x, x_bin_width)?;
+    let y_expr     = axis_expr_dyn(&group_by_y, y_bin_width)?;
+    let x_display  = axis_display_expr(&group_by_x, &x_expr)?;
+    let y_display  = axis_display_expr(&group_by_y, &y_expr)?;
 
     let filter_where =
         "(? IS NULL OR b.played_at >= ?)

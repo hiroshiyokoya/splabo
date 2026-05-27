@@ -340,6 +340,8 @@ function renderChartBody(
         metric={chart.metric}
         xLabelTransform={xT}
         yLabelTransform={yT}
+        xNumeric={!!chart.xNumericMetric}
+        yNumeric={!!chart.yNumericMetric}
       />
     )
   }

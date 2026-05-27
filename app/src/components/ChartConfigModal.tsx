@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey } from '../types'
+import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey, BattleNumericMetric } from '../types'
 import {
   GROUP_BY_LABELS, METRIC_LABELS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
   IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, scatterMetricOptions,
+  BATTLE_NUMERIC_METRIC_LABELS, BATTLE_NUMERIC_DEFAULT_BIN,
 } from '../types'
 
 /** 各 yComposition のヒント説明。 */
@@ -36,6 +37,11 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   const [groupBy2,     setGroupBy2]     = useState<GroupByKey>(initial?.groupBy2     ?? 'stage')
   const [metric,       setMetric]       = useState<MetricKey>(initial?.metric       ?? 'win_rate')
   const [topN,         setTopN]         = useState<number>(initial?.topN ?? 20)
+  // ヒートマップの数値メトリクス bin 軸 (#134)。null/undefined ならカテゴリ軸。
+  const [xNumericMetric, setXNumericMetric] = useState<BattleNumericMetric | null>(initial?.xNumericMetric ?? null)
+  const [yNumericMetric, setYNumericMetric] = useState<BattleNumericMetric | null>(initial?.yNumericMetric ?? null)
+  const [xBinWidth,      setXBinWidth]      = useState<number>(initial?.xBinWidth ?? 1)
+  const [yBinWidth,      setYBinWidth]      = useState<number>(initial?.yBinWidth ?? 1)
   // scatter 用 (キーはドット単位ごとに別系統なので string で持つ)
   const [dotUnit,      setDotUnit]      = useState<'battle' | 'weapon' | 'stage'>(initial?.dotUnit ?? 'weapon')
   const [xMetric,      setXMetric]      = useState<string>(initial?.xMetric ?? 'avg_kill')
@@ -66,6 +72,11 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       if (yComposition !== 'single_metric') setYComposition('single_metric')
     } else {
       if (isTimeBucketGroupBy(groupBy)) setGroupBy('weapon')
+    }
+    // ヒートマップ以外では数値メトリクス bin 軸はクリア（#134）。
+    if (shape !== 'heatmap') {
+      if (xNumericMetric) setXNumericMetric(null)
+      if (yNumericMetric) setYNumericMetric(null)
     }
   }, [shape])  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -112,6 +123,11 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       yMetric:      shape === 'scatter' ? yMetric : undefined,
       sizeMetric:   shape === 'scatter' && sizeMetric  ? sizeMetric  : undefined,
       colorMetric:  shape === 'scatter' && colorMetric ? colorMetric : undefined,
+      // 数値メトリクス bin 軸（#134、ヒートマップ専用）
+      xNumericMetric: shape === 'heatmap' && xNumericMetric ? xNumericMetric : undefined,
+      xBinWidth:      shape === 'heatmap' && xNumericMetric ? xBinWidth : undefined,
+      yNumericMetric: shape === 'heatmap' && yNumericMetric ? yNumericMetric : undefined,
+      yBinWidth:      shape === 'heatmap' && yNumericMetric ? yBinWidth : undefined,
     }
     onSave(chart)
   }
@@ -152,25 +168,59 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               <label className="form-label">X 軸（集計キー）</label>
               <select
                 className="form-input"
-                value={groupBy}
-                onChange={e => setGroupBy(e.target.value as GroupByKey)}
+                value={xNumericMetric ? `numeric:${xNumericMetric}` : groupBy}
+                onChange={e => {
+                  const v = e.target.value
+                  if (v.startsWith('numeric:')) {
+                    const m = v.slice(8) as BattleNumericMetric
+                    setXNumericMetric(m)
+                    setXBinWidth(BATTLE_NUMERIC_DEFAULT_BIN[m])
+                  } else {
+                    setXNumericMetric(null)
+                    setGroupBy(v as GroupByKey)
+                  }
+                }}
                 disabled={shape === 'calendar_heatmap'}
               >
-                {(Object.keys(GROUP_BY_LABELS) as GroupByKey[])
-                  .filter(g =>
-                    shape === 'line' ? isTimeBucketGroupBy(g) :
-                    shape === 'calendar_heatmap' ? g === 'day' :
-                    !isTimeBucketGroupBy(g)
-                  )
-                  .map(g => (
-                    <option key={g} value={g}>{GROUP_BY_LABELS[g]}</option>
-                  ))}
+                <optgroup label="カテゴリ">
+                  {(Object.keys(GROUP_BY_LABELS) as GroupByKey[])
+                    .filter(g =>
+                      shape === 'line' ? isTimeBucketGroupBy(g) :
+                      shape === 'calendar_heatmap' ? g === 'day' :
+                      !isTimeBucketGroupBy(g)
+                    )
+                    .map(g => (
+                      <option key={g} value={g}>{GROUP_BY_LABELS[g]}</option>
+                    ))}
+                </optgroup>
+                {/* ヒートマップでのみ「数値ヒストグラム」軸が選べる (#134) */}
+                {shape === 'heatmap' && (
+                  <optgroup label="数値ヒストグラム (bin)">
+                    {(Object.keys(BATTLE_NUMERIC_METRIC_LABELS) as BattleNumericMetric[]).map(m => (
+                      <option key={m} value={`numeric:${m}`}>{BATTLE_NUMERIC_METRIC_LABELS[m]}</option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
               {shape === 'line' && (
                 <p className="form-hint">線グラフは時系列のみ。粒度は {TIME_BUCKET_GROUP_BYS.map(k => GROUP_BY_LABELS[k]).join(' / ')} から選びます。</p>
               )}
               {shape === 'calendar_heatmap' && (
                 <p className="form-hint">カレンダーは「日」固定（GitHub 風コントリビューショングラフ）。</p>
+              )}
+              {shape === 'heatmap' && xNumericMetric && (
+                <div className="form-field" style={{ marginTop: 8 }}>
+                  <label className="form-label">X 軸の bin 幅</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    min={0.1}
+                    step={xBinWidth < 10 ? 0.5 : 10}
+                    value={xBinWidth}
+                    onChange={e => setXBinWidth(Math.max(0.1, Number(e.target.value) || 1))}
+                  />
+                  <p className="form-hint">{BATTLE_NUMERIC_METRIC_LABELS[xNumericMetric]} を {xBinWidth} 刻みで bin 集計します。</p>
+                </div>
               )}
             </div>
           )}
@@ -180,16 +230,50 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               <label className="form-label">Y 軸（集計キー 2）</label>
               <select
                 className="form-input"
-                value={groupBy2}
-                onChange={e => setGroupBy2(e.target.value as GroupByKey)}
+                value={yNumericMetric ? `numeric:${yNumericMetric}` : groupBy2}
+                onChange={e => {
+                  const v = e.target.value
+                  if (v.startsWith('numeric:')) {
+                    const m = v.slice(8) as BattleNumericMetric
+                    setYNumericMetric(m)
+                    setYBinWidth(BATTLE_NUMERIC_DEFAULT_BIN[m])
+                  } else {
+                    setYNumericMetric(null)
+                    setGroupBy2(v as GroupByKey)
+                  }
+                }}
               >
-                {(Object.keys(GROUP_BY_LABELS) as GroupByKey[])
-                  .filter(g => !isTimeBucketGroupBy(g) && g !== groupBy)
-                  .map(g => (
-                    <option key={g} value={g}>{GROUP_BY_LABELS[g]}</option>
-                  ))}
+                <optgroup label="カテゴリ">
+                  {(Object.keys(GROUP_BY_LABELS) as GroupByKey[])
+                    .filter(g => !isTimeBucketGroupBy(g) && g !== groupBy)
+                    .map(g => (
+                      <option key={g} value={g}>{GROUP_BY_LABELS[g]}</option>
+                    ))}
+                </optgroup>
+                <optgroup label="数値ヒストグラム (bin)">
+                  {(Object.keys(BATTLE_NUMERIC_METRIC_LABELS) as BattleNumericMetric[])
+                    .filter(m => m !== xNumericMetric)  // 同じ数値メトリクスは X と被らせない
+                    .map(m => (
+                      <option key={m} value={`numeric:${m}`}>{BATTLE_NUMERIC_METRIC_LABELS[m]}</option>
+                    ))}
+                </optgroup>
               </select>
-              <p className="form-hint">X 軸と異なるカテゴリを選んでください。</p>
+              {yNumericMetric ? (
+                <div className="form-field" style={{ marginTop: 8 }}>
+                  <label className="form-label">Y 軸の bin 幅</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    min={0.1}
+                    step={yBinWidth < 10 ? 0.5 : 10}
+                    value={yBinWidth}
+                    onChange={e => setYBinWidth(Math.max(0.1, Number(e.target.value) || 1))}
+                  />
+                  <p className="form-hint">{BATTLE_NUMERIC_METRIC_LABELS[yNumericMetric]} を {yBinWidth} 刻みで bin 集計します。</p>
+                </div>
+              ) : (
+                <p className="form-hint">X 軸と異なる軸を選んでください。</p>
+              )}
             </div>
           )}
 

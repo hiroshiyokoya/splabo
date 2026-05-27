@@ -54,12 +54,16 @@ function cellColor(value: number | null, group: ReturnType<typeof metricGroup>, 
 
 export function HeatmapChart({
   data, metric, xLabelTransform, yLabelTransform, minSampleSize = 5,
+  xNumeric = false, yNumeric = false,
 }: {
   data:             GroupedStatsRow2D[]
   metric:           MetricKey
   xLabelTransform?: (s: string) => string
   yLabelTransform?: (s: string) => string
   minSampleSize?:   number
+  /** X 軸が数値メトリクス bin の場合 true（並び順を数値昇順にする、#134）。 */
+  xNumeric?:        boolean
+  yNumeric?:        boolean
 }) {
   // ツールチップ位置はマウスの clientX / clientY (viewport 基準)。
   // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
@@ -69,6 +73,7 @@ export function HeatmapChart({
 
   const group = metricGroup(metric)
 
+  // useMemo の依存に xNumeric/yNumeric も含める。
   const { xKeys, yKeys, cells, nameMap, minVal, maxVal } = useMemo(() => {
     // X / Y の存在キーを「バトル数合計が多い順」で抽出
     const xTotals = new Map<string, number>()
@@ -84,8 +89,13 @@ export function HeatmapChart({
       nameMap.set(row.key_y, row.name_y ?? row.key_y)
     }
 
-    const xKeys = Array.from(xTotals.entries()).sort((a, b) => b[1] - a[1]).map(e => e[0])
-    const yKeys = Array.from(yTotals.entries()).sort((a, b) => b[1] - a[1]).map(e => e[0])
+    // 数値軸（#134）は bin 値の数値昇順、それ以外はバトル数の多い順。
+    const xKeys = xNumeric
+      ? Array.from(xTotals.keys()).sort((a, b) => Number(a) - Number(b))
+      : Array.from(xTotals.entries()).sort((a, b) => b[1] - a[1]).map(e => e[0])
+    const yKeys = yNumeric
+      ? Array.from(yTotals.keys()).sort((a, b) => Number(a) - Number(b))
+      : Array.from(yTotals.entries()).sort((a, b) => b[1] - a[1]).map(e => e[0])
 
     let mn = Number.POSITIVE_INFINITY
     let mx = Number.NEGATIVE_INFINITY
@@ -105,7 +115,7 @@ export function HeatmapChart({
       minVal: mn === Number.POSITIVE_INFINITY ? 0 : mn,
       maxVal: mx === Number.NEGATIVE_INFINITY ? 0 : mx,
     }
-  }, [data, metric, group, minSampleSize])
+  }, [data, metric, group, minSampleSize, xNumeric, yNumeric])
 
   const GRID_H = yKeys.length * (CELL_H + GAP)
   const width  = Math.max(PAD_LEFT + xKeys.length * (CELL_W + GAP) + 8, 360)
