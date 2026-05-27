@@ -1640,6 +1640,16 @@ pub async fn db_grouped_stats_2d(
     if group_by_x == group_by_y {
         return Err(format!("X 軸と Y 軸に同じカテゴリを指定できません: {group_by_x}"));
     }
+
+    // 味方武器 / 相手武器が片方でも軸に指定されたら専用パスへ分岐（#118）。
+    if matches!(group_by_x.as_str(), "ally_weapon" | "enemy_weapon")
+       || matches!(group_by_y.as_str(), "ally_weapon" | "enemy_weapon") {
+        return db_grouped_stats_2d_with_bp(
+            &db, &group_by_x, &group_by_y, &since, &until, &mode, &rule,
+            &result_filter, &weapon, &stage, top_n,
+        ).await;
+    }
+
     let mode = translate_mode_filter(mode);
     let rule = translate_rule_filter(rule);
 
@@ -1743,6 +1753,233 @@ pub async fn db_grouped_stats_2d(
         let key_y: String = r.get("key_y");
 
         // Top N 絞り込み
+        if let Some(ref keys) = kept_weapon_keys {
+            let weapon_key = if weapon_axis == Some(true) { &key_x } else { &key_y };
+            if !keys.contains(weapon_key) {
+                return None;
+            }
+        }
+
+        let total: i64 = r.get("total");
+        let wins:  i64 = r.get("wins");
+        let draws: i64 = r.get("draws");
+        let decisive   = total - draws;
+        let win_rate   = if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 };
+
+        Some(serde_json::json!({
+            "key_x":        key_x,
+            "key_y":        key_y,
+            "name_x":       r.try_get::<String, _>("name_x").unwrap_or_else(|_| key_x.clone()),
+            "name_y":       r.try_get::<String, _>("name_y").unwrap_or_else(|_| key_y.clone()),
+            "total":        total,
+            "wins":         wins,
+            "draws":        draws,
+            "win_rate":     win_rate,
+            "avg_kill":     r.try_get::<f64, _>("avg_kill").ok(),
+            "avg_death":    r.try_get::<f64, _>("avg_death").ok(),
+            "avg_assist":   r.try_get::<f64, _>("avg_assist").ok(),
+            "avg_special":  r.try_get::<f64, _>("avg_special").ok(),
+            "avg_inked":    r.try_get::<f64, _>("avg_inked").ok(),
+            "avg_duration": r.try_get::<f64, _>("avg_duration").ok(),
+        }))
+    }).collect();
+
+    Ok(result)
+}
+
+/// `db_grouped_stats_2d` の ally_weapon / enemy_weapon 対応版（#118）。
+///
+/// X 軸 / Y 軸のどちらか or 両方が `ally_weapon` または `enemy_weapon` のとき呼ばれる。
+/// `battle_player` テーブルを軸ごとに JOIN して、(味方武器, X) や (ally_weapon, enemy_weapon) の
+/// クロス集計を行う。
+///
+/// セマンティクス：
+/// - 各軸とも、同一バトル × 同一武器の重複は内側 DISTINCT サブクエリで 1 にまとめる
+/// - 両軸が bp の場合は (味方武器 × 相手武器) 全ペアが寄与（ally 3 × enemy 4 = 12 ペア/バトル）
+async fn db_grouped_stats_2d_with_bp(
+    db: &tauri::State<'_, DbPool>,
+    group_by_x: &str,
+    group_by_y: &str,
+    since: &Option<String>,
+    until: &Option<String>,
+    mode: &Option<String>,
+    rule: &Option<String>,
+    result_filter: &Option<String>,
+    weapon: &Option<String>,
+    stage: &Option<String>,
+    top_n: Option<i64>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mode = translate_mode_filter(mode.clone());
+    let rule = translate_rule_filter(rule.clone());
+
+    let x_is_bp = matches!(group_by_x, "ally_weapon" | "enemy_weapon");
+    let y_is_bp = matches!(group_by_y, "ally_weapon" | "enemy_weapon");
+
+    fn bp_params(g: &str) -> (i64, bool) {
+        if g == "ally_weapon" { (1, true) } else { (0, false) }
+    }
+    let (x_team, x_excl_self) = bp_params(group_by_x);
+    let (y_team, y_excl_self) = bp_params(group_by_y);
+
+    let x_bp_where: &str = if x_excl_self {
+        "bp.is_our_team = ? AND bp.is_me = 0"
+    } else {
+        "bp.is_our_team = ?"
+    };
+    let y_bp_where: &str = if y_excl_self {
+        "bp.is_our_team = ? AND bp.is_me = 0"
+    } else {
+        "bp.is_our_team = ?"
+    };
+
+    // 非 bp 軸の式（既存の axis_expr / axis_display_expr ロジックを再現）
+    fn non_bp_axis_expr(axis: &str) -> Result<&'static str, String> {
+        Ok(match axis {
+            "weapon"          => "w.key",
+            "stage"           => "m.key",
+            "rule"            => RULE_KEY_AS_OLD,
+            "mode"            => "CASE WHEN l.key LIKE 'bankara%' THEN 'bankara' ELSE (CASE l.key WHEN 'xmatch' THEN 'x' ELSE l.key END) END",
+            "sub_weapon"      => "COALESCE(w.sub_key, '(不明)')",
+            "special_weapon"  => "COALESCE(w.special_key, '(不明)')",
+            "weapon_category" => "COALESCE(NULLIF(w.category_key, ''), '(未分類)')",
+            "result"          => "res.key",
+            _ => return Err(format!("未対応の group_by: {axis}")),
+        })
+    }
+    fn non_bp_axis_display(axis: &str, fallback: &'static str) -> &'static str {
+        match axis {
+            "weapon" => "COALESCE(MAX(w.name_ja), w.key)",
+            "stage"  => "COALESCE(MAX(m.name_ja), m.key)",
+            _        => fallback,
+        }
+    }
+
+    let (x_expr, x_display): (&str, &str) = if x_is_bp {
+        // 表示名も key（スラッグ）で揃えて weaponImages にマッチさせる（#118 のフィックス方針と同じ）
+        ("ax.weapon_key", "MAX(ax.weapon_key)")
+    } else {
+        let e = non_bp_axis_expr(group_by_x)?;
+        let d = non_bp_axis_display(group_by_x, e);
+        (e, d)
+    };
+    let (y_expr, y_display): (&str, &str) = if y_is_bp {
+        ("ay.weapon_key", "MAX(ay.weapon_key)")
+    } else {
+        let e = non_bp_axis_expr(group_by_y)?;
+        let d = non_bp_axis_display(group_by_y, e);
+        (e, d)
+    };
+
+    // FROM 句を組み立て：bp 軸 → DISTINCT サブクエリ、その下に battle 本体と通常 JOIN
+    let from_clause = if x_is_bp && y_is_bp {
+        format!(
+            "(SELECT DISTINCT bp.battle_id, w_bp.key as weapon_key
+              FROM battle_player bp
+              JOIN weapon w_bp ON w_bp.id = bp.weapon_id
+              WHERE {x_bp_where}) ax
+             JOIN (SELECT DISTINCT bp.battle_id, w_bp.key as weapon_key
+                   FROM battle_player bp
+                   JOIN weapon w_bp ON w_bp.id = bp.weapon_id
+                   WHERE {y_bp_where}) ay ON ay.battle_id = ax.battle_id
+             JOIN battle b ON b.id = ax.battle_id"
+        )
+    } else if x_is_bp {
+        format!(
+            "(SELECT DISTINCT bp.battle_id, w_bp.key as weapon_key
+              FROM battle_player bp
+              JOIN weapon w_bp ON w_bp.id = bp.weapon_id
+              WHERE {x_bp_where}) ax
+             JOIN battle b ON b.id = ax.battle_id"
+        )
+    } else {
+        // y_is_bp のみ
+        format!(
+            "(SELECT DISTINCT bp.battle_id, w_bp.key as weapon_key
+              FROM battle_player bp
+              JOIN weapon w_bp ON w_bp.id = bp.weapon_id
+              WHERE {y_bp_where}) ay
+             JOIN battle b ON b.id = ay.battle_id"
+        )
+    };
+
+    let filter_where =
+        "(? IS NULL OR b.played_at >= ?)
+           AND (? IS NULL OR b.played_at <= ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
+           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR res.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)";
+
+    let sql = format!(
+        "SELECT
+            {x_expr} as key_x,
+            {y_expr} as key_y,
+            {x_display} as name_x,
+            {y_display} as name_y,
+            COUNT(*)                                                  as total,
+            SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END)           as wins,
+            SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END)           as draws,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.kill     END)   as avg_kill,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.death    END)   as avg_death,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.assist   END)   as avg_assist,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.special  END)   as avg_special,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.inked    END)   as avg_inked,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.duration END)   as avg_duration
+         FROM {from_clause}
+         JOIN lobby  l   ON l.id   = b.lobby_id
+         JOIN rule   r   ON r.id   = b.rule_id
+         JOIN result res ON res.id = b.result_id
+         JOIN weapon w   ON w.id   = b.weapon_id
+         JOIN map    m   ON m.id   = b.map_id
+         WHERE {filter_where}
+         GROUP BY {x_expr}, {y_expr}
+         ORDER BY total DESC"
+    );
+
+    // バインド順：bp 軸が WHERE 句にあれば先に。次に通常フィルター。
+    let mut query = sqlx::query(&sql);
+    if x_is_bp { query = query.bind(x_team); }
+    if y_is_bp { query = query.bind(y_team); }
+    query = query
+        .bind(since).bind(since)
+        .bind(until).bind(until)
+        .bind(&mode).bind(&mode)
+        .bind(&rule).bind(&rule)
+        .bind(result_filter).bind(result_filter)
+        .bind(weapon).bind(weapon)
+        .bind(stage).bind(stage);
+
+    let rows = query
+        .fetch_all(db.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 武器軸（自分/味方/相手）の Top N 絞り込み。X 軸を優先する。
+    let top_n_value = top_n.unwrap_or(20).max(1) as usize;
+    let is_weapon_x = x_is_bp || group_by_x == "weapon";
+    let is_weapon_y = y_is_bp || group_by_y == "weapon";
+    let weapon_axis: Option<bool> =
+        if      is_weapon_x { Some(true) }
+        else if is_weapon_y { Some(false) }
+        else                { None };
+
+    let kept_weapon_keys: Option<std::collections::HashSet<String>> = weapon_axis.map(|x_is_weapon| {
+        let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+        for r in &rows {
+            let key: String = if x_is_weapon { r.get("key_x") } else { r.get("key_y") };
+            let t: i64 = r.get("total");
+            *counts.entry(key).or_default() += t;
+        }
+        let mut pairs: Vec<(String, i64)> = counts.into_iter().collect();
+        pairs.sort_by(|a, b| b.1.cmp(&a.1));
+        pairs.into_iter().take(top_n_value).map(|(k, _)| k).collect()
+    });
+
+    let result: Vec<serde_json::Value> = rows.into_iter().filter_map(|r| {
+        let key_x: String = r.get("key_x");
+        let key_y: String = r.get("key_y");
+
         if let Some(ref keys) = kept_weapon_keys {
             let weapon_key = if weapon_axis == Some(true) { &key_x } else { &key_y };
             if !keys.contains(weapon_key) {

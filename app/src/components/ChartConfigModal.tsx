@@ -193,7 +193,11 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             </div>
           )}
 
-          {shape === 'heatmap' && (groupBy === 'weapon' || groupBy2 === 'weapon') && (
+          {shape === 'heatmap' && (
+            groupBy === 'weapon' || groupBy2 === 'weapon' ||
+            groupBy === 'ally_weapon' || groupBy2 === 'ally_weapon' ||
+            groupBy === 'enemy_weapon' || groupBy2 === 'enemy_weapon'
+          ) && (
             <div className="form-field">
               <label className="form-label">武器軸の上位 N</label>
               <input
