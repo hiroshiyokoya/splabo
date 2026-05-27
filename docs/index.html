@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>チャートゥーン (chartoon) — Splatoon 3 Battle Visualizer</title>
+  <meta name="description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。武器・ステージ・ルール別の勝率や、自由にカスタマイズできる線・散布図・ヒートマップで自分のプレイを分析できます。Windows / macOS / Linux 対応。stat.ink への自動アップロードにも対応。">
+  <meta name="keywords" content="Splatoon 3, スプラトゥーン3, バトル可視化, 勝率, ダッシュボード, stat.ink, nxapi, OSS, デスクトップアプリ, Tauri">
+  <link rel="canonical" href="https://chartoon.pages.dev/">
+  <link rel="icon" href="https://raw.githubusercontent.com/hiroshiyokoya/chartoon/develop/app/public/favicon.png">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="chartoon">
+  <meta property="og:title" content="チャートゥーン (chartoon) — Splatoon 3 Battle Visualizer">
+  <meta property="og:description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。武器・ステージ・ルール別の勝率や、自由にカスタマイズできるチャートで自分のプレイを分析。">
+  <meta property="og:url" content="https://chartoon.pages.dev/">
+  <meta property="og:image" content="https://raw.githubusercontent.com/hiroshiyokoya/chartoon/develop/app/public/chartoon-logo.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="チャートゥーン (chartoon) — Splatoon 3 Battle Visualizer">
+  <meta name="twitter:description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。武器・ステージ・ルール別の勝率や、自由にカスタマイズできるチャートで自分のプレイを分析。">
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/hiroshiyokoya/chartoon/develop/app/public/chartoon-logo.png">
+
+  <style>
+    :root {
+      --bg: #1a1a1e;
+      --surface: #26262c;
+      --surface2: #2e2e36;
+      --accent: #c8f030;
+      --accent-dim: #9dc024;
+      --accent2: #ff7621;
+      --text: #e8e8f0;
+      --text-muted: #8888a0;
+      --border: #36363f;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      padding: 5rem 2rem 4rem;
+    }
+    .hero-logo {
+      width: 440px;
+      max-width: 90%;
+      margin-bottom: 1.5rem;
+    }
+    .hero h1 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: var(--accent);
+      letter-spacing: -0.01em;
+      margin-bottom: 0.5rem;
+    }
+    .hero-tagline {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      margin-bottom: 0.75rem;
+    }
+    .hero-desc {
+      font-size: 1rem;
+      color: var(--text);
+      max-width: 1000px;
+      margin: 0 auto 2.5rem;
+    }
+    .hero-download {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn-download {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--accent);
+      color: #2e0a4f;
+      padding: 0.8rem 2rem;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 1rem;
+      transition: background 0.15s;
+    }
+    .btn-download:hover {
+      background: var(--accent-dim);
+      text-decoration: none;
+    }
+    .hero-note {
+      margin-top: 0.9rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .hero-release-link {
+      margin-top: 0.6rem;
+      font-size: 0.8rem;
+    }
+
+    /* ── Screenshots ── */
+    .screenshots {
+      padding: 3rem 2rem 4rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .section-title {
+      text-align: center;
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+      color: var(--text);
+    }
+    .screenshot-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+    }
+    .screenshot-item img {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      display: block;
+      cursor: zoom-in;
+      transition: opacity 0.15s;
+      background: var(--surface);
+    }
+    .screenshot-item img:hover {
+      opacity: 0.85;
+    }
+    .screenshot-item p {
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+    }
+
+    /* ── Lightbox ── */
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.88);
+      z-index: 1000;
+      cursor: zoom-out;
+      align-items: center;
+      justify-content: center;
+    }
+    #lightbox.active {
+      display: flex;
+    }
+    #lightbox-img {
+      max-width: 90vw;
+      max-height: 90vh;
+      border-radius: 10px;
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7);
+    }
+
+    /* ── Features ── */
+    .features {
+      background: var(--surface);
+      padding: 3rem 2rem;
+    }
+    .features-inner {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+    .feature-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+    }
+    .feature-card h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+    }
+    .feature-card ul {
+      list-style: none;
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .feature-card li::before {
+      content: "· ";
+      color: var(--accent);
+    }
+
+    /* ── Warning ── */
+    .warning {
+      padding: 3rem 2rem;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .warning-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-top: 1.5rem;
+    }
+    .warning-box h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+    }
+    .warning-box p {
+      font-size: 0.87rem;
+      color: var(--text-muted);
+    }
+    .warning-box code {
+      background: var(--surface2);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+    .warning-box + .warning-box {
+      margin-top: 0.75rem;
+    }
+
+    /* ── Notes ── */
+    .notes {
+      background: var(--surface);
+      padding: 3rem 2rem;
+    }
+    .notes-inner {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .notes ul {
+      list-style: none;
+      font-size: 0.87rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+    .notes li::before {
+      content: "※ ";
+    }
+
+    /* ── Privacy ── */
+    .privacy {
+      padding: 3rem 2rem;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .privacy p {
+      font-size: 0.87rem;
+      color: var(--text-muted);
+      margin-top: 0.75rem;
+    }
+
+    /* ── Footer ── */
+    footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      text-align: center;
+      padding: 2rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    footer a { color: var(--text-muted); }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .hero h1 { font-size: 2rem; }
+      .screenshot-grid { grid-template-columns: 1fr; }
+      .features-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Hero -->
+  <section class="hero">
+    <img class="hero-logo"
+      src="https://raw.githubusercontent.com/hiroshiyokoya/chartoon/develop/app/public/chartoon-logo.png"
+      alt="chartoon logo">
+    <h1>チャートゥーン (chartoon)</h1>
+    <p class="hero-tagline">Splatoon 3 Battle Visualizer</p>
+    <p class="hero-desc">
+      Nintendo アカウントから非公式 API 経由で Splatoon 3 のバトル履歴を取得し、グラフで可視化する OSS の PC アプリです。<br>
+      武器・ステージ・ルール別の勝率や、カスタマイズ可能な線・散布図・ヒートマップで自分のプレイを多角的に分析できます。
+    </p>
+    <div class="hero-download">
+      <a class="btn-download" id="btn-win" href="https://github.com/hiroshiyokoya/chartoon/releases/latest">
+        Windows
+      </a>
+      <a class="btn-download" id="btn-mac" href="https://github.com/hiroshiyokoya/chartoon/releases/latest">
+        macOS
+      </a>
+    </div>
+    <p class="hero-note"><span id="btn-version"></span><span id="btn-version-sep" style="display:none"> &nbsp;·&nbsp; </span>無料 &nbsp;·&nbsp; オープンソース</p>
+    <p class="hero-release-link">
+      <a href="https://github.com/hiroshiyokoya/chartoon/releases/latest">リリースノートを見る →</a>
+    </p>
+  </section>
+
+  <!-- Screenshots -->
+  <section class="screenshots">
+    <h2 class="section-title">スクリーンショット</h2>
+    <div class="screenshot-grid">
+      <div class="screenshot-item">
+        <img src="screenshots/dashboard.png" alt="ダッシュボード" onclick="openLightbox(this)">
+        <p>ダッシュボードでバトル結果を分析</p>
+      </div>
+      <div class="screenshot-item">
+        <img src="screenshots/calendar.png" alt="カレンダーヒートマップ" onclick="openLightbox(this)">
+        <p>カレンダー形式で可視化</p>
+      </div>
+      <div class="screenshot-item">
+        <img src="screenshots/scatter.png" alt="散布図" onclick="openLightbox(this)">
+        <p>散布図などチャートをカスタマイズ</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features">
+    <div class="features-inner">
+      <h2 class="section-title">できること</h2>
+      <div class="features-grid">
+        <div class="feature-card">
+          <h3>ダッシュボード</h3>
+          <ul>
+            <li>勝率・キル/デス・キルレシオなど主要指標を一覧</li>
+            <li>武器・ステージ・ルール・モード別の集計</li>
+            <li>期間フィルター（全期間 / シーズン / 直近 30 日 / 7 日）</li>
+          </ul>
+        </div>
+        <div class="feature-card">
+          <h3>カスタムグラフ</h3>
+          <ul>
+            <li>線・棒・散布図・ヒートマップ・カレンダー</li>
+            <li>集計軸（武器・ステージ・期間など）と表示メトリクスを自由に組み合わせ</li>
+            <li>ドラッグ＆ドロップで並び替え可能</li>
+          </ul>
+        </div>
+        <div class="feature-card">
+          <h3>バトルログ・武器図鑑</h3>
+          <ul>
+            <li>バトル履歴を一覧（検索・フィルター・ソート対応）</li>
+            <li>詳細モーダルでチーム編成・ギア・ランク変動を確認</li>
+            <li>所持武器の勝率・サブ / SP 一覧</li>
+          </ul>
+        </div>
+        <div class="feature-card">
+          <h3>自動取得・連携</h3>
+          <ul>
+            <li>15 分〜24 時間ごとの自動取得（トレイ常駐・完了通知）</li>
+            <li>stat.ink への自動アップロード（s3s 互換、UUID v5 で重複排除）</li>
+            <li>AI 分析（OpenAI / Gemini / Claude / Grok 対応）</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Warning -->
+  <section class="warning">
+    <h2 class="section-title">インストール時の注意</h2>
+    <div class="warning-box">
+      <h3>Windows — SmartScreen 警告が出た場合</h3>
+      <p>「Windows によって PC が保護されました」と表示されたら、<strong>「詳細情報」→「実行」</strong>をクリックしてください。</p>
+    </div>
+    <div class="warning-box">
+      <h3>macOS — 「壊れているため開けません」と表示された場合</h3>
+      <p>ターミナルで以下を実行してください：<br>
+        <code>xattr -cr /Applications/chartoon.app</code>
+      </p>
+    </div>
+  </section>
+
+  <!-- Notes -->
+  <section class="notes">
+    <div class="notes-inner">
+      <h2 class="section-title">注意事項</h2>
+      <ul>
+        <li>本アプリは任天堂株式会社とは無関係の非公式 OSS アプリです。</li>
+        <li>SplatNet 3 は任天堂が公式に公開している API ではありません。任天堂側の仕様変更により、予告なく動作しなくなる可能性があります。</li>
+        <li>武器・ステージ画像の著作権は任天堂株式会社に帰属します。個人利用の範囲内でのみ使用してください。</li>
+        <li>認証情報・バトルデータはお使いの PC 内にのみ保存されます。stat.ink へのアップロードは設定で有効化したときのみ行われます。</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Privacy -->
+  <section class="privacy">
+    <h2 class="section-title">プライバシーについて</h2>
+    <p>本ツールが外部に送信するのは、Nintendo 認証に必要な情報（nxapi の仕様に基づく f-token 生成）と、設定で有効にした場合の stat.ink へのバトルデータのみです。氏名・メールアドレス等の個人情報を収集・記録することはありません。</p>
+    <p>AI 分析機能を使用する場合は、選択したプロバイダ（OpenAI / Gemini / Anthropic / Grok）へバトル集計データが送信されます。</p>
+    <p>詳細は <a href="https://github.com/hiroshiyokoya/chartoon#プライバシーポリシー">プライバシーポリシー（README）</a> を参照してください。</p>
+  </section>
+
+  <!-- Lightbox -->
+  <div id="lightbox" onclick="closeLightbox()">
+    <img id="lightbox-img" src="" alt="">
+  </div>
+
+  <script>
+    // 最新リリースからバージョンと直接ダウンロードリンクを取得
+    fetch('https://api.github.com/repos/hiroshiyokoya/chartoon/releases')
+      .then(r => r.json())
+      .then(releases => {
+        const data = releases[0];
+        if (!data) return;
+
+        // バージョン表示
+        const ver = document.getElementById('btn-version');
+        const sep = document.getElementById('btn-version-sep');
+        if (ver && data.tag_name) {
+          ver.textContent = data.tag_name;
+          if (sep) sep.style.display = 'inline';
+        }
+
+        // アセットから Windows(.exe) と macOS(.dmg) を探す
+        const winAsset = data.assets.find(a => a.name.endsWith('x64-setup.exe'));
+        const macAsset = data.assets.find(a => a.name.endsWith('aarch64.dmg'));
+
+        if (winAsset) document.getElementById('btn-win').href = winAsset.browser_download_url;
+        if (macAsset) document.getElementById('btn-mac').href = macAsset.browser_download_url;
+      })
+      .catch(() => {});
+
+    function openLightbox(img) {
+      document.getElementById('lightbox-img').src = img.src;
+      document.getElementById('lightbox-img').alt = img.alt;
+      document.getElementById('lightbox').classList.add('active');
+    }
+    function closeLightbox() {
+      document.getElementById('lightbox').classList.remove('active');
+    }
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeLightbox();
+    });
+  </script>
+
+  <!-- Footer -->
+  <footer>
+    <p>chartoon は任天堂株式会社と無関係の非公式 OSS アプリです。Splatoon™ は任天堂株式会社の商標です。</p>
+    <p style="margin-top: 0.4rem;">
+      <a href="https://github.com/hiroshiyokoya/chartoon">GitHub</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/hiroshiyokoya/chartoon/releases">Releases</a>
+      &nbsp;·&nbsp;
+      MIT License
+    </p>
+  </footer>
+
+</body>
+</html>
