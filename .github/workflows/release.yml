@@ -40,19 +40,23 @@ jobs:
 
       - name: Create draft release
         id: create-release
+        env:
+          # ⚠ steps.changelog.outputs.body はシェルへ直接補間すると本文中の
+          # バッククォート (`...`) がコマンド置換として解釈されてしまうため、
+          # env 経由で読み込んでシェルパース対象から外す。
+          RELEASE_BODY: ${{ steps.changelog.outputs.body }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PAYLOAD=$(jq -n \
             --arg tag "${{ github.ref_name }}" \
             --arg name "chartoon ${{ github.ref_name }}" \
-            --arg body "${{ steps.changelog.outputs.body }}" \
+            --arg body "$RELEASE_BODY" \
             '{tag_name: $tag, name: $name, body: $body, draft: true, prerelease: false}')
           release_id=$(gh api repos/${{ github.repository }}/releases \
             -X POST \
             --input - <<< "$PAYLOAD" \
             --jq '.id')
           echo "release_id=$release_id" >> $GITHUB_OUTPUT
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ── Step 2: 各プラットフォームでビルド & アップロード ────────────
   build:
