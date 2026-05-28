@@ -281,7 +281,8 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
             </ChartCard>
 
             <ChartCard title="ステージ別 バトル数 & 勝率" sortBy={stageSort} onSortChange={setStageSort}>
-              <WinRateChart data={sorted(summary.by_stage.slice(0, 14), stageSort)} height={260} images={new Map()} nameTransform={stageAbbr} tickAngle={30} />
+              {/* ステージは現状 25 種程度で全件表示が望ましい（武器のような大量マスターと違い slice 不要）。 */}
+              <WinRateChart data={sorted(summary.by_stage, stageSort)} height={260} images={new Map()} nameTransform={stageAbbr} tickAngle={30} />
             </ChartCard>
 
             <ChartCard title="ルール別 バトル数 & 勝率" sortBy={ruleSort} onSortChange={setRuleSort}>
