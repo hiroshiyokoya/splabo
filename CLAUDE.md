@@ -83,6 +83,8 @@ gh api repos/hiroshiyokoya/chartoon/issues/15 -X PATCH -F body=@/tmp/tracking.md
   ## [X.Y.Z] — YYYY-MM-DD
   ```
 - 新しい `[Unreleased]` セクションを先頭に追加する
+- **前回タグからの差分のみを書く**（既存のリリースエントリには触らない）。`git log <prev-tag>..develop` で粒度を確認
+- **イシュー番号・PR 番号 (`#123` 等) は書かない**。エンドユーザー向け release notes に内部リファレンスは不要
 
 ### 2. README.md を確認
 
