@@ -555,6 +555,22 @@ pub async fn fetch_and_update_details(
                 if bm == "CHALLENGE" { "bankara_challenge".to_string() } else { "bankara_open".to_string() }
             }
             "X_MATCH" => "x".to_string(),
+            "FEST" => {
+                // festMatch.mode の値は splatnet3-types の FestMatchMode enum で
+                // REGULAR / CHALLENGE のみ。トリカラは festMatch.mode には現れず別経路
+                // （vsRule=TRI_COLOR 等）なので、念のため TRI_COLOR も判別だけしておく。
+                // TRI_COLOR は LOBBY_SEED 未対応のため集計外のまま（別イシューで対応）。
+                let fm = detail.pointer("/festMatch/mode").and_then(|v| v.as_str()).unwrap_or("");
+                match fm {
+                    "CHALLENGE" => "splatfest_challenge".to_string(),
+                    "TRI_COLOR" => "splatfest_tricolor".to_string(),
+                    "REGULAR" | "" => "splatfest_open".to_string(),
+                    other => {
+                        log::warn!("未知の festMatch/mode: {} (id={}) -> splatfest_open にフォールバック", other, id);
+                        "splatfest_open".to_string()
+                    }
+                }
+            }
             ""        => String::new(),
             other     => {
                 log::warn!("未知の vsMode/mode: {} (id={})", other, id);

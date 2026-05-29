@@ -263,6 +263,9 @@ const MODE_LABELS: Record<string, string> = {
   'bankara_challenge': 'バンカラ(チャレンジ)', // バトルログ行表示用
   'bankara_open':      'バンカラ(オープン)',   // バトルログ行表示用
   'x':                 'Xマッチ',
+  'splatfest':           'フェス',              // フィルター・ダッシュボード用
+  'splatfest_open':      'フェス(オープン)',     // バトルログ行表示用
+  'splatfest_challenge': 'フェス(チャレンジ)',   // バトルログ行表示用
   // 旧形式（後方互換）
   'BANKARA':  'バンカラ',
   'REGULAR':  'レギュラー',
