@@ -987,9 +987,10 @@ pub async fn backfill_battle_players(db: tauri::State<'_, DbPool>) -> Result<usi
 /// 'bankara' は展開、'x' は新マスター key の 'xmatch' に置換する。
 fn translate_mode_filter(mode: Option<String>) -> Option<String> {
     mode.map(|m| match m.as_str() {
-        "bankara" => "bankara_challenge|bankara_open".to_string(),
-        "x"       => "xmatch".to_string(),
-        _         => m,
+        "bankara"   => "bankara_challenge|bankara_open".to_string(),
+        "splatfest" => "splatfest_open|splatfest_challenge".to_string(),
+        "x"         => "xmatch".to_string(),
+        _           => m,
     })
 }
 
@@ -1299,14 +1300,20 @@ pub async fn db_summary(
     .await
     .map_err(|e| e.to_string())?;
 
+    // バンカラ(open/challenge) は 'bankara'、フェス(open/challenge) は 'splatfest' に束ねる。
+    // トリカラ(splatfest_tricolor) は LOBBY_SEED 未対応で集計に乗らないため、ここでは考慮不要。
     let by_mode = bind_filters!(sqlx::query(&format!(
         "SELECT
-                CASE WHEN l.key LIKE 'bankara%' THEN 'bankara' ELSE {LOBBY_KEY_AS_OLD} END as name,
+                CASE WHEN l.key LIKE 'bankara%' THEN 'bankara'
+                     WHEN l.key LIKE 'splatfest%' THEN 'splatfest'
+                     ELSE {LOBBY_KEY_AS_OLD} END as name,
                 COUNT(*) as total,
                 SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END) as wins,
                 SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END) as draws
          {common_joins} WHERE {filter_where}
-         GROUP BY CASE WHEN l.key LIKE 'bankara%' THEN 'bankara' ELSE l.key END
+         GROUP BY CASE WHEN l.key LIKE 'bankara%' THEN 'bankara'
+                       WHEN l.key LIKE 'splatfest%' THEN 'splatfest'
+                       ELSE l.key END
          ORDER BY total DESC"
     )))
     .fetch_all(db.as_ref())
@@ -2249,6 +2256,8 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// version 10: 既存バトルの gear_configuration を my_team/other_teams JSON から backfill
 /// version 11: battle.rule_id を nullable に変更し、旧 battles / battle_players テーブルを drop
 /// version 12: WeaponRecordQuery 用 weapon_records テーブル追加 (#49) — 武器熟練度・勝利数・塗りポイント
+/// version 13: stat.ink import (#174) の重複排除用に battle.uuid を backfill
+/// version 14: フェスマッチ(ナワバリ)の lobby_id を raw_json から救済 (#180)
 pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
     let ver_row = sqlx::query("PRAGMA user_version")
         .fetch_one(pool.as_ref())
@@ -2256,7 +2265,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 13 {
+    if current_version >= 14 {
         return Ok(0); // 最新バージョンに達している
     }
 
@@ -3124,6 +3133,67 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             .map_err(|e| e.to_string())?;
 
         log::info!("migrate v13: battle.uuid を backfill ({} 件)", filled);
+    }
+
+    // version 14: フェスマッチ(ナワバリ)の救済 (#180)。
+    //             vsMode=FEST の FEST 分岐が無かったため mode='fest' で保存され
+    //             lobby_id が割り当てられず（あるいは誤った値で）集計から外れていた。
+    //             旧 `battles` 由来の救済（v5 系）とは別に、新スキーマ `battle` 側の
+    //             lobby_id を raw_json の festMatch.mode から正しい lobby に振り直す。
+    //               festMatch.mode: CHALLENGE -> splatfest_challenge(7)
+    //                               REGULAR/空/未知 -> splatfest_open(6)
+    //               TRI_COLOR は LOBBY_SEED 未対応のため対象外（集計外のまま）。
+    if current_version < 14 {
+        // 対象: vsMode=FEST だが lobby が splatfest 系でないバトル。
+        // raw_json から vsMode/mode を見て FEST のものだけ拾う（誤判定済みのもの）。
+        let rows = sqlx::query(
+            "SELECT b.id, b.raw_json
+             FROM battle b
+             JOIN lobby l ON l.id = b.lobby_id
+             WHERE b.raw_json IS NOT NULL
+               AND l.key NOT LIKE 'splatfest%'"
+        )
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let mut fixed = 0usize;
+        for row in &rows {
+            let id: String = row.get("id");
+            let raw_json: String = row.get("raw_json");
+
+            let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw_json) else { continue };
+
+            // 詳細クエリの vsMode/mode が FEST のものだけが対象
+            let vsmode = json.pointer("/vsMode/mode").and_then(|v| v.as_str()).unwrap_or("");
+            if vsmode != "FEST" {
+                continue;
+            }
+
+            let fm = json.pointer("/festMatch/mode").and_then(|v| v.as_str()).unwrap_or("");
+            let new_key = match fm {
+                "CHALLENGE" => "splatfest_challenge",
+                // TRI_COLOR は LOBBY_SEED 未対応。集計外のままにするため救済しない。
+                "TRI_COLOR" => continue,
+                _ => "splatfest_open", // REGULAR / 空 / 未知は open にフォールバック
+            };
+            let Some(lobby_id) = old_mode_to_lobby_id(new_key) else { continue };
+
+            sqlx::query("UPDATE battle SET lobby_id = ? WHERE id = ?")
+                .bind(lobby_id)
+                .bind(&id)
+                .execute(pool.as_ref())
+                .await
+                .map_err(|e| e.to_string())?;
+            fixed += 1;
+        }
+
+        sqlx::query("PRAGMA user_version = 14")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        log::info!("migrate v14: フェスマッチの lobby_id を救済 ({} 件)", fixed);
     }
 
     Ok(updated)

@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { Filters, Period, WeaponRecord } from '../types'
 import { modeLabel, ruleLabel, resultLabel, RULE_LABELS } from '../types'
 
-const MODES   = ['regular', 'bankara', 'x']
+const MODES   = ['regular', 'bankara', 'x', 'splatfest']
 const RULES   = Object.keys(RULE_LABELS)   // ['turf_war', 'area', 'yagura', 'hoko', 'asari']
 const RESULTS = ['win', 'lose', 'draw']
 
@@ -55,8 +55,9 @@ export function FilterBar({ filters, onChange }: Props) {
 
   // モードとルールに不整合な組み合わせが生まれたら、もう片方を解除する。
   // 自動セット（レギュラー → ナワバリ等）はしない。
-  const GACHI_RULES   = ['area', 'yagura', 'hoko', 'asari']
-  const BANKARA_MODES = ['bankara', 'bankara_challenge', 'bankara_open']
+  const GACHI_RULES     = ['area', 'yagura', 'hoko', 'asari']
+  const BANKARA_MODES   = ['bankara', 'bankara_challenge', 'bankara_open']
+  const SPLATFEST_MODES = ['splatfest', 'splatfest_open', 'splatfest_challenge']
   function toggleMode(m: string) {
     // 同じ値を再クリックなら解除（連動なし）
     if (filters.mode === m) {
@@ -64,12 +65,24 @@ export function FilterBar({ filters, onChange }: Props) {
       return
     }
     let nextRule = filters.rule
-    if (m === 'regular' && GACHI_RULES.includes(filters.rule ?? '')) {
-      nextRule = null              // レギュラー選択 → ガチ系ルール解除
+    if ((m === 'regular' || m === 'splatfest') && GACHI_RULES.includes(filters.rule ?? '')) {
+      nextRule = null              // レギュラー/フェス選択 → ガチ系ルール解除（どちらもナワバリ）
     } else if ((m === 'bankara' || m === 'x') && filters.rule === 'turf_war') {
       nextRule = null              // ガチ系モード選択 → ナワバリ解除
     }
     onChange({ ...filters, mode: m, rule: nextRule })
+  }
+  // フェスボタンは 4 状態を循環（バンカラと同じ流儀）：
+  //   非選択 → splatfest（両方）→ splatfest_open → splatfest_challenge → 非選択
+  function cycleSplatfest() {
+    const next: string | null =
+      filters.mode === 'splatfest'           ? 'splatfest_open' :
+      filters.mode === 'splatfest_open'      ? 'splatfest_challenge' :
+      filters.mode === 'splatfest_challenge' ? null :
+      /* 非選択 or 他モード */                 'splatfest'
+    // フェスはナワバリなので、ガチ系ルールが選ばれていたら外す
+    const nextRule = (next !== null && GACHI_RULES.includes(filters.rule ?? '')) ? null : filters.rule
+    onChange({ ...filters, mode: next, rule: nextRule })
   }
   // バンカラボタンは 4 状態を循環：
   //   非選択 → bankara（両方）→ bankara_challenge → bankara_open → 非選択
@@ -90,9 +103,9 @@ export function FilterBar({ filters, onChange }: Props) {
     }
     let nextMode = filters.mode
     if (r === 'turf_war' && (BANKARA_MODES.includes(filters.mode ?? '') || filters.mode === 'x')) {
-      nextMode = null              // ナワバリ選択 → バンカラ系/Xマッチ解除
-    } else if (GACHI_RULES.includes(r) && filters.mode === 'regular') {
-      nextMode = null              // ガチ系ルール選択 → レギュラー解除
+      nextMode = null              // ナワバリ選択 → バンカラ系/Xマッチ解除（フェスはナワバリなので残す）
+    } else if (GACHI_RULES.includes(r) && (filters.mode === 'regular' || SPLATFEST_MODES.includes(filters.mode ?? ''))) {
+      nextMode = null              // ガチ系ルール選択 → レギュラー/フェス解除
     }
     onChange({ ...filters, rule: r, mode: nextMode })
   }
@@ -149,6 +162,18 @@ export function FilterBar({ filters, onChange }: Props) {
                   key={m}
                   className={`filter-btn${isActive ? ' active' : ''}`}
                   onClick={cycleBankara}
+                >{label}</button>
+              )
+            }
+            if (m === 'splatfest') {
+              // フェスも 4 状態循環ボタン：非選択 → 両方 → オープン → チャレンジ → 非選択
+              const isActive = SPLATFEST_MODES.includes(filters.mode ?? '')
+              const label    = isActive ? modeLabel(filters.mode!) : 'フェス'
+              return (
+                <button
+                  key={m}
+                  className={`filter-btn${isActive ? ' active' : ''}`}
+                  onClick={cycleSplatfest}
                 >{label}</button>
               )
             }
