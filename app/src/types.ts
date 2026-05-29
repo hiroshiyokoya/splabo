@@ -362,6 +362,10 @@ export type MetricKey =
   | 'avg_special'   // 平均スペシャル
   | 'avg_inked'     // 平均塗り
   | 'avg_duration'  // 平均バトル時間（秒）
+  | 'sum_kill'      // キル数合計
+  | 'sum_death'     // デス数合計
+  | 'sum_assist'    // アシスト数合計
+  | 'sum_inked'     // 塗りポイント合計
 
 /**
  * カスタムグラフ 1 個分の設定。localStorage に CustomChart[] として保存する想定。
@@ -431,10 +435,10 @@ export type BattleNumericMetric =
   | 'duration'
 
 export const BATTLE_NUMERIC_METRIC_LABELS: Record<BattleNumericMetric, string> = {
-  kill:            'キル',
-  death:           'デス',
-  assist:          'アシスト',
-  kill_or_assist:  'キル + アシスト',
+  kill:            'キル数',
+  death:           'デス数',
+  assist:          'アシスト数',
+  kill_or_assist:  'キル数 + アシスト数',
   special:         'スペシャル',
   inked:           '塗り',
   duration:        'バトル時間',
@@ -461,9 +465,9 @@ export type BattleMetricKey =
   | 'special'
 
 export const BATTLE_METRIC_LABELS: Record<BattleMetricKey, string> = {
-  kill:    'キル',
-  death:   'デス',
-  assist:  'アシスト',
+  kill:    'キル数',
+  death:   'デス数',
+  assist:  'アシスト数',
   kd:      'キルレ (K/D)',
   inked:   '塗り',
   special: 'スペシャル',
@@ -517,6 +521,11 @@ export function getMetric2D(row: GroupedStatsRow2D, metric: MetricKey): number |
     case 'avg_special':  return row.avg_special
     case 'avg_inked':    return row.avg_inked
     case 'avg_duration': return row.avg_duration
+    // 合計系メトリクスは 2D クロス集計では返さない（GroupedStatsRow2D に列がない）。
+    case 'sum_kill':
+    case 'sum_death':
+    case 'sum_assist':
+    case 'sum_inked':    return null
   }
 }
 
@@ -548,6 +557,8 @@ export const IMPLEMENTED_SHAPES: ChartShape[] = ['bar', 'line', 'calendar_heatma
 export type MetricGroup = 'count' | 'rate' | 'average'
 export function metricGroup(metric: MetricKey): MetricGroup {
   if (metric === 'total' || metric === 'wins')                  return 'count'
+  if (metric === 'sum_kill' || metric === 'sum_death' ||
+      metric === 'sum_assist' || metric === 'sum_inked')        return 'count'
   if (metric === 'win_rate')                                    return 'rate'
   return 'average'
 }
@@ -637,6 +648,10 @@ export interface GroupedStatsRow {
   avg_special:   number | null
   avg_inked:     number | null
   avg_duration:  number | null
+  sum_kill:      number | null
+  sum_death:     number | null
+  sum_assist:    number | null
+  sum_inked:     number | null
 }
 
 /** UI 表示用のラベル。 */
@@ -668,6 +683,10 @@ export const METRIC_LABELS: Record<MetricKey, string> = {
   avg_special:  '平均SP',
   avg_inked:    '平均塗り',
   avg_duration: '平均バトル時間',
+  sum_kill:     'キル数（合計）',
+  sum_death:    'デス数（合計）',
+  sum_assist:   'アシスト数（合計）',
+  sum_inked:    '塗りP（合計）',
 }
 
 /** GroupedStatsRow から指定メトリクスの数値を取り出す。NULL は null を返す。
@@ -687,6 +706,10 @@ export function getMetric(row: GroupedStatsRow, metric: MetricKey): number | nul
     case 'avg_special':  return row.avg_special
     case 'avg_inked':    return row.avg_inked
     case 'avg_duration': return row.avg_duration
+    case 'sum_kill':     return row.sum_kill
+    case 'sum_death':    return row.sum_death
+    case 'sum_assist':   return row.sum_assist
+    case 'sum_inked':    return row.sum_inked
   }
 }
 
@@ -699,6 +722,8 @@ export function formatMetric(value: number | null, metric: MetricKey): string {
     const s = Math.round(value % 60)
     return `${m}:${String(s).padStart(2, '0')}`
   }
-  if (metric === 'total' || metric === 'wins') return value.toLocaleString()
+  if (metric === 'total' || metric === 'wins' ||
+      metric === 'sum_kill' || metric === 'sum_death' ||
+      metric === 'sum_assist' || metric === 'sum_inked') return value.toLocaleString()
   return value.toFixed(2)
 }

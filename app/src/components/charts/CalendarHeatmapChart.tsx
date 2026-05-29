@@ -32,7 +32,9 @@ const RATE_COLORS   = ['var(--cell-r1)', 'var(--cell-r2)', 'var(--cell-r3)', 'va
 function fmtLegend(v: number, metric: MetricKey): string {
   if (metric === 'win_rate') return `${Math.round(v * 100)}%`
   if (metric === 'avg_duration') return `${Math.round(v)}s`
-  if (metric === 'total' || metric === 'wins') return Math.round(v).toString()
+  if (metric === 'total' || metric === 'wins' ||
+      metric === 'sum_kill' || metric === 'sum_death' ||
+      metric === 'sum_assist' || metric === 'sum_inked') return Math.round(v).toString()
   return v.toFixed(1)
 }
 
