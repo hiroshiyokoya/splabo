@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { GroupedStatsRow, MetricKey } from '../../types'
-import { METRIC_LABELS, getMetric, formatMetric, metricGroup } from '../../types'
+import { METRIC_LABELS, getMetric, metricGroup } from '../../types'
 
 /**
  * GitHub contribution graph 風のカレンダーヒートマップ。
@@ -103,13 +103,13 @@ export function CalendarHeatmapChart({
 }) {
   // ツールチップ位置はマウスの clientX / clientY (viewport 基準) を使う。
   // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
-  const [hover, setHover] = useState<{ mx: number; my: number; date: string; value: number | null; total: number } | null>(null)
+  const [hover, setHover] = useState<{ mx: number; my: number; date: string; value: number | null; total: number; wins: number; draws: number } | null>(null)
 
   const group = metricGroup(metric)
 
   // データ map と min/max 算出
   const { dataMap, minVal, maxVal, weeks } = useMemo(() => {
-    const map = new Map<string, { value: number | null; total: number }>()
+    const map = new Map<string, { value: number | null; total: number; wins: number; draws: number }>()
     let mn = Number.POSITIVE_INFINITY
     let mx = Number.NEGATIVE_INFINITY
     let earliest: Date | null = null
@@ -119,7 +119,7 @@ export function CalendarHeatmapChart({
       const date = fromIsoDate(row.name)
       if (isNaN(date.getTime())) continue
       const v = getMetric(row, metric)
-      map.set(row.name, { value: v, total: row.total })
+      map.set(row.name, { value: v, total: row.total, wins: row.wins, draws: row.draws })
       if (v !== null && (group === 'count' || row.total >= minSampleSize)) {
         if (v < mn) mn = v
         if (v > mx) mx = v
@@ -210,6 +210,8 @@ export function CalendarHeatmapChart({
             const entry = dataMap.get(dateStr)
             const v = entry?.value ?? null
             const total = entry?.total ?? 0
+            const wins  = entry?.wins ?? 0
+            const draws = entry?.draws ?? 0
             const fill = cellFill(dateStr, v, total)
             const x = 22 + wi * PITCH
             const y = 16 + di * PITCH
@@ -223,7 +225,7 @@ export function CalendarHeatmapChart({
                 height={CELL}
                 rx={2}
                 fill={fill}
-                onMouseEnter={(e) => setHover({ mx: e.clientX, my: e.clientY, date: dateStr, value: v, total })}
+                onMouseEnter={(e) => setHover({ mx: e.clientX, my: e.clientY, date: dateStr, value: v, total, wins, draws })}
                 onMouseMove={(e) => setHover(prev => prev ? { ...prev, mx: e.clientX, my: e.clientY } : prev)}
                 onMouseLeave={() => setHover(null)}
               />
@@ -261,11 +263,19 @@ export function CalendarHeatmapChart({
           }}
         >
           <div className="hover-tt-title">{hover.date}</div>
-          <div className="hover-tt-row">{METRIC_LABELS[metric]}: {formatMetric(hover.value, metric)}</div>
-          <div className="hover-tt-row hover-tt-row--muted">バトル数: {hover.total}</div>
-          {(group === 'rate' || group === 'average') && hover.value !== null && hover.total < minSampleSize && (
-            <div className="hover-tt-row hover-tt-row--muted">サンプル不足 (&lt; {minSampleSize})</div>
-          )}
+          {(() => {
+            const losses  = hover.total - hover.wins - hover.draws
+            const decisive = hover.total - hover.draws
+            const winRate = decisive > 0 ? (hover.wins / decisive) * 100 : null
+            return (
+              <>
+                <div className="hover-tt-row">バトル数: {hover.total}</div>
+                <div className="hover-tt-row">勝数: {hover.wins}</div>
+                <div className="hover-tt-row">負数: {losses}</div>
+                <div className="hover-tt-row">勝率: {winRate !== null ? `${winRate.toFixed(1)}%` : '—'}</div>
+              </>
+            )
+          })()}
         </div>
       )}
     </div>
