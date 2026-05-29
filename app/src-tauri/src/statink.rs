@@ -57,7 +57,7 @@ fn decode_id(b64str: &str) -> serde_json::Value {
 // ---------------------------------------------------------------------------
 
 /// バトル ID の base64 から UUID v5 を生成する（s3s と同一）。
-fn battle_uuid(battle_id_b64: &str) -> String {
+pub fn battle_uuid(battle_id_b64: &str) -> String {
     let full_id = b64d(battle_id_b64);
     // 末尾 52 文字: "YYYYMMDDTHHMMSS_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
     let suffix = if full_id.len() >= 52 {

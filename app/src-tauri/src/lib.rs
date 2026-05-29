@@ -12,6 +12,7 @@ pub mod images;
 pub mod nxapi;
 pub mod splatnet3;
 pub mod statink;
+pub mod statink_import;
 
 /// スケジューラー設定（フロントエンドから set_scheduler_config で更新される）
 /// (enabled, interval_min) — interval_min は分単位（15, 30, 60, 120, 360, 720, 1440 等）
@@ -94,6 +95,7 @@ pub fn run() {
             upload_to_statink_one,
             delete_statink_all,
             detect_statink_screen_name,
+            import_from_statink,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -332,6 +334,24 @@ async fn upload_to_statink_one(
         .build()
         .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
     statink::upload_pending_battles(&db, &client, &api_key, Some(1), Some(&app)).await
+}
+
+/// stat.ink から自分の過去バトル履歴を一括インポートする（#174）。
+/// API キーで `@<screen_name>/spl3/index.json` をページングして全件取得し、
+/// uuid 重複を除いて新スキーマへ取り込む。{ imported, skipped, failed, total } を返す。
+#[tauri::command]
+async fn import_from_statink(
+    config: State<'_, StatinkConfig>,
+    db: State<'_, db::DbPool>,
+) -> Result<statink_import::ImportResult, String> {
+    let api_key = config.0.lock().unwrap().1.clone();
+    if api_key.is_empty() {
+        return Err("stat.ink API キーが設定されていません".to_string());
+    }
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    statink_import::import_all_battles(&db, &client, &api_key).await
 }
 
 /// HistoryRecordQuery で武器マスター（名前・カテゴリ・画像）を取得して DB に保存し、
