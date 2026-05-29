@@ -2256,7 +2256,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 12 {
+    if current_version >= 13 {
         return Ok(0); // 最新バージョンに達している
     }
 
@@ -3090,6 +3090,42 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         log::info!("migrate v12: weapon_records テーブルを追加");
     }
 
+    // version 13: stat.ink からのインポート (#174) の重複排除に使うため、
+    //             既存バトル全件の battle.uuid を SplatNet の id から再計算して backfill する。
+    //             chartoon / s3s と同じ UUID v5 名前空間で計算するので、stat.ink 側の
+    //             uuid (= client_uuid) と一致し、SplatNet 直取得済みのバトルを
+    //             stat.ink import 時に重複として検出・スキップできる。
+    if current_version < 13 {
+        let rows = sqlx::query("SELECT id FROM battle WHERE uuid IS NULL")
+            .fetch_all(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        let mut filled = 0usize;
+        for row in &rows {
+            let id: String = row.get("id");
+            // インポート由来のバトル (id がそのまま UUID) は対象外。SplatNet base64 id のみ計算。
+            let uuid = crate::statink::battle_uuid(&id);
+            // battle_uuid は base64 デコードできない id をそのまま返すので、変化が無ければスキップ。
+            if uuid == id {
+                continue;
+            }
+            sqlx::query("UPDATE battle SET uuid = ? WHERE id = ? AND uuid IS NULL")
+                .bind(&uuid)
+                .bind(&id)
+                .execute(pool.as_ref())
+                .await
+                .map_err(|e| e.to_string())?;
+            filled += 1;
+        }
+
+        sqlx::query("PRAGMA user_version = 13")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        log::info!("migrate v13: battle.uuid を backfill ({} 件)", filled);
+    }
+
     Ok(updated)
 }
 
@@ -3209,4 +3245,216 @@ pub async fn db_list_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<WeaponR
     .await
     .map_err(|e| e.to_string())?;
     Ok(rows)
+}
+
+// ---------------------------------------------------------------------------
+// stat.ink インポート (#174)
+// ---------------------------------------------------------------------------
+
+/// stat.ink からインポートした 1 バトル分の正規化済みデータ。
+/// `statink_import.rs` が stat.ink battle JSON から組み立て、
+/// `insert_imported_battle` 経由で新スキーマへ書き込む。
+#[derive(Debug, Default)]
+pub struct ImportedBattleRow {
+    /// 新スキーマ battle.id。stat.ink には SplatNet base64 id が無いため uuid をそのまま使う。
+    pub id: String,
+    /// s3s / chartoon と同じ UUID v5（stat.ink 側の `uuid` フィールド = client_uuid）。
+    pub uuid: String,
+    pub played_at: String,
+    pub lobby_key: String,
+    /// rule が取れない場合は空文字。空なら rule_id = NULL で挿入する。
+    pub rule_key: String,
+    pub result_key: String,
+    /// 武器マスター key（= 表示名）。chartoon の weapon.key は SplatNet 表示名なので
+    /// stat.ink の weapon.name.ja_JP を使う。
+    pub weapon_key: String,
+    /// ステージ識別用の stat.ink stage key（フォールバックの map.key 用）。
+    pub stage_statink_key: String,
+    pub stage_name_ja: Option<String>,
+    pub stage_name_en: Option<String>,
+    pub is_knockout: Option<i64>,
+    pub rank_in_team: Option<i64>,
+    pub kill: i64,
+    pub assist: i64,
+    pub kill_or_assist: i64,
+    pub death: i64,
+    pub special: i64,
+    pub inked: i64,
+    pub duration: i64,
+    pub our_team_inked: Option<i64>,
+    pub their_team_inked: Option<i64>,
+    pub our_team_percent: Option<f64>,
+    pub their_team_percent: Option<f64>,
+    pub our_team_count: Option<i64>,
+    pub their_team_count: Option<i64>,
+    pub rank_before: Option<String>,
+    pub rank_after: Option<String>,
+    pub rank_before_s_plus: Option<i64>,
+    pub rank_after_s_plus: Option<i64>,
+    pub x_power_before: Option<f64>,
+    pub x_power_after: Option<f64>,
+    /// stat.ink battle JSON 全体（fallback / 再パース用）。
+    pub raw_json: String,
+    /// my_team / other_teams を SplatNet 互換の形に組み直した JSON 文字列。
+    /// バトル詳細モーダル・ギア集計が参照する。
+    pub my_team: Option<String>,
+    pub other_teams: Option<String>,
+}
+
+/// lobby / rule / result マスターの key → id を引く（固定 ID seed 済み）。
+async fn id_by_key(pool: &DbPool, table: &str, key: &str) -> Result<Option<i64>, String> {
+    if key.is_empty() {
+        return Ok(None);
+    }
+    // table はコード内固定文字列のみ（外部入力ではない）なので format! で安全。
+    let sql = format!("SELECT id FROM {table} WHERE key = ? LIMIT 1");
+    let row = sqlx::query(&sql)
+        .bind(key)
+        .fetch_optional(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.map(|r| r.get::<i64, _>("id")))
+}
+
+/// stat.ink のステージを chartoon の map マスターに解決する。
+/// まず name_ja で既存行（SplatNet 取得済みの数値 ID key を持つ map）に一致させ、
+/// 無ければ stat.ink の stage key で新規作成する。id を返す。
+async fn resolve_map_id_for_import(
+    pool: &DbPool,
+    statink_key: &str,
+    name_ja: Option<&str>,
+    name_en: Option<&str>,
+) -> Result<Option<i64>, String> {
+    // 1. 既存 map を name_ja で照合（SplatNet 直取得分とキーを共有して集計を統合）。
+    if let Some(name) = name_ja {
+        if !name.is_empty() {
+            let row = sqlx::query("SELECT id FROM map WHERE name_ja = ? LIMIT 1")
+                .bind(name)
+                .fetch_optional(pool.as_ref())
+                .await
+                .map_err(|e| e.to_string())?;
+            if let Some(r) = row {
+                return Ok(Some(r.get::<i64, _>("id")));
+            }
+        }
+    }
+    // 2. フォールバック: stat.ink の stage key で新規作成 / 取得。
+    if statink_key.is_empty() {
+        return Ok(None);
+    }
+    sqlx::query("INSERT OR IGNORE INTO map (key, name_ja, name_en) VALUES (?, ?, ?)")
+        .bind(statink_key)
+        .bind(name_ja)
+        .bind(name_en)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    let row = sqlx::query("SELECT id FROM map WHERE key = ? LIMIT 1")
+        .bind(statink_key)
+        .fetch_optional(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.map(|r| r.get::<i64, _>("id")))
+}
+
+/// 指定 uuid のバトルが既に存在するか。stat.ink import の重複排除に使う。
+pub async fn battle_uuid_exists(pool: &DbPool, uuid: &str) -> Result<bool, String> {
+    if uuid.is_empty() {
+        return Ok(false);
+    }
+    let row = sqlx::query("SELECT 1 FROM battle WHERE uuid = ? LIMIT 1")
+        .bind(uuid)
+        .fetch_optional(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.is_some())
+}
+
+/// インポートした 1 バトルを新スキーマ (battle / battle_player) へ書き込む。
+/// 必須 FK (lobby / result / weapon / map) が解決できない場合は warn してスキップ（false を返す）。
+/// `INSERT OR IGNORE` なので uuid 重複時は呼び出し元で事前に弾く前提。挿入成功時 true。
+pub async fn insert_imported_battle(pool: &DbPool, row: &ImportedBattleRow) -> Result<bool, String> {
+    let lobby_id  = id_by_key(pool, "lobby", &row.lobby_key).await?;
+    let rule_id   = if row.rule_key.is_empty() { None } else { id_by_key(pool, "rule", &row.rule_key).await? };
+    let result_id = id_by_key(pool, "result", &row.result_key).await?;
+    let weapon_id = upsert_weapon_id(pool, &row.weapon_key).await?;
+    let map_id    = resolve_map_id_for_import(
+        pool,
+        &row.stage_statink_key,
+        row.stage_name_ja.as_deref(),
+        row.stage_name_en.as_deref(),
+    )
+    .await?;
+
+    let (Some(lobby_id), Some(result_id), Some(weapon_id), Some(map_id)) =
+        (lobby_id, result_id, weapon_id, map_id)
+    else {
+        log::warn!(
+            "[import] battle スキップ uuid={} (lobby={} result={} weapon={} stage={})",
+            &row.uuid,
+            row.lobby_key,
+            row.result_key,
+            row.weapon_key,
+            row.stage_statink_key,
+        );
+        return Ok(false);
+    };
+
+    let res = sqlx::query(
+        "INSERT OR IGNORE INTO battle
+            (id, uuid, played_at, lobby_id, rule_id, map_id, result_id, weapon_id,
+             is_knockout, rank_in_team, kill, assist, kill_or_assist, death, special, inked, duration,
+             our_team_inked, their_team_inked, our_team_percent, their_team_percent,
+             our_team_count, their_team_count,
+             rank_before, rank_after, rank_before_s_plus, rank_after_s_plus,
+             x_power_before, x_power_after,
+             raw_json, detail_fetched, my_team, other_teams)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+    )
+    .bind(&row.id)
+    .bind(&row.uuid)
+    .bind(&row.played_at)
+    .bind(lobby_id)
+    .bind(rule_id)
+    .bind(map_id)
+    .bind(result_id)
+    .bind(weapon_id)
+    .bind(row.is_knockout)
+    .bind(row.rank_in_team)
+    .bind(row.kill)
+    .bind(row.assist)
+    .bind(row.kill_or_assist)
+    .bind(row.death)
+    .bind(row.special)
+    .bind(row.inked)
+    .bind(row.duration)
+    .bind(row.our_team_inked)
+    .bind(row.their_team_inked)
+    .bind(row.our_team_percent)
+    .bind(row.their_team_percent)
+    .bind(row.our_team_count)
+    .bind(row.their_team_count)
+    .bind(&row.rank_before)
+    .bind(&row.rank_after)
+    .bind(row.rank_before_s_plus)
+    .bind(row.rank_after_s_plus)
+    .bind(row.x_power_before)
+    .bind(row.x_power_after)
+    .bind(&row.raw_json)
+    .bind(&row.my_team)
+    .bind(&row.other_teams)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| format!("import battle insert 失敗 uuid={}: {e}", row.uuid))?;
+
+    // INSERT OR IGNORE で衝突した場合 rows_affected == 0。
+    let inserted = res.rows_affected() > 0;
+
+    // プレイヤー行（ギア込み）を既存パイプラインで書き込む。
+    if inserted {
+        let players = parse_players_from_json(&row.id, row.my_team.as_deref(), row.other_teams.as_deref());
+        insert_battle_players(pool, &players).await?;
+    }
+
+    Ok(inserted)
 }

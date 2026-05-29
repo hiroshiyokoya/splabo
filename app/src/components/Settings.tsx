@@ -18,6 +18,8 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   const [themeId, setThemeId] = useState(getThemeId)
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<string | null>(null)
   const [weaponUpdating, setWeaponUpdating] = useState(false)
   const [weaponUpdateResult, setWeaponUpdateResult] = useState<string | null>(null)
 
@@ -102,6 +104,27 @@ async function handleUploadStatink() {
       setUploadResult(`エラー: ${String(e)}`)
     } finally {
       setUploading(false)
+    }
+  }
+
+  async function handleImportStatink() {
+    if (!window.confirm(
+      'stat.ink に保存された自分の過去バトルをすべて取得して取り込みます。\n' +
+      '件数によっては数分かかることがあります。実行しますか？'
+    )) return
+    setImporting(true)
+    setImportResult(null)
+    try {
+      const r = await invoke<{ imported: number; skipped: number; failed: number; total: number }>(
+        'import_from_statink'
+      )
+      const parts = [`新規 ${r.imported} 件`, `スキップ ${r.skipped} 件`]
+      if (r.failed > 0) parts.push(`失敗 ${r.failed} 件`)
+      setImportResult(`取り込み完了: ${parts.join(' / ')}（取得 ${r.total} 件）`)
+    } catch (e) {
+      setImportResult(`エラー: ${String(e)}`)
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -197,6 +220,24 @@ async function handleUploadStatink() {
           {uploadResult && (
             <span style={{ fontSize: 13, color: uploadResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
               {uploadResult}
+            </span>
+          )}
+        </div>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '16px 0 10px' }}>
+          stat.ink に保存済みの自分の過去バトルを chartoon に取り込みます。
+          SplatNet 3 が保持しない古いバトルも集計対象にできます（重複は自動でスキップ）。
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            className="btn-secondary"
+            onClick={handleImportStatink}
+            disabled={importing || !settings.statink.apiKey}
+          >
+            {importing ? '取り込み中...' : 'stat.ink から過去履歴を取得'}
+          </button>
+          {importResult && (
+            <span style={{ fontSize: 13, color: importResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
+              {importResult}
             </span>
           )}
         </div>
