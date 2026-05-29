@@ -11,6 +11,11 @@ const WEB_VIEW_VER: &str = "10.0.0-dfefd0af";
 const HASH_REGULAR: &str = "2fe6ea7a2de1d6a888b7bd3dbeb6acc8e3246f055ca39b80c4531bbcd0727bba";
 const HASH_BANKARA: &str = "9863ea4744730743268e2940396e21b891104ed40e2286789f05100b45a0b0fd";
 const HASH_XMATCH: &str = "eb5996a12705c2e94813a62e05c0dc419aad2811b8d49d53e5732290105559cb";
+// イベントマッチ（EventBattleHistoriesQuery）。値は splatnet3-types v4.0.0 同梱のハッシュ。
+// ⚠ 注意: このハッシュは Nintendo 側で廃止されている可能性がある（#162 で WeaponRecordQuery の
+// v4 ハッシュが廃止と判明した前例あり）。実機で叩いて `persisted query does not exist` が出たら、
+// splatoon3.ink 等で有効な最新 EventBattleHistoriesQuery ハッシュに差し替えること。
+const HASH_EVENT: &str = "e47f9aac5599f75c842335ef0ab8f4c640e8bf2afe588a3b1d4b480ee79198ac";
 const HASH_DETAIL:   &str = "94faa2ff992222d11ced55e0f349920a82ac50f414ae33c83d1d1c9d8161c5dd";
 // WeaponRecordQuery は v10 で廃止。HistoryRecordQuery の weaponHistory に武器+カテゴリが含まれる。
 const HASH_WEAPONS:  &str = "a654ecc80161a7ca5c38761c1d9e502d405eae764e2d343618b9c74b1dc0a80f";
@@ -260,6 +265,50 @@ fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str, parent: Option<
     }
 }
 
+/// イベントマッチ1件のレスポンスノードから BattleRow を生成する。
+/// `parent` はイベントの historyGroup 親（leagueMatchHistoryGroup）。
+/// mode は常に "event"（lobby=event(5) に対応）。rule はバトルごとに vsRule から決める。
+fn parse_event_node(node: &serde_json::Value, fetched_at: &str, parent: Option<&serde_json::Value>) -> BattleRow {
+    let id = str_val(node, "id");
+    let played_at = get_played_at(node);
+    let rule_raw = node.pointer("/vsRule/rule").and_then(|x| x.as_str()).unwrap_or("");
+    let rule = rule_to_slug(rule_raw);
+    let (stage, stage_name) = parse_stage(node);
+    let (weapon, kill, death, assist, special, inked) = parse_my_result(node);
+    let result = parse_judgement(node);
+    let duration = i64_val(node, "duration");
+
+    BattleRow {
+        id,
+        played_at,
+        mode: "event".to_string(),
+        rule,
+        stage,
+        stage_name,
+        weapon,
+        result,
+        kill,
+        death,
+        assist,
+        special,
+        inked,
+        duration,
+        rank_before: None,
+        rank_after: None,
+        x_power: None,
+        raw_json: node.to_string(),
+        fetched_at: fetched_at.to_string(),
+        knockout: None,
+        sub_weapon: None,
+        special_weapon: None,
+        awards: None,
+        my_team: None,
+        other_teams: None,
+        statink_uuid: None,
+        parent_json: parent.map(|p| p.to_string()),
+    }
+}
+
 /// VsHistoryListQuery のノードから武器名・inked を抽出する。
 /// kill/death/assist/special はリストクエリに含まれないため 0。（#21 詳細クエリで対応予定）
 fn parse_my_result(node: &serde_json::Value) -> (String, i64, i64, i64, i64, i64) {
@@ -339,6 +388,7 @@ fn extract_battle_nodes(
         "regularBattleHistories",
         "bankaraBattleHistories",
         "xBattleHistories",
+        "eventBattleHistories",
     ];
 
     for key in &history_keys {
@@ -371,6 +421,11 @@ fn extract_parent_for_group(group: &serde_json::Value) -> Option<serde_json::Val
         return Some(p.clone());
     }
     if let Some(p) = group.get("xMatchMeasurement").filter(|v| !v.is_null()) {
+        return Some(p.clone());
+    }
+    // イベントマッチの historyGroup 親情報（leagueMatchEvent / myLeaguePower /
+    // measurementState / teamComposition 等）。EventBattleHistoriesQuery の型定義より。
+    if let Some(p) = group.get("leagueMatchHistoryGroup").filter(|v| !v.is_null()) {
         return Some(p.clone());
     }
     None
@@ -423,10 +478,40 @@ pub async fn fetch_and_store_battles(
         .collect();
     total_inserted += crate::db::insert_battles(pool, xmatch_rows).await?;
 
+    // --- イベントマッチ ---
+    // ⚠ HASH_EVENT が Nintendo 側で廃止されている場合、graphql_request が
+    // `persisted query does not exist` 系のエラーを返す。その場合はイベント取得だけ
+    // スキップして他モードの取得は継続する（warn を残し、ハッシュ差し替えを促す）。
+    // event_resp はこの関数スコープで保持する（extract_battle_nodes が借用を返すため）。
+    let event_resp = match graphql_request(client, bullet_token, country, language, HASH_EVENT, None).await {
+        Ok(r) => Some(r),
+        Err(e) => {
+            log::warn!(
+                "イベントマッチ取得スキップ: {e} — HASH_EVENT ({}) が廃止された可能性。\
+                 splatoon3.ink 等で有効な EventBattleHistoriesQuery ハッシュに差し替えること。",
+                HASH_EVENT
+            );
+            None
+        }
+    };
+    let event_pairs = match &event_resp {
+        Some(resp) => {
+            let pairs = extract_battle_nodes(resp);
+            let event_rows: Vec<BattleRow> = pairs
+                .iter()
+                .map(|(n, p)| parse_event_node(n, &fetched_at, p.as_ref()))
+                .collect();
+            total_inserted += crate::db::insert_battles(pool, event_rows).await?;
+            pairs
+        }
+        None => Vec::new(),
+    };
+
     // --- 画像キャッシュ ---
     let all_nodes = regular_pairs.iter().map(|(n, _)| *n)
         .chain(bankara_pairs.iter().map(|(n, _)| *n))
-        .chain(xmatch_pairs.iter().map(|(n, _)| *n));
+        .chain(xmatch_pairs.iter().map(|(n, _)| *n))
+        .chain(event_pairs.iter().map(|(n, _)| *n));
     let image_targets = collect_image_targets(all_nodes);
     for (kind, name, url) in image_targets {
         if let Err(e) = crate::images::download_and_cache(app, client, &kind, &name, &url).await {
@@ -555,6 +640,11 @@ pub async fn fetch_and_update_details(
                 if bm == "CHALLENGE" { "bankara_challenge".to_string() } else { "bankara_open".to_string() }
             }
             "X_MATCH" => "x".to_string(),
+            // イベントマッチは SplatNet3 内部では「リーグマッチ」扱いで vsMode.mode = "LEAGUE"。
+            // VsMode.id は VsMode-51（base64: "VnNNb2RlLTUx"）。詳細クエリには leagueMatch ノードが付く。
+            // EventBattleHistoriesQuery の historyGroup には leagueMatchHistoryGroup が入ることからも
+            // イベント＝リーグ系であることが確認できる。lobby=event(5) に正規化する。
+            "LEAGUE" => "event".to_string(),
             "FEST" => {
                 // festMatch.mode の値は splatnet3-types の FestMatchMode enum で
                 // REGULAR / CHALLENGE のみ。トリカラは festMatch.mode には現れず別経路

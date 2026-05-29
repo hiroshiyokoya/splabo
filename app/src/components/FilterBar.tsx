@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { Filters, Period, WeaponRecord } from '../types'
 import { modeLabel, ruleLabel, resultLabel, RULE_LABELS } from '../types'
 
-const MODES   = ['regular', 'bankara', 'x', 'splatfest']
+const MODES   = ['regular', 'bankara', 'x', 'splatfest', 'event']
 const RULES   = Object.keys(RULE_LABELS)   // ['turf_war', 'area', 'yagura', 'hoko', 'asari']
 const RESULTS = ['win', 'lose', 'draw']
 
