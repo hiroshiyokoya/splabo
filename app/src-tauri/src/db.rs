@@ -1461,7 +1461,13 @@ pub async fn db_grouped_stats(
             AVG(CASE WHEN b.detail_fetched = 1 THEN b.assist   END)   as avg_assist,
             AVG(CASE WHEN b.detail_fetched = 1 THEN b.special  END)   as avg_special,
             AVG(CASE WHEN b.detail_fetched = 1 THEN b.inked    END)   as avg_inked,
-            AVG(CASE WHEN b.detail_fetched = 1 THEN b.duration END)   as avg_duration
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.duration END)   as avg_duration,
+            -- 合計系（#175）。detail_fetched=1 のバトルのみ K/D/A/塗りが入る。
+            -- 該当バトルが 1 件もない場合 SUM は NULL（FE で null フォールバック）。
+            SUM(CASE WHEN b.detail_fetched = 1 THEN b.kill   END)     as sum_kill,
+            SUM(CASE WHEN b.detail_fetched = 1 THEN b.death  END)     as sum_death,
+            SUM(CASE WHEN b.detail_fetched = 1 THEN b.assist END)     as sum_assist,
+            SUM(CASE WHEN b.detail_fetched = 1 THEN b.inked  END)     as sum_inked
          FROM battle b
          JOIN lobby  l   ON l.id   = b.lobby_id
          JOIN rule   r   ON r.id   = b.rule_id
@@ -1509,6 +1515,10 @@ pub async fn db_grouped_stats(
             "avg_special":   r.try_get::<f64, _>("avg_special").ok(),
             "avg_inked":     r.try_get::<f64, _>("avg_inked").ok(),
             "avg_duration":  r.try_get::<f64, _>("avg_duration").ok(),
+            "sum_kill":      r.try_get::<i64, _>("sum_kill").ok(),
+            "sum_death":     r.try_get::<i64, _>("sum_death").ok(),
+            "sum_assist":    r.try_get::<i64, _>("sum_assist").ok(),
+            "sum_inked":     r.try_get::<i64, _>("sum_inked").ok(),
         })
     }).collect())
 }
@@ -1577,7 +1587,12 @@ async fn db_grouped_stats_by_player_weapon(
             AVG(CASE WHEN b.detail_fetched = 1 THEN b.assist   END)   as avg_assist,
             AVG(CASE WHEN b.detail_fetched = 1 THEN b.special  END)   as avg_special,
             AVG(CASE WHEN b.detail_fetched = 1 THEN b.inked    END)   as avg_inked,
-            AVG(CASE WHEN b.detail_fetched = 1 THEN b.duration END)   as avg_duration
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.duration END)   as avg_duration,
+            -- 合計系（#175）。detail_fetched=1 のバトルのみ K/D/A/塗りが入る。
+            SUM(CASE WHEN b.detail_fetched = 1 THEN b.kill   END)     as sum_kill,
+            SUM(CASE WHEN b.detail_fetched = 1 THEN b.death  END)     as sum_death,
+            SUM(CASE WHEN b.detail_fetched = 1 THEN b.assist END)     as sum_assist,
+            SUM(CASE WHEN b.detail_fetched = 1 THEN b.inked  END)     as sum_inked
          FROM (
              SELECT DISTINCT
                  bp.battle_id,
@@ -1638,6 +1653,10 @@ async fn db_grouped_stats_by_player_weapon(
             "avg_special":   r.try_get::<f64, _>("avg_special").ok(),
             "avg_inked":     r.try_get::<f64, _>("avg_inked").ok(),
             "avg_duration":  r.try_get::<f64, _>("avg_duration").ok(),
+            "sum_kill":      r.try_get::<i64, _>("sum_kill").ok(),
+            "sum_death":     r.try_get::<i64, _>("sum_death").ok(),
+            "sum_assist":    r.try_get::<i64, _>("sum_assist").ok(),
+            "sum_inked":     r.try_get::<i64, _>("sum_inked").ok(),
         })
     }).collect())
 }
