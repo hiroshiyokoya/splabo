@@ -1923,3 +1923,100 @@ body {
 .gear-slot img { width: 100%; height: 100%; object-fit: contain; }
 .gear-slot-fallback { color: var(--text-muted); font-size: 10px; line-height: 1; }
 
+/* ===========================================================================
+   環境分析（#184）
+   =========================================================================== */
+
+.env-analysis { max-width: 1100px; }
+
+.env-analysis-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 20px;
+}
+
+.env-analysis-header h2 { font-size: 16px; }
+
+.env-bias-notice { font-size: 12px; color: var(--text-muted); }
+.env-bias-notice a { color: var(--accent); text-decoration: none; }
+.env-bias-notice a:hover { text-decoration: underline; }
+
+/* データ未取得プレースホルダー */
+.env-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 60px 40px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-align: center;
+}
+.env-placeholder-icon { font-size: 48px; line-height: 1; }
+.env-placeholder h3 { font-size: 18px; font-weight: 600; margin: 0; }
+.env-placeholder p { color: var(--text-muted); margin: 0; }
+.env-placeholder-sub { font-size: 12px; }
+
+/* データ取得済みヘッダー */
+.env-data-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.env-data-range { font-size: 13px; color: var(--text-muted); }
+
+/* フィルタ */
+.env-filters {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.env-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.env-filters select {
+  padding: 4px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* チャートセクション */
+.env-chart-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+.env-chart-title { font-size: 14px; font-weight: 600; margin: 0 0 12px; }
+.env-chart-note { font-size: 11px; color: var(--text-muted); margin: 8px 0 0; }
+.env-no-data { color: var(--text-muted); font-size: 13px; padding: 40px; text-align: center; }
+
+/* エラー・進捗 */
+.env-error { color: #e05050; font-size: 13px; }
+.env-progress { margin: 12px 0; }
+.env-progress-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+.env-progress-bar {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.env-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+

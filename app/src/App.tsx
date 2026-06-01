@@ -7,6 +7,7 @@ import { FilterBar } from './components/FilterBar'
 import { WeaponBook } from './components/WeaponBook'
 import { StageBook } from './components/StageBook'
 import { AiAnalysis } from './components/AiAnalysis'
+import { EnvAnalysis } from './components/EnvAnalysis'
 import { Settings } from './components/Settings'
 import { About } from './components/About'
 import type { Tab, AppSettings, ChartSpec, Filters } from './types'
@@ -179,6 +180,7 @@ export default function App() {
         <NavItem id="ai"        icon="🧙" label="AI分析"         active={tab} onClick={setTab} />
         <NavItem id="weapons"   icon="🔫" label="武器図鑑"       active={tab} onClick={setTab} />
         <NavItem id="stages"    icon="🗺" label="ステージ図鑑"   active={tab} onClick={setTab} />
+        <NavItem id="env"       icon="🌍" label="環境分析"       active={tab} onClick={setTab} />
         <NavItem id="settings"  icon="⚙️" label="設定"           active={tab} onClick={setTab} />
         <button
           className="btn-primary sidebar-fetch-btn"
@@ -209,6 +211,7 @@ export default function App() {
         {tab === 'battles'   && <BattleLog filters={filters} statinkScreenName={settings.statink.screenName} />}
         {tab === 'weapons'   && <WeaponBook />}
         {tab === 'stages'    && <StageBook />}
+        {tab === 'env'       && <EnvAnalysis />}
         {tab === 'ai' && <AiAnalysis settings={settings} onChartReady={handleAiChart} />}
         {tab === 'settings' && <Settings settings={settings} onSave={saveSettings} loginVersion={loginVersion} />}
       </main>

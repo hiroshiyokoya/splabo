@@ -6,7 +6,9 @@
 
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite, SqlitePool, Row, FromRow};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 pub type DbPool = Arc<Pool<Sqlite>>;
@@ -19,9 +21,24 @@ pub async fn init_db(app: &AppHandle) -> Result<DbPool, String> {
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
     let db_path = data_dir.join("chartoon.db");
-    let url = format!("sqlite://{}?mode=rwc", db_path.to_string_lossy());
 
-    let pool = SqlitePool::connect(&url).await.map_err(|e| e.to_string())?;
+    // プールの全コネクションに共通設定を適用する。
+    // - busy_timeout: SQLite は単一ライターのため、起動直後の他処理（バトル取得・
+    //   マイグレーション・シャドウライト）と環境データ一括取り込みが衝突しうる。
+    //   未設定だと衝突時に即 SQLITE_BUSY（"database is locked"）で落ちるので、
+    //   一定時間ロック解放を待つようにする。
+    // - journal_mode=WAL / synchronous=NORMAL: 通常運用の標準設定を明示。
+    //   connect_with でテンプレートとして渡すことで、後からプール内の一部
+    //   コネクションにだけ PRAGMA を打つ（＝効かない・混在する）事故を防ぐ。
+    let opts = SqliteConnectOptions::new()
+        .filename(&db_path)
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Normal)
+        .busy_timeout(Duration::from_secs(30))
+        .foreign_keys(true);
+
+    let pool = SqlitePool::connect_with(opts).await.map_err(|e| e.to_string())?;
     sqlx::query(SCHEMA).execute(&pool).await.map_err(|e| e.to_string())?;
     // 既存 DB への追加カラム（失敗は無視 = 既存カラムなら OK）
     for sql in [
@@ -2258,6 +2275,8 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// version 12: WeaponRecordQuery 用 weapon_records テーブル追加 (#49) — 武器熟練度・勝利数・塗りポイント
 /// version 13: stat.ink import (#174) の重複排除用に battle.uuid を backfill
 /// version 14: フェスマッチ(ナワバリ)の lobby_id を raw_json から救済 (#180)
+/// version 15: weapon / map に statink_key カラム追加 (#184)
+/// version 16: env_battles テーブル新設（stat.ink 公開バトルデータ）(#184)
 pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
     let ver_row = sqlx::query("PRAGMA user_version")
         .fetch_one(pool.as_ref())
@@ -2265,7 +2284,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 14 {
+    if current_version >= 16 {
         return Ok(0); // 最新バージョンに達している
     }
 
@@ -3196,7 +3215,212 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         log::info!("migrate v14: フェスマッチの lobby_id を救済 ({} 件)", fixed);
     }
 
+    // version 15: weapon / map に statink_key カラムを追加し、
+    //             インポート時に stat.ink スラッグ → weapon.id / map.id 解決を可能にする。
+    if current_version < 15 {
+        for sql in [
+            "ALTER TABLE weapon ADD COLUMN statink_key TEXT",
+            "ALTER TABLE map    ADD COLUMN statink_key TEXT",
+            "CREATE UNIQUE INDEX IF NOT EXISTS weapon_statink_key ON weapon(statink_key) WHERE statink_key IS NOT NULL",
+            "CREATE UNIQUE INDEX IF NOT EXISTS map_statink_key    ON map(statink_key)    WHERE statink_key IS NOT NULL",
+        ] {
+            // ALTER TABLE が既に適用済みなら失敗を無視する（冪等性）。
+            let _ = sqlx::query(sql).execute(pool.as_ref()).await;
+        }
+        sqlx::query("PRAGMA user_version = 15")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!("migrate v15: weapon/map に statink_key 追加");
+    }
+
+    // version 16: env_battles テーブル新設（stat.ink 公開バトルデータ集計用）。
+    if current_version < 16 {
+        let env_ddl = r#"
+            CREATE TABLE IF NOT EXISTS env_battles (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_date   TEXT    NOT NULL,
+                lobby_id      INTEGER REFERENCES lobby(id),
+                rule_id       INTEGER REFERENCES rule(id),
+                map_id        INTEGER REFERENCES map(id),
+                period        TEXT    NOT NULL,
+                season        TEXT,
+                game_ver      TEXT,
+                win_team      TEXT    NOT NULL,
+                knockout      INTEGER,
+                alpha_inked       INTEGER,
+                alpha_ink_percent REAL,
+                alpha_count       INTEGER,
+                bravo_inked       INTEGER,
+                bravo_ink_percent REAL,
+                bravo_count       INTEGER,
+                poster_rank   TEXT,
+                poster_power  REAL,
+                a1_weapon_id INTEGER REFERENCES weapon(id),
+                a2_weapon_id INTEGER REFERENCES weapon(id),
+                a3_weapon_id INTEGER REFERENCES weapon(id),
+                a4_weapon_id INTEGER REFERENCES weapon(id),
+                b1_weapon_id INTEGER REFERENCES weapon(id),
+                b2_weapon_id INTEGER REFERENCES weapon(id),
+                b3_weapon_id INTEGER REFERENCES weapon(id),
+                b4_weapon_id INTEGER REFERENCES weapon(id),
+                a1_kill INTEGER, a1_death INTEGER, a1_assist INTEGER, a1_inked INTEGER,
+                b1_kill INTEGER, b1_death INTEGER, b1_assist INTEGER, b1_inked INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS idx_env_date_rule  ON env_battles(source_date, rule_id);
+            CREATE INDEX IF NOT EXISTS idx_env_date_map   ON env_battles(source_date, map_id);
+            CREATE INDEX IF NOT EXISTS idx_env_date_lobby ON env_battles(source_date, lobby_id);
+            CREATE INDEX IF NOT EXISTS idx_env_a1_weapon  ON env_battles(a1_weapon_id);
+            CREATE INDEX IF NOT EXISTS idx_env_b1_weapon  ON env_battles(b1_weapon_id);
+        "#;
+        sqlx::query(env_ddl)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        sqlx::query("PRAGMA user_version = 16")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!("migrate v16: env_battles テーブル新設");
+    }
+
     Ok(updated)
+}
+
+// ---------------------------------------------------------------------------
+// 環境分析（#184）
+// ---------------------------------------------------------------------------
+
+/// env_battles テーブルの取得状況サマリ。
+#[derive(Debug, Serialize)]
+pub struct EnvStatus {
+    pub min_date:   Option<String>,
+    pub max_date:   Option<String>,
+    pub total_rows: i64,
+}
+
+/// env_battles の min/max 日付と総行数を返す。
+#[tauri::command]
+pub async fn env_status(db: tauri::State<'_, DbPool>) -> Result<EnvStatus, String> {
+    let row = sqlx::query(
+        "SELECT MIN(source_date) AS min_d, MAX(source_date) AS max_d, COUNT(*) AS cnt FROM env_battles",
+    )
+    .fetch_one(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(EnvStatus {
+        min_date:   row.try_get::<Option<String>, _>("min_d").ok().flatten(),
+        max_date:   row.try_get::<Option<String>, _>("max_d").ok().flatten(),
+        total_rows: row.get::<i64, _>("cnt"),
+    })
+}
+
+/// env_grouped_stats の 1 行。武器ピック率・勝率集計結果。
+#[derive(Debug, Serialize)]
+pub struct EnvWeaponStat {
+    pub weapon_name:   String,
+    pub picks:         i64,
+    pub total_battles: i64,
+    pub win_rate:      f64,
+}
+
+/// 環境データの武器ピック率 vs 勝率を集計して返す。
+///
+/// 8 スロット（A1–A4 / B1–B4）を UNION ALL して武器ごとに picks・win_rate を計算する。
+/// `picks >= 50` の武器のみ返す（ノイズ除去）。
+#[tauri::command]
+pub async fn env_grouped_stats(
+    db:         tauri::State<'_, DbPool>,
+    lobby_key:  Option<String>,
+    rule_key:   Option<String>,
+    since:      Option<String>,
+    until:      Option<String>,
+) -> Result<Vec<EnvWeaponStat>, String> {
+    // 動的フィルタ句を組み立てる。
+    let mut where_parts: Vec<String> = Vec::new();
+    if lobby_key.is_some() {
+        where_parts.push("EXISTS (SELECT 1 FROM lobby lk WHERE lk.id = eb.lobby_id AND lk.key = ?)".to_string());
+    }
+    if rule_key.is_some() {
+        where_parts.push("EXISTS (SELECT 1 FROM rule rk WHERE rk.id = eb.rule_id AND rk.key = ?)".to_string());
+    }
+    if since.is_some() {
+        where_parts.push("eb.source_date >= ?".to_string());
+    }
+    if until.is_some() {
+        where_parts.push("eb.source_date <= ?".to_string());
+    }
+
+    let where_clause = if where_parts.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", where_parts.join(" AND "))
+    };
+
+    // 8 スロット UNION ALL → 武器ごとの出現数・勝率を集計する。
+    let sql = format!(
+        r#"
+        WITH appearances AS (
+            SELECT a1_weapon_id AS wid, CASE WHEN win_team='alpha' THEN 1 ELSE 0 END AS won
+            FROM env_battles eb {where}
+            UNION ALL SELECT a2_weapon_id, CASE WHEN win_team='alpha' THEN 1 ELSE 0 END
+            FROM env_battles eb {where}
+            UNION ALL SELECT a3_weapon_id, CASE WHEN win_team='alpha' THEN 1 ELSE 0 END
+            FROM env_battles eb {where}
+            UNION ALL SELECT a4_weapon_id, CASE WHEN win_team='alpha' THEN 1 ELSE 0 END
+            FROM env_battles eb {where}
+            UNION ALL SELECT b1_weapon_id, CASE WHEN win_team='bravo' THEN 1 ELSE 0 END
+            FROM env_battles eb {where}
+            UNION ALL SELECT b2_weapon_id, CASE WHEN win_team='bravo' THEN 1 ELSE 0 END
+            FROM env_battles eb {where}
+            UNION ALL SELECT b3_weapon_id, CASE WHEN win_team='bravo' THEN 1 ELSE 0 END
+            FROM env_battles eb {where}
+            UNION ALL SELECT b4_weapon_id, CASE WHEN win_team='bravo' THEN 1 ELSE 0 END
+            FROM env_battles eb {where}
+        ),
+        total_battles_cte AS (
+            SELECT COUNT(*) AS tb FROM env_battles eb {where}
+        )
+        SELECT
+            w.key          AS weapon_name,
+            COUNT(*)       AS picks,
+            tb.tb          AS total_battles,
+            AVG(a.won)     AS win_rate
+        FROM appearances a
+        JOIN weapon w ON w.id = a.wid
+        CROSS JOIN total_battles_cte tb
+        WHERE a.wid IS NOT NULL
+        GROUP BY a.wid
+        HAVING picks >= 50
+        ORDER BY picks DESC
+        "#,
+        where = where_clause,
+    );
+
+    // バインド値をスロット × 9（8 スロット + total_battles_cte）分繰り返す。
+    let mut q = sqlx::query(&sql);
+    for _ in 0..9 {
+        if let Some(ref v) = lobby_key  { q = q.bind(v); }
+        if let Some(ref v) = rule_key   { q = q.bind(v); }
+        if let Some(ref v) = since      { q = q.bind(v); }
+        if let Some(ref v) = until      { q = q.bind(v); }
+    }
+
+    let rows = q
+        .fetch_all(db.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut result = Vec::new();
+    for row in rows {
+        let weapon_name: String = row.get("weapon_name");
+        let picks: i64          = row.get("picks");
+        let total_battles: i64  = row.get("total_battles");
+        let win_rate: f64       = row.get("win_rate");
+        result.push(EnvWeaponStat { weapon_name, picks, total_battles, win_rate });
+    }
+    Ok(result)
 }
 
 // ---------------------------------------------------------------------------

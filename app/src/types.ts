@@ -1,4 +1,4 @@
-export type Tab = 'dashboard' | 'battles' | 'weapons' | 'stages' | 'ai' | 'settings'
+export type Tab = 'dashboard' | 'battles' | 'weapons' | 'stages' | 'ai' | 'env' | 'settings'
 
 export type Period = 'all' | 'current_season' | '30d' | '7d' | 'custom'
 
@@ -296,6 +296,25 @@ export function resultLabel(result: string): string {
   if (result === 'lose' || result === 'LOSE') return 'Lose'
   if (result === 'draw' || result === 'DRAW') return 'Draw'
   return result
+}
+
+// ---------------------------------------------------------------------------
+// 環境分析（#184）
+// ---------------------------------------------------------------------------
+
+/** env_grouped_stats コマンドの返却 1 行分。 */
+export interface EnvWeaponStat {
+  weapon_name:   string
+  picks:         number
+  total_battles: number
+  win_rate:      number
+}
+
+/** env_status コマンドの返却型。 */
+export interface EnvStatus {
+  min_date:   string | null
+  max_date:   string | null
+  total_rows: number
 }
 
 export interface ChartSpec {

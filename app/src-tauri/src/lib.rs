@@ -8,6 +8,7 @@ pub mod abilities;
 pub mod auth;
 pub mod crypto;
 pub mod db;
+pub mod env_import;
 pub mod images;
 pub mod nxapi;
 pub mod splatnet3;
@@ -96,6 +97,11 @@ pub fn run() {
             delete_statink_all,
             detect_statink_screen_name,
             import_from_statink,
+            env_import::sync_env_masters,
+            env_import::import_env_full,
+            env_import::import_env_delta,
+            db::env_status,
+            db::env_grouped_stats,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
