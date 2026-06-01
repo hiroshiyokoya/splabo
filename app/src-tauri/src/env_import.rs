@@ -9,7 +9,7 @@
 
 use reqwest::Client;
 use serde::Serialize;
-use sqlx::Row;
+use sqlx::{Connection, Row, SqliteConnection};
 use std::io::{Cursor, Read};
 use tauri::{AppHandle, Emitter};
 use zip::ZipArchive;
@@ -108,14 +108,14 @@ fn csv_mode_to_rule_key(s: &str) -> Option<&'static str> {
 // ---------------------------------------------------------------------------
 
 /// statink_key で weapon.id を引く。無ければ INSERT して id を返す。
-pub async fn resolve_weapon_id(pool: &DbPool, statink_key: &str) -> Result<Option<i64>, String> {
+pub async fn resolve_weapon_id(conn: &mut SqliteConnection, statink_key: &str) -> Result<Option<i64>, String> {
     if statink_key.is_empty() {
         return Ok(None);
     }
     // まず statink_key で探す。
     let row = sqlx::query("SELECT id FROM weapon WHERE statink_key = ? LIMIT 1")
         .bind(statink_key)
-        .fetch_optional(pool.as_ref())
+        .fetch_optional(&mut *conn)
         .await
         .map_err(|e| e.to_string())?;
     if let Some(r) = row {
@@ -128,25 +128,25 @@ pub async fn resolve_weapon_id(pool: &DbPool, statink_key: &str) -> Result<Optio
     .bind(statink_key)
     .bind(statink_key) // name_ja は後でマスター API から上書きされる
     .bind(statink_key)
-    .execute(pool.as_ref())
+    .execute(&mut *conn)
     .await
     .map_err(|e| e.to_string())?;
     let row2 = sqlx::query("SELECT id FROM weapon WHERE statink_key = ? LIMIT 1")
         .bind(statink_key)
-        .fetch_optional(pool.as_ref())
+        .fetch_optional(&mut *conn)
         .await
         .map_err(|e| e.to_string())?;
     Ok(row2.map(|r| r.get("id")))
 }
 
 /// statink_key で map.id を引く。無ければ INSERT して id を返す。
-async fn resolve_map_id(pool: &DbPool, statink_key: &str) -> Result<Option<i64>, String> {
+async fn resolve_map_id(conn: &mut SqliteConnection, statink_key: &str) -> Result<Option<i64>, String> {
     if statink_key.is_empty() {
         return Ok(None);
     }
     let row = sqlx::query("SELECT id FROM map WHERE statink_key = ? LIMIT 1")
         .bind(statink_key)
-        .fetch_optional(pool.as_ref())
+        .fetch_optional(&mut *conn)
         .await
         .map_err(|e| e.to_string())?;
     if let Some(r) = row {
@@ -158,32 +158,32 @@ async fn resolve_map_id(pool: &DbPool, statink_key: &str) -> Result<Option<i64>,
     .bind(statink_key)
     .bind(statink_key)
     .bind(statink_key)
-    .execute(pool.as_ref())
+    .execute(&mut *conn)
     .await
     .map_err(|e| e.to_string())?;
     let row2 = sqlx::query("SELECT id FROM map WHERE statink_key = ? LIMIT 1")
         .bind(statink_key)
-        .fetch_optional(pool.as_ref())
+        .fetch_optional(&mut *conn)
         .await
         .map_err(|e| e.to_string())?;
     Ok(row2.map(|r| r.get("id")))
 }
 
 /// lobby.id を key で引く。
-async fn resolve_lobby_id(pool: &DbPool, key: &str) -> Result<Option<i64>, String> {
+async fn resolve_lobby_id(conn: &mut SqliteConnection, key: &str) -> Result<Option<i64>, String> {
     let row = sqlx::query("SELECT id FROM lobby WHERE key = ? LIMIT 1")
         .bind(key)
-        .fetch_optional(pool.as_ref())
+        .fetch_optional(&mut *conn)
         .await
         .map_err(|e| e.to_string())?;
     Ok(row.map(|r| r.get("id")))
 }
 
 /// rule.id を key で引く。
-async fn resolve_rule_id(pool: &DbPool, key: &str) -> Result<Option<i64>, String> {
+async fn resolve_rule_id(conn: &mut SqliteConnection, key: &str) -> Result<Option<i64>, String> {
     let row = sqlx::query("SELECT id FROM rule WHERE key = ? LIMIT 1")
         .bind(key)
-        .fetch_optional(pool.as_ref())
+        .fetch_optional(&mut *conn)
         .await
         .map_err(|e| e.to_string())?;
     Ok(row.map(|r| r.get("id")))
@@ -321,7 +321,7 @@ const BATCH_SIZE: usize = 1000;
 ///
 /// `source_date` は "YYYY-MM-DD" 文字列（CSV ファイル名由来）。
 async fn import_csv_bytes(
-    pool: &DbPool,
+    conn: &mut SqliteConnection,
     bytes: &[u8],
     source_date: &str,
     // ロビー・ルール・ステージ・武器の id キャッシュ（呼び出し元で使い回す）
@@ -336,6 +336,11 @@ async fn import_csv_bytes(
 
     let mut batch: Vec<EnvBattleRow> = Vec::with_capacity(BATCH_SIZE);
     let mut inserted = 0usize;
+
+    // 1 日 (1 CSV) を 1 トランザクションで囲む。途中でエラーになれば commit されず
+    // 全ロールバックされるため、「部分的にしか入っていない日」が残らない。これにより
+    // 差分取得 (MAX(source_date)+1 起点) が中断後も正しく欠損日を埋められる。
+    let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
 
     for result in rdr.records() {
         let record = match result {
@@ -362,7 +367,7 @@ async fn import_csv_bytes(
         } else {
             let mapped = csv_lobby_to_key(lobby_key);
             let id = if let Some(k) = mapped {
-                resolve_lobby_id(pool, k).await?
+                resolve_lobby_id(&mut *tx, k).await?
             } else {
                 None
             };
@@ -377,7 +382,7 @@ async fn import_csv_bytes(
         } else {
             let mapped = csv_mode_to_rule_key(mode_key);
             let id = if let Some(k) = mapped {
-                resolve_rule_id(pool, k).await?
+                resolve_rule_id(&mut *tx, k).await?
             } else {
                 None
             };
@@ -393,7 +398,7 @@ async fn import_csv_bytes(
             let id = if stage_key.is_empty() {
                 None
             } else {
-                resolve_map_id(pool, stage_key).await?
+                resolve_map_id(&mut *tx, stage_key).await?
             };
             map_cache.insert(stage_key.to_string(), id);
             id
@@ -408,7 +413,7 @@ async fn import_csv_bytes(
         for &col in &weapon_cols {
             let slug = fields.get(col).copied().unwrap_or("").trim();
             if !slug.is_empty() && !weapon_cache.contains_key(slug) {
-                let id = resolve_weapon_id(pool, slug).await?;
+                let id = resolve_weapon_id(&mut *tx, slug).await?;
                 weapon_cache.insert(slug.to_string(), id);
             }
         }
@@ -458,18 +463,24 @@ async fn import_csv_bytes(
 
         batch.push(row);
         if batch.len() >= BATCH_SIZE {
-            inserted += flush_batch(pool, &mut batch).await?;
+            inserted += flush_batch(&mut *tx, &mut batch).await?;
         }
     }
     if !batch.is_empty() {
-        inserted += flush_batch(pool, &mut batch).await?;
+        inserted += flush_batch(&mut *tx, &mut batch).await?;
     }
+    tx.commit().await.map_err(|e| e.to_string())?;
     Ok(inserted)
 }
 
 /// バッチを env_battles に INSERT する。
-async fn flush_batch(pool: &DbPool, batch: &mut Vec<EnvBattleRow>) -> Result<usize, String> {
+async fn flush_batch(conn: &mut SqliteConnection, batch: &mut Vec<EnvBattleRow>) -> Result<usize, String> {
     let n = batch.len();
+    if n == 0 {
+        return Ok(0);
+    }
+    // トランザクション制御は呼び出し元（import_csv_bytes が 1 日 = 1 トランザクション）が持つ。
+    // ここでは渡されたトランザクション上にバッチをまとめて INSERT するだけ。
     for row in batch.drain(..) {
         sqlx::query(
             "INSERT INTO env_battles
@@ -518,7 +529,7 @@ async fn flush_batch(pool: &DbPool, batch: &mut Vec<EnvBattleRow>) -> Result<usi
         .bind(row.b1_death)
         .bind(row.b1_assist)
         .bind(row.b1_inked)
-        .execute(pool.as_ref())
+        .execute(&mut *conn)
         .await
         .map_err(|e| e.to_string())?;
     }
@@ -608,6 +619,41 @@ pub async fn import_env_full(
     emit_progress(&app, 1, 1, "download");
     log::info!("[env_import] ZIP DL 完了 ({} MiB)", bytes.len() / 1024 / 1024);
 
+    // ── インポート専用コネクションを 1 本確保する ──
+    // 以降の PRAGMA・DELETE・全 INSERT・インデックス再作成をすべてこの 1 本で実行する。
+    // プール（最大 10 コネクション）に対して PRAGMA を打つと借りた 1 本にしか効かず、
+    // しかも実行後プールへ返却されてしまうため、書き込みごとに別コネクションへ散って
+    // journal_mode が混在し "database is locked" を誘発していた。専用コネクション固定で解消する。
+    let mut conn = db.acquire().await.map_err(|e| format!("DB コネクション取得失敗: {e}"))?;
+
+    // ── バルクインポート高速化のセットアップ（この 1 本のコネクションにのみ適用）──
+    // synchronous=OFF + temp_store=MEMORY で fsync を減らす。
+    // journal_mode は WAL のまま維持する（MEMORY にすると他コネクションと混在して
+    // ロック競合し、かつ中断時に DB 破損リスクがある）。
+    // FK 検証はインポート中のみオフ（参照先 id は解決済み or NULL なので整合は保てる）。
+    for pragma in [
+        "PRAGMA busy_timeout = 30000",
+        "PRAGMA foreign_keys = OFF",
+        "PRAGMA synchronous = OFF",
+        "PRAGMA temp_store = MEMORY",
+    ] {
+        let _ = sqlx::query(pragma).execute(&mut *conn).await;
+    }
+    // env_battles のインデックスを DROP（インポート中の逐次更新を避け、全行挿入後に一括 CREATE）。
+    for idx in [
+        "idx_env_date_rule", "idx_env_date_map", "idx_env_date_lobby",
+        "idx_env_a1_weapon", "idx_env_b1_weapon",
+    ] {
+        let _ = sqlx::query(&format!("DROP INDEX IF EXISTS {idx}"))
+            .execute(&mut *conn).await;
+    }
+
+    // 全期間取り込みなので既存の env_battles を一旦クリア（中断後の再実行で重複を防ぐ）。
+    sqlx::query("DELETE FROM env_battles")
+        .execute(&mut *conn)
+        .await
+        .map_err(|e| format!("env_battles クリア失敗: {e}"))?;
+
     // ZIP 解凍 + CSV インポート
     let mut archive = ZipArchive::new(Cursor::new(bytes.as_ref()))
         .map_err(|e| format!("ZIP オープン失敗: {e}"))?;
@@ -620,35 +666,72 @@ pub async fn import_env_full(
     let mut weapon_cache: std::collections::HashMap<String, Option<i64>> = Default::default();
     let mut total_inserted = 0usize;
 
+    // エントリを日付昇順で処理する。ZIP の格納順は日付順とは限らず、順不同のまま
+    // 途中で止まると MAX(source_date) より前の未処理日が差分取得でスキップされてしまう。
+    // 先に (日付, index) を集めてソートし、必ず古い日から順に取り込む。
+    let mut entries: Vec<(String, usize)> = Vec::with_capacity(total_entries);
     for i in 0..total_entries {
-        emit_progress(&app, i, total_entries, "extract");
-        let (name, csv_bytes) = {
-            let mut entry = archive.by_index(i)
-                .map_err(|e| format!("ZIP エントリ {i} 読み込み失敗: {e}"))?;
-            let name = entry.name().to_string();
+        // ファイル名から日付を抽出: YYYY/MM/YYYY-MM-DD.csv
+        let name = archive
+            .by_index(i)
+            .map_err(|e| format!("ZIP エントリ {i} 読み込み失敗: {e}"))?
+            .name()
+            .to_string();
+        let date = extract_date_from_path(&name);
+        if !date.is_empty() {
+            entries.push((date, i));
+        }
+    }
+    entries.sort();
+    let total_days = entries.len();
+    log::info!("[env_import] 取り込み対象 {total_days} 日分");
+
+    for (processed, (source_date, idx)) in entries.iter().enumerate() {
+        emit_progress(&app, processed, total_days, "extract");
+        let csv_bytes = {
+            let mut entry = archive.by_index(*idx)
+                .map_err(|e| format!("ZIP エントリ {idx} 読み込み失敗: {e}"))?;
             let mut buf = Vec::new();
             entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
-            (name, buf)
+            buf
         };
 
-        // ファイル名から日付を抽出: YYYY/MM/YYYY-MM-DD.csv
-        let source_date = extract_date_from_path(&name);
-        if source_date.is_empty() {
-            continue;
-        }
-
         let inserted = import_csv_bytes(
-            &db, &csv_bytes, &source_date,
+            &mut *conn, &csv_bytes, source_date,
             &mut lobby_cache, &mut rule_cache, &mut map_cache, &mut weapon_cache,
         ).await?;
         total_inserted += inserted;
 
-        if i % 50 == 0 {
-            log::info!("[env_import] {} / {} エントリ処理済み (累計 {} 行)", i + 1, total_entries, total_inserted);
+        if processed % 50 == 0 {
+            log::info!("[env_import] {} / {} 日処理済み (累計 {} 行)", processed + 1, total_days, total_inserted);
         }
     }
 
-    emit_progress(&app, total_entries, total_entries, "import");
+    // ── 全行挿入後にインデックスをまとめて再作成 ──
+    emit_progress(&app, total_days, total_days, "index");
+    log::info!("[env_import] インデックス再構築中...");
+    for sql in [
+        "CREATE INDEX IF NOT EXISTS idx_env_date_rule  ON env_battles(source_date, rule_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_date_map   ON env_battles(source_date, map_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_date_lobby ON env_battles(source_date, lobby_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_a1_weapon  ON env_battles(a1_weapon_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_b1_weapon  ON env_battles(b1_weapon_id)",
+    ] {
+        sqlx::query(sql).execute(&mut *conn).await
+            .map_err(|e| format!("インデックス再作成失敗: {e}"))?;
+    }
+
+    // PRAGMA を通常運用の安全側に戻してからコネクションをプールへ返却する
+    // （journal_mode は WAL のまま変更していない）。
+    for pragma in [
+        "PRAGMA foreign_keys = ON",
+        "PRAGMA synchronous = NORMAL",
+    ] {
+        let _ = sqlx::query(pragma).execute(&mut *conn).await;
+    }
+    drop(conn);
+
+    emit_progress(&app, total_days, total_days, "import");
     log::info!("[env_import] 完了: 合計 {total_inserted} 行挿入");
     Ok(total_inserted)
 }
@@ -687,6 +770,9 @@ pub async fn import_env_delta(
     let mut weapon_cache: std::collections::HashMap<String, Option<i64>> = Default::default();
     let mut total_inserted = 0usize;
 
+    // 差分取り込みも専用コネクション 1 本に固定し、書き込みを散らさない。
+    let mut conn = db.acquire().await.map_err(|e| format!("DB コネクション取得失敗: {e}"))?;
+
     for (idx, date) in dates.iter().enumerate() {
         emit_progress(&app, idx, total, "download");
         let (year, month) = (&date[..4], &date[5..7]);
@@ -713,7 +799,7 @@ pub async fn import_env_delta(
         };
         let csv_bytes = resp.bytes().await.map_err(|e| e.to_string())?;
         let inserted = import_csv_bytes(
-            &db, &csv_bytes, date,
+            &mut *conn, &csv_bytes, date,
             &mut lobby_cache, &mut rule_cache, &mut map_cache, &mut weapon_cache,
         ).await?;
         total_inserted += inserted;

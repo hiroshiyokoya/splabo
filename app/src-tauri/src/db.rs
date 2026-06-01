@@ -6,7 +6,9 @@
 
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite, SqlitePool, Row, FromRow};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 pub type DbPool = Arc<Pool<Sqlite>>;
@@ -19,9 +21,24 @@ pub async fn init_db(app: &AppHandle) -> Result<DbPool, String> {
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
     let db_path = data_dir.join("chartoon.db");
-    let url = format!("sqlite://{}?mode=rwc", db_path.to_string_lossy());
 
-    let pool = SqlitePool::connect(&url).await.map_err(|e| e.to_string())?;
+    // プールの全コネクションに共通設定を適用する。
+    // - busy_timeout: SQLite は単一ライターのため、起動直後の他処理（バトル取得・
+    //   マイグレーション・シャドウライト）と環境データ一括取り込みが衝突しうる。
+    //   未設定だと衝突時に即 SQLITE_BUSY（"database is locked"）で落ちるので、
+    //   一定時間ロック解放を待つようにする。
+    // - journal_mode=WAL / synchronous=NORMAL: 通常運用の標準設定を明示。
+    //   connect_with でテンプレートとして渡すことで、後からプール内の一部
+    //   コネクションにだけ PRAGMA を打つ（＝効かない・混在する）事故を防ぐ。
+    let opts = SqliteConnectOptions::new()
+        .filename(&db_path)
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Normal)
+        .busy_timeout(Duration::from_secs(30))
+        .foreign_keys(true);
+
+    let pool = SqlitePool::connect_with(opts).await.map_err(|e| e.to_string())?;
     sqlx::query(SCHEMA).execute(&pool).await.map_err(|e| e.to_string())?;
     // 既存 DB への追加カラム（失敗は無視 = 既存カラムなら OK）
     for sql in [
