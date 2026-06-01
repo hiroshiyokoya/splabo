@@ -302,19 +302,45 @@ export function resultLabel(result: string): string {
 // 環境分析（#184）
 // ---------------------------------------------------------------------------
 
-/** env_grouped_stats コマンドの返却 1 行分。 */
-export interface EnvWeaponStat {
-  weapon_name:   string
-  picks:         number
-  total_battles: number
-  win_rate:      number
-}
-
 /** env_status コマンドの返却型。 */
 export interface EnvStatus {
   min_date:   string | null
   max_date:   string | null
   total_rows: number
+}
+
+/** env_scatter_stats コマンドの返却 1 行分（#187）。
+ *  集計軸（武器/ステージ）によって埋まる指標が異なり、該当しないものは null。 */
+export interface EnvScatterStat {
+  key:          string
+  n:            number
+  // 武器集計
+  pick_rate:    number | null
+  win_rate:     number | null
+  avg_kill:     number | null
+  avg_death:    number | null
+  avg_assist:   number | null
+  avg_inked:    number | null
+  // ステージ集計
+  ko_rate:      number | null
+  avg_ink_self: number | null
+  avg_ink_opp:  number | null
+  avg_count:    number | null
+}
+
+/** env_matrix_stats コマンドの 1 セル（#187）。 */
+export interface EnvMatrixCell {
+  row_key: string
+  col_key: string
+  value:   number | null
+  n:       number
+}
+
+/** env_season_range コマンドの返却型（#187）。 */
+export interface EnvSeasonRange {
+  season: string | null
+  since:  string | null
+  until:  string | null
 }
 
 export interface ChartSpec {

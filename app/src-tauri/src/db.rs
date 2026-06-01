@@ -3316,111 +3316,409 @@ pub async fn env_status(db: tauri::State<'_, DbPool>) -> Result<EnvStatus, Strin
     })
 }
 
-/// env_grouped_stats の 1 行。武器ピック率・勝率集計結果。
-#[derive(Debug, Serialize)]
-pub struct EnvWeaponStat {
-    pub weapon_name:   String,
-    pub picks:         i64,
-    pub total_battles: i64,
-    pub win_rate:      f64,
+// ---------------------------------------------------------------------------
+// 環境分析 拡張（#187）: 散布図 / ヒートマップ
+// ---------------------------------------------------------------------------
+
+/// env_battles の共通フィルタ句を組み立てる。
+///
+/// 返すのは `WHERE ...` 文字列（フィルタ無しなら空文字）。バインドは
+/// `bind_env_filters` を WHERE が登場する回数だけ呼んで行う（順序を厳守）。
+fn build_env_where(
+    lobby_key: &Option<String>,
+    rule_key:  &Option<String>,
+    stage_key: &Option<String>,
+    since:     &Option<String>,
+    until:     &Option<String>,
+) -> String {
+    let mut wp: Vec<&str> = Vec::new();
+    if lobby_key.is_some() { wp.push("EXISTS (SELECT 1 FROM lobby lk WHERE lk.id = eb.lobby_id AND lk.key = ?)"); }
+    if rule_key.is_some()  { wp.push("EXISTS (SELECT 1 FROM rule  rk WHERE rk.id = eb.rule_id  AND rk.key = ?)"); }
+    if stage_key.is_some() { wp.push("EXISTS (SELECT 1 FROM map   mk WHERE mk.id = eb.map_id   AND mk.key = ?)"); }
+    if since.is_some()     { wp.push("eb.source_date >= ?"); }
+    if until.is_some()     { wp.push("eb.source_date <= ?"); }
+    if wp.is_empty() { String::new() } else { format!("WHERE {}", wp.join(" AND ")) }
 }
 
-/// 環境データの武器ピック率 vs 勝率を集計して返す。
+/// `build_env_where` と対になる、1 回分のフィルタ値バインド。
+fn bind_env_filters<'q>(
+    mut q: sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
+    lobby_key: &'q Option<String>,
+    rule_key:  &'q Option<String>,
+    stage_key: &'q Option<String>,
+    since:     &'q Option<String>,
+    until:     &'q Option<String>,
+) -> sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
+    if let Some(v) = lobby_key { q = q.bind(v); }
+    if let Some(v) = rule_key  { q = q.bind(v); }
+    if let Some(v) = stage_key { q = q.bind(v); }
+    if let Some(v) = since     { q = q.bind(v); }
+    if let Some(v) = until     { q = q.bind(v); }
+    q
+}
+
+/// 散布図 1 点分。集計単位（武器 or ステージ）ごとに各指標を一括で返す。
+/// 指標は集計軸によって埋まるものが異なり、該当しないものは null。
+#[derive(Debug, Serialize)]
+pub struct EnvScatterStat {
+    pub key:        String,      // 武器キー or ステージキー
+    pub n:          i64,         // サンプルサイズ（武器=ピック数 / ステージ=バトル数）
+    // 武器集計の指標
+    pub pick_rate:  Option<f64>,
+    pub win_rate:   Option<f64>,
+    pub avg_kill:   Option<f64>, // A1/B1 のみ母数
+    pub avg_death:  Option<f64>,
+    pub avg_assist: Option<f64>,
+    pub avg_inked:  Option<f64>,
+    // ステージ集計の指標
+    pub ko_rate:      Option<f64>,
+    pub avg_ink_self: Option<f64>,
+    pub avg_ink_opp:  Option<f64>,
+    pub avg_count:    Option<f64>,
+}
+
+/// 武器スロット 1 個の集計用定義。
+struct ScatterSlot {
+    wid:  &'static str, // weapon_id カラム
+    k:    &'static str, // kill カラム or "NULL"
+    d:    &'static str,
+    a:    &'static str,
+    ink:  &'static str,
+    team: &'static str, // "alpha" | "bravo"
+}
+
+const SELF_SLOTS: &[ScatterSlot] = &[
+    ScatterSlot { wid: "a1_weapon_id", k: "a1_kill", d: "a1_death", a: "a1_assist", ink: "a1_inked", team: "alpha" },
+    ScatterSlot { wid: "a2_weapon_id", k: "NULL", d: "NULL", a: "NULL", ink: "NULL", team: "alpha" },
+    ScatterSlot { wid: "a3_weapon_id", k: "NULL", d: "NULL", a: "NULL", ink: "NULL", team: "alpha" },
+    ScatterSlot { wid: "a4_weapon_id", k: "NULL", d: "NULL", a: "NULL", ink: "NULL", team: "alpha" },
+];
+const OPP_SLOTS: &[ScatterSlot] = &[
+    ScatterSlot { wid: "b1_weapon_id", k: "b1_kill", d: "b1_death", a: "b1_assist", ink: "b1_inked", team: "bravo" },
+    ScatterSlot { wid: "b2_weapon_id", k: "NULL", d: "NULL", a: "NULL", ink: "NULL", team: "bravo" },
+    ScatterSlot { wid: "b3_weapon_id", k: "NULL", d: "NULL", a: "NULL", ink: "NULL", team: "bravo" },
+    ScatterSlot { wid: "b4_weapon_id", k: "NULL", d: "NULL", a: "NULL", ink: "NULL", team: "bravo" },
+];
+
+/// 環境データの散布図用集計。
 ///
-/// 8 スロット（A1–A4 / B1–B4）を UNION ALL して武器ごとに picks・win_rate を計算する。
-/// `picks >= 50` の武器のみ返す（ノイズ除去）。
+/// - `group_by` = "weapon": 武器ごとに pick_rate / win_rate / KDA を集計（8 スロット UNION ALL）
+/// - `group_by` = "stage" : ステージごとに ko_rate / 平均塗り割合 / 平均人数 を集計
+/// - `side` = "all" | "self"(alpha) | "opp"(bravo) … 武器集計でのスロット選択
 #[tauri::command]
-pub async fn env_grouped_stats(
-    db:         tauri::State<'_, DbPool>,
-    lobby_key:  Option<String>,
-    rule_key:   Option<String>,
-    since:      Option<String>,
-    until:      Option<String>,
-) -> Result<Vec<EnvWeaponStat>, String> {
-    // 動的フィルタ句を組み立てる。
-    let mut where_parts: Vec<String> = Vec::new();
-    if lobby_key.is_some() {
-        where_parts.push("EXISTS (SELECT 1 FROM lobby lk WHERE lk.id = eb.lobby_id AND lk.key = ?)".to_string());
-    }
-    if rule_key.is_some() {
-        where_parts.push("EXISTS (SELECT 1 FROM rule rk WHERE rk.id = eb.rule_id AND rk.key = ?)".to_string());
-    }
-    if since.is_some() {
-        where_parts.push("eb.source_date >= ?".to_string());
-    }
-    if until.is_some() {
-        where_parts.push("eb.source_date <= ?".to_string());
+pub async fn env_scatter_stats(
+    db:        tauri::State<'_, DbPool>,
+    group_by:  String,
+    side:      Option<String>,
+    lobby_key: Option<String>,
+    rule_key:  Option<String>,
+    stage_key: Option<String>,
+    since:     Option<String>,
+    until:     Option<String>,
+) -> Result<Vec<EnvScatterStat>, String> {
+    let where_clause = build_env_where(&lobby_key, &rule_key, &stage_key, &since, &until);
+
+    if group_by == "stage" {
+        // ステージ集計: 勝率は約 50% で無意味なので使わず、ステージで意味のある指標を出す。
+        let sql = format!(
+            r#"
+            SELECT COALESCE(m.name_ja, m.key) AS key,
+                   COUNT(*) AS n,
+                   AVG(CASE WHEN eb.knockout = 1 THEN 1.0 ELSE 0.0 END) AS ko_rate,
+                   AVG(eb.alpha_ink_percent) AS avg_ink_self,
+                   AVG(eb.bravo_ink_percent) AS avg_ink_opp,
+                   AVG((COALESCE(eb.alpha_count,0) + COALESCE(eb.bravo_count,0)) / 2.0) AS avg_count
+            FROM env_battles eb
+            JOIN map m ON m.id = eb.map_id
+            {where}
+            GROUP BY eb.map_id
+            HAVING n >= 50
+            ORDER BY n DESC
+            "#,
+            where = where_clause,
+        );
+        let q = bind_env_filters(sqlx::query(&sql), &lobby_key, &rule_key, &stage_key, &since, &until);
+        let rows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(EnvScatterStat {
+                key:          row.get("key"),
+                n:            row.get("n"),
+                pick_rate:    None,
+                win_rate:     None,
+                avg_kill:     None,
+                avg_death:    None,
+                avg_assist:   None,
+                avg_inked:    None,
+                ko_rate:      row.try_get::<Option<f64>, _>("ko_rate").unwrap_or(None),
+                avg_ink_self: row.try_get::<Option<f64>, _>("avg_ink_self").unwrap_or(None),
+                avg_ink_opp:  row.try_get::<Option<f64>, _>("avg_ink_opp").unwrap_or(None),
+                avg_count:    row.try_get::<Option<f64>, _>("avg_count").unwrap_or(None),
+            });
+        }
+        return Ok(result);
     }
 
-    let where_clause = if where_parts.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", where_parts.join(" AND "))
+    // group_by == "weapon"（デフォルト）
+    let slots: Vec<&ScatterSlot> = match side.as_deref() {
+        Some("self") => SELF_SLOTS.iter().collect(),
+        Some("opp")  => OPP_SLOTS.iter().collect(),
+        _            => SELF_SLOTS.iter().chain(OPP_SLOTS.iter()).collect(),
     };
+    let slots_len = slots.len() as f64;
 
-    // 8 スロット UNION ALL → 武器ごとの出現数・勝率を集計する。
+    let selects: Vec<String> = slots.iter().map(|s| format!(
+        "SELECT {wid} AS wid, CASE WHEN win_team = '{team}' THEN 1 ELSE 0 END AS won, \
+         {k} AS k, {d} AS d, {a} AS a, {ink} AS ink FROM env_battles eb {where}",
+        wid = s.wid, team = s.team, k = s.k, d = s.d, a = s.a, ink = s.ink, where = where_clause,
+    )).collect();
+    let app = selects.join("\n            UNION ALL ");
+
     let sql = format!(
         r#"
-        WITH appearances AS (
-            SELECT a1_weapon_id AS wid, CASE WHEN win_team='alpha' THEN 1 ELSE 0 END AS won
-            FROM env_battles eb {where}
-            UNION ALL SELECT a2_weapon_id, CASE WHEN win_team='alpha' THEN 1 ELSE 0 END
-            FROM env_battles eb {where}
-            UNION ALL SELECT a3_weapon_id, CASE WHEN win_team='alpha' THEN 1 ELSE 0 END
-            FROM env_battles eb {where}
-            UNION ALL SELECT a4_weapon_id, CASE WHEN win_team='alpha' THEN 1 ELSE 0 END
-            FROM env_battles eb {where}
-            UNION ALL SELECT b1_weapon_id, CASE WHEN win_team='bravo' THEN 1 ELSE 0 END
-            FROM env_battles eb {where}
-            UNION ALL SELECT b2_weapon_id, CASE WHEN win_team='bravo' THEN 1 ELSE 0 END
-            FROM env_battles eb {where}
-            UNION ALL SELECT b3_weapon_id, CASE WHEN win_team='bravo' THEN 1 ELSE 0 END
-            FROM env_battles eb {where}
-            UNION ALL SELECT b4_weapon_id, CASE WHEN win_team='bravo' THEN 1 ELSE 0 END
-            FROM env_battles eb {where}
+        WITH app AS (
+            {app}
         ),
-        total_battles_cte AS (
-            SELECT COUNT(*) AS tb FROM env_battles eb {where}
-        )
-        SELECT
-            w.key          AS weapon_name,
-            COUNT(*)       AS picks,
-            tb.tb          AS total_battles,
-            AVG(a.won)     AS win_rate
-        FROM appearances a
-        JOIN weapon w ON w.id = a.wid
-        CROSS JOIN total_battles_cte tb
-        WHERE a.wid IS NOT NULL
-        GROUP BY a.wid
-        HAVING picks >= 50
-        ORDER BY picks DESC
+        tb AS (SELECT COUNT(*) AS c FROM env_battles eb {where})
+        SELECT w.key      AS key,
+               COUNT(*)   AS n,
+               tb.c       AS total_battles,
+               AVG(app.won) AS win_rate,
+               AVG(app.k)   AS avg_kill,
+               AVG(app.d)   AS avg_death,
+               AVG(app.a)   AS avg_assist,
+               AVG(app.ink) AS avg_inked
+        FROM app
+        JOIN weapon w ON w.id = app.wid
+        CROSS JOIN tb
+        WHERE app.wid IS NOT NULL
+        GROUP BY app.wid
+        HAVING n >= 50
+        ORDER BY n DESC
         "#,
-        where = where_clause,
+        app = app, where = where_clause,
     );
 
-    // バインド値をスロット × 9（8 スロット + total_battles_cte）分繰り返す。
+    // バインド: UNION ALL の各 SELECT（slots.len() 回）+ tb（1 回）。
     let mut q = sqlx::query(&sql);
-    for _ in 0..9 {
-        if let Some(ref v) = lobby_key  { q = q.bind(v); }
-        if let Some(ref v) = rule_key   { q = q.bind(v); }
-        if let Some(ref v) = since      { q = q.bind(v); }
-        if let Some(ref v) = until      { q = q.bind(v); }
+    for _ in 0..(slots.len() + 1) {
+        q = bind_env_filters(q, &lobby_key, &rule_key, &stage_key, &since, &until);
     }
-
-    let rows = q
-        .fetch_all(db.as_ref())
-        .await
-        .map_err(|e| e.to_string())?;
+    let rows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
 
     let mut result = Vec::new();
     for row in rows {
-        let weapon_name: String = row.get("weapon_name");
-        let picks: i64          = row.get("picks");
-        let total_battles: i64  = row.get("total_battles");
-        let win_rate: f64       = row.get("win_rate");
-        result.push(EnvWeaponStat { weapon_name, picks, total_battles, win_rate });
+        let n: i64 = row.get("n");
+        let total_battles: i64 = row.get("total_battles");
+        let pick_rate = if total_battles > 0 {
+            Some(n as f64 / (total_battles as f64 * slots_len))
+        } else {
+            Some(0.0)
+        };
+        result.push(EnvScatterStat {
+            key:          row.get("key"),
+            n,
+            pick_rate,
+            win_rate:     row.try_get::<Option<f64>, _>("win_rate").unwrap_or(None),
+            avg_kill:     row.try_get::<Option<f64>, _>("avg_kill").unwrap_or(None),
+            avg_death:    row.try_get::<Option<f64>, _>("avg_death").unwrap_or(None),
+            avg_assist:   row.try_get::<Option<f64>, _>("avg_assist").unwrap_or(None),
+            avg_inked:    row.try_get::<Option<f64>, _>("avg_inked").unwrap_or(None),
+            ko_rate:      None,
+            avg_ink_self: None,
+            avg_ink_opp:  None,
+            avg_count:    None,
+        });
     }
     Ok(result)
+}
+
+/// 環境ヒートマップの 1 セル。
+#[derive(Debug, Serialize)]
+pub struct EnvMatrixCell {
+    pub row_key: String,
+    pub col_key: String,
+    pub value:   Option<f64>,
+    pub n:       i64,
+}
+
+/// 集計次元（battle レベル）→ (env_battles の id カラム, マスターテーブル名, 表示ラベル列)。
+/// map は key が数値 ID / スラッグなので name_ja を表示に使う。rule / lobby は key（FE で和名化）。
+/// weapon はスロット集計が必要なため別扱い（ここでは None）。
+fn matrix_dim(dim: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    match dim {
+        "stage" => Some(("map_id",   "map",   "name_ja")),
+        "rule"  => Some(("rule_id",  "rule",  "key")),
+        "lobby" => Some(("lobby_id", "lobby", "key")),
+        _       => None,
+    }
+}
+
+/// 環境データのマトリクス（ヒートマップ）集計。
+///
+/// - `cell_metric` = "win_rate" | "pick_rate" … 行/列の **一方が weapon** であること
+///   （武器のそのカテゴリでの勝率 / ピック率）
+/// - `cell_metric` = "ko_rate" | "battles"   … 行/列とも **weapon 以外**（バトルレベル指標）
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn env_matrix_stats(
+    db:          tauri::State<'_, DbPool>,
+    row_dim:     String,
+    col_dim:     String,
+    cell_metric: String,
+    lobby_key:   Option<String>,
+    rule_key:    Option<String>,
+    stage_key:   Option<String>,
+    since:       Option<String>,
+    until:       Option<String>,
+) -> Result<Vec<EnvMatrixCell>, String> {
+    let where_clause = build_env_where(&lobby_key, &rule_key, &stage_key, &since, &until);
+    let weapon_centric = cell_metric == "win_rate" || cell_metric == "pick_rate";
+
+    if weapon_centric {
+        // 行・列のうち厳密に一方が weapon であること。
+        let weapon_is_row = row_dim == "weapon";
+        let weapon_is_col = col_dim == "weapon";
+        if weapon_is_row == weapon_is_col {
+            return Err("win_rate/pick_rate は行・列の一方を weapon にしてください".to_string());
+        }
+        let other_dim = if weapon_is_row { &col_dim } else { &row_dim };
+        let (oid_col, omaster, olabel) = matrix_dim(other_dim)
+            .ok_or_else(|| format!("未知の集計次元: {other_dim}"))?;
+
+        // 8 スロット（A1–A4 alpha / B1–B4 bravo）を UNION ALL。
+        let slots: Vec<&ScatterSlot> = SELF_SLOTS.iter().chain(OPP_SLOTS.iter()).collect();
+        let selects: Vec<String> = slots.iter().map(|s| format!(
+            "SELECT {wid} AS wid, CASE WHEN win_team = '{team}' THEN 1 ELSE 0 END AS won, \
+             eb.{oid} AS oid FROM env_battles eb {where}",
+            wid = s.wid, team = s.team, oid = oid_col, where = where_clause,
+        )).collect();
+        let app = selects.join("\n            UNION ALL ");
+
+        let sql = format!(
+            r#"
+            WITH app AS (
+                {app}
+            ),
+            otot AS (SELECT eb.{oid} AS oid, COUNT(*) AS c FROM env_battles eb {where} GROUP BY eb.{oid})
+            SELECT w.key  AS weapon_key,
+                   om.{olabel} AS other_key,
+                   COUNT(*) AS n,
+                   AVG(app.won) AS win_rate,
+                   CAST(COUNT(*) AS REAL) / (otot.c * 8) AS pick_rate
+            FROM app
+            JOIN weapon w  ON w.id  = app.wid
+            JOIN {omaster} om ON om.id = app.oid
+            JOIN otot ON otot.oid = app.oid
+            WHERE app.wid IS NOT NULL AND app.oid IS NOT NULL
+            GROUP BY app.wid, app.oid
+            HAVING n >= 30
+            "#,
+            app = app, oid = oid_col, omaster = omaster, olabel = olabel, where = where_clause,
+        );
+
+        // バインド: スロット 8 回 + otot 1 回。
+        let mut q = sqlx::query(&sql);
+        for _ in 0..(slots.len() + 1) {
+            q = bind_env_filters(q, &lobby_key, &rule_key, &stage_key, &since, &until);
+        }
+        let rows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            let weapon_key: String = row.get("weapon_key");
+            let other_key:  String = row.get("other_key");
+            let value = row.try_get::<Option<f64>, _>(cell_metric.as_str()).unwrap_or(None);
+            let n: i64 = row.get("n");
+            let (row_key, col_key) = if weapon_is_row {
+                (weapon_key, other_key)
+            } else {
+                (other_key, weapon_key)
+            };
+            result.push(EnvMatrixCell { row_key, col_key, value, n });
+        }
+        return Ok(result);
+    }
+
+    // バトルレベル × バトルレベル（weapon を含まない）。
+    if row_dim == "weapon" || col_dim == "weapon" {
+        return Err("ko_rate/battles は weapon 以外の次元同士で指定してください".to_string());
+    }
+    let (row_col, rmaster, rlabel) = matrix_dim(&row_dim).ok_or_else(|| format!("未知の集計次元: {row_dim}"))?;
+    let (col_col, cmaster, clabel) = matrix_dim(&col_dim).ok_or_else(|| format!("未知の集計次元: {col_dim}"))?;
+
+    let value_expr = match cell_metric.as_str() {
+        "ko_rate" => "AVG(CASE WHEN eb.knockout = 1 THEN 1.0 ELSE 0.0 END)",
+        "battles" => "CAST(COUNT(*) AS REAL)",
+        other     => return Err(format!("未知の cell_metric: {other}")),
+    };
+
+    let sql = format!(
+        r#"
+        SELECT rm.{rlabel} AS row_key,
+               cm.{clabel} AS col_key,
+               COUNT(*) AS n,
+               {value_expr} AS value
+        FROM env_battles eb
+        JOIN {rmaster} rm ON rm.id = eb.{row_col}
+        JOIN {cmaster} cm ON cm.id = eb.{col_col}
+        {where}
+        GROUP BY eb.{row_col}, eb.{col_col}
+        HAVING n >= 30
+        "#,
+        value_expr = value_expr, rmaster = rmaster, cmaster = cmaster, rlabel = rlabel, clabel = clabel,
+        row_col = row_col, col_col = col_col, where = where_clause,
+    );
+    let q = bind_env_filters(sqlx::query(&sql), &lobby_key, &rule_key, &stage_key, &since, &until);
+    let rows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
+
+    let mut result = Vec::new();
+    for row in rows {
+        result.push(EnvMatrixCell {
+            row_key: row.get("row_key"),
+            col_key: row.get("col_key"),
+            value:   row.try_get::<Option<f64>, _>("value").unwrap_or(None),
+            n:       row.get("n"),
+        });
+    }
+    Ok(result)
+}
+
+/// 「今シーズン」の日付レンジ。最新バトルが属するシーズンの min/max source_date。
+#[derive(Debug, Serialize)]
+pub struct EnvSeasonRange {
+    pub season: Option<String>,
+    pub since:  Option<String>,
+    pub until:  Option<String>,
+}
+
+/// 最新バトルが属するシーズンと、その日付レンジ（source_date の min/max）を返す。
+/// FE の「今シーズン」期間プリセットは、この since/until を散布図/ヒートマップに渡す。
+#[tauri::command]
+pub async fn env_season_range(db: tauri::State<'_, DbPool>) -> Result<EnvSeasonRange, String> {
+    let row = sqlx::query(
+        r#"
+        WITH cur AS (
+            SELECT season FROM env_battles
+            WHERE source_date = (SELECT MAX(source_date) FROM env_battles)
+            LIMIT 1
+        )
+        SELECT (SELECT season FROM cur) AS season,
+               MIN(source_date)         AS since,
+               MAX(source_date)         AS until
+        FROM env_battles
+        WHERE season IS (SELECT season FROM cur)
+        "#,
+    )
+    .fetch_one(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(EnvSeasonRange {
+        season: row.try_get::<Option<String>, _>("season").unwrap_or(None),
+        since:  row.try_get::<Option<String>, _>("since").unwrap_or(None),
+        until:  row.try_get::<Option<String>, _>("until").unwrap_or(None),
+    })
 }
 
 // ---------------------------------------------------------------------------
