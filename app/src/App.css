@@ -2020,3 +2020,103 @@ body {
   transition: width 0.3s ease;
 }
 
+/* モード切替タブ（散布図 / ヒートマップ）#187 */
+.env-mode-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 14px 0 10px;
+}
+.env-mode-tab {
+  padding: 6px 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+.env-mode-tab:hover { color: var(--text); }
+.env-mode-tab.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* マトリクスヒートマップ #187 */
+.env-heatmap-wrap {
+  overflow: auto;
+  max-width: 100%;
+  margin-top: 8px;
+}
+.env-heatmap {
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.env-heatmap th {
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface);
+  position: sticky;
+}
+.env-heatmap-colhead {
+  top: 0;
+  z-index: 1;
+  padding: 4px 6px;
+  max-width: 90px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+/* 斜め列見出し（短縮ステージ名向け）#187 */
+.env-heatmap-colhead.is-diagonal {
+  height: 92px;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  vertical-align: bottom;
+  padding: 0;
+  text-align: left;
+}
+.env-heatmap-colhead.is-diagonal > span {
+  display: inline-block;
+  transform-origin: bottom left;
+  transform: translateX(14px) rotate(-45deg);
+  width: 1.6em;
+  font-size: 10px;
+}
+.env-heatmap-rowhead {
+  left: 0;
+  z-index: 1;
+  padding: 4px 8px;
+  max-width: 130px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+.env-heatmap-corner {
+  top: 0;
+  left: 0;
+  z-index: 2;
+  min-width: 80px;
+}
+.env-heatmap-rowaxis,
+.env-heatmap-colaxis {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.env-heatmap-colaxis { text-align: right; }
+.env-heatmap-cell {
+  padding: 3px 6px;
+  text-align: center;
+  color: #14142a;
+  min-width: 44px;
+  border: 1px solid var(--surface);
+  font-variant-numeric: tabular-nums;
+}
+.env-heatmap-cell--empty {
+  background: var(--surface2);
+  color: var(--text-muted);
+}
+

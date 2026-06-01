@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
-  ScatterChart as RScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, ResponsiveContainer, Cell,
+  ScatterChart as RScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts'
 
 /**
@@ -26,14 +26,23 @@ export interface ScatterPoint {
   rowText?:    string
 }
 
+/** 目盛りラベルの小数を詰める（浮動小数の誤差も除去）。 */
+const fmtTick = (v: number) => String(Math.round(v * 1000) / 1000)
+
 export function ScatterChart({
-  points, xLabel, yLabel, xIsRate, yIsRate, hasSize, fillOpacity = 0.85, constSize = 120, height = 320,
+  points, xLabel, yLabel, xIsRate, yIsRate, xDomain, yDomain, xRefLine, yRefLine, hasSize, fillOpacity = 0.85, constSize = 120, height = 320,
 }: {
   points:       ScatterPoint[]
   xLabel:       string
   yLabel:       string
   xIsRate?:     boolean
   yIsRate?:     boolean
+  /** 明示ドメイン [min, max]。指定時は xIsRate の [0,1] 既定より優先（オートスケール用）。 */
+  xDomain?:     [number, number]
+  yDomain?:     [number, number]
+  /** 基準線（例: 勝率 0.5）。指定軸に破線を引く。 */
+  xRefLine?:    number
+  yRefLine?:    number
   hasSize?:     boolean
   /** ドットの塗り透過度。バトル単位 (重なり多) では 0.4 程度を渡して密度を見せる。 */
   fillOpacity?: number
@@ -43,6 +52,7 @@ export function ScatterChart({
   height?:      number
 }) {
   const [hover, setHover] = useState<ScatterPoint | null>(null)
+  const areaRef = useRef<HTMLDivElement>(null)
 
   // X / Y どちらか null は描画対象外
   const drawable = useMemo(() => points.filter(p => p.x !== null && p.y !== null), [points])
@@ -66,20 +76,26 @@ export function ScatterChart({
   const zRange: [number, number] = hasSize ? [40, 600] : [constSize, constSize]
 
   return (
-    <div className="chart-hover-area" style={{ position: 'relative' }}>
+    <div className="chart-hover-area" ref={areaRef} style={{ position: 'relative' }}>
     <ResponsiveContainer width="100%" height={height}>
       <RScatterChart
         margin={{ top: 4, right: 8, left: 0, bottom: 24 }}
         onMouseLeave={() => setHover(null)}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+        {xRefLine != null && (
+          <ReferenceLine x={xRefLine} stroke="var(--text-muted)" strokeDasharray="5 4" ifOverflow="extendDomain" />
+        )}
+        {yRefLine != null && (
+          <ReferenceLine y={yRefLine} stroke="var(--text-muted)" strokeDasharray="5 4" ifOverflow="extendDomain" />
+        )}
         <XAxis
           type="number"
           dataKey="x"
           name={xLabel}
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}
-          tickFormatter={xIsRate ? (v: number) => `${(v * 100).toFixed(0)}%` : undefined}
-          domain={xIsRate ? [0, 1] : ['auto', 'auto']}
+          tickFormatter={xIsRate ? (v: number) => `${(v * 100).toFixed(0)}%` : fmtTick}
+          domain={xDomain ?? (xIsRate ? [0, 1] : ['auto', 'auto'])}
           label={{ value: xLabel, position: 'insideBottom', offset: -10, fill: 'var(--text-muted)', fontSize: 11 } as object}
         />
         <YAxis
@@ -88,8 +104,8 @@ export function ScatterChart({
           name={yLabel}
           tick={{ fill: 'var(--text)', fontSize: 10 } as object}
           width={56}
-          tickFormatter={yIsRate ? (v: number) => `${(v * 100).toFixed(0)}%` : undefined}
-          domain={yIsRate ? [0, 1] : ['auto', 'auto']}
+          tickFormatter={yIsRate ? (v: number) => `${(v * 100).toFixed(0)}%` : fmtTick}
+          domain={yDomain ?? (yIsRate ? [0, 1] : ['auto', 'auto'])}
           label={{ value: yLabel, angle: -90, position: 'insideLeft', offset: 12, fill: 'var(--text-muted)', fontSize: 11, style: { textAnchor: 'middle' } } as object}
         />
         <ZAxis type="number" dataKey="size" range={zRange} />
@@ -104,8 +120,27 @@ export function ScatterChart({
         </Scatter>
       </RScatterChart>
     </ResponsiveContainer>
-    {hover && (
-      <div className="cal-tooltip" style={{ position: 'absolute', right: 12, top: 12, pointerEvents: 'none', minWidth: 180, maxWidth: 280 }}>
+    {hover && (() => {
+      // ホバー中のドット座標 (cx, cy) 付近にツールチップを出す。
+      // 端に近いときは内側へ反転させてはみ出しを防ぐ。
+      const hx = (hover as unknown as { cx?: number }).cx ?? 0
+      const hy = (hover as unknown as { cy?: number }).cy ?? 0
+      const w = areaRef.current?.clientWidth ?? 0
+      const h = areaRef.current?.clientHeight ?? height
+      const flipX = w > 0 && hx > w * 0.6
+      const flipY = h > 0 && hy > h * 0.6
+      const tipStyle: CSSProperties = {
+        position: 'absolute',
+        left: hx,
+        top: hy,
+        transform: `translate(${flipX ? 'calc(-100% - 14px)' : '14px'}, ${flipY ? 'calc(-100% - 10px)' : '10px'})`,
+        pointerEvents: 'none',
+        minWidth: 160,
+        maxWidth: 280,
+        zIndex: 5,
+      }
+      return (
+      <div className="cal-tooltip" style={tipStyle}>
         {hoverSiblings.length > 1 ? (
           <>
             {/* 重なってる全件: 共通の x/y 等を 1 回 + 各点の rowText を並べる */}
@@ -128,7 +163,8 @@ export function ScatterChart({
           </>
         )}
       </div>
-    )}
+      )
+    })()}
     </div>
   )
 }
