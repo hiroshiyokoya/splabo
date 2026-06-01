@@ -1592,7 +1592,7 @@ body {
 
 /* ── About Dialog ── */
 .about-panel {
-  max-width: 420px !important;
+  max-width: 520px !important;
 }
 .about-body {
   align-items: center;
@@ -1614,7 +1614,7 @@ body {
   font-size: 13px;
   color: var(--text-muted);
   line-height: 1.6;
-  max-width: 300px;
+  max-width: 400px;
 }
 .about-links { display: flex; gap: 12px; }
 .about-link {
