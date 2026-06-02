@@ -343,6 +343,20 @@ export interface EnvSeasonRange {
   until:  string | null
 }
 
+/** env_versions コマンドの 1 件（#189）。取り込み済みデータのゲームバージョン。 */
+export interface EnvVersion {
+  game_ver: string
+  n:        number
+  min_date: string | null
+  max_date: string | null
+}
+
+/** env_ranks コマンドの 1 件（#189）。投稿者（A1）のウデマエ帯。 */
+export interface EnvRank {
+  poster_rank: string
+  n:           number
+}
+
 export interface ChartSpec {
   chartType: 'bar' | 'line' | 'scatter' | 'pie'
   title: string

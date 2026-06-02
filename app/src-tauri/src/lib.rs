@@ -104,6 +104,8 @@ pub fn run() {
             db::env_scatter_stats,
             db::env_matrix_stats,
             db::env_season_range,
+            db::env_versions,
+            db::env_ranks,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
