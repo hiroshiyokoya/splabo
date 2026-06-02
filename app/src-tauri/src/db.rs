@@ -3320,40 +3320,63 @@ pub async fn env_status(db: tauri::State<'_, DbPool>) -> Result<EnvStatus, Strin
 // 環境分析 拡張（#187）: 散布図 / ヒートマップ
 // ---------------------------------------------------------------------------
 
+/// env_battles の共通フィルタ条件をひとまとめにした構造体（#189 で拡張）。
+///
+/// 期間・ロビー・ルール・ステージに加え、ゲームバージョン（複数）・
+/// ウデマエ帯（複数）・Xパワー範囲を AND で絞り込む。
+/// `game_vers` / `poster_ranks` は空なら絞り込まない。
+#[derive(Default)]
+pub struct EnvFilters {
+    pub lobby_key:    Option<String>,
+    pub rule_key:     Option<String>,
+    pub stage_key:    Option<String>,
+    pub since:        Option<String>,
+    pub until:        Option<String>,
+    pub game_vers:    Vec<String>,
+    pub poster_ranks: Vec<String>,
+    pub power_min:    Option<f64>,
+    pub power_max:    Option<f64>,
+}
+
 /// env_battles の共通フィルタ句を組み立てる。
 ///
 /// 返すのは `WHERE ...` 文字列（フィルタ無しなら空文字）。バインドは
 /// `bind_env_filters` を WHERE が登場する回数だけ呼んで行う（順序を厳守）。
-fn build_env_where(
-    lobby_key: &Option<String>,
-    rule_key:  &Option<String>,
-    stage_key: &Option<String>,
-    since:     &Option<String>,
-    until:     &Option<String>,
-) -> String {
-    let mut wp: Vec<&str> = Vec::new();
-    if lobby_key.is_some() { wp.push("EXISTS (SELECT 1 FROM lobby lk WHERE lk.id = eb.lobby_id AND lk.key = ?)"); }
-    if rule_key.is_some()  { wp.push("EXISTS (SELECT 1 FROM rule  rk WHERE rk.id = eb.rule_id  AND rk.key = ?)"); }
-    if stage_key.is_some() { wp.push("EXISTS (SELECT 1 FROM map   mk WHERE mk.id = eb.map_id   AND mk.key = ?)"); }
-    if since.is_some()     { wp.push("eb.source_date >= ?"); }
-    if until.is_some()     { wp.push("eb.source_date <= ?"); }
+fn build_env_where(f: &EnvFilters) -> String {
+    let mut wp: Vec<String> = Vec::new();
+    if f.lobby_key.is_some() { wp.push("EXISTS (SELECT 1 FROM lobby lk WHERE lk.id = eb.lobby_id AND lk.key = ?)".into()); }
+    if f.rule_key.is_some()  { wp.push("EXISTS (SELECT 1 FROM rule  rk WHERE rk.id = eb.rule_id  AND rk.key = ?)".into()); }
+    if f.stage_key.is_some() { wp.push("EXISTS (SELECT 1 FROM map   mk WHERE mk.id = eb.map_id   AND mk.key = ?)".into()); }
+    if f.since.is_some()     { wp.push("eb.source_date >= ?".into()); }
+    if f.until.is_some()     { wp.push("eb.source_date <= ?".into()); }
+    if !f.game_vers.is_empty() {
+        let ph = vec!["?"; f.game_vers.len()].join(",");
+        wp.push(format!("eb.game_ver IN ({ph})"));
+    }
+    if !f.poster_ranks.is_empty() {
+        let ph = vec!["?"; f.poster_ranks.len()].join(",");
+        wp.push(format!("eb.poster_rank IN ({ph})"));
+    }
+    if f.power_min.is_some() { wp.push("eb.poster_power >= ?".into()); }
+    if f.power_max.is_some() { wp.push("eb.poster_power <= ?".into()); }
     if wp.is_empty() { String::new() } else { format!("WHERE {}", wp.join(" AND ")) }
 }
 
 /// `build_env_where` と対になる、1 回分のフィルタ値バインド。
+/// `build_env_where` がプレースホルダを並べた順序と完全に一致させること。
 fn bind_env_filters<'q>(
     mut q: sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
-    lobby_key: &'q Option<String>,
-    rule_key:  &'q Option<String>,
-    stage_key: &'q Option<String>,
-    since:     &'q Option<String>,
-    until:     &'q Option<String>,
+    f: &'q EnvFilters,
 ) -> sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
-    if let Some(v) = lobby_key { q = q.bind(v); }
-    if let Some(v) = rule_key  { q = q.bind(v); }
-    if let Some(v) = stage_key { q = q.bind(v); }
-    if let Some(v) = since     { q = q.bind(v); }
-    if let Some(v) = until     { q = q.bind(v); }
+    if let Some(v) = &f.lobby_key { q = q.bind(v); }
+    if let Some(v) = &f.rule_key  { q = q.bind(v); }
+    if let Some(v) = &f.stage_key { q = q.bind(v); }
+    if let Some(v) = &f.since     { q = q.bind(v); }
+    if let Some(v) = &f.until     { q = q.bind(v); }
+    for v in &f.game_vers    { q = q.bind(v); }
+    for v in &f.poster_ranks { q = q.bind(v); }
+    if let Some(v) = f.power_min { q = q.bind(v); }
+    if let Some(v) = f.power_max { q = q.bind(v); }
     q
 }
 
@@ -3406,17 +3429,28 @@ const OPP_SLOTS: &[ScatterSlot] = &[
 /// - `group_by` = "stage" : ステージごとに ko_rate / 平均塗り割合 / 平均人数 を集計
 /// - `side` = "all" | "self"(alpha) | "opp"(bravo) … 武器集計でのスロット選択
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn env_scatter_stats(
-    db:        tauri::State<'_, DbPool>,
-    group_by:  String,
-    side:      Option<String>,
-    lobby_key: Option<String>,
-    rule_key:  Option<String>,
-    stage_key: Option<String>,
-    since:     Option<String>,
-    until:     Option<String>,
+    db:           tauri::State<'_, DbPool>,
+    group_by:     String,
+    side:         Option<String>,
+    lobby_key:    Option<String>,
+    rule_key:     Option<String>,
+    stage_key:    Option<String>,
+    since:        Option<String>,
+    until:        Option<String>,
+    game_vers:    Option<Vec<String>>,
+    poster_ranks: Option<Vec<String>>,
+    power_min:    Option<f64>,
+    power_max:    Option<f64>,
 ) -> Result<Vec<EnvScatterStat>, String> {
-    let where_clause = build_env_where(&lobby_key, &rule_key, &stage_key, &since, &until);
+    let f = EnvFilters {
+        lobby_key, rule_key, stage_key, since, until,
+        game_vers:    game_vers.unwrap_or_default(),
+        poster_ranks: poster_ranks.unwrap_or_default(),
+        power_min, power_max,
+    };
+    let where_clause = build_env_where(&f);
 
     if group_by == "stage" {
         // ステージ集計: 勝率は約 50% で無意味なので使わず、ステージで意味のある指標を出す。
@@ -3437,7 +3471,7 @@ pub async fn env_scatter_stats(
             "#,
             where = where_clause,
         );
-        let q = bind_env_filters(sqlx::query(&sql), &lobby_key, &rule_key, &stage_key, &since, &until);
+        let q = bind_env_filters(sqlx::query(&sql), &f);
         let rows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
         let mut result = Vec::new();
         for row in rows {
@@ -3502,7 +3536,7 @@ pub async fn env_scatter_stats(
     // バインド: UNION ALL の各 SELECT（slots.len() 回）+ tb（1 回）。
     let mut q = sqlx::query(&sql);
     for _ in 0..(slots.len() + 1) {
-        q = bind_env_filters(q, &lobby_key, &rule_key, &stage_key, &since, &until);
+        q = bind_env_filters(q, &f);
     }
     let rows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
 
@@ -3562,17 +3596,27 @@ fn matrix_dim(dim: &str) -> Option<(&'static str, &'static str, &'static str)> {
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn env_matrix_stats(
-    db:          tauri::State<'_, DbPool>,
-    row_dim:     String,
-    col_dim:     String,
-    cell_metric: String,
-    lobby_key:   Option<String>,
-    rule_key:    Option<String>,
-    stage_key:   Option<String>,
-    since:       Option<String>,
-    until:       Option<String>,
+    db:           tauri::State<'_, DbPool>,
+    row_dim:      String,
+    col_dim:      String,
+    cell_metric:  String,
+    lobby_key:    Option<String>,
+    rule_key:     Option<String>,
+    stage_key:    Option<String>,
+    since:        Option<String>,
+    until:        Option<String>,
+    game_vers:    Option<Vec<String>>,
+    poster_ranks: Option<Vec<String>>,
+    power_min:    Option<f64>,
+    power_max:    Option<f64>,
 ) -> Result<Vec<EnvMatrixCell>, String> {
-    let where_clause = build_env_where(&lobby_key, &rule_key, &stage_key, &since, &until);
+    let f = EnvFilters {
+        lobby_key, rule_key, stage_key, since, until,
+        game_vers:    game_vers.unwrap_or_default(),
+        poster_ranks: poster_ranks.unwrap_or_default(),
+        power_min, power_max,
+    };
+    let where_clause = build_env_where(&f);
     let weapon_centric = cell_metric == "win_rate" || cell_metric == "pick_rate";
 
     if weapon_centric {
@@ -3620,7 +3664,7 @@ pub async fn env_matrix_stats(
         // バインド: スロット 8 回 + otot 1 回。
         let mut q = sqlx::query(&sql);
         for _ in 0..(slots.len() + 1) {
-            q = bind_env_filters(q, &lobby_key, &rule_key, &stage_key, &since, &until);
+            q = bind_env_filters(q, &f);
         }
         let rows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
 
@@ -3669,7 +3713,7 @@ pub async fn env_matrix_stats(
         value_expr = value_expr, rmaster = rmaster, cmaster = cmaster, rlabel = rlabel, clabel = clabel,
         row_col = row_col, col_col = col_col, where = where_clause,
     );
-    let q = bind_env_filters(sqlx::query(&sql), &lobby_key, &rule_key, &stage_key, &since, &until);
+    let q = bind_env_filters(sqlx::query(&sql), &f);
     let rows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
 
     let mut result = Vec::new();
@@ -3719,6 +3763,96 @@ pub async fn env_season_range(db: tauri::State<'_, DbPool>) -> Result<EnvSeasonR
         since:  row.try_get::<Option<String>, _>("since").unwrap_or(None),
         until:  row.try_get::<Option<String>, _>("until").unwrap_or(None),
     })
+}
+
+// ---------------------------------------------------------------------------
+// 環境分析 フィルタ拡充（#189）: バージョン / ウデマエ帯の選択肢
+// ---------------------------------------------------------------------------
+
+/// 取り込み済みデータに含まれるゲームバージョン 1 件分。
+#[derive(Debug, Serialize)]
+pub struct EnvVersion {
+    pub game_ver: String,
+    pub n:        i64,
+    pub min_date: Option<String>,
+    pub max_date: Option<String>,
+}
+
+/// env_battles に存在するゲームバージョンを、件数・日付レンジ付きで新しい順に返す。
+/// セレクタの選択肢を取り込み済みデータから動的生成するために使う。
+#[tauri::command]
+pub async fn env_versions(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvVersion>, String> {
+    let rows = sqlx::query(
+        r#"
+        SELECT game_ver,
+               COUNT(*)         AS n,
+               MIN(source_date) AS min_d,
+               MAX(source_date) AS max_d
+        FROM env_battles
+        WHERE game_ver IS NOT NULL AND game_ver <> ''
+        GROUP BY game_ver
+        ORDER BY game_ver DESC
+        "#,
+    )
+    .fetch_all(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| EnvVersion {
+            game_ver: row.get("game_ver"),
+            n:        row.get("n"),
+            min_date: row.try_get::<Option<String>, _>("min_d").unwrap_or(None),
+            max_date: row.try_get::<Option<String>, _>("max_d").unwrap_or(None),
+        })
+        .collect())
+}
+
+/// 取り込み済みデータに含まれるウデマエ帯 1 件分。
+#[derive(Debug, Serialize)]
+pub struct EnvRank {
+    pub poster_rank: String,
+    pub n:           i64,
+}
+
+/// ウデマエの並び順インデックス（C- が最小、X が最大）。未知の値は末尾。
+/// stat.ink の `rank` 値は小文字（例: `s+`, `x`）なので大文字化して照合する。
+fn rank_order(r: &str) -> usize {
+    const ORDER: &[&str] = &["C-", "C", "C+", "B-", "B", "B+", "A-", "A", "A+", "S", "S+", "X"];
+    let up = r.to_uppercase();
+    ORDER.iter().position(|x| *x == up).unwrap_or(ORDER.len())
+}
+
+/// env_battles に記録された投稿者ウデマエ（poster_rank）を、ウデマエ順に整列して返す。
+/// poster_rank は投稿者（A1）のみの記録である点に注意（UI に注記する）。
+#[tauri::command]
+pub async fn env_ranks(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvRank>, String> {
+    let rows = sqlx::query(
+        r#"
+        SELECT poster_rank, COUNT(*) AS n
+        FROM env_battles
+        WHERE poster_rank IS NOT NULL AND poster_rank <> ''
+        GROUP BY poster_rank
+        "#,
+    )
+    .fetch_all(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut result: Vec<EnvRank> = rows
+        .into_iter()
+        .map(|row| EnvRank {
+            poster_rank: row.get("poster_rank"),
+            n:           row.get("n"),
+        })
+        .collect();
+    result.sort_by(|a, b| {
+        rank_order(&a.poster_rank)
+            .cmp(&rank_order(&b.poster_rank))
+            .then_with(|| a.poster_rank.cmp(&b.poster_rank))
+    });
+    Ok(result)
 }
 
 // ---------------------------------------------------------------------------

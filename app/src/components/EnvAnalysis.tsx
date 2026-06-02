@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { EnvScatterStat, EnvMatrixCell, EnvStatus, EnvSeasonRange } from '../types'
+import type { EnvScatterStat, EnvMatrixCell, EnvStatus, EnvSeasonRange, EnvVersion, EnvRank } from '../types'
 import { ScatterChart } from './charts/ScatterChart'
 import type { ScatterPoint } from './charts/ScatterChart'
 import { Heatmap } from './charts/Heatmap'
@@ -145,6 +145,12 @@ function addDays(dateStr: string, delta: number): string {
   return dt.toISOString().slice(0, 10)
 }
 
+/** ゲームバージョン表記の整形。stat.ink 由来の 3 桁コード（"800"）はドット区切り
+ *  （"8.0.0"）へ。既にドット区切りならそのまま返す。 */
+function formatGameVer(v: string): string {
+  return /^\d{3}$/.test(v) ? `${v[0]}.${v[1]}.${v[2]}` : v
+}
+
 interface ImportProgress { current: number; total: number; phase: string }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +168,14 @@ export function EnvAnalysis() {
   const [period, setPeriod]     = useState<Period>('all')
   const [customSince, setCustomSince] = useState('')
   const [customUntil, setCustomUntil] = useState('')
+
+  // フィルタ拡充（#189）: バージョン / ウデマエ帯 / Xパワー帯
+  const [versionOptions, setVersionOptions] = useState<EnvVersion[]>([])
+  const [rankOptions, setRankOptions]       = useState<EnvRank[]>([])
+  const [gameVers, setGameVers]       = useState<string[]>([])  // 選択中バージョン（複数）
+  const [posterRanks, setPosterRanks] = useState<string[]>([])  // 選択中ウデマエ帯（複数）
+  const [powerMin, setPowerMin] = useState('')                  // Xパワー下限（空 = 無指定）
+  const [powerMax, setPowerMax] = useState('')                  // Xパワー上限（空 = 無指定）
 
   // 可視化モード
   const [vizMode, setVizMode] = useState<'scatter' | 'heatmap'>('scatter')
@@ -206,6 +220,8 @@ export function EnvAnalysis() {
       setStatus(s)
       if (s.total_rows > 0) {
         try { setSeasonRange(await invoke<EnvSeasonRange>('env_season_range')) } catch { /* noop */ }
+        try { setVersionOptions(await invoke<EnvVersion[]>('env_versions')) } catch { /* noop */ }
+        try { setRankOptions(await invoke<EnvRank[]>('env_ranks')) } catch { /* noop */ }
       }
     } catch (e) {
       console.error('[EnvAnalysis] env_status 失敗:', e)
@@ -224,6 +240,14 @@ export function EnvAnalysis() {
     }
   }, [period, status, seasonRange, customSince, customUntil])
 
+  // 拡充フィルタ（#189）を invoke 引数へ。空配列 / 空文字は null（無指定）に正規化。
+  const extFilters = useMemo(() => ({
+    gameVers:    gameVers.length ? gameVers : null,
+    posterRanks: posterRanks.length ? posterRanks : null,
+    powerMin:    powerMin === '' ? null : Number(powerMin),
+    powerMax:    powerMax === '' ? null : Number(powerMax),
+  }), [gameVers, posterRanks, powerMin, powerMax])
+
   // データ読み込み（モード/フィルタ変更で再取得）
   const loadData = useCallback(async () => {
     if (!hasData) return
@@ -238,6 +262,7 @@ export function EnvAnalysis() {
           stageKey: null,
           since:    range.since,
           until:    range.until,
+          ...extFilters,
         })
         setScatterData(rows)
       } else {
@@ -252,13 +277,14 @@ export function EnvAnalysis() {
           stageKey: null,
           since:    range.since,
           until:    range.until,
+          ...extFilters,
         })
         setMatrixData(cells)
       }
     } catch (e) {
       setError(String(e))
     }
-  }, [hasData, vizMode, groupBy, lobbyKey, ruleKey, range, rowDim, colDim, cellMetric, bothWeapon, allowedCellMetrics])
+  }, [hasData, vizMode, groupBy, lobbyKey, ruleKey, range, rowDim, colDim, cellMetric, bothWeapon, allowedCellMetrics, extFilters])
 
   useEffect(() => { loadStatus() }, [loadStatus])
   useEffect(() => { loadData() }, [loadData])
@@ -394,7 +420,46 @@ export function EnvAnalysis() {
                 </label>
               </>
             )}
+            <MultiSelect
+              label="バージョン"
+              allLabel="すべてのバージョン"
+              selected={gameVers}
+              onChange={setGameVers}
+              options={versionOptions.map(v => ({
+                key:   v.game_ver,
+                label: `${formatGameVer(v.game_ver)}（${(v.n / 10000).toFixed(1)} 万）`,
+                short: formatGameVer(v.game_ver),
+              }))}
+            />
+            <MultiSelect
+              label="ウデマエ帯"
+              allLabel="すべてのウデマエ"
+              selected={posterRanks}
+              onChange={setPosterRanks}
+              options={rankOptions.map(r => ({
+                key:   r.poster_rank,
+                label: `${r.poster_rank.toUpperCase()}（${r.n.toLocaleString()}）`,
+                short: r.poster_rank.toUpperCase(),
+              }))}
+            />
+            <label>Xパワー帯
+              <span className="env-power-range">
+                <input type="number" inputMode="numeric" placeholder="下限" step={50}
+                       value={powerMin} onChange={e => setPowerMin(e.target.value)} />
+                <span className="env-power-sep">〜</span>
+                <input type="number" inputMode="numeric" placeholder="上限" step={50}
+                       value={powerMax} onChange={e => setPowerMax(e.target.value)} />
+              </span>
+            </label>
           </div>
+
+          {(posterRanks.length > 0 || powerMin !== '' || powerMax !== '') && (
+            <p className="env-filter-note">
+              ※ ウデマエ帯・Xパワーは投稿者（A1）のみの記録に基づく絞り込みです。
+              対戦相手 7 名の帯は含まれないため、参加者全員がこの帯であることは保証されません。
+              Xパワーは X マッチ等の投稿でのみ記録されます。
+            </p>
+          )}
 
           {vizMode === 'scatter' ? (
             <>
@@ -516,6 +581,55 @@ function computeDomain(vals: number[], rate01: boolean): [number, number] {
   if (rate01) { nlo = Math.max(0, nlo); nhi = Math.min(1, nhi) }
   const round = (x: number) => Math.round(x * 1e6) / 1e6  // 浮動小数の誤差を除去
   return [round(nlo), round(nhi)]
+}
+
+/** 複数選択ドロップダウン（#189）。
+ *  `<details>` でメニュー開閉を担い、各項目はチェックボックスでトグルする。
+ *  選択ゼロ件で `allLabel`、1 件で項目名、2 件以上で「N 件選択」をサマリ表示。 */
+interface MultiSelectOption { key: string; label: string; short?: string }
+function MultiSelect({ label, allLabel, options, selected, onChange }: {
+  label:    string
+  allLabel: string
+  options:  MultiSelectOption[]
+  selected: string[]
+  onChange: (next: string[]) => void
+}) {
+  const toggle = (k: string) =>
+    onChange(selected.includes(k) ? selected.filter(x => x !== k) : [...selected, k])
+
+  const summary =
+    selected.length === 0 ? allLabel :
+    selected.length === 1 ? (options.find(o => o.key === selected[0])?.short
+                             ?? options.find(o => o.key === selected[0])?.label
+                             ?? selected[0]) :
+    `${selected.length} 件選択`
+
+  return (
+    <label className="env-multiselect-label">{label}
+      <details className="env-multiselect">
+        <summary>{summary}</summary>
+        <div className="env-multiselect-menu">
+          {options.length === 0 ? (
+            <span className="env-multiselect-empty">選択肢がありません</span>
+          ) : (
+            <>
+              {selected.length > 0 && (
+                <button type="button" className="env-multiselect-clear"
+                        onClick={() => onChange([])}>選択をクリア</button>
+              )}
+              {options.map(o => (
+                <label key={o.key} className="env-multiselect-item">
+                  <input type="checkbox" checked={selected.includes(o.key)}
+                         onChange={() => toggle(o.key)} />
+                  {o.label}
+                </label>
+              ))}
+            </>
+          )}
+        </div>
+      </details>
+    </label>
+  )
 }
 
 /** 進捗バー表示。 */
