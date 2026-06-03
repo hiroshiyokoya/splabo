@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>チャートゥーン (chartoon) — Splatoon 3 Battle Visualizer</title>
-  <meta name="description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。武器・ステージ・ルール別の勝率や、自由にカスタマイズできる線・散布図・ヒートマップで自分のプレイを分析できます。Windows / macOS / Linux 対応。stat.ink への自動アップロードにも対応。">
+  <meta name="description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。武器・ステージ・ルール別の勝率や、自由にカスタマイズできる線・散布図・ヒートマップで自分のプレイを分析できます。stat.ink 公開データを使ったコミュニティ全体の環境分析にも対応。Windows / macOS / Linux 対応。stat.ink への自動アップロードにも対応。">
   <meta name="keywords" content="Splatoon 3, スプラトゥーン3, バトル可視化, 勝率, ダッシュボード, stat.ink, nxapi, OSS, デスクトップアプリ, Tauri">
   <link rel="canonical" href="https://chartoon.pages.dev/">
   <link rel="icon" href="https://raw.githubusercontent.com/hiroshiyokoya/chartoon/develop/app/public/favicon.png">
@@ -360,12 +360,12 @@
         <p>ダッシュボードでバトル結果を分析</p>
       </div>
       <div class="screenshot-item">
-        <img src="screenshots/calendar.png" alt="カレンダーヒートマップ" onclick="openLightbox(this)">
-        <p>カレンダー形式で可視化</p>
+        <img src="screenshots/scatter.png" alt="カスタムグラフ（散布図）" onclick="openLightbox(this)">
+        <p>散布図などチャートをカスタマイズ</p>
       </div>
       <div class="screenshot-item">
-        <img src="screenshots/scatter.png" alt="散布図" onclick="openLightbox(this)">
-        <p>散布図などチャートをカスタマイズ</p>
+        <img src="screenshots/env-analysis.png" alt="環境分析" onclick="openLightbox(this)">
+        <p>stat.ink の公開データで環境を分析</p>
       </div>
     </div>
   </section>
@@ -389,6 +389,14 @@
             <li>線・棒・散布図・ヒートマップ・カレンダー</li>
             <li>集計軸（武器・ステージ・期間など）と表示メトリクスを自由に組み合わせ</li>
             <li>ドラッグ＆ドロップで並び替え可能</li>
+          </ul>
+        </div>
+        <div class="feature-card">
+          <h3>環境分析</h3>
+          <ul>
+            <li>stat.ink の公開バトルデータ（全世界）からコミュニティ全体の環境を分析</li>
+            <li>武器・ステージ別の散布図、武器×ステージなどのマトリクスヒートマップ</li>
+            <li>ロビー・ルール・バージョン・ウデマエ帯・期間で絞り込み</li>
           </ul>
         </div>
         <div class="feature-card">

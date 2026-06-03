@@ -1628,6 +1628,7 @@ body {
   color: var(--text-muted);
   max-width: 300px;
   line-height: 1.5;
+  text-wrap: pretty;
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
