@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- stat.ink へ送信する User-Agent のバージョン部分を `v` 始まりに変更（`chartoon/0.6.6` → `chartoon/v0.6.6`）。他クライアントの表示形式に統一
+
 ## [0.6.5] — 2026-06-03
 
 ### Fixed
