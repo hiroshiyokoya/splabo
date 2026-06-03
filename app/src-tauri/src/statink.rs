@@ -513,9 +513,10 @@ fn build_payload(detail: &serde_json::Value, parent: Option<&serde_json::Value>)
 
     // --- イベントマッチ ---
     if mode == "LEAGUE" {
-        // leagueMatchEvent.id は base64。stat.ink は base64 を decode した文字列 ID で受け取る
+        // leagueMatchEvent.id は base64 のまま stat.ink に渡す（s3s 準拠）。
+        // decode して "LeagueMatchEvent-<hash>" にすると stat.ink は "Event is invalid." で 400 を返す。
         if let Some(id_b64) = detail.pointer("/leagueMatch/leagueMatchEvent/id").and_then(|v| v.as_str()) {
-            payload["event"] = decode_id(id_b64);
+            payload["event"] = serde_json::json!(id_b64);
         }
         if let Some(power) = detail.pointer("/leagueMatch/myLeaguePower").and_then(|v| v.as_f64()) {
             payload["event_power"] = serde_json::json!(power);
