@@ -8,6 +8,14 @@ Nintendo アカウントから [nxapi](https://github.com/samuelthomas2774/nxapi
 
 🌐 **ダウンロードページ**: https://chartoon.pages.dev/
 
+> ⚠️ **重要 / Important**
+>
+> **v0.6.5 より前（v0.5.3〜v0.6.0、および修正前のソースビルド）には、stat.ink 連携に重大な不具合があります。**
+> 一括インポートしたバトルが自動アップロードで stat.ink に再送され、大量の重複・無効な送信が発生します。
+>
+> **stat.ink への自動アップロードを使う場合は、必ず v0.6.5 以降を利用してください。**
+> 古いバージョン／ソースをお使いの場合は、設定で「自動アップロード」を OFF にしてから v0.6.5 以降へ更新してください。
+
 ```
 chartoon/
 └── app/         # Tauri アプリ本体（Vite + React + recharts + Rust）
