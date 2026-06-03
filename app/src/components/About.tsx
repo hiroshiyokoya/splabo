@@ -43,7 +43,8 @@ export function About({ onClose }: Props) {
             </a>
           </div>
           <div className="about-notice">
-            本アプリは非公式ツールです。Nintendo / スプラトゥーンとは無関係です。
+            本アプリは非公式ツールです。<br />
+            Nintendo / スプラトゥーンとは無関係です。
           </div>
         </div>
       </div>
