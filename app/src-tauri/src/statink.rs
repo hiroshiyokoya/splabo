@@ -9,7 +9,8 @@ use reqwest::Client;
 use tauri::{AppHandle, Emitter};
 
 /// stat.ink への HTTP リクエストに付与する User-Agent。
-const USER_AGENT: &str = concat!("chartoon/", env!("CARGO_PKG_VERSION"));
+/// 他クライアント（s3s 等）の表示形式に揃えてバージョン部分を `v` 始まりにする。
+const USER_AGENT: &str = concat!("chartoon/v", env!("CARGO_PKG_VERSION"));
 
 // s3s と同じ UUID5 名前空間。同一バトルで s3s と UUID が一致するため stat.ink 側で重複排除される。
 const S3S_NAMESPACE_BYTES: [u8; 16] = [
