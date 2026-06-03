@@ -11,10 +11,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { EnvScatterStat, EnvMatrixCell, EnvStatus, EnvSeasonRange, EnvVersion, EnvRank } from '../types'
+import type { EnvScatterStat, EnvMatrixCell, EnvStatus, EnvVersion, EnvRank } from '../types'
 import { ScatterChart } from './charts/ScatterChart'
 import type { ScatterPoint } from './charts/ScatterChart'
 import { Heatmap } from './charts/Heatmap'
+import { MultiSelect } from './MultiSelect'
 
 const LOBBY_OPTIONS = [
   { key: '',                  label: 'すべてのロビー' },
@@ -128,12 +129,12 @@ function dimKeyLabeller(dim: string): (k: string) => string {
 // 期間プリセット
 // ---------------------------------------------------------------------------
 
-type Period = 'all' | 'season' | '30d' | '7d' | 'custom'
+type Period = 'all' | '1y' | '180d' | '30d' | 'custom'
 const PERIOD_OPTIONS: { key: Period; label: string }[] = [
   { key: 'all',    label: '全期間' },
-  { key: 'season', label: '今シーズン' },
-  { key: '30d',    label: '直近30日' },
-  { key: '7d',     label: '直近7日' },
+  { key: '1y',     label: '直近1年' },
+  { key: '180d',   label: '180日' },
+  { key: '30d',    label: '30日' },
   { key: 'custom', label: 'カスタム' },
 ]
 
@@ -157,15 +158,15 @@ interface ImportProgress { current: number; total: number; phase: string }
 
 export function EnvAnalysis() {
   const [status, setStatus]           = useState<EnvStatus | null>(null)
-  const [seasonRange, setSeasonRange] = useState<EnvSeasonRange | null>(null)
   const [importing, setImporting]     = useState(false)
   const [progress, setProgress]       = useState<ImportProgress | null>(null)
   const [error, setError]             = useState<string | null>(null)
+  const [loading, setLoading]         = useState(false)   // 集計クエリ実行中
 
-  // 共通フィルタ
-  const [lobbyKey, setLobbyKey] = useState('')
-  const [ruleKey, setRuleKey]   = useState('')
-  const [period, setPeriod]     = useState<Period>('all')
+  // 共通フィルタ（#190: ロビー/ルールは複数選択）
+  const [lobbyKeys, setLobbyKeys] = useState<string[]>([])
+  const [ruleKeys, setRuleKeys]   = useState<string[]>([])
+  const [period, setPeriod]     = useState<Period>('30d')   // 既定は直近30日
   const [customSince, setCustomSince] = useState('')
   const [customUntil, setCustomUntil] = useState('')
 
@@ -219,7 +220,6 @@ export function EnvAnalysis() {
       const s = await invoke<EnvStatus>('env_status')
       setStatus(s)
       if (s.total_rows > 0) {
-        try { setSeasonRange(await invoke<EnvSeasonRange>('env_season_range')) } catch { /* noop */ }
         try { setVersionOptions(await invoke<EnvVersion[]>('env_versions')) } catch { /* noop */ }
         try { setRankOptions(await invoke<EnvRank[]>('env_ranks')) } catch { /* noop */ }
       }
@@ -233,12 +233,12 @@ export function EnvAnalysis() {
     const maxd = status?.max_date ?? null
     switch (period) {
       case 'all':    return { since: null, until: null }
-      case 'season': return { since: seasonRange?.since ?? null, until: seasonRange?.until ?? null }
-      case '30d':    return maxd ? { since: addDays(maxd, -29), until: maxd } : { since: null, until: null }
-      case '7d':     return maxd ? { since: addDays(maxd, -6),  until: maxd } : { since: null, until: null }
+      case '1y':     return maxd ? { since: addDays(maxd, -364), until: maxd } : { since: null, until: null }
+      case '180d':   return maxd ? { since: addDays(maxd, -179), until: maxd } : { since: null, until: null }
+      case '30d':    return maxd ? { since: addDays(maxd, -29),  until: maxd } : { since: null, until: null }
       case 'custom': return { since: customSince || null, until: customUntil || null }
     }
-  }, [period, status, seasonRange, customSince, customUntil])
+  }, [period, status, customSince, customUntil])
 
   // 拡充フィルタ（#189）を invoke 引数へ。空配列 / 空文字は null（無指定）に正規化。
   const extFilters = useMemo(() => ({
@@ -252,13 +252,14 @@ export function EnvAnalysis() {
   const loadData = useCallback(async () => {
     if (!hasData) return
     setError(null)
+    setLoading(true)
     try {
       if (vizMode === 'scatter') {
         const rows = await invoke<EnvScatterStat[]>('env_scatter_stats', {
           groupBy,
           side:     'all',
-          lobbyKey: lobbyKey || null,
-          ruleKey:  ruleKey || null,
+          lobbyKeys,
+          ruleKeys,
           stageKey: null,
           since:    range.since,
           until:    range.until,
@@ -272,8 +273,8 @@ export function EnvAnalysis() {
         if (!allowedCellMetrics.some(m => m.key === cellMetric)) return
         const cells = await invoke<EnvMatrixCell[]>('env_matrix_stats', {
           rowDim, colDim, cellMetric,
-          lobbyKey: lobbyKey || null,
-          ruleKey:  ruleKey || null,
+          lobbyKeys,
+          ruleKeys,
           stageKey: null,
           since:    range.since,
           until:    range.until,
@@ -283,8 +284,10 @@ export function EnvAnalysis() {
       }
     } catch (e) {
       setError(String(e))
+    } finally {
+      setLoading(false)
     }
-  }, [hasData, vizMode, groupBy, lobbyKey, ruleKey, range, rowDim, colDim, cellMetric, bothWeapon, allowedCellMetrics, extFilters])
+  }, [hasData, vizMode, groupBy, lobbyKeys, ruleKeys, range, rowDim, colDim, cellMetric, bothWeapon, allowedCellMetrics, extFilters])
 
   useEffect(() => { loadStatus() }, [loadStatus])
   useEffect(() => { loadData() }, [loadData])
@@ -393,16 +396,20 @@ export function EnvAnalysis() {
 
           {/* 共通フィルタ */}
           <div className="env-filters">
-            <label>ロビー
-              <select value={lobbyKey} onChange={e => setLobbyKey(e.target.value)}>
-                {LOBBY_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-              </select>
-            </label>
-            <label>ルール
-              <select value={ruleKey} onChange={e => setRuleKey(e.target.value)}>
-                {RULE_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-              </select>
-            </label>
+            <MultiSelect
+              label="ロビー"
+              allLabel="すべてのロビー"
+              selected={lobbyKeys}
+              onChange={setLobbyKeys}
+              options={LOBBY_OPTIONS.filter(o => o.key).map(o => ({ key: o.key, label: o.label }))}
+            />
+            <MultiSelect
+              label="ルール"
+              allLabel="すべてのルール"
+              selected={ruleKeys}
+              onChange={setRuleKeys}
+              options={RULE_OPTIONS.filter(o => o.key).map(o => ({ key: o.key, label: o.label }))}
+            />
             <label>期間
               <select value={period} onChange={e => setPeriod(e.target.value as Period)}>
                 {PERIOD_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
@@ -460,6 +467,12 @@ export function EnvAnalysis() {
               Xパワーは X マッチ等の投稿でのみ記録されます。
             </p>
           )}
+
+          <div className="env-status-line">
+            {loading
+              ? <span className="env-loading"><span className="env-loading-spinner" />集計中…</span>
+              : <span className="env-updated">✓ 表示は最新です</span>}
+          </div>
 
           {vizMode === 'scatter' ? (
             <>
@@ -581,55 +594,6 @@ function computeDomain(vals: number[], rate01: boolean): [number, number] {
   if (rate01) { nlo = Math.max(0, nlo); nhi = Math.min(1, nhi) }
   const round = (x: number) => Math.round(x * 1e6) / 1e6  // 浮動小数の誤差を除去
   return [round(nlo), round(nhi)]
-}
-
-/** 複数選択ドロップダウン（#189）。
- *  `<details>` でメニュー開閉を担い、各項目はチェックボックスでトグルする。
- *  選択ゼロ件で `allLabel`、1 件で項目名、2 件以上で「N 件選択」をサマリ表示。 */
-interface MultiSelectOption { key: string; label: string; short?: string }
-function MultiSelect({ label, allLabel, options, selected, onChange }: {
-  label:    string
-  allLabel: string
-  options:  MultiSelectOption[]
-  selected: string[]
-  onChange: (next: string[]) => void
-}) {
-  const toggle = (k: string) =>
-    onChange(selected.includes(k) ? selected.filter(x => x !== k) : [...selected, k])
-
-  const summary =
-    selected.length === 0 ? allLabel :
-    selected.length === 1 ? (options.find(o => o.key === selected[0])?.short
-                             ?? options.find(o => o.key === selected[0])?.label
-                             ?? selected[0]) :
-    `${selected.length} 件選択`
-
-  return (
-    <label className="env-multiselect-label">{label}
-      <details className="env-multiselect">
-        <summary>{summary}</summary>
-        <div className="env-multiselect-menu">
-          {options.length === 0 ? (
-            <span className="env-multiselect-empty">選択肢がありません</span>
-          ) : (
-            <>
-              {selected.length > 0 && (
-                <button type="button" className="env-multiselect-clear"
-                        onClick={() => onChange([])}>選択をクリア</button>
-              )}
-              {options.map(o => (
-                <label key={o.key} className="env-multiselect-item">
-                  <input type="checkbox" checked={selected.includes(o.key)}
-                         onChange={() => toggle(o.key)} />
-                  {o.label}
-                </label>
-              ))}
-            </>
-          )}
-        </div>
-      </details>
-    </label>
-  )
 }
 
 /** 進捗バー表示。 */

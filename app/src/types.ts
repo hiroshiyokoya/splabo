@@ -19,8 +19,8 @@ export function currentSeasonStart(now: Date = new Date()): string {
 
 export interface Filters {
   period: Period
-  mode: string | null
-  rule: string | null
+  mode: string[]       // #190: 複数選択（OR）。キーは lobby.key（regular / bankara_open / xmatch …）
+  rule: string[]       // #190: 複数選択（OR）。キーは FE スラッグ（turf_war / area …）
   result: string | null
   weapon: string[]
   stage: string[]
@@ -30,13 +30,26 @@ export interface Filters {
 
 export const DEFAULT_FILTERS: Filters = {
   period: 'all',
-  mode: null,
-  rule: null,
+  mode: [],
+  rule: [],
   result: null,
   weapon: [],
   stage: [],
   customFrom: null,
   customTo: null,
+}
+
+/** 複数選択モード配列 → バックエンドのパイプ区切り mode 引数（空なら null）。
+ *  キーは lobby.key に一致させてあるのでそのまま結合する。 */
+export function modeFilterArg(mode: string[]): string | null {
+  return mode.length ? mode.join('|') : null
+}
+
+/** 複数選択ルール配列 → バックエンドのパイプ区切り rule 引数（空なら null）。
+ *  FE は 'turf_war' を使うが DB の rule.key は 'nawabari' なので変換する。 */
+export function ruleFilterArg(rule: string[]): string | null {
+  if (!rule.length) return null
+  return rule.map(r => (r === 'turf_war' ? 'nawabari' : r)).join('|')
 }
 
 export function periodToSince(period: Period): string | null {

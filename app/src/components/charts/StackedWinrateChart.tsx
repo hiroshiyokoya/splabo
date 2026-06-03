@@ -9,7 +9,7 @@ import { HoverTooltip } from './HoverTooltip'
 const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
 const COLOR_DRAW = '#9ca3af'
-const WIN_RATE_HI  = '#34d399'
+const WIN_RATE_HI  = '#38bdf8'   // 勝率55%以上は青系（勝数の緑と区別しやすく）
 const WIN_RATE_MID = '#fb923c'
 const WIN_RATE_LO  = '#f472b6'
 
@@ -106,18 +106,18 @@ export function StackedWinrateChart({
           dataKey="name"
           interval={0}
           height={tickHeight}
-          tick={hasImages ? categoryTick({ images, tickAngle, nameTransform, activeIndex, onHoverIndex: setActiveIndex }) : ({ fill: 'var(--text)', fontSize: 10 } as object)}
+          tick={hasImages ? categoryTick({ images, tickAngle, nameTransform, activeIndex, onHoverIndex: setActiveIndex }) : ({ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object)}
           tickFormatter={hasImages ? undefined : nameTransform}
           angle={hasImages ? undefined : tickAngle ? tickAngle : undefined}
           textAnchor={hasImages ? undefined : tickAngle ? 'start' : 'middle'}
         />
-        <YAxis yAxisId="left" tick={{ fontSize: 10, fill: 'var(--text)' }} width={36} />
+        <YAxis yAxisId="left" tick={{ fontSize: 10, fill: 'var(--text)', fontWeight: 600 }} width={36} />
         <YAxis
           yAxisId="right"
           orientation="right"
           tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
           domain={[0, 1]}
-          tick={{ fontSize: 10, fill: 'var(--text)' }}
+          tick={{ fontSize: 10, fill: 'var(--text)', fontWeight: 600 }}
           width={36}
         />
         <ReferenceLine yAxisId="right" y={0.5} stroke="#4b5563" strokeDasharray="4 4" />
