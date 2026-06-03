@@ -2284,7 +2284,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 16 {
+    if current_version >= 17 {
         return Ok(0); // 最新バージョンに達している
     }
 
