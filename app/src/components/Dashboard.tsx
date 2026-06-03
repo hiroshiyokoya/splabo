@@ -15,7 +15,7 @@ import {
 } from '@dnd-kit/sortable'
 import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats, BattleRow, GroupedStatsRow, GroupedStatsRow2D, CustomChart, GroupByKey } from '../types'
 import { BATTLE_NUMERIC_DEFAULT_BIN } from '../types'
-import { filtersToRange, stageAbbr, modeLabel, ruleLabel, avgKillRatio } from '../types'
+import { filtersToRange, stageAbbr, modeLabel, ruleLabel, avgKillRatio, modeFilterArg, ruleFilterArg } from '../types'
 import { CustomChartCard } from './CustomChartCard'
 import { ChartConfigModal } from './ChartConfigModal'
 import { loadCustomCharts, saveCustomCharts, generateChartId } from '../utils/customCharts'
@@ -29,7 +29,7 @@ const COLOR_DRAW = '#9ca3af'
 //   ≥55% : emerald-400（緑＋青み、ライムの代わり）
 //   45-55% : orange-400（落ち着いた橙）
 //   <45% : pink-400（柔らかいピンク）
-const WIN_RATE_HI  = '#34d399'
+const WIN_RATE_HI  = '#38bdf8'   // 勝率55%以上は青系（勝数の緑と区別しやすく）
 const WIN_RATE_MID = '#fb923c'
 const WIN_RATE_LO  = '#f472b6'
 
@@ -112,8 +112,8 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
     const filterArgs = {
       since,
       until,
-      mode: filters.mode,
-      rule: filters.rule,
+      mode: modeFilterArg(filters.mode),
+      rule: ruleFilterArg(filters.rule),
       resultFilter: filters.result,
       weapon: filters.weapon.length > 0 ? filters.weapon.join('|') : null,
       stage: filters.stage.length > 0 ? filters.stage.join('|') : null,

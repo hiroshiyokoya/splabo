@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { GroupedStatsRow, MetricKey } from '../../types'
 import { METRIC_LABELS, getMetric, metricGroup } from '../../types'
 
@@ -16,8 +16,8 @@ import { METRIC_LABELS, getMetric, metricGroup } from '../../types'
  * - データが無い日は空セル (薄いグレー)
  */
 
-const CELL  = 24
-const GAP   = 4
+const CELL  = 16
+const GAP   = 3
 const PITCH = CELL + GAP
 
 const DOW_LABELS = ['月', '火', '水', '木', '金', '土', '日']
@@ -106,6 +106,7 @@ export function CalendarHeatmapChart({
   // ツールチップ位置はマウスの clientX / clientY (viewport 基準) を使う。
   // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
   const [hover, setHover] = useState<{ mx: number; my: number; date: string; value: number | null; total: number; wins: number; draws: number } | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const group = metricGroup(metric)
 
@@ -174,6 +175,12 @@ export function CalendarHeatmapChart({
   const width  = Math.max(weeks.length * PITCH + 26, 280)
   const height = GRID_TOP + GRID_HEIGHT + 8
 
+  // カレンダーは左が古い・右が最新。初期表示・データ更新時に最新（右端）が見えるよう右端へスクロール。
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el) el.scrollLeft = el.scrollWidth
+  }, [width])
+
   // 「今日」より後 (未来) のセルは描画しない。UTC ベース。
   const now = new Date()
   const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
@@ -185,7 +192,7 @@ export function CalendarHeatmapChart({
   const legendRight  = group === 'rate' ? '100%' : fmtLegend(maxVal, metric)
 
   return (
-    <div className="chart-hover-area" style={{ position: 'relative', overflow: 'auto' }}>
+    <div ref={scrollRef} className="chart-hover-area" style={{ position: 'relative', overflow: 'auto' }}>
       <svg width={width} height={height} role="img" aria-label="カレンダーヒートマップ">
         <style>{`
           /* 5 段階の色階調はテーマカラーから生成 */
@@ -198,7 +205,8 @@ export function CalendarHeatmapChart({
             x={4}
             y={16 + i * PITCH + CELL * 0.75}
             fontSize={9}
-            fill="var(--text-muted)"
+            fontWeight={600}
+            fill="var(--text)"
           >{lbl}</text>
         ))}
         {/* セル */}

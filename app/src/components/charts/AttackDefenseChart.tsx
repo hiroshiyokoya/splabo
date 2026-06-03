@@ -94,13 +94,13 @@ export function AttackDefenseChart({
           dataKey="name"
           interval={0}
           height={hasImages ? 40 : tickAngle ? 44 : 28}
-          tick={hasImages ? categoryTick({ images, tickAngle, nameTransform, activeIndex, onHoverIndex: setActiveIndex }) : ({ fill: 'var(--text)', fontSize: 10 } as object)}
+          tick={hasImages ? categoryTick({ images, tickAngle, nameTransform, activeIndex, onHoverIndex: setActiveIndex }) : ({ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object)}
           tickFormatter={hasImages ? undefined : nameTransform}
           angle={hasImages ? undefined : tickAngle ? tickAngle : undefined}
           textAnchor={hasImages ? undefined : tickAngle ? 'start' : 'middle'}
         />
         <YAxis
-          tick={{ fill: 'var(--text)', fontSize: 10 } as object}
+          tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           width={36}
         />
         {/* 角丸の小さなスウォッチで凡例を描く（Recharts デフォルトの四角アイコンは黒くて分かりにくい）。

@@ -189,7 +189,8 @@ export function HeatmapChart({
               x={x}
               y={PAD_TOP - 6}
               fontSize={10}
-              fill="var(--text-muted)"
+              fontWeight={600}
+              fill="var(--text)"
               textAnchor="start"
               transform={`rotate(-35 ${x} ${PAD_TOP - 6})`}
             >{xLabel(k)}</text>
@@ -202,7 +203,8 @@ export function HeatmapChart({
             x={PAD_LEFT - 6}
             y={PAD_TOP + i * (CELL_H + GAP) + CELL_H * 0.7}
             fontSize={10}
-            fill="var(--text-muted)"
+            fontWeight={600}
+            fill="var(--text)"
             textAnchor="end"
           >{yLabel(k)}</text>
         ))}

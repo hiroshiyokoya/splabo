@@ -93,20 +93,20 @@ export function ScatterChart({
           type="number"
           dataKey="x"
           name={xLabel}
-          tick={{ fill: 'var(--text)', fontSize: 10 } as object}
+          tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           tickFormatter={xIsRate ? (v: number) => `${(v * 100).toFixed(0)}%` : fmtTick}
           domain={xDomain ?? (xIsRate ? [0, 1] : ['auto', 'auto'])}
-          label={{ value: xLabel, position: 'insideBottom', offset: -10, fill: 'var(--text-muted)', fontSize: 11 } as object}
+          label={{ value: xLabel, position: 'insideBottom', offset: -10, fill: 'var(--text)', fontSize: 11, fontWeight: 600 } as object}
         />
         <YAxis
           type="number"
           dataKey="y"
           name={yLabel}
-          tick={{ fill: 'var(--text)', fontSize: 10 } as object}
+          tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           width={56}
           tickFormatter={yIsRate ? (v: number) => `${(v * 100).toFixed(0)}%` : fmtTick}
           domain={yDomain ?? (yIsRate ? [0, 1] : ['auto', 'auto'])}
-          label={{ value: yLabel, angle: -90, position: 'insideLeft', offset: 12, fill: 'var(--text-muted)', fontSize: 11, style: { textAnchor: 'middle' } } as object}
+          label={{ value: yLabel, angle: -90, position: 'insideLeft', offset: 12, fill: 'var(--text)', fontSize: 11, fontWeight: 600, style: { textAnchor: 'middle' } } as object}
         />
         <ZAxis type="number" dataKey="size" range={zRange} />
         <Scatter

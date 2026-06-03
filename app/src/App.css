@@ -66,8 +66,8 @@
   border-radius: 2px;
 }
 .cal-legend-swatch--sparse { background: var(--cell-sparse); width: 14px; }
-.cal-legend-end { color: var(--text-muted); min-width: 28px; }
-.cal-legend-mid { color: var(--text-muted); }
+.cal-legend-end { color: var(--text); font-weight: 600; min-width: 28px; }
+.cal-legend-mid { color: var(--text); font-weight: 600; }
 .cal-legend-sparse {
   display: inline-flex;
   align-items: center;
@@ -2123,6 +2123,20 @@ body {
   border-color: var(--accent);
 }
 
+/* 集計の更新状態表示 #190 */
+.env-status-line { margin: 6px 0 2px; min-height: 18px; font-size: 12px; }
+.env-loading { color: var(--accent2); display: inline-flex; align-items: center; gap: 6px; }
+.env-updated { color: var(--text-muted); }
+.env-loading-spinner {
+  width: 11px; height: 11px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  display: inline-block;
+  animation: env-spin 0.7s linear infinite;
+}
+@keyframes env-spin { to { transform: rotate(360deg); } }
+
 /* マトリクスヒートマップ #187 */
 .env-heatmap-wrap {
   overflow: auto;
@@ -2134,8 +2148,8 @@ body {
   font-size: 11px;
 }
 .env-heatmap th {
-  font-weight: 500;
-  color: var(--text-muted);
+  font-weight: 600;
+  color: var(--text);
   background: var(--surface);
   position: sticky;
 }
@@ -2186,7 +2200,8 @@ body {
 .env-heatmap-colaxis {
   display: block;
   font-size: 10px;
-  color: var(--text-muted);
+  font-weight: 600;
+  color: var(--text);
 }
 .env-heatmap-colaxis { text-align: right; }
 .env-heatmap-cell {

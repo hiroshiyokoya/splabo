@@ -70,7 +70,7 @@ export function categoryTick(opts: {
       fill: 'var(--text)',
       fontSize: 10,
       opacity: isActive ? 1 : 0.4,
-      fontWeight: isHovered ? 700 : 400,
+      fontWeight: isHovered ? 700 : 600,
     }
     const handlers = {
       onMouseEnter: () => onHoverIndex?.(idx),

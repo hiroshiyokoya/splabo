@@ -1063,7 +1063,7 @@ pub async fn db_battle_stats(
          WHERE (? IS NULL OR b.played_at >= ?)
            AND (? IS NULL OR b.played_at <= ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
-           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || r.key || '|') > 0)
            AND (? IS NULL OR res.key = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)",
@@ -1122,7 +1122,7 @@ pub async fn db_battle_count(
          WHERE (? IS NULL OR b.played_at >= ?)
            AND (? IS NULL OR b.played_at <= ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
-           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || r.key || '|') > 0)
            AND (? IS NULL OR res.key = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)",
@@ -1207,7 +1207,7 @@ pub async fn db_list_battles(
          WHERE (? IS NULL OR b.played_at >= ?)
            AND (? IS NULL OR b.played_at <= ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
-           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || r.key || '|') > 0)
            AND (? IS NULL OR res.key = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)
@@ -1290,7 +1290,7 @@ pub async fn db_summary(
         "(? IS NULL OR b.played_at >= ?)
            AND (? IS NULL OR b.played_at <= ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
-           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || r.key || '|') > 0)
            AND (? IS NULL OR res.key = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)";
@@ -1464,7 +1464,7 @@ pub async fn db_grouped_stats(
         "(? IS NULL OR b.played_at >= ?)
            AND (? IS NULL OR b.played_at <= ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
-           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || r.key || '|') > 0)
            AND (? IS NULL OR res.key = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)";
@@ -1590,7 +1590,7 @@ async fn db_grouped_stats_by_player_weapon(
         "(? IS NULL OR b.played_at >= ?)
            AND (? IS NULL OR b.played_at <= ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
-           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || r.key || '|') > 0)
            AND (? IS NULL OR res.key = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)";
@@ -1790,7 +1790,7 @@ pub async fn db_grouped_stats_2d(
         "(? IS NULL OR b.played_at >= ?)
            AND (? IS NULL OR b.played_at <= ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
-           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || r.key || '|') > 0)
            AND (? IS NULL OR res.key = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)";
@@ -2012,7 +2012,7 @@ async fn db_grouped_stats_2d_with_bp(
         "(? IS NULL OR b.played_at >= ?)
            AND (? IS NULL OR b.played_at <= ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
-           AND (? IS NULL OR r.key = ?)
+           AND (? IS NULL OR instr('|' || ? || '|', '|' || r.key || '|') > 0)
            AND (? IS NULL OR res.key = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)";
@@ -3327,8 +3327,8 @@ pub async fn env_status(db: tauri::State<'_, DbPool>) -> Result<EnvStatus, Strin
 /// `game_vers` / `poster_ranks` は空なら絞り込まない。
 #[derive(Default)]
 pub struct EnvFilters {
-    pub lobby_key:    Option<String>,
-    pub rule_key:     Option<String>,
+    pub lobby_keys:   Vec<String>,
+    pub rule_keys:    Vec<String>,
     pub stage_key:    Option<String>,
     pub since:        Option<String>,
     pub until:        Option<String>,
@@ -3344,8 +3344,14 @@ pub struct EnvFilters {
 /// `bind_env_filters` を WHERE が登場する回数だけ呼んで行う（順序を厳守）。
 fn build_env_where(f: &EnvFilters) -> String {
     let mut wp: Vec<String> = Vec::new();
-    if f.lobby_key.is_some() { wp.push("EXISTS (SELECT 1 FROM lobby lk WHERE lk.id = eb.lobby_id AND lk.key = ?)".into()); }
-    if f.rule_key.is_some()  { wp.push("EXISTS (SELECT 1 FROM rule  rk WHERE rk.id = eb.rule_id  AND rk.key = ?)".into()); }
+    if !f.lobby_keys.is_empty() {
+        let ph = vec!["?"; f.lobby_keys.len()].join(",");
+        wp.push(format!("EXISTS (SELECT 1 FROM lobby lk WHERE lk.id = eb.lobby_id AND lk.key IN ({ph}))"));
+    }
+    if !f.rule_keys.is_empty() {
+        let ph = vec!["?"; f.rule_keys.len()].join(",");
+        wp.push(format!("EXISTS (SELECT 1 FROM rule rk WHERE rk.id = eb.rule_id AND rk.key IN ({ph}))"));
+    }
     if f.stage_key.is_some() { wp.push("EXISTS (SELECT 1 FROM map   mk WHERE mk.id = eb.map_id   AND mk.key = ?)".into()); }
     if f.since.is_some()     { wp.push("eb.source_date >= ?".into()); }
     if f.until.is_some()     { wp.push("eb.source_date <= ?".into()); }
@@ -3368,8 +3374,8 @@ fn bind_env_filters<'q>(
     mut q: sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
     f: &'q EnvFilters,
 ) -> sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
-    if let Some(v) = &f.lobby_key { q = q.bind(v); }
-    if let Some(v) = &f.rule_key  { q = q.bind(v); }
+    for v in &f.lobby_keys { q = q.bind(v); }
+    for v in &f.rule_keys  { q = q.bind(v); }
     if let Some(v) = &f.stage_key { q = q.bind(v); }
     if let Some(v) = &f.since     { q = q.bind(v); }
     if let Some(v) = &f.until     { q = q.bind(v); }
@@ -3434,8 +3440,8 @@ pub async fn env_scatter_stats(
     db:           tauri::State<'_, DbPool>,
     group_by:     String,
     side:         Option<String>,
-    lobby_key:    Option<String>,
-    rule_key:     Option<String>,
+    lobby_keys:   Option<Vec<String>>,
+    rule_keys:    Option<Vec<String>>,
     stage_key:    Option<String>,
     since:        Option<String>,
     until:        Option<String>,
@@ -3445,7 +3451,9 @@ pub async fn env_scatter_stats(
     power_max:    Option<f64>,
 ) -> Result<Vec<EnvScatterStat>, String> {
     let f = EnvFilters {
-        lobby_key, rule_key, stage_key, since, until,
+        lobby_keys:   lobby_keys.unwrap_or_default(),
+        rule_keys:    rule_keys.unwrap_or_default(),
+        stage_key, since, until,
         game_vers:    game_vers.unwrap_or_default(),
         poster_ranks: poster_ranks.unwrap_or_default(),
         power_min, power_max,
@@ -3600,8 +3608,8 @@ pub async fn env_matrix_stats(
     row_dim:      String,
     col_dim:      String,
     cell_metric:  String,
-    lobby_key:    Option<String>,
-    rule_key:     Option<String>,
+    lobby_keys:   Option<Vec<String>>,
+    rule_keys:    Option<Vec<String>>,
     stage_key:    Option<String>,
     since:        Option<String>,
     until:        Option<String>,
@@ -3611,7 +3619,9 @@ pub async fn env_matrix_stats(
     power_max:    Option<f64>,
 ) -> Result<Vec<EnvMatrixCell>, String> {
     let f = EnvFilters {
-        lobby_key, rule_key, stage_key, since, until,
+        lobby_keys:   lobby_keys.unwrap_or_default(),
+        rule_keys:    rule_keys.unwrap_or_default(),
+        stage_key, since, until,
         game_vers:    game_vers.unwrap_or_default(),
         poster_ranks: poster_ranks.unwrap_or_default(),
         power_min, power_max,
@@ -3778,6 +3788,13 @@ pub struct EnvVersion {
     pub max_date: Option<String>,
 }
 
+/// "1.2.0" / "10.0.1" 等のバージョン文字列を (major, minor, patch) の数値タプルに。
+/// 文字列ソートだと "10.x" が "2.x" より前に来てしまうため、数値比較用キーを作る。
+fn version_key(v: &str) -> (u32, u32, u32) {
+    let mut it = v.split('.').map(|p| p.trim().parse::<u32>().unwrap_or(0));
+    (it.next().unwrap_or(0), it.next().unwrap_or(0), it.next().unwrap_or(0))
+}
+
 /// env_battles に存在するゲームバージョンを、件数・日付レンジ付きで新しい順に返す。
 /// セレクタの選択肢を取り込み済みデータから動的生成するために使う。
 #[tauri::command]
@@ -3791,14 +3808,13 @@ pub async fn env_versions(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvVersion
         FROM env_battles
         WHERE game_ver IS NOT NULL AND game_ver <> ''
         GROUP BY game_ver
-        ORDER BY game_ver DESC
         "#,
     )
     .fetch_all(db.as_ref())
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(rows
+    let mut result: Vec<EnvVersion> = rows
         .into_iter()
         .map(|row| EnvVersion {
             game_ver: row.get("game_ver"),
@@ -3806,7 +3822,10 @@ pub async fn env_versions(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvVersion
             min_date: row.try_get::<Option<String>, _>("min_d").unwrap_or(None),
             max_date: row.try_get::<Option<String>, _>("max_d").unwrap_or(None),
         })
-        .collect())
+        .collect();
+    // セマンティックバージョンの降順（新しい順）。
+    result.sort_by(|a, b| version_key(&b.game_ver).cmp(&version_key(&a.game_ver)));
+    Ok(result)
 }
 
 /// 取り込み済みデータに含まれるウデマエ帯 1 件分。
@@ -3816,12 +3835,22 @@ pub struct EnvRank {
     pub n:           i64,
 }
 
-/// ウデマエの並び順インデックス（C- が最小、X が最大）。未知の値は末尾。
-/// stat.ink の `rank` 値は小文字（例: `s+`, `x`）なので大文字化して照合する。
-fn rank_order(r: &str) -> usize {
-    const ORDER: &[&str] = &["C-", "C", "C+", "B-", "B", "B+", "A-", "A", "A+", "S", "S+", "X"];
-    let up = r.to_uppercase();
-    ORDER.iter().position(|x| *x == up).unwrap_or(ORDER.len())
+/// ウデマエの並び順キー（C- が最小、X が最大）。未知の値は末尾。
+/// 実データは `C-`〜`A+`,`S`,`S+ 0`〜`S+ 50`,`X` の形（`S+` はスペース＋番号付き）。
+/// stat.ink の値は小文字のこともあるので大文字化して照合する。
+fn rank_order(r: &str) -> i64 {
+    let up = r.trim().to_uppercase();
+    // "S+ 12" → S の直後に、番号順で並べる。
+    if let Some(rest) = up.strip_prefix("S+") {
+        let n: i64 = rest.trim().parse().unwrap_or(0);
+        return 100 + n;
+    }
+    const ORDER: &[&str] = &["C-", "C", "C+", "B-", "B", "B+", "A-", "A", "A+", "S"];
+    if let Some(p) = ORDER.iter().position(|x| *x == up) {
+        return p as i64;          // 0..9
+    }
+    if up == "X" { return 100_000; }   // S+ 帯より上
+    99_999                              // 未知 → 末尾付近
 }
 
 /// env_battles に記録された投稿者ウデマエ（poster_rank）を、ウデマエ順に整列して返す。

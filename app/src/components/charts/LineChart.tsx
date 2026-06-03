@@ -48,10 +48,10 @@ export function LineChart({
           dataKey="name"
           interval="preserveStartEnd"
           height={28}
-          tick={{ fill: 'var(--text)', fontSize: 10 } as object}
+          tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
         />
         <YAxis
-          tick={{ fill: 'var(--text)', fontSize: 10 } as object}
+          tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           width={leftPad}
           tickFormatter={metric === 'win_rate' ? (v: number) => `${(v * 100).toFixed(0)}%` : undefined}
           domain={metric === 'win_rate' ? [0, 1] : ['auto', 'auto']}

@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import type { BattleRow, BattleStats, Filters, ParentJson, Player, Team, VsHistoryDetail, Award } from '../types'
-import { filtersToRange, modeLabel, ruleLabel, resultLabel, avgKillRatio } from '../types'
+import { filtersToRange, modeLabel, ruleLabel, resultLabel, avgKillRatio, modeFilterArg, ruleFilterArg } from '../types'
 import { ABILITY_LABELS, abilityKeyFromUrl, colorToHex, loadAbilityImages } from '../utils/abilities'
 
 const PAGE_SIZE = 50
@@ -110,8 +110,8 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
     const filterArgs = {
       since,
       until,
-      mode: filters.mode,
-      rule: filters.rule,
+      mode: modeFilterArg(filters.mode),
+      rule: ruleFilterArg(filters.rule),
       resultFilter: filters.result,
       weapon: filters.weapon.length > 0 ? filters.weapon.join('|') : null,
       stage: filters.stage.length > 0 ? filters.stage.join('|') : null,
