@@ -3284,6 +3284,27 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         log::info!("migrate v16: env_battles テーブル新設");
     }
 
+    // version 17: インポート済みバトル（uuid に stat.ink の UUID を持つ）に statink_uuid を補填し、
+    // 「アップロード済み」扱いにして自動アップロードでの再送・重複を防ぐ（#200 / #204 の遡及修正）。
+    // 正規の SplatNet 由来バトルは uuid が NULL（shadow_write_battle は uuid を入れない）ため影響しない。
+    if current_version < 17 {
+        let res = sqlx::query(
+            "UPDATE battle SET statink_uuid = uuid
+             WHERE statink_uuid IS NULL AND uuid IS NOT NULL AND uuid <> ''",
+        )
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+        sqlx::query("PRAGMA user_version = 17")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!(
+            "migrate v17: インポート済みバトル {} 件に statink_uuid を補填（再送防止）",
+            res.rows_affected()
+        );
+    }
+
     Ok(updated)
 }
 
