@@ -4163,8 +4163,8 @@ pub async fn insert_imported_battle(pool: &DbPool, row: &ImportedBattleRow) -> R
              our_team_count, their_team_count,
              rank_before, rank_after, rank_before_s_plus, rank_after_s_plus,
              x_power_before, x_power_after,
-             raw_json, detail_fetched, my_team, other_teams)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+             raw_json, detail_fetched, statink_uuid, my_team, other_teams)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)",
     )
     .bind(&row.id)
     .bind(&row.uuid)
@@ -4196,6 +4196,9 @@ pub async fn insert_imported_battle(pool: &DbPool, row: &ImportedBattleRow) -> R
     .bind(row.x_power_before)
     .bind(row.x_power_after)
     .bind(&row.raw_json)
+    // statink_uuid = インポート元の stat.ink uuid。これを入れることで「アップロード済み」
+    // 扱いになり、auto-upload の対象（statink_uuid IS NULL）から外れて再送・重複を防ぐ。
+    .bind(&row.uuid)
     .bind(&row.my_team)
     .bind(&row.other_teams)
     .execute(pool.as_ref())
