@@ -85,6 +85,16 @@ function patchNxapiFiles() {
 
   writeFileSync(remoteConfigPath, remoteConfigSrc, 'utf-8');
   console.log('patched remote-config.js');
+
+  // ── api/f.js (znca-api エラー詳細化) ─────────────────────────────
+  const fApiPath = path.join(__dirname, 'node_modules', 'nxapi', 'dist', 'api', 'f.js');
+  let fApiSrc = readFileSync(fApiPath, 'utf-8');
+  fApiSrc = fApiSrc.replace(
+    /if \(response\.status !== 200\) \{\n(\s*)const err = await ErrorResponse\.fromResponse\(response, '\[znca-api\] Non-200 status code'\);/g,
+    "if (response.status !== 200) {\n$1const _body_dbg = await response.clone().text().catch(() => '<no body>');\n$1const err = new Error('[znca-api] Non-200 status code: ' + response.status + ' body=' + _body_dbg);"
+  );
+  writeFileSync(fApiPath, fApiSrc, 'utf-8');
+  console.log('patched f.js (znca-api error verbose)');
 }
 
 patchNxapiFiles();
