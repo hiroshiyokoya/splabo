@@ -79,6 +79,11 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loginVersion])
 
+  // バトル取得中フラグ。サイドバーの「バトルデータを取得」ボタン、Dashboard 空状態ボタン等が参照する。
+  // 手動ボタン経由は handleFetchFull が直接 set。
+  // 起動時取得・スケジューラ取得は Rust 側の fetch_start/fetch_finish イベントで設定される。
+  const [fetching, setFetching] = useState(false)
+
   useEffect(() => {
     const unlistenPromise = listen('fetch_complete', () => {
       const now = new Date().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -86,6 +91,18 @@ export default function App() {
       localStorage.setItem(LAST_FETCHED_KEY, now)
     })
     return () => { unlistenPromise.then(fn => fn()) }
+  }, [])
+
+  // 起動時取得・スケジューラ取得でも「取得中…」を出すため、Rust 側の fetch_start/fetch_finish を listen し、
+  // さらに mount 時点で進行中なら即座に取得中表示にする（起動時取得は React マウント前に始まり得る race 対策）。
+  useEffect(() => {
+    invoke<boolean>('is_fetching').then(setFetching).catch(() => {})
+    const startP  = listen('fetch_start',  () => setFetching(true))
+    const finishP = listen('fetch_finish', () => setFetching(false))
+    return () => {
+      startP.then(fn => fn())
+      finishP.then(fn => fn())
+    }
   }, [])
 
   // stat.ink の screen_name を初回アップロード時に自動取得して設定に保存
@@ -156,7 +173,6 @@ export default function App() {
   }
 
   // サイドバーから呼ばれる「バトルデータ更新」処理
-  const [fetching, setFetching] = useState(false)
   async function handleFetchFull() {
     if (fetching) return
     setFetching(true)
