@@ -36,6 +36,11 @@ struct FetchCompletePayload {
     uploaded: usize,
 }
 
+/// バトル取得中フラグ。run_fetch_full の進行状態を表す（手動・起動時・スケジューラー共通）。
+/// フロントエンドは fetch_start / fetch_finish イベント、または is_fetching コマンドで参照する。
+#[derive(Default)]
+pub struct FetchInProgress(pub std::sync::atomic::AtomicBool);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -72,6 +77,7 @@ pub fn run() {
         .manage(auth::AuthState::default())
         .manage(SchedulerConfig::default())
         .manage(StatinkConfig::default())
+        .manage(FetchInProgress::default())
         .invoke_handler(tauri::generate_handler![
             auth::start_login,
             auth::handle_auth_redirect,
@@ -89,6 +95,7 @@ pub fn run() {
             db::backfill_battle_players,
             images::read_image,
             fetch_battles_full,
+            is_fetching,
             fetch_weapons,
             set_scheduler_config,
             set_statink_config,
@@ -221,11 +228,26 @@ pub fn run() {
 }
 
 /// バトル取得 → 詳細取得 → 武器補完 → 画像キャッシュ → stat.ink 自動アップロード を一括実行。
-/// 完了後に "fetch_complete" イベントを emit する。
+/// 開始時に "fetch_start"、終了時に "fetch_finish" イベントを emit する（成功・失敗共通）。
+/// 成功時はさらに "fetch_complete" を emit する（既存の lastFetchedAt 更新リスナー用）。
 ///
 /// 未ログイン時はサイドカー呼び出しの前に明示的に `NOT_LOGGED_IN:` プリフィクス付き
 /// エラーを返し、フロントが「設定からログインしてください」UI を出せるようにする。
 async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usize, usize), String> {
+    use std::sync::atomic::Ordering;
+    let flag = app.state::<FetchInProgress>();
+    // 既に取得中なら多重起動を防ぐ
+    if flag.0.swap(true, Ordering::SeqCst) {
+        return Err("FETCH_IN_PROGRESS: 既にバトル取得が進行中です。".to_string());
+    }
+    let _ = app.emit("fetch_start", ());
+    let result = run_fetch_full_inner(app, db).await;
+    flag.0.store(false, Ordering::SeqCst);
+    let _ = app.emit("fetch_finish", ());
+    result
+}
+
+async fn run_fetch_full_inner(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usize, usize), String> {
     if !auth::is_logged_in(app) {
         return Err("NOT_LOGGED_IN: Nintendo アカウントでログインしていません。設定からログインしてください。".to_string());
     }
@@ -270,6 +292,13 @@ async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usiz
 #[tauri::command]
 async fn fetch_battles_full(app: AppHandle, db: State<'_, db::DbPool>) -> Result<(usize, usize, usize), String> {
     run_fetch_full(&app, &db).await
+}
+
+/// 現在バトル取得処理が進行中かを返す。
+/// フロントエンドが mount 時に問い合わせ、起動時取得との race を解消するために使う。
+#[tauri::command]
+fn is_fetching(state: State<'_, FetchInProgress>) -> bool {
+    state.0.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 /// stat.ink 設定を更新する。フロントエンドが設定変更時に呼び出す。
