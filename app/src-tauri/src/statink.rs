@@ -540,7 +540,7 @@ fn build_payload(detail: &serde_json::Value, parent: Option<&serde_json::Value>)
 
     // --- エージェント情報 ---
     payload["agent"]         = serde_json::json!("chartoon");
-    payload["agent_version"] = serde_json::json!(env!("CARGO_PKG_VERSION"));
+    payload["agent_version"] = serde_json::json!(concat!("v", env!("CARGO_PKG_VERSION")));
     // automated は既に上で "yes" を入れている（s3s 準拠の文字列値）
 
     // --- 生 JSON（s3s 準拠の保険データ）---
