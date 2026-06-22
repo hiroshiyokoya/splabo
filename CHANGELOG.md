@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-06-22
+
+### Fixed
+- Nintendo Switch Online アプリのバージョン要件が 3.4.0 に引き上げられたことに伴い、ギアデータ取得が `[znc] Upgrade required` で失敗していた問題を修正
+
 ## [0.5.1] — 2026-05-23
 
 ### Fixed
