@@ -174,6 +174,7 @@ async function handleUploadStatink() {
             <option value={30}>30分ごと</option>
             <option value={60}>1時間ごと</option>
             <option value={120}>2時間ごと</option>
+            <option value={240}>4時間ごと</option>
             <option value={360}>6時間ごと</option>
             <option value={720}>12時間ごと</option>
             <option value={1440}>24時間ごと</option>
