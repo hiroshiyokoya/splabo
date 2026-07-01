@@ -24,9 +24,11 @@ const DOW_LABELS = ['月', '火', '水', '木', '金', '土', '日']
 
 /** カラーバー (凡例) を描画するための、メトリクスグループごとの色順序。
  *  count / average は 5 段階 (薄い→濃い)、rate は 5 段階 (赤→青) divergent。 */
-const COUNT_COLORS  = ['var(--cell-c1)', 'var(--cell-c2)', 'var(--cell-c3)', 'var(--cell-c4)', 'var(--cell-c5)']
-const AVG_COLORS    = COUNT_COLORS
+const COUNT_COLORS  = ['var(--cell-count-c1)', 'var(--cell-count-c2)', 'var(--cell-count-c3)', 'var(--cell-count-c4)', 'var(--cell-count-c5)']
+const AVG_COLORS    = ['var(--cell-c1)', 'var(--cell-c2)', 'var(--cell-c3)', 'var(--cell-c4)', 'var(--cell-c5)']
 const RATE_COLORS   = ['var(--cell-r1)', 'var(--cell-r2)', 'var(--cell-r3)', 'var(--cell-r4)', 'var(--cell-r5)']
+
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /** メトリクス値を凡例ラベル用に短く整形。 */
 function fmtLegend(v: number, metric: MetricKey): string {
@@ -64,14 +66,14 @@ function mondayOf(d: Date): Date {
 
 /** カウント系: 0=空、1〜5=濃さ。max を 5 段階に正規化。 */
 function countColor(value: number, max: number): string {
-  if (max <= 0) return 'var(--cell-empty)'
+  if (max <= 0) return 'var(--cell-count-empty)'
   const t = value / max
-  if (value === 0)  return 'var(--cell-empty)'
-  if (t <= 0.2)    return 'var(--cell-c1)'
-  if (t <= 0.4)    return 'var(--cell-c2)'
-  if (t <= 0.6)    return 'var(--cell-c3)'
-  if (t <= 0.8)    return 'var(--cell-c4)'
-  return 'var(--cell-c5)'
+  if (value === 0)  return 'var(--cell-count-empty)'
+  if (t <= 0.2)    return 'var(--cell-count-c1)'
+  if (t <= 0.4)    return 'var(--cell-count-c2)'
+  if (t <= 0.6)    return 'var(--cell-count-c3)'
+  if (t <= 0.8)    return 'var(--cell-count-c4)'
+  return 'var(--cell-count-c5)'
 }
 
 /** 率系: 0=赤 (-), 0.5=灰, 1=青 (+)。divergent。 */
@@ -150,16 +152,19 @@ export function CalendarHeatmapChart({
       weeks.push(d)
     }
 
+    const rawMax = mx === Number.NEGATIVE_INFINITY ? 0 : mx
+    // カウント系は色スケール上限を 10 単位で切り上げると凡例が読みやすい (52 → 60 等)
+    const finalMax = group === 'count' && rawMax > 0 ? Math.ceil(rawMax / 10) * 10 : rawMax
     return {
       dataMap: map,
       minVal:  mn === Number.POSITIVE_INFINITY ? 0 : mn,
-      maxVal:  mx === Number.NEGATIVE_INFINITY ? 0 : mx,
+      maxVal:  finalMax,
       weeks,
     }
   }, [data, metric, group, minSampleSize])
 
   function cellFill(_date: string, value: number | null, total: number): string {
-    if (value === null) return 'var(--cell-empty)'
+    if (value === null) return group === 'count' ? 'var(--cell-count-empty)' : 'var(--cell-empty)'
     // 率・平均系はサンプル不足ならグレーアウト
     if ((group === 'rate' || group === 'average') && total < minSampleSize) {
       return 'var(--cell-sparse)'
@@ -169,8 +174,22 @@ export function CalendarHeatmapChart({
     return averageColor(value, minVal, maxVal)
   }
 
-  const GRID_TOP = 16
+  const GRID_TOP = 32
   const GRID_HEIGHT = 7 * PITCH
+
+  // 月ラベル: 月が変わる週の直前 (＝その月最初に出現する週) にラベルを描く
+  const monthLabels = useMemo(() => {
+    const labels: { x: number; text: string }[] = []
+    let prevMonth = -1
+    weeks.forEach((weekStart, wi) => {
+      const m = weekStart.getUTCMonth()
+      if (m !== prevMonth) {
+        labels.push({ x: 22 + wi * PITCH, text: MONTH_LABELS[m] })
+        prevMonth = m
+      }
+    })
+    return labels
+  }, [weeks])
 
   const width  = Math.max(weeks.length * PITCH + 26, 280)
   const height = GRID_TOP + GRID_HEIGHT + 8
@@ -194,16 +213,24 @@ export function CalendarHeatmapChart({
   return (
     <div ref={scrollRef} className="chart-hover-area" style={{ position: 'relative', overflow: 'auto' }}>
       <svg width={width} height={height} role="img" aria-label="カレンダーヒートマップ">
-        <style>{`
-          /* 5 段階の色階調はテーマカラーから生成 */
-          .cal-cell { stroke: var(--surface); stroke-width: 0.5; }
-        `}</style>
+        {/* .cal-cell スタイルは App.css に定義（凡例バーの SVG rect と共有） */}
+        {/* 月ラベル (横軸上部) */}
+        {monthLabels.map((ml, i) => (
+          <text
+            key={`m-${i}`}
+            x={ml.x}
+            y={GRID_TOP - 6}
+            fontSize={9}
+            fontWeight={600}
+            fill="var(--text)"
+          >{ml.text}</text>
+        ))}
         {/* 曜日ラベル */}
         {DOW_LABELS.map((lbl, i) => (
           <text
             key={lbl}
             x={4}
-            y={16 + i * PITCH + CELL * 0.75}
+            y={GRID_TOP + i * PITCH + CELL * 0.75}
             fontSize={9}
             fontWeight={600}
             fill="var(--text)"
@@ -224,7 +251,7 @@ export function CalendarHeatmapChart({
             const draws = entry?.draws ?? 0
             const fill = cellFill(dateStr, v, total)
             const x = 22 + wi * PITCH
-            const y = 16 + di * PITCH
+            const y = GRID_TOP + di * PITCH
             return (
               <rect
                 key={`${wi}-${di}`}
@@ -247,11 +274,28 @@ export function CalendarHeatmapChart({
       <div className="cal-legend">
         <span className="cal-legend-label">{METRIC_LABELS[metric]}</span>
         <span className="cal-legend-end">{legendLeft}</span>
-        <span className="cal-legend-bar">
-          {legendColors.map((c, i) => (
-            <span key={i} className="cal-legend-swatch" style={{ background: c }} />
-          ))}
-        </span>
+        {(() => {
+          const fills = group === 'count'
+            ? ['var(--cell-count-empty)', ...legendColors]
+            : legendColors
+          const barWidth = fills.length * PITCH - GAP
+          return (
+            <svg className="cal-legend-bar" width={barWidth} height={CELL}>
+              {fills.map((c, i) => (
+                <rect
+                  key={i}
+                  className="cal-cell"
+                  x={i * PITCH}
+                  y={0}
+                  width={CELL}
+                  height={CELL}
+                  rx={2}
+                  fill={c}
+                />
+              ))}
+            </svg>
+          )
+        })()}
         {legendMid && <span className="cal-legend-mid">{legendMid}</span>}
         <span className="cal-legend-end">{legendRight}</span>
         {(group === 'rate' || group === 'average') && (

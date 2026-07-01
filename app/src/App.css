@@ -20,11 +20,21 @@
      divergent は「青 ← 白 → 赤」で、中央が暗くならないように白を通す */
   --cell-empty:    #9c9caa;  /* 空 (バトル無し)。明るめのグレー */
   --cell-sparse:   #c8c8d2;  /* サンプル不足。空より更に薄いグレー */
+  /* 平均系 sequential: ほぼ白 → accent (ライム) */
   --cell-c1:       #f3f6e6;  /* 最薄 = ほぼ白 */
   --cell-c2:       #e2efb6;
   --cell-c3:       #d6ea7d;
   --cell-c4:       #cce155;
   --cell-c5:       #c8f030;  /* 最濃 = accent */
+  /* カウント系 (バトル数): 低カウント側は白寄り → 高カウント側はエメラルドグリーンへグラデ。
+     カレンダー専用の accent 変数で棒グラフや他 UI には影響なし。 */
+  --cell-count-accent: #10b981;
+  --cell-count-empty:  #d0d3d8;
+  --cell-count-c1:     color-mix(in srgb, var(--cell-count-accent) 18%, white);
+  --cell-count-c2:     color-mix(in srgb, var(--cell-count-accent) 38%, white);
+  --cell-count-c3:     color-mix(in srgb, var(--cell-count-accent) 58%, white);
+  --cell-count-c4:     color-mix(in srgb, var(--cell-count-accent) 80%, white);
+  --cell-count-c5:     var(--cell-count-accent);
   /* 率系 (勝率) divergent: 強い赤 ← 白 → 強い青 */
   --cell-r1:       #b22f3f;  /* 強い赤 */
   --cell-r2:       #e89e9e;  /* 薄い赤 */
@@ -44,29 +54,35 @@
   z-index: 10;
 }
 
+/* カレンダー/ヒートマップのセル共通スタイル。SVG rect に適用（カレンダー本体・凡例バー共有）。
+   色は既に accent × surface のブレンドで整えているため、fill-opacity は付けない。 */
+.cal-cell {
+  stroke: var(--surface);
+  stroke-width: 0.5;
+}
 /* カラーバー (カレンダー/ヒートマップの凡例) */
 .cal-legend {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
   margin-top: 12px;
   font-size: 11px;
   color: var(--text-muted);
   flex-wrap: wrap;
 }
 .cal-legend-label { font-weight: 600; margin-right: 4px; }
-.cal-legend-bar {
-  display: inline-flex;
-  gap: 2px;
-}
+/* .cal-legend-bar は SVG 要素（カレンダー本体と同じ rect 描画） */
+.cal-legend-bar { display: inline-block; vertical-align: middle; }
+/* サンプル不足の凡例だけ HTML span で描く。セル同等の見た目に揃える */
 .cal-legend-swatch {
   display: inline-block;
-  width: 22px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
   border-radius: 2px;
+  box-shadow: 0 0 0 0.5px var(--surface);
 }
-.cal-legend-swatch--sparse { background: var(--cell-sparse); width: 14px; }
-.cal-legend-end { color: var(--text); font-weight: 600; min-width: 28px; }
+.cal-legend-swatch--sparse { background: var(--cell-sparse); }
+.cal-legend-end { color: var(--text); font-weight: 600; }
 .cal-legend-mid { color: var(--text); font-weight: 600; }
 .cal-legend-sparse {
   display: inline-flex;
