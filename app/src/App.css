@@ -73,8 +73,9 @@
   width: 16px;
   height: 16px;
   border-radius: 2px;
-  fill-opacity: 0.85;
   opacity: 0.85;
+  /* カレンダーセルの stroke: var(--surface) 0.5px 相当をレイアウトを変えずに再現 */
+  box-shadow: 0 0 0 0.5px var(--surface);
 }
 .cal-legend-swatch--sparse { background: var(--cell-sparse); }
 .cal-legend-end { color: var(--text); font-weight: 600; min-width: 28px; }
