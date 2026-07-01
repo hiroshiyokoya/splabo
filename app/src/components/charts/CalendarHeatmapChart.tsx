@@ -275,6 +275,9 @@ export function CalendarHeatmapChart({
         <span className="cal-legend-label">{METRIC_LABELS[metric]}</span>
         <span className="cal-legend-end">{legendLeft}</span>
         <span className="cal-legend-bar">
+          {group === 'count' && (
+            <span className="cal-legend-swatch" style={{ background: 'var(--cell-count-empty)' }} />
+          )}
           {legendColors.map((c, i) => (
             <span key={i} className="cal-legend-swatch" style={{ background: c }} />
           ))}
