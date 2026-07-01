@@ -39,13 +39,26 @@ export function loadCustomCharts(): CustomChart[] {
       if (typeof c !== 'object' || c === null) continue
       if (typeof c.id !== 'string' || typeof c.groupBy !== 'string') continue
       // 新形式：shape と yComposition が揃っているもの（title は無視）
+      // CustomChart の全フィールドを明示的に復元する（#224）。
+      // 将来 CustomChart が拡張されたときは型エラーで気づけるように明示列挙する。
       if (typeof c.shape === 'string' && typeof c.yComposition === 'string') {
         result.push({
-          id:           c.id,
-          shape:        c.shape,
-          yComposition: c.yComposition,
-          groupBy:      c.groupBy,
-          metric:       c.metric,
+          id:              c.id,
+          shape:           c.shape,
+          yComposition:    c.yComposition,
+          groupBy:         c.groupBy,
+          metric:          c.metric,
+          groupBy2:        c.groupBy2,
+          topN:            c.topN,
+          xNumericMetric:  c.xNumericMetric,
+          xBinWidth:       c.xBinWidth,
+          yNumericMetric:  c.yNumericMetric,
+          yBinWidth:       c.yBinWidth,
+          dotUnit:         c.dotUnit,
+          xMetric:         c.xMetric,
+          yMetric:         c.yMetric,
+          sizeMetric:      c.sizeMetric,
+          colorMetric:     c.colorMetric,
         })
         continue
       }
