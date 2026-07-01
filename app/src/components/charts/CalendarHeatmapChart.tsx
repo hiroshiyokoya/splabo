@@ -152,10 +152,13 @@ export function CalendarHeatmapChart({
       weeks.push(d)
     }
 
+    const rawMax = mx === Number.NEGATIVE_INFINITY ? 0 : mx
+    // カウント系は色スケール上限を 10 単位で切り上げると凡例が読みやすい (52 → 60 等)
+    const finalMax = group === 'count' && rawMax > 0 ? Math.ceil(rawMax / 10) * 10 : rawMax
     return {
       dataMap: map,
       minVal:  mn === Number.POSITIVE_INFINITY ? 0 : mn,
-      maxVal:  mx === Number.NEGATIVE_INFINITY ? 0 : mx,
+      maxVal:  finalMax,
       weeks,
     }
   }, [data, metric, group, minSampleSize])
