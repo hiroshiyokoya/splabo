@@ -211,8 +211,8 @@ export function CalendarHeatmapChart({
     <div ref={scrollRef} className="chart-hover-area" style={{ position: 'relative', overflow: 'auto' }}>
       <svg width={width} height={height} role="img" aria-label="カレンダーヒートマップ">
         <style>{`
-          /* 5 段階の色階調はテーマカラーから生成 */
-          .cal-cell { stroke: var(--surface); stroke-width: 0.5; }
+          /* 5 段階の色階調はテーマカラーから生成。全体を少し透過させて暗テーマになじませる */
+          .cal-cell { stroke: var(--surface); stroke-width: 0.5; fill-opacity: 0.85; }
         `}</style>
         {/* 月ラベル (横軸上部) */}
         {monthLabels.map((ml, i) => (
