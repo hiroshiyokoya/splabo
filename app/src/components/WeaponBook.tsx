@@ -11,13 +11,6 @@ function winRateColor(rate: number): string {
 }
 
 // 大きい数値を「12.3万」短縮表示。
-function shortNum(n: number | null | undefined): string {
-  if (n === null || n === undefined) return '—'
-  if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(2)}億`
-  if (n >= 10_000)      return `${(n / 10_000).toFixed(n >= 100_000 ? 1 : 2)}万`
-  return n.toLocaleString()
-}
-
 /** 平均統計（K/D/A/SP/inked/duration）用の小行。 */
 function statLine(label: string, value: string): { label: string; value: string } {
   return { label, value }
@@ -310,11 +303,17 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
         ? '∞'
         : (avgStats.avg_kill / avgStats.avg_death).toFixed(2)
 
-  // 2 列のサマリ：左に公式統計、右に平均統計。バトル 0 戦の武器は最小カードのままにする。
+  // 2 列のサマリ：左に戦績サマリー、右に平均統計。バトル 0 戦の武器は最小カードのままにする。
   const officialRows = weapon.total > 0 ? [
-    statLine('Lv',  weapon.weapon_level    !== null ? String(weapon.weapon_level) : '—'),
-    statLine('勝',  weapon.win_count_total !== null ? weapon.win_count_total.toLocaleString() : '—'),
-    statLine('塗',  shortNum(weapon.paint_point_total)),
+    statLine('Lv',    weapon.weapon_level !== null ? String(weapon.weapon_level) : '—'),
+    ...(avgStats ? [
+      statLine('勝',     avgStats.wins.toLocaleString()),
+      statLine('KO勝',   avgStats.knockout_win.toLocaleString()),
+      statLine('負け',   (avgStats.total - avgStats.wins - avgStats.draws).toLocaleString()),
+      statLine('KO負け', avgStats.knockout_lose.toLocaleString()),
+      statLine('平均塗', avgStats.avg_inked !== null ? Math.round(avgStats.avg_inked).toLocaleString() : '—'),
+      statLine('総塗',   avgStats.sum_inked !== null ? avgStats.sum_inked.toLocaleString() : '—'),
+    ] : []),
   ] : []
   const avgRows = (weapon.total > 0 && avgStats) ? [
     statLine('K',   avgStats.avg_kill    !== null ? avgStats.avg_kill.toFixed(1)    : '—'),
@@ -322,7 +321,6 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
     statLine('D',   avgStats.avg_death   !== null ? avgStats.avg_death.toFixed(1)   : '—'),
     statLine('K/D', kdStr),
     statLine('SP',  avgStats.avg_special !== null ? avgStats.avg_special.toFixed(1) : '—'),
-    statLine('塗均', avgStats.avg_inked  !== null ? Math.round(avgStats.avg_inked).toLocaleString() : '—'),
   ] : []
 
   return (
