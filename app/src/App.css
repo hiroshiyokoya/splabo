@@ -66,15 +66,17 @@
 .cal-legend-label { font-weight: 600; margin-right: 4px; }
 .cal-legend-bar {
   display: inline-flex;
-  gap: 2px;
+  gap: 3px;
 }
 .cal-legend-swatch {
   display: inline-block;
-  width: 22px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
   border-radius: 2px;
+  fill-opacity: 0.85;
+  opacity: 0.85;
 }
-.cal-legend-swatch--sparse { background: var(--cell-sparse); width: 14px; }
+.cal-legend-swatch--sparse { background: var(--cell-sparse); }
 .cal-legend-end { color: var(--text); font-weight: 600; min-width: 28px; }
 .cal-legend-mid { color: var(--text); font-weight: 600; }
 .cal-legend-sparse {
