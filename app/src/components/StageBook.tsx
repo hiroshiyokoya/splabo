@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { GroupedStatsRow } from '../types'
 import { avgKillRatio } from '../types'
+import { StageDetailModal } from './StageDetailModal'
 
 // Dashboard / WeaponBook.winRateColor と同期。
 function winRateColor(rate: number): string {
@@ -11,17 +12,18 @@ function winRateColor(rate: number): string {
 }
 
 /** ステージ図鑑のソートキー。 */
-type SortKey = 'total' | 'win_rate' | 'avg_kill' | 'knockout_rate' | 'name'
+type SortKey = 'total' | 'win_rate' | 'avg_kill' | 'avg_death' | 'knockout_rate' | 'name'
 
 const SORT_LABELS: Record<SortKey, string> = {
   total:          'バトル数',
   win_rate:       '勝率',
-  avg_kill:       '平均キル',
+  avg_kill:       '平均K',
+  avg_death:      '平均D',
   knockout_rate:  'KO 率',
   name:           '名前',
 }
 
-const SORT_KEYS: SortKey[] = ['total', 'win_rate', 'avg_kill', 'knockout_rate', 'name']
+const SORT_KEYS: SortKey[] = ['total', 'win_rate', 'avg_kill', 'avg_death', 'knockout_rate', 'name']
 
 /** 比較関数（DESC を基本に、name のみ ASC）。 */
 function compareRows(a: GroupedStatsRow, b: GroupedStatsRow, sort: SortKey): number {
@@ -34,6 +36,12 @@ function compareRows(a: GroupedStatsRow, b: GroupedStatsRow, sort: SortKey): num
       const av = a.avg_kill ?? -1
       const bv = b.avg_kill ?? -1
       return bv - av
+    }
+    case 'avg_death': {
+      // 平均D は小さいほど良いので昇順。null は末尾。
+      const av = a.avg_death ?? Number.POSITIVE_INFINITY
+      const bv = b.avg_death ?? Number.POSITIVE_INFINITY
+      return av - bv
     }
     case 'knockout_rate': {
       const ar = a.total > 0 ? a.knockout_win / a.total : 0
@@ -50,6 +58,7 @@ export function StageBook() {
   const [stageImages, setStageImages] = useState<Map<string, string>>(new Map())
   const [loading,     setLoading]     = useState(true)
   const [sort,        setSort]        = useState<SortKey>('total')
+  const [selected,    setSelected]    = useState<GroupedStatsRow | null>(null)
 
   useEffect(() => {
     // フィルター無し・全期間でステージ別集計を取得。
@@ -107,15 +116,32 @@ export function StageBook() {
       ) : (
         <div className="stage-grid">
           {sorted.map(r => (
-            <StageCard key={r.key} row={r} image={stageImages.get(r.name) ?? null} />
+            <StageCard
+              key={r.key}
+              row={r}
+              image={stageImages.get(r.name) ?? null}
+              onClick={() => setSelected(r)}
+            />
           ))}
         </div>
+      )}
+
+      {selected && (
+        <StageDetailModal
+          row={selected}
+          image={stageImages.get(selected.name) ?? null}
+          onClose={() => setSelected(null)}
+        />
       )}
     </div>
   )
 }
 
-function StageCard({ row, image }: { row: GroupedStatsRow; image: string | null }) {
+function StageCard({ row, image, onClick }: {
+  row:     GroupedStatsRow
+  image:   string | null
+  onClick: () => void
+}) {
   const decisive = row.total - row.draws
   const winRate  = decisive > 0 ? row.wins / decisive : null
   const loses    = row.total - row.wins - row.draws
@@ -124,7 +150,13 @@ function StageCard({ row, image }: { row: GroupedStatsRow; image: string | null 
   const koLoseRate = row.total > 0 ? row.knockout_lose / row.total : 0
 
   return (
-    <div className="stage-card">
+    <div
+      className="stage-card stage-card--clickable"
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }}
+    >
       <div className="stage-card-image-wrap">
         {image
           ? <img src={image} alt={row.name} className="stage-card-image" />
@@ -154,7 +186,19 @@ function StageCard({ row, image }: { row: GroupedStatsRow; image: string | null 
           </span>
         </div>
         <div className="stage-card-stat-row">
-          <span className="stage-card-stat-label">平均K/D</span>
+          <span className="stage-card-stat-label">平均K</span>
+          <span className="stage-card-stat-value">
+            {row.avg_kill !== null ? row.avg_kill.toFixed(2) : '—'}
+          </span>
+        </div>
+        <div className="stage-card-stat-row">
+          <span className="stage-card-stat-label">平均D</span>
+          <span className="stage-card-stat-value">
+            {row.avg_death !== null ? row.avg_death.toFixed(2) : '—'}
+          </span>
+        </div>
+        <div className="stage-card-stat-row">
+          <span className="stage-card-stat-label">K/D</span>
           <span className="stage-card-stat-value">
             {avgKillRatio(row.avg_kill, row.avg_death)}
           </span>
