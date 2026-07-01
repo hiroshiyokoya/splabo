@@ -26,15 +26,14 @@
   --cell-c3:       #d6ea7d;
   --cell-c4:       #cce155;
   --cell-c5:       #c8f030;  /* 最濃 = accent */
-  /* カウント系 (バトル数): 棒グラフと同じ色味に統一。
-     accent (ライム) を surface に 30〜95% の範囲でブレンドし、
-     暗テーマの上で明るく軽い印象になる。 */
+  /* カウント系 (バトル数): 棒グラフの色味を軸に、より accent 寄りにシフトして軽く見せる。
+     surface に持って行かれすぎないよう、最低でも accent 55% は残す。 */
   --cell-count-empty: var(--border);
-  --cell-count-c1:    color-mix(in srgb, var(--accent) 30%, var(--surface));
-  --cell-count-c2:    color-mix(in srgb, var(--accent) 45%, var(--surface));
-  --cell-count-c3:    color-mix(in srgb, var(--accent) 65%, var(--surface));
-  --cell-count-c4:    color-mix(in srgb, var(--accent) 80%, var(--surface));
-  --cell-count-c5:    color-mix(in srgb, var(--accent) 95%, var(--surface));
+  --cell-count-c1:    color-mix(in srgb, var(--accent) 55%, var(--surface));
+  --cell-count-c2:    color-mix(in srgb, var(--accent) 70%, var(--surface));
+  --cell-count-c3:    color-mix(in srgb, var(--accent) 82%, var(--surface));
+  --cell-count-c4:    color-mix(in srgb, var(--accent) 92%, var(--surface));
+  --cell-count-c5:    var(--accent);
   /* 率系 (勝率) divergent: 強い赤 ← 白 → 強い青 */
   --cell-r1:       #b22f3f;  /* 強い赤 */
   --cell-r2:       #e89e9e;  /* 薄い赤 */
@@ -82,7 +81,7 @@
   box-shadow: 0 0 0 0.5px var(--surface);
 }
 .cal-legend-swatch--sparse { background: var(--cell-sparse); }
-.cal-legend-end { color: var(--text); font-weight: 600; min-width: 28px; }
+.cal-legend-end { color: var(--text); font-weight: 600; }
 .cal-legend-mid { color: var(--text); font-weight: 600; }
 .cal-legend-sparse {
   display: inline-flex;
