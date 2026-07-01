@@ -29,11 +29,11 @@
   /* カウント系 (バトル数): GitHub 貢献グラフ風の緑単色 5 段階
      暗テーマ向けに空セルは明るめグレー、緑は全体に彩度を抑えて穏やかに */
   --cell-count-empty: #cfd2d7;
-  --cell-count-c1:    #b3e9be;
-  --cell-count-c2:    #5fc27f;
-  --cell-count-c3:    #489a5d;
-  --cell-count-c4:    #326d43;
-  --cell-count-c5:    #285a34;
+  --cell-count-c1:    #c8ecd0;
+  --cell-count-c2:    #7ecc94;
+  --cell-count-c3:    #5ea672;
+  --cell-count-c4:    #457c56;
+  --cell-count-c5:    #3a6b45;
   /* 率系 (勝率) divergent: 強い赤 ← 白 → 強い青 */
   --cell-r1:       #b22f3f;  /* 強い赤 */
   --cell-r2:       #e89e9e;  /* 薄い赤 */
