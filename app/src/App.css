@@ -20,11 +20,19 @@
      divergent は「青 ← 白 → 赤」で、中央が暗くならないように白を通す */
   --cell-empty:    #9c9caa;  /* 空 (バトル無し)。明るめのグレー */
   --cell-sparse:   #c8c8d2;  /* サンプル不足。空より更に薄いグレー */
+  /* 平均系 sequential: ほぼ白 → accent (ライム) */
   --cell-c1:       #f3f6e6;  /* 最薄 = ほぼ白 */
   --cell-c2:       #e2efb6;
   --cell-c3:       #d6ea7d;
   --cell-c4:       #cce155;
   --cell-c5:       #c8f030;  /* 最濃 = accent */
+  /* カウント系 (バトル数): GitHub 貢献グラフ風の緑単色 5 段階 */
+  --cell-count-empty: #ebedf0;
+  --cell-count-c1:    #9be9a8;
+  --cell-count-c2:    #40c463;
+  --cell-count-c3:    #30a14e;
+  --cell-count-c4:    #216e39;
+  --cell-count-c5:    #0e4429;
   /* 率系 (勝率) divergent: 強い赤 ← 白 → 強い青 */
   --cell-r1:       #b22f3f;  /* 強い赤 */
   --cell-r2:       #e89e9e;  /* 薄い赤 */
