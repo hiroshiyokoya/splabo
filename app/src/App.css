@@ -1244,6 +1244,125 @@ body {
 }
 .stage-card-winrate { font-weight: 600; }
 
+.stage-card--clickable { cursor: pointer; }
+.stage-card--clickable:hover { border-color: var(--text); }
+.stage-card--clickable:focus-visible {
+  outline: 2px solid var(--text-muted);
+  outline-offset: 2px;
+}
+
+/* ── Stage 詳細モーダル (#226) ── */
+.modal-panel.stage-detail-modal { max-width: 780px; }
+
+.stage-modal-hero {
+  display: flex;
+  justify-content: center;
+}
+.stage-modal-hero-image {
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface2);
+}
+.stage-modal-hero-image img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.stage-modal-hero-placeholder {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--surface2);
+}
+
+.stage-modal-rule-table-wrap { overflow-x: auto; }
+.stage-modal-rule-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.stage-modal-rule-table th,
+.stage-modal-rule-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.stage-modal-rule-table th {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.stage-modal-rule-table td.num,
+.stage-modal-rule-table th.num { text-align: right; }
+.stage-modal-rule-empty td { color: var(--text-muted); }
+
+.stage-modal-weapon-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 640px) {
+  .stage-modal-weapon-cols { grid-template-columns: 1fr; }
+}
+.stage-modal-weapon-col-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
+}
+.stage-modal-weapon-col-note {
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+.stage-modal-weapon-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stage-modal-weapon-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+.stage-modal-weapon-row:last-child { border-bottom: none; }
+.stage-modal-weapon-icon-wrap {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  background: var(--surface2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.stage-modal-weapon-icon { width: 100%; height: 100%; object-fit: contain; }
+.stage-modal-weapon-icon--placeholder { background: var(--surface2); }
+.stage-modal-weapon-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stage-modal-weapon-count {
+  color: var(--text-muted);
+  font-size: 11px;
+  min-width: 44px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.stage-modal-weapon-primary {
+  font-weight: 700;
+  min-width: 56px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── AI Analysis ── */
 .ai-panel { max-width: 740px; }
 .ai-panel h2 { margin-bottom: 8px; }
