@@ -1244,21 +1244,18 @@ body {
 }
 .stage-modal-hero-image {
   width: 100%;
-  max-width: 480px;
-  aspect-ratio: 16 / 9;
   border-radius: 8px;
   overflow: hidden;
   background: var(--surface2);
 }
 .stage-modal-hero-image img {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
   display: block;
 }
 .stage-modal-hero-placeholder {
   width: 100%;
-  height: 100%;
+  aspect-ratio: 16 / 9;
   background: var(--surface2);
 }
 
