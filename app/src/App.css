@@ -26,14 +26,14 @@
   --cell-c3:       #d6ea7d;
   --cell-c4:       #cce155;
   --cell-c5:       #c8f030;  /* 最濃 = accent */
-  /* カウント系 (バトル数): カレンダー専用のエメラルドグリーンを surface にブレンド。
-     accent (ライム) と別変数にしているので、棒グラフや他 UI の色は変わらない。 */
+  /* カウント系 (バトル数): 低カウント側は白寄り → 高カウント側はエメラルドグリーンへグラデ。
+     カレンダー専用の accent 変数で棒グラフや他 UI には影響なし。 */
   --cell-count-accent: #10b981;
-  --cell-count-empty:  var(--border);
-  --cell-count-c1:     color-mix(in srgb, var(--cell-count-accent) 55%, var(--surface));
-  --cell-count-c2:     color-mix(in srgb, var(--cell-count-accent) 70%, var(--surface));
-  --cell-count-c3:     color-mix(in srgb, var(--cell-count-accent) 82%, var(--surface));
-  --cell-count-c4:     color-mix(in srgb, var(--cell-count-accent) 92%, var(--surface));
+  --cell-count-empty:  #d0d3d8;
+  --cell-count-c1:     color-mix(in srgb, var(--cell-count-accent) 18%, white);
+  --cell-count-c2:     color-mix(in srgb, var(--cell-count-accent) 38%, white);
+  --cell-count-c3:     color-mix(in srgb, var(--cell-count-accent) 58%, white);
+  --cell-count-c4:     color-mix(in srgb, var(--cell-count-accent) 80%, white);
   --cell-count-c5:     var(--cell-count-accent);
   /* 率系 (勝率) divergent: 強い赤 ← 白 → 強い青 */
   --cell-r1:       #b22f3f;  /* 強い赤 */
