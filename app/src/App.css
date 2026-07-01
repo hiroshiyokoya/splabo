@@ -53,28 +53,33 @@
   z-index: 10;
 }
 
+/* カレンダー/ヒートマップのセル共通スタイル。SVG rect に適用（カレンダー本体・凡例バー共有）。
+   fill-opacity を半分に抑えて全体を穏やかに。 */
+.cal-cell {
+  stroke: var(--surface);
+  stroke-width: 0.5;
+  fill-opacity: 0.5;
+}
 /* カラーバー (カレンダー/ヒートマップの凡例) */
 .cal-legend {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
   margin-top: 12px;
   font-size: 11px;
   color: var(--text-muted);
   flex-wrap: wrap;
 }
 .cal-legend-label { font-weight: 600; margin-right: 4px; }
-.cal-legend-bar {
-  display: inline-flex;
-  gap: 3px;
-}
+/* .cal-legend-bar は SVG 要素（カレンダー本体と同じ rect 描画） */
+.cal-legend-bar { display: inline-block; vertical-align: middle; }
+/* サンプル不足の凡例だけ HTML span で描く。セル同等の見た目に揃える */
 .cal-legend-swatch {
   display: inline-block;
   width: 16px;
   height: 16px;
   border-radius: 2px;
-  opacity: 0.85;
-  /* カレンダーセルの stroke: var(--surface) 0.5px 相当をレイアウトを変えずに再現 */
+  opacity: 0.5;
   box-shadow: 0 0 0 0.5px var(--surface);
 }
 .cal-legend-swatch--sparse { background: var(--cell-sparse); }

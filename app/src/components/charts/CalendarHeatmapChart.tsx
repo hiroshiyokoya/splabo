@@ -210,10 +210,7 @@ export function CalendarHeatmapChart({
   return (
     <div ref={scrollRef} className="chart-hover-area" style={{ position: 'relative', overflow: 'auto' }}>
       <svg width={width} height={height} role="img" aria-label="カレンダーヒートマップ">
-        <style>{`
-          /* 5 段階の色階調はテーマカラーから生成。全体を少し透過させて暗テーマになじませる */
-          .cal-cell { stroke: var(--surface); stroke-width: 0.5; fill-opacity: 0.85; }
-        `}</style>
+        {/* .cal-cell スタイルは App.css に定義（凡例バーの SVG rect と共有） */}
         {/* 月ラベル (横軸上部) */}
         {monthLabels.map((ml, i) => (
           <text
@@ -274,14 +271,28 @@ export function CalendarHeatmapChart({
       <div className="cal-legend">
         <span className="cal-legend-label">{METRIC_LABELS[metric]}</span>
         <span className="cal-legend-end">{legendLeft}</span>
-        <span className="cal-legend-bar">
-          {group === 'count' && (
-            <span className="cal-legend-swatch" style={{ background: 'var(--cell-count-empty)' }} />
-          )}
-          {legendColors.map((c, i) => (
-            <span key={i} className="cal-legend-swatch" style={{ background: c }} />
-          ))}
-        </span>
+        {(() => {
+          const fills = group === 'count'
+            ? ['var(--cell-count-empty)', ...legendColors]
+            : legendColors
+          const barWidth = fills.length * PITCH - GAP
+          return (
+            <svg className="cal-legend-bar" width={barWidth} height={CELL}>
+              {fills.map((c, i) => (
+                <rect
+                  key={i}
+                  className="cal-cell"
+                  x={i * PITCH}
+                  y={0}
+                  width={CELL}
+                  height={CELL}
+                  rx={2}
+                  fill={c}
+                />
+              ))}
+            </svg>
+          )
+        })()}
         {legendMid && <span className="cal-legend-mid">{legendMid}</span>}
         <span className="cal-legend-end">{legendRight}</span>
         {(group === 'rate' || group === 'average') && (
