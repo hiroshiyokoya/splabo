@@ -26,14 +26,15 @@
   --cell-c3:       #d6ea7d;
   --cell-c4:       #cce155;
   --cell-c5:       #c8f030;  /* 最濃 = accent */
-  /* カウント系 (バトル数): GitHub 貢献グラフ風の緑単色 5 段階
-     暗テーマ向けに空セルは明るめグレー、緑は全体に彩度を抑えて穏やかに */
-  --cell-count-empty: #cfd2d7;
-  --cell-count-c1:    #c8ecd0;
-  --cell-count-c2:    #7ecc94;
-  --cell-count-c3:    #5ea672;
-  --cell-count-c4:    #457c56;
-  --cell-count-c5:    #3a6b45;
+  /* カウント系 (バトル数): 棒グラフと同じ色味に統一。
+     accent (ライム) を surface に 30〜95% の範囲でブレンドし、
+     暗テーマの上で明るく軽い印象になる。 */
+  --cell-count-empty: var(--border);
+  --cell-count-c1:    color-mix(in srgb, var(--accent) 30%, var(--surface));
+  --cell-count-c2:    color-mix(in srgb, var(--accent) 45%, var(--surface));
+  --cell-count-c3:    color-mix(in srgb, var(--accent) 65%, var(--surface));
+  --cell-count-c4:    color-mix(in srgb, var(--accent) 80%, var(--surface));
+  --cell-count-c5:    color-mix(in srgb, var(--accent) 95%, var(--surface));
   /* 率系 (勝率) divergent: 強い赤 ← 白 → 強い青 */
   --cell-r1:       #b22f3f;  /* 強い赤 */
   --cell-r2:       #e89e9e;  /* 薄い赤 */
@@ -54,11 +55,10 @@
 }
 
 /* カレンダー/ヒートマップのセル共通スタイル。SVG rect に適用（カレンダー本体・凡例バー共有）。
-   fill-opacity を半分に抑えて全体を穏やかに。 */
+   色は既に accent × surface のブレンドで整えているため、fill-opacity は付けない。 */
 .cal-cell {
   stroke: var(--surface);
   stroke-width: 0.5;
-  fill-opacity: 0.5;
 }
 /* カラーバー (カレンダー/ヒートマップの凡例) */
 .cal-legend {
@@ -79,7 +79,6 @@
   width: 16px;
   height: 16px;
   border-radius: 2px;
-  opacity: 0.5;
   box-shadow: 0 0 0 0.5px var(--surface);
 }
 .cal-legend-swatch--sparse { background: var(--cell-sparse); }
