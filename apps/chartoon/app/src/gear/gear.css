@@ -89,6 +89,12 @@
   /* ── App layout ── */
 
   .app {
+    /* chartoon シェルの `.app { display:flex; height:100vh; overflow:hidden }`
+       （App.css・非スコープ）が同名クラスでギア内容ラッパーに漏れるのを打ち消し、
+       通常フローに戻す。これが無いと .gear-grid が flex アイテム化して 1 列に潰れる。 */
+    display: block;
+    height: auto;
+    overflow: visible;
     padding: 0 1.5rem 3rem;
     padding-bottom: 48px; /* ボトムシートのハンドル分を常時確保 */
     transition: padding-bottom 0.3s;
