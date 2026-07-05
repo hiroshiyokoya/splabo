@@ -19,15 +19,15 @@
 
 ## Docs
 
-- [README](https://github.com/hiroshiyokoya/chartoon/blob/develop/README.md): 機能・セットアップ・技術メモ・プライバシーポリシー
-- [CHANGELOG](https://github.com/hiroshiyokoya/chartoon/blob/develop/CHANGELOG.md): バージョン履歴
-- [LICENSE](https://github.com/hiroshiyokoya/chartoon/blob/develop/LICENSE): MIT License
+- [README](https://github.com/hiroshiyokoya/splabo/blob/develop/README.md): 機能・セットアップ・技術メモ・プライバシーポリシー
+- [CHANGELOG](https://github.com/hiroshiyokoya/splabo/blob/develop/CHANGELOG.md): バージョン履歴
+- [LICENSE](https://github.com/hiroshiyokoya/splabo/blob/develop/LICENSE): MIT License
 
 ## Repository
 
-- [GitHub](https://github.com/hiroshiyokoya/chartoon): ソースコード
-- [Releases](https://github.com/hiroshiyokoya/chartoon/releases): ダウンロード (Windows .msi/.exe / macOS .dmg)
-- [Issues](https://github.com/hiroshiyokoya/chartoon/issues): バグ報告・機能要望
+- [GitHub](https://github.com/hiroshiyokoya/splabo): ソースコード
+- [Releases](https://github.com/hiroshiyokoya/splabo/releases): ダウンロード (Windows .msi/.exe / macOS .dmg)
+- [Issues](https://github.com/hiroshiyokoya/splabo/issues): バグ報告・機能要望
 
 ## Related
 

@@ -24,7 +24,7 @@ xattr -cr /Applications/chartoon.app
 
 ---
 
-📄 [README](https://github.com/hiroshiyokoya/chartoon/blob/vVERSION/README.md)
+📄 [README](https://github.com/hiroshiyokoya/splabo/blob/vVERSION/README.md)
 
 <br>
 
