@@ -132,6 +132,7 @@ jobs:
       # lockfile を削除してから install し、ランナー OS 上でプラットフォーム最適な
       # optional deps を解決させる。
       - name: Install app dependencies
+        shell: bash
         run: |
           rm -f package-lock.json
           npm install --no-audit --no-fund
