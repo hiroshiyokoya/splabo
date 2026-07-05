@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "chartoon",
+  "productName": "splabo",
   "version": "0.0.0-dev",
   "identifier": "com.chartoon.app",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "chartoon",
+        "title": "splabo - Splatoon3 ダッシュボード",
         "width": 1280,
         "height": 950,
         "minWidth": 900,

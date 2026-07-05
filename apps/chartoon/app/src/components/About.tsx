@@ -24,11 +24,11 @@ export function About({ onClose }: Props) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-panel about-panel" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <div className="modal-title">chartoon について</div>
+          <div className="modal-title">splabo について</div>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body about-body">
-          <img className="about-logo" src="/chartoon-logo.png" alt="chartoon" />
+          <img className="about-logo" src="/splabo-logo.png" alt="splabo" />
           {version && <div className="about-version">v{version}</div>}
           <p className="about-desc">
             Splatoon 3 のバトルデータを記録・分析するデスクトップアプリです。

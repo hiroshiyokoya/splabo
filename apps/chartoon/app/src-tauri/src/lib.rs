@@ -500,7 +500,7 @@ fn send_notification(app: &AppHandle, battles: usize) {
     };
     let _ = app.notification()
         .builder()
-        .title("chartoon")
+        .title("splabo")
         .body(&body)
         .show();
 }
@@ -509,7 +509,7 @@ fn send_notification_error(app: &AppHandle) {
     use tauri_plugin_notification::NotificationExt;
     let _ = app.notification()
         .builder()
-        .title("chartoon")
+        .title("splabo")
         .body("バトルデータの取得に失敗しました")
         .show();
 }
