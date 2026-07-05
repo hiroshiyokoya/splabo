@@ -1,0 +1,10 @@
+{
+  "name": "splabo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "splabo monorepo (chartoon + geartoon)",
+  "workspaces": [
+    "apps/chartoon/app",
+    "apps/geartoon/app"
+  ]
+}

@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/chartoon/app/src-tauri",
+    "apps/geartoon/app/src-tauri",
+]
+
+# 両アプリで共有する依存はここでバージョンを一元管理する。
+# 各 crate 側は `{ workspace = true, features = [...] }` で参照し、
+# feature セットは crate ごとに指定する。
+[workspace.dependencies]
+tauri = { version = "2.11.1" }
+tauri-build = { version = "2.6.1" }

@@ -1,10 +1,16 @@
 node_modules/
 dist/
-app/src-tauri/target/
-app/src-tauri/binaries/nxapi-sidecar*
-!app/src-tauri/binaries/.gitkeep
-tools/nxapi-wrapper/node_modules/
-tools/nxapi-wrapper/dist/
+
+# Cargo workspace build output（ルート統一 target/）
+/target/
+apps/*/app/src-tauri/target/
+
+# サイドカーバイナリ（ビルド生成物・git 管理外）
+apps/*/app/src-tauri/binaries/nxapi-sidecar*
+!apps/*/app/src-tauri/binaries/.gitkeep
+apps/*/tools/nxapi-wrapper/node_modules/
+apps/*/tools/nxapi-wrapper/dist/
+
 .env
 .claude/worktrees/
 .claude/settings.local.json
@@ -12,8 +18,8 @@ tools/nxapi-wrapper/dist/
 # ロゴ・ファビコン生成ツール（ローカル作業用・git 管理外）
 # 使い方: ブラウザで app/gen-logo.html / app/gen-favicon.html を開いて
 # 装飾画像と位置・サイズを調整、PNG をダウンロード → public/ に配置。
-app/gen-*.html
-app/gen-*.mjs
+apps/*/app/gen-*.html
+apps/*/app/gen-*.mjs
 # ローカル生成された PNG 中間ファイル（tauri icon の入力用）
-app/favicon.png
-app/src-tauri/app-icon.png
+apps/*/app/favicon.png
+apps/*/app/src-tauri/app-icon.png
