@@ -1,4 +1,4 @@
-export type Tab = 'dashboard' | 'battles' | 'weapons' | 'stages' | 'ai' | 'env' | 'settings'
+export type Tab = 'dashboard' | 'battles' | 'weapons' | 'stages' | 'ai' | 'env' | 'gear' | 'settings'
 
 export type Period = 'all' | 'current_season' | '30d' | '7d' | 'custom'
 
