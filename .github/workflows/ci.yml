@@ -9,9 +9,43 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# 同一ブランチ/PR で新しい push が来たら古い実行をキャンセル
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  # ── フロントエンド: TypeScript 型チェック + ビルド ────────────
-  frontend:
+  # ── どのアプリに変更があったか判定（paths フィルタ）──────────────
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      chartoon: ${{ steps.filter.outputs.chartoon }}
+      geartoon: ${{ steps.filter.outputs.geartoon }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # ルート共通ファイル（workspace 設定・lockfile・CI 自身）変更時は
+          # 両アプリともチェックする。
+          filters: |
+            common: &common
+              - 'package.json'
+              - 'package-lock.json'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '.github/workflows/ci.yml'
+            chartoon:
+              - *common
+              - 'apps/chartoon/**'
+            geartoon:
+              - *common
+              - 'apps/geartoon/**'
+
+  # ── chartoon: フロントエンド型チェック + ビルド ────────────────
+  chartoon-frontend:
+    needs: changes
+    if: needs.changes.outputs.chartoon == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2
@@ -20,19 +54,28 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: app/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install app dependencies
-        working-directory: app
-        run: npm ci
+      # ルートで workspace 全体を install。
+      # Windows 上で生成したルート lockfile には Linux 版 rollup
+      # (@rollup/rollup-linux-x64-gnu) の package node が含まれず、
+      # npm ci / npm install どちらも lockfile のツリーを尊重するため CI(ubuntu)
+      # で `Cannot find module @rollup/rollup-linux-x64-gnu`（npm bug #4828）が
+      # 発生する。npm#4828 の公式回避策どおり lockfile を削除してから install し、
+      # Linux ランナー上でプラットフォーム最適な optional deps を解決させる。
+      - name: Install dependencies
+        run: |
+          rm -f package-lock.json
+          npm install --no-audit --no-fund
 
-      # tsc --noEmit + vite build を実行（package.json の "build" は tsc && vite build）
+      # tsc + vite build（chartoon の "build" は tsc && vite build）
       - name: Build (typecheck + vite)
-        working-directory: app
-        run: npm run build
+        run: npm run build -w apps/chartoon/app
 
-  # ── Rust: cargo check（Tauri バックエンド）──────────────────
-  rust:
+  # ── geartoon: フロントエンド型チェック + ビルド ────────────────
+  geartoon-frontend:
+    needs: changes
+    if: needs.changes.outputs.geartoon == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2
@@ -41,9 +84,31 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: tools/nxapi-wrapper/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      # Linux: Tauri が要求するシステムライブラリ
+      # lockfile 削除 → npm install の理由は chartoon-frontend と同じ
+      # （Windows 生成 lockfile に Linux 版 rollup optional dep が無い / npm#4828）。
+      - name: Install dependencies
+        run: |
+          rm -f package-lock.json
+          npm install --no-audit --no-fund
+
+      # tsc -b + vite build（geartoon の "build" は tsc -b && vite build）
+      - name: Build (typecheck + vite)
+        run: npm run build -w apps/geartoon/app
+
+  # ── chartoon: cargo check（Tauri バックエンド）─────────────────
+  chartoon-rust:
+    needs: changes
+    if: needs.changes.outputs.chartoon == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
@@ -56,7 +121,7 @@ jobs:
       # nxapi-sidecar をビルド（tauri.conf.json の externalBin として要求されるため、
       # 存在しないと build.rs の存在チェックで cargo check が失敗する）
       - name: Build nxapi-wrapper sidecar (linux)
-        working-directory: tools/nxapi-wrapper
+        working-directory: apps/chartoon/tools/nxapi-wrapper
         run: |
           npm ci
           npm run build:linux
@@ -65,8 +130,45 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: app/src-tauri
+          workspaces: apps/chartoon/app/src-tauri
 
       - name: cargo check
-        working-directory: app/src-tauri
+        working-directory: apps/chartoon/app/src-tauri
+        run: cargo check --all-targets
+
+  # ── geartoon: cargo check（Tauri バックエンド）─────────────────
+  geartoon-rust:
+    needs: changes
+    if: needs.changes.outputs.geartoon == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Build nxapi-wrapper sidecar (linux)
+        working-directory: apps/geartoon/tools/nxapi-wrapper
+        run: |
+          npm ci
+          npm run build:linux
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/geartoon/app/src-tauri
+
+      - name: cargo check
+        working-directory: apps/geartoon/app/src-tauri
         run: cargo check --all-targets

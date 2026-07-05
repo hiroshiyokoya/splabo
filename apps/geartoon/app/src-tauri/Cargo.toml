@@ -1,0 +1,43 @@
+[package]
+name = "geartoon"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+license = ""
+repository = ""
+edition = "2021"
+rust-version = "1.77.2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "geartoon_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[example]]
+name = "auth_cli"
+required-features = []
+
+[build-dependencies]
+tauri-build = { workspace = true, features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { workspace = true, features = ["protocol-asset"] }
+tauri-plugin-log = "2"
+tauri-plugin-shell = "2"
+# NSO OAuth 認証フロー用
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
+aes-gcm = "0.10"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+tauri-plugin-deep-link = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-store = "2"

@@ -1,0 +1,48 @@
+# === tools ===
+# 認証情報（絶対にコミットしない）
+tools/data/persist/
+
+# 画像キャッシュ（大容量・再ダウンロード可能）
+tools/data/images/
+
+# SplatNet 3 の生データ（個人データのため除外）
+tools/data/data/
+
+# gear_db.json（個人データ・update.py で再生成可能）
+tools/data/gear_db.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# === tools/nxapi-wrapper ===
+tools/nxapi-wrapper/node_modules/
+tools/nxapi-wrapper/dist/
+
+# === app ===
+app/node_modules/
+app/dist/
+app/.env
+app/.env.local
+
+# アイコン生成元ファイル（tauri icon の入力用・アプリ自体には不要）
+app/favicon.png
+app/src-tauri/app-icon.png
+
+# PNG生成ツール（ローカル作業用・git管理外）
+app/gen-*.html
+app/gen-*.mjs
+
+# srcバックアップ（ローカル作業用）
+app/src.bak/
+
+# === 共通 ===
+.DS_Store
+Thumbs.db
+*.log
+
+# === Claude Code ローカル設定 ===
+.claude/worktrees/
+.claude/settings.local.json
