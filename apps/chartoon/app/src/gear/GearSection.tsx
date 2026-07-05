@@ -14,7 +14,9 @@ import type { ComboLimitValue, NearLimitValue } from './utils/appSettings'
 import './gear.css'
 
 // ── データ更新ステート ─────────────────────────────────────────
-type UpdatePhase = 'idle' | 'checking' | 'waiting-login' | 'fetching' | 'error'
+// ログイン（waiting-login）は chartoon シェルの deep-link 認証に一本化したため、
+// ギアセクションのフェーズは checking（認証確認）→ fetching（取得）→ idle/error のみ。
+type UpdatePhase = 'idle' | 'checking' | 'fetching' | 'error'
 
 /** データ更新のクールダウン時間（ミリ秒） */
 const UPDATE_COOLDOWN_MS = 5 * 60 * 1000
@@ -386,7 +388,6 @@ export function GearSection() {
               disabled={(updatePhase !== 'idle' && updatePhase !== 'error') || isCoolingDown}
             >
               {updatePhase === 'checking' ? '確認中...' :
-               updatePhase === 'waiting-login' ? 'ログイン待機中...' :
                updatePhase === 'fetching' ? 'データ取得中...' :
                '認証・データ取得'}
             </button>
@@ -434,14 +435,12 @@ export function GearSection() {
                   title={
                     !isTauri() ? 'Tauri アプリ上でのみ利用できます' :
                     isCoolingDown ? '前回の更新から5分以内は再更新できません' :
-                    updatePhase === 'waiting-login' ? 'ブラウザでログイン中... 完了後に自動的に続行します' :
                     updatePhase === 'fetching' ? 'SplatNet3 からデータを取得中...' :
                     updatePhase === 'checking' ? 'ログイン状態を確認中...' :
                     'SplatNet3 からギアデータを取得する'
                   }
                 >
                   {updatePhase === 'checking' ? '確認中...' :
-                   updatePhase === 'waiting-login' ? 'ログイン待機中...' :
                    updatePhase === 'fetching' ? 'データ取得中...' :
                    'データ更新'}
                 </button>
