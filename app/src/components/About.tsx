@@ -36,8 +36,8 @@ export function About({ onClose }: Props) {
           <div className="about-links">
             <a
               className="about-link"
-              href="https://github.com/hiroshiyokoya/chartoon"
-              onClick={e => { e.preventDefault(); openUrl('https://github.com/hiroshiyokoya/chartoon').catch(console.error) }}
+              href="https://github.com/hiroshiyokoya/splabo"
+              onClick={e => { e.preventDefault(); openUrl('https://github.com/hiroshiyokoya/splabo').catch(console.error) }}
             >
               GitHub
             </a>

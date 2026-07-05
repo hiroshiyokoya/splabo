@@ -2,6 +2,8 @@
 
 このファイルは **chartoon 固有のルール** のみ記述する。共通ルール（実装前の構想確認・ブランチ/PR フロー・コミット前確認・イシューラベル付け・`cd && git` 回避・ファイル操作・git 安全則）は `~/.claude/CLAUDE.md` を参照。
 
+> **リポジトリ名とアプリ名の乖離について:** GitHub リポジトリ名は `splabo` にリネーム済み（リポ参照 URL・`gh -R` はすべて `hiroshiyokoya/splabo`）。一方、アプリ名／プロダクト名（ウィンドウタイトル・ロゴ・README 見出しなど）および識別子 `com.chartoon.app` は当面 `chartoon` のまま据え置く。
+
 ---
 
 ## geartoon を参考にすること
@@ -63,9 +65,9 @@ git checkout develop && git pull origin develop
 新しい Issue を立てたら、直後にトラッキング #15 へ追記すること（共通ルール「`gh issue create` とトラッキング更新はセット」参照）。
 
 ```bash
-gh issue view 15 -R hiroshiyokoya/chartoon --json body --jq .body > /tmp/tracking.md
+gh issue view 15 -R hiroshiyokoya/splabo --json body --jq .body > /tmp/tracking.md
 # 編集して該当マイルストーンに「- #<番号> タイトル」を追記
-gh api repos/hiroshiyokoya/chartoon/issues/15 -X PATCH -F body=@/tmp/tracking.md
+gh api repos/hiroshiyokoya/splabo/issues/15 -X PATCH -F body=@/tmp/tracking.md
 ```
 
 クローズ済みイシューは GitHub が自動的に取り消し線を引くため、トラッキング側で `[x]` を付ける必要はない。
@@ -99,7 +101,7 @@ git -C D:/develop/splatoon-gear/chartoon checkout -b release/vX.Y.Z
 git -C D:/develop/splatoon-gear/chartoon add CHANGELOG.md README.md
 git -C D:/develop/splatoon-gear/chartoon commit -m "chore: リリース準備 vX.Y.Z"
 git -C D:/develop/splatoon-gear/chartoon push origin release/vX.Y.Z
-gh pr create -R hiroshiyokoya/chartoon --base develop --title "chore: リリース準備 vX.Y.Z" --body "..."
+gh pr create -R hiroshiyokoya/splabo --base develop --title "chore: リリース準備 vX.Y.Z" --body "..."
 ```
 
 **PR のマージはユーザーが行う。**
