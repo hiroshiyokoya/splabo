@@ -1,9 +1,9 @@
-name: Release
+name: Release chartoon
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'chartoon-v*'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -21,17 +21,17 @@ jobs:
 
       - name: Extract changelog for this version
         id: changelog
+        working-directory: apps/chartoon
         run: |
-          VERSION="${{ github.ref_name }}"
-          VERSION_NUM="${VERSION#v}"
-          BODY=$(awk "/^## \[${VERSION_NUM}\]/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md)
+          VERSION="${GITHUB_REF_NAME#chartoon-v}"
+          BODY=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md)
           if [ -z "$BODY" ]; then
-            BODY="詳細は [CHANGELOG](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md) を参照してください。"
+            BODY="詳細は [CHANGELOG](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/apps/chartoon/CHANGELOG.md) を参照してください。"
           fi
           # イシュー番号 (#xx) をリリースノートから除去
           BODY=$(echo "$BODY" | sed 's/ (#[0-9]*[0-9])//g')
           # インストール手順フッターを追加（VERSION をバージョン番号で置換）
-          FOOTER=$(sed "s/VERSION/${VERSION_NUM}/g" .github/release-footer.md)
+          FOOTER=$(sed "s/VERSION/${VERSION}/g" .github/release-footer.md)
 
           echo "body<<ENDOFBODY" >> $GITHUB_OUTPUT
           echo "$BODY" >> $GITHUB_OUTPUT
@@ -49,7 +49,7 @@ jobs:
         run: |
           PAYLOAD=$(jq -n \
             --arg tag "${{ github.ref_name }}" \
-            --arg name "chartoon ${{ github.ref_name }}" \
+            --arg name "chartoon ${GITHUB_REF_NAME#chartoon-}" \
             --arg body "$RELEASE_BODY" \
             '{tag_name: $tag, name: $name, body: $body, draft: true, prerelease: false}')
           release_id=$(gh api repos/${{ github.repository }}/releases \
@@ -87,14 +87,15 @@ jobs:
         with:
           node-version: '20'
 
-      # git タグ（例: v0.2.0）からバージョンを取り出して tauri.conf.json と Cargo.toml に書き込む
+      # git タグ（例: chartoon-v0.6.7）からバージョンを取り出して
+      # tauri.conf.json と Cargo.toml に書き込む
       - name: Sync version with git tag
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${GITHUB_REF_NAME#chartoon-v}"
           node -e "
             const fs = require('fs');
-            const path = 'app/src-tauri/tauri.conf.json';
+            const path = 'apps/chartoon/app/src-tauri/tauri.conf.json';
             const conf = JSON.parse(fs.readFileSync(path, 'utf8'));
             conf.version = '${VERSION}';
             fs.writeFileSync(path, JSON.stringify(conf, null, 2) + '\n');
@@ -103,7 +104,7 @@ jobs:
           # Cargo.toml の [package] セクションの version を更新
           node -e "
             const fs = require('fs');
-            const path = 'app/src-tauri/Cargo.toml';
+            const path = 'apps/chartoon/app/src-tauri/Cargo.toml';
             const src = fs.readFileSync(path, 'utf8');
             const updated = src.replace(/^version = \"[^\"]*\"/m, 'version = \"${VERSION}\"');
             fs.writeFileSync(path, updated);
@@ -123,7 +124,7 @@ jobs:
 
       # nxapi-wrapper サイドカーをビルド
       - name: Build nxapi-wrapper sidecar
-        working-directory: tools/nxapi-wrapper
+        working-directory: apps/chartoon/tools/nxapi-wrapper
         run: |
           npm ci
           npm run ${{ matrix.sidecar-build }}
@@ -135,7 +136,7 @@ jobs:
 
       # フロントエンド依存関係をインストール
       - name: Install app dependencies
-        working-directory: app
+        working-directory: apps/chartoon/app
         run: npm ci
 
       # Tauri ビルド & リリースへアップロード
@@ -144,6 +145,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: './app'
+          projectPath: './apps/chartoon/app'
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.tauri-args }}
