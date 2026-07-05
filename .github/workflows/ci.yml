@@ -57,8 +57,14 @@ jobs:
           cache-dependency-path: package-lock.json
 
       # ルートで workspace 全体を install
+      # npm ci はロックファイルに記録された optional deps しか展開できず、
+      # Windows 上で生成した lockfile には Linux 版 rollup
+      # (@rollup/rollup-linux-x64-gnu) の package node が含まれないため、
+      # CI(ubuntu) で `Cannot find module @rollup/rollup-linux-x64-gnu`
+      # が発生する（npm bug #4828）。install はプラットフォーム最適な
+      # optional deps を解決するのでこの問題を回避できる。
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       # tsc + vite build（chartoon の "build" は tsc && vite build）
       - name: Build (typecheck + vite)
@@ -78,8 +84,10 @@ jobs:
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
+      # npm ci ではなく npm install を使う理由は chartoon-frontend と同じ
+      # （Windows 生成 lockfile に Linux 版 rollup optional dep が無い / npm#4828）。
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       # tsc -b + vite build（geartoon の "build" は tsc -b && vite build）
       - name: Build (typecheck + vite)
