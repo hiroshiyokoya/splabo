@@ -9,6 +9,8 @@ pub mod auth;
 pub mod crypto;
 pub mod db;
 pub mod env_import;
+pub mod gear;
+pub mod gear_crypto;
 pub mod images;
 pub mod nxapi;
 pub mod splatnet3;
@@ -113,6 +115,11 @@ pub fn run() {
             db::env_season_range,
             db::env_versions,
             db::env_ranks,
+            // ギア表示系（geartoon 由来・Phase A1 で移植・gear.rs）
+            gear::read_gear_db,
+            gear::get_data_dir,
+            gear::read_all_gti,
+            gear::delete_gear_data,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
