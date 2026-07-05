@@ -120,6 +120,8 @@ pub fn run() {
             gear::get_data_dir,
             gear::read_all_gti,
             gear::delete_gear_data,
+            // ギア取得系（Rust GraphQL 経路・Phase A2・gear.rs）
+            gear::fetch_gear_full,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
