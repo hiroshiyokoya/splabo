@@ -42,3 +42,7 @@ app/src.bak/
 .DS_Store
 Thumbs.db
 *.log
+
+# === Claude Code ローカル設定 ===
+.claude/worktrees/
+.claude/settings.local.json

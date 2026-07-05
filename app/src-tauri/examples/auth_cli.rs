@@ -14,7 +14,7 @@
 
 use std::io::{self, Write};
 
-use app_lib::auth::{
+use geartoon_lib::auth::{
     build_login_url, exchange_session_token_code, fetch_bullet_token, generate_pkce,
     parse_auth_fragment,
 };
