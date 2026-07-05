@@ -123,10 +123,18 @@ jobs:
         if: matrix.rust-target != ''
         run: rustup target add ${{ matrix.rust-target }}
 
-      # フロントエンド依存関係をインストール
+      # フロントエンド依存関係をインストール（ルートで workspace 全体）。
+      # Windows 上で生成したルート lockfile には各ランナー OS 版の rollup
+      # native optional dep（例: @rollup/rollup-darwin-arm64）の package node が
+      # 含まれず、npm ci / npm install は lockfile のツリーを尊重するため、
+      # mac-arm 等のランナーで `Cannot find module @rollup/rollup-darwin-arm64`
+      # （npm bug #4828）が発生する。ci.yml と同様に npm#4828 の公式回避策どおり
+      # lockfile を削除してから install し、ランナー OS 上でプラットフォーム最適な
+      # optional deps を解決させる。
       - name: Install app dependencies
-        working-directory: apps/geartoon/app
-        run: npm ci
+        run: |
+          rm -f package-lock.json
+          npm install --no-audit --no-fund
 
       # Tauri ビルド & リリースへアップロード
       - name: Build and upload
