@@ -10,6 +10,7 @@ import { AiAnalysis } from './components/AiAnalysis'
 import { EnvAnalysis } from './components/EnvAnalysis'
 import { Settings } from './components/Settings'
 import { About } from './components/About'
+import { GearSection } from './gear/GearSection'
 import type { Tab, AppSettings, ChartSpec, Filters } from './types'
 import { DEFAULT_FILTERS } from './types'
 import { initAppSettings } from './utils/appSettings'
@@ -197,6 +198,7 @@ export default function App() {
         <NavItem id="weapons"   icon="🔫" label="武器図鑑"       active={tab} onClick={setTab} />
         <NavItem id="stages"    icon="🗺" label="ステージ図鑑"   active={tab} onClick={setTab} />
         <NavItem id="env"       icon="🌍" label="環境分析"       active={tab} onClick={setTab} />
+        <NavItem id="gear"      icon="👕" label="ギア"           active={tab} onClick={setTab} />
         <NavItem id="settings"  icon="⚙️" label="設定"           active={tab} onClick={setTab} />
         <button
           className="btn-primary sidebar-fetch-btn"
@@ -228,6 +230,7 @@ export default function App() {
         {tab === 'weapons'   && <WeaponBook />}
         {tab === 'stages'    && <StageBook />}
         {tab === 'env'       && <EnvAnalysis />}
+        {tab === 'gear'      && <GearSection />}
         {tab === 'ai' && <AiAnalysis settings={settings} onChartReady={handleAiChart} />}
         {tab === 'settings' && <Settings settings={settings} onSave={saveSettings} loginVersion={loginVersion} />}
       </main>
