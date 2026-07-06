@@ -1,4 +1,8 @@
-const THEME_KEY = 'chartoon:themeId'
+// splabo v2.0 統合(#241): chartoon シェルのテーマキーは `splabo:shellThemeId`。
+// gear 側の `splabo:themeId` とはテーマ ID の系統が異なるため別名にする（衝突回避）。
+// 読み出しは新キー優先・旧 `chartoon:themeId` フォールバック、書き込みは常に新キー。
+const THEME_KEY     = 'splabo:shellThemeId'
+const THEME_KEY_OLD = 'chartoon:themeId'
 
 interface Theme {
   id: string
@@ -91,15 +95,16 @@ export function applyTheme(themeId: string): void {
 }
 
 export function initAppSettings(): void {
-  const themeId = localStorage.getItem(THEME_KEY) ?? 'dark'
-  applyTheme(themeId)
+  applyTheme(getThemeId())
 }
 
 export function saveTheme(themeId: string): void {
   localStorage.setItem(THEME_KEY, themeId)
   applyTheme(themeId)
+  // store（settings.json）へミラー（識別子変更でのテーマ喪失防止 #241）。
+  void import('./settingsStore').then(m => m.mirrorToStore())
 }
 
 export function getThemeId(): string {
-  return localStorage.getItem(THEME_KEY) ?? 'dark'
+  return (localStorage.getItem(THEME_KEY) ?? localStorage.getItem(THEME_KEY_OLD)) ?? 'dark'
 }
