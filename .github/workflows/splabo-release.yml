@@ -46,11 +46,16 @@ jobs:
           RELEASE_BODY: ${{ steps.changelog.outputs.body }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # rc/beta 等プレリリースサフィックス（-rc.1 等）付きタグは prerelease 扱いにする
+          VERSION="${GITHUB_REF_NAME#splabo-v}"
+          PRERELEASE=false
+          case "$VERSION" in *-*) PRERELEASE=true ;; esac
           PAYLOAD=$(jq -n \
             --arg tag "${{ github.ref_name }}" \
-            --arg name "splabo ${GITHUB_REF_NAME#splabo-v}" \
+            --arg name "splabo ${VERSION}" \
             --arg body "$RELEASE_BODY" \
-            '{tag_name: $tag, name: $name, body: $body, draft: true, prerelease: false}')
+            --argjson prerelease "$PRERELEASE" \
+            '{tag_name: $tag, name: $name, body: $body, draft: true, prerelease: $prerelease}')
           release_id=$(gh api repos/${{ github.repository }}/releases \
             -X POST \
             --input - <<< "$PAYLOAD" \
@@ -91,12 +96,16 @@ jobs:
       - name: Sync version with git tag
         shell: bash
         run: |
+          # WiX(MSI) はバージョンに数値3組しか受け付けないため、rc 等のサフィックスを
+          # 除いた数値バージョン（例: 0.8.0-rc.1 → 0.8.0）を tauri.conf / Cargo に書き込む。
+          # タグ名・リリース名は rc のまま（prerelease として区別）。
           VERSION="${GITHUB_REF_NAME#splabo-v}"
+          NUMERIC_VERSION="${VERSION%%-*}"
           node -e "
             const fs = require('fs');
             const path = 'app/src-tauri/tauri.conf.json';
             const conf = JSON.parse(fs.readFileSync(path, 'utf8'));
-            conf.version = '${VERSION}';
+            conf.version = '${NUMERIC_VERSION}';
             fs.writeFileSync(path, JSON.stringify(conf, null, 2) + '\n');
             console.log('tauri.conf.json version:', conf.version);
           "
@@ -105,7 +114,7 @@ jobs:
             const fs = require('fs');
             const path = 'app/src-tauri/Cargo.toml';
             const src = fs.readFileSync(path, 'utf8');
-            const updated = src.replace(/^version = \"[^\"]*\"/m, 'version = \"${VERSION}\"');
+            const updated = src.replace(/^version = \"[^\"]*\"/m, 'version = \"${NUMERIC_VERSION}\"');
             fs.writeFileSync(path, updated);
             console.log('Cargo.toml updated');
           "
