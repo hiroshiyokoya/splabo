@@ -2,7 +2,7 @@
 
 Splatoon 3 の非公式 API 系デスクトップアプリ **chartoon**（戦績）と **geartoon**（ギア）を束ねた monorepo です。任天堂株式会社とは無関係で、データ取得に [nxapi](https://github.com/samuelthomas2774/nxapi) を使用しています。
 
-> **リポジトリ名とアプリ名について:** GitHub リポジトリ名は `splabo` ですが、アプリ名／プロダクト名・識別子（`com.chartoon.app` / `com.geartoon.app`）は当面 **chartoon・geartoon の個別名のまま**据え置きます。両アプリを 1 バイナリ `splabo` に統合するのは将来（v2.0）の予定です。
+> **リポジトリ名とアプリ名について:** GitHub リポジトリ名は `splabo` ですが、アプリ名／プロダクト名・識別子（`com.chartoon.app` / `com.geartoon.app`）は当面 **chartoon・geartoon の個別名のまま**据え置きます。両アプリを 1 バイナリ `splabo` に統合するのは将来（v0.8）の予定です。
 
 ## アプリ
 

@@ -2,11 +2,11 @@
  * settingsStore — chartoon シェル設定の localStorage キー定義と、
  * tauri-plugin-store（ファイル `settings.json`）への「ミラー」ロジック。
  *
- * ## 背景（splabo v2.0 統合・#241 B2）
+ * ## 背景（splabo v0.8 統合・#241 B2）
  *
  * chartoon の設定（AI/stat.ink API キー・スケジューラ設定など）は WebView2 の
  * localStorage に置かれるが、localStorage はアプリ識別子（`com.chartoon.app`）配下の
- * EBWebView プロファイルに紐づくため、識別子変更（v2.0 D 段階で `com.splabo.app` へ）で
+ * EBWebView プロファイルに紐づくため、識別子変更（v0.8 D 段階で `com.splabo.app` へ）で
  * **原理的に失われる**。ファイルコピーでも移行できない。
  *
  * これを防ぐため、設定を保存するたびに tauri-plugin-store の **`settings.json`** へも

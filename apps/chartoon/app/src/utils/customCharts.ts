@@ -1,6 +1,6 @@
 import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey } from '../types'
 
-// splabo v2.0 統合(#241): キーは `splabo:shellCustomCharts`。
+// splabo v0.8 統合(#241): キーは `splabo:shellCustomCharts`。
 // 読み出しは新キー優先・旧 `chartoon:customCharts` フォールバック、書き込みは常に新キー。
 const STORAGE_KEY     = 'splabo:shellCustomCharts'
 const STORAGE_KEY_OLD = 'chartoon:customCharts'
