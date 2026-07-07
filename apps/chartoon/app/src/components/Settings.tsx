@@ -5,6 +5,21 @@ import type { AppSettings } from '../types'
 import { THEMES, saveTheme, getThemeId } from '../utils/appSettings'
 import { AI_MODELS, PROVIDER_LABELS, modelDisplayLabel, defaultModelFor, type AiProvider } from '../utils/aiModels'
 import { clearCustomCharts } from '../utils/customCharts'
+import { mirrorToStore } from '../utils/settingsStore'
+import {
+  DENSITIES,
+  COMBO_LIMITS,
+  NEAR_LIMITS,
+  applyDensity,
+  saveComboLimit,
+  saveNearLimit,
+  loadDensityId,
+  loadComboLimit,
+  loadNearLimit,
+  type DensityId,
+  type ComboLimitValue,
+  type NearLimitValue,
+} from '../gear/utils/appSettings'
 
 interface Props {
   settings: AppSettings
@@ -22,6 +37,12 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   const [importResult, setImportResult] = useState<string | null>(null)
   const [weaponUpdating, setWeaponUpdating] = useState(false)
   const [weaponUpdateResult, setWeaponUpdateResult] = useState<string | null>(null)
+  // ── ギア設定 ──────────────────────────────────────────────
+  const [gearDensity, setGearDensity] = useState<DensityId>(loadDensityId)
+  const [gearComboLimit, setGearComboLimit] = useState<ComboLimitValue>(loadComboLimit)
+  const [gearNearLimit, setGearNearLimit] = useState<NearLimitValue>(loadNearLimit)
+  const [gearDeleting, setGearDeleting] = useState(false)
+  const [gearDeleteResult, setGearDeleteResult] = useState<string | null>(null)
 
   useEffect(() => {
     invoke<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
@@ -125,6 +146,46 @@ async function handleUploadStatink() {
       setImportResult(`エラー: ${String(e)}`)
     } finally {
       setImporting(false)
+    }
+  }
+
+  // ── ギア設定ハンドラ ──────────────────────────────────────
+  // gear 側の appSettings は localStorage を更新するが store ミラーは張らないため、
+  // 変更のたびに mirrorToStore() を呼んで settings.json（#241 store ミラー）へ反映する。
+  // applyDensity は `.gear-root` 未マウント時（＝設定タブ表示中）は localStorage 更新のみで、
+  // 次回ギアタブ表示の initAppSettings() で反映される（即時プレビュー不可・仕様）。
+  function handleChangeDensity(id: DensityId) {
+    setGearDensity(id)
+    applyDensity(id)
+    void mirrorToStore()
+  }
+
+  function handleChangeComboLimit(v: ComboLimitValue) {
+    setGearComboLimit(v)
+    saveComboLimit(v)
+    void mirrorToStore()
+  }
+
+  function handleChangeNearLimit(v: NearLimitValue) {
+    setGearNearLimit(v)
+    saveNearLimit(v)
+    void mirrorToStore()
+  }
+
+  async function handleDeleteGearData() {
+    if (!window.confirm(
+      '取得済みのギアデータ（ギア一覧・画像キャッシュ）をすべて削除します。\n' +
+      '削除後はギアタブが空になり、再度「データ更新」から取得が必要です。実行しますか？'
+    )) return
+    setGearDeleting(true)
+    setGearDeleteResult(null)
+    try {
+      await invoke('delete_gear_data')
+      setGearDeleteResult('ギアデータを削除しました。ギアタブは再読み込み後に空になります。')
+    } catch (e) {
+      setGearDeleteResult(`エラー: ${String(e)}`)
+    } finally {
+      setGearDeleting(false)
     }
   }
 
@@ -364,6 +425,63 @@ async function handleUploadStatink() {
               {t.label}
             </button>
           ))}
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h3>ギア</h3>
+        <p className="settings-note" style={{ marginTop: 0, marginBottom: 12 }}>
+          ギアタブの表示とコーデ検索に関する設定です。表示密度の変更は次回ギアタブを開いたときに反映されます。
+        </p>
+        <label>
+          表示密度
+          <select
+            value={gearDensity}
+            onChange={(e) => handleChangeDensity(e.target.value as DensityId)}
+          >
+            {DENSITIES.map(d => (
+              <option key={d.id} value={d.id}>{d.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          コーデ候補の表示件数
+          <select
+            value={gearComboLimit}
+            onChange={(e) => handleChangeComboLimit(Number(e.target.value) as ComboLimitValue)}
+          >
+            {COMBO_LIMITS.map(v => (
+              <option key={v} value={v}>{v} 件</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          近いコーデの表示件数
+          <select
+            value={gearNearLimit}
+            onChange={(e) => handleChangeNearLimit(Number(e.target.value) as NearLimitValue)}
+          >
+            {NEAR_LIMITS.map(v => (
+              <option key={v} value={v}>{v} 件</option>
+            ))}
+          </select>
+        </label>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '16px 0 10px' }}>
+          取得済みのギアデータ（ギア一覧・画像キャッシュ）をすべて削除します。ギアタブから再取得できます。
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            className="btn-secondary"
+            onClick={handleDeleteGearData}
+            disabled={gearDeleting}
+          >
+            {gearDeleting ? '削除中...' : 'ギアデータを削除'}
+          </button>
+          {gearDeleteResult && (
+            <span style={{ fontSize: 13, color: gearDeleteResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
+              {gearDeleteResult}
+            </span>
+          )}
         </div>
       </section>
     </div>
