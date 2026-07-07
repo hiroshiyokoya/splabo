@@ -3,6 +3,9 @@ import { getVersion } from '@tauri-apps/api/app'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useState } from 'react'
 
+const FEEDBACK_FORM_URL =
+  'https://docs.google.com/forms/d/e/1FAIpQLSd2m8eNn4HwTjOY1PMnecJvSH95QCJxNi0Lyy1w4zxhIdndrQ/viewform'
+
 interface Props {
   onClose: () => void
 }
@@ -30,6 +33,7 @@ export function About({ onClose }: Props) {
         <div className="modal-body about-body">
           <img className="about-logo" src="/splabo-logo.png" alt="splabo" />
           {version && <div className="about-version">v{version}</div>}
+          <div className="about-author">Author: hiroshiyokoya</div>
           <p className="about-desc">
             Splatoon 3 のバトルデータを記録・分析するデスクトップアプリです。
           </p>
@@ -40,6 +44,13 @@ export function About({ onClose }: Props) {
               onClick={e => { e.preventDefault(); openUrl('https://github.com/hiroshiyokoya/splabo').catch(console.error) }}
             >
               GitHub
+            </a>
+            <a
+              className="about-link"
+              href={FEEDBACK_FORM_URL}
+              onClick={e => { e.preventDefault(); openUrl(FEEDBACK_FORM_URL).catch(console.error) }}
+            >
+              フィードバック
             </a>
           </div>
           <div className="about-notice">
