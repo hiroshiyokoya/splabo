@@ -15,6 +15,14 @@ import type { Tab, AppSettings, ChartSpec, Filters } from './types'
 import { DEFAULT_FILTERS } from './types'
 import { initAppSettings } from './utils/appSettings'
 import { useNotify, parseFetchError } from './utils/notify'
+import {
+  SETTINGS_KEY,
+  LAST_FETCHED_KEY,
+  LAST_WEAPONS_FETCH_KEY as LAST_WEAPONS_FETCH_K,
+  lsGet,
+  mirrorToStore,
+  importFromStoreIfNewer,
+} from './utils/settingsStore'
 import './App.css'
 
 initAppSettings()
@@ -25,16 +33,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoFetchIntervalMin: 1440, // 24h
   statink: { apiKey: '', autoUpload: false, screenName: null },
 }
-
-const SETTINGS_KEY         = 'chartoon:settings'
-const LAST_FETCHED_KEY     = 'chartoon:lastFetchedAt'
-const LAST_WEAPONS_FETCH_K = 'chartoon:lastWeaponsFetchAt'
 /** 武器マスターを再取得するインターバル（ミリ秒）。24 時間。 */
 const WEAPONS_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000
 
 function loadSettings(): AppSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY)
+    const raw = lsGet(SETTINGS_KEY)
     if (!raw) return DEFAULT_SETTINGS
     const saved = JSON.parse(raw)
     return {
@@ -55,9 +59,25 @@ export default function App() {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
   const [showAbout, setShowAbout] = useState(false)
   const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(
-    () => localStorage.getItem(LAST_FETCHED_KEY)
+    () => lsGet(LAST_FETCHED_KEY)
   )
   const { notify } = useNotify()
+
+  // 起動時: store（settings.json）が localStorage より新しければ取り込む（識別子変更後の復元経路 #241）。
+  // 取り込んだら設定 state・派生 state を localStorage の最新値で更新する。
+  useEffect(() => {
+    let cancelled = false
+    importFromStoreIfNewer().then(imported => {
+      if (imported && !cancelled) {
+        setSettings(loadSettings())
+        setLastFetchedAt(lsGet(LAST_FETCHED_KEY))
+        // テーマは module ロード時に initAppSettings() で既定適用済みなので、
+        // 取り込み後の localStorage 値で再適用する。
+        initAppSettings()
+      }
+    })
+    return () => { cancelled = true }
+  }, [])
 
   /** フェッチ失敗を共通の流儀でトーストに変換する。
    *  ・未ログイン → 設定タブへ誘導するボタン付き
@@ -90,6 +110,7 @@ export default function App() {
       const now = new Date().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
       setLastFetchedAt(now)
       localStorage.setItem(LAST_FETCHED_KEY, now)
+      void mirrorToStore()
     })
     return () => { unlistenPromise.then(fn => fn()) }
   }, [])
@@ -114,6 +135,7 @@ export default function App() {
         if (prev.statink.screenName === name) return prev
         const next = { ...prev, statink: { ...prev.statink, screenName: name } }
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(next))
+        void mirrorToStore()
         return next
       })
     })
@@ -130,6 +152,7 @@ export default function App() {
         if (prev.statink.screenName === name) return prev
         const next = { ...prev, statink: { ...prev.statink, screenName: name } }
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(next))
+        void mirrorToStore()
         return next
       })
     }).catch(console.error)
@@ -166,6 +189,8 @@ export default function App() {
   function saveSettings(s: AppSettings) {
     setSettings(s)
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(s))
+    // store（settings.json）へミラー。識別子変更で localStorage が失われても復元できるように（#241）。
+    void mirrorToStore()
   }
 
   function handleAiChart(spec: ChartSpec) {

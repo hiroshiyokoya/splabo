@@ -1,6 +1,9 @@
 import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey } from '../types'
 
-const STORAGE_KEY = 'chartoon:customCharts'
+// splabo v2.0 統合(#241): キーは `splabo:shellCustomCharts`。
+// 読み出しは新キー優先・旧 `chartoon:customCharts` フォールバック、書き込みは常に新キー。
+const STORAGE_KEY     = 'splabo:shellCustomCharts'
+const STORAGE_KEY_OLD = 'chartoon:customCharts'
 
 /** 旧形式（v1: shape/yComposition 分離前、`type` 1 本、title あり）→ 新形式へ変換する。
  *  title はもう持たないので捨てる。 */
@@ -30,7 +33,7 @@ function migrateV1(old: CustomChartV1): CustomChart {
  *  旧形式の `title` フィールドは捨てる（タイトルは常に autoChartTitle で算出するため）。 */
 export function loadCustomCharts(): CustomChart[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(STORAGE_KEY_OLD)
     if (!raw) return []
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
@@ -75,9 +78,10 @@ export function loadCustomCharts(): CustomChart[] {
   }
 }
 
-/** localStorage に保存。 */
+/** localStorage に保存。store（settings.json）へもミラーする（#241）。 */
 export function saveCustomCharts(charts: CustomChart[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(charts))
+  void import('./settingsStore').then(m => m.mirrorToStore())
 }
 
 /** ランダムな ID を生成。crypto.randomUUID が無い環境向けにフォールバックも用意。 */
@@ -102,4 +106,6 @@ export function newChartDefault(): CustomChart {
 /** カスタムグラフを全削除して localStorage からも消す（ダッシュボードをリセット）。 */
 export function clearCustomCharts(): void {
   localStorage.removeItem(STORAGE_KEY)
+  localStorage.removeItem(STORAGE_KEY_OLD)
+  void import('./settingsStore').then(m => m.mirrorToStore())
 }
