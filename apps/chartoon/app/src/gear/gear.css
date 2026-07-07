@@ -88,19 +88,16 @@
 
   /* ── App layout ── */
 
-  .app {
-    /* chartoon シェルの `.app { display:flex; height:100vh; overflow:hidden }`
-       （App.css・非スコープ）が同名クラスでギア内容ラッパーに漏れるのを打ち消し、
-       通常フローに戻す。これが無いと .gear-grid が flex アイテム化して 1 列に潰れる。 */
-    display: block;
-    height: auto;
-    overflow: visible;
+  .gear-app {
+    /* ギア内容ラッパー。#261 で `.app` → `.gear-app` にリネームし、chartoon シェルの
+       非スコープ `.app { display:flex; ... }` との名前衝突を根絶した（#253 の暫定
+       display:block リセットは不要になったため撤去）。 */
     padding: 0 1.5rem 3rem;
     padding-bottom: 48px; /* ボトムシートのハンドル分を常時確保 */
     transition: padding-bottom 0.3s;
   }
 
-  .app--combo-open {
+  .gear-app--combo-open {
     padding-bottom: 360px;
   }
 
@@ -647,7 +644,7 @@
 
   /* ── Filter button ── */
 
-  .filter-btn {
+  .gear-filter-btn {
     margin-left: auto;
     background: var(--surface);
     border: 1.5px solid var(--border);
@@ -663,18 +660,18 @@
     gap: 0.4rem;
   }
 
-  .filter-btn:hover {
+  .gear-filter-btn:hover {
     border-color: var(--accent-hover-border);
     color: var(--text);
     background: var(--surface-hover);
   }
 
-  .filter-btn--active {
+  .gear-filter-btn--active {
     border-color: var(--accent);
     color: var(--accent);
   }
 
-  .filter-btn__badge {
+  .gear-filter-btn__badge {
     font-size: 0.7rem;
     font-weight: 700;
     background: var(--accent);
@@ -1987,7 +1984,7 @@
     margin-bottom: 0.4rem;
   }
 
-  .about-logo {
+  .gear-about-logo {
     width: 56px;
     height: 56px;
     border-radius: 12px;
@@ -2010,7 +2007,7 @@
     letter-spacing: -0.01em;
   }
 
-  .about-version {
+  .gear-about-version {
     font-size: 0.78rem;
     font-weight: 600;
     color: var(--text-muted);
@@ -2060,19 +2057,19 @@
     color: var(--text);
   }
 
-  .about-link {
+  .gear-about-link {
     color: var(--accent-dim);
     text-decoration: none;
     transition: color 0.15s;
   }
 
-  .about-link:hover {
+  .gear-about-link:hover {
     color: var(--accent);
     text-decoration: underline;
   }
 
   /* <a> の代わりに <button> をリンクとして使うスタイル */
-  .about-link-btn {
+  .gear-about-link-btn {
     background: none;
     border: none;
     padding: 0;
