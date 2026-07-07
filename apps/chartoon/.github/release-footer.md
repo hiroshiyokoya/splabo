@@ -4,8 +4,8 @@
 
 | OS | ファイル（下部 Assets 内） |
 |---|---|
-| Windows | chartoon_VERSION_x64-setup.exe（推奨）または .msi |
-| macOS (Apple Silicon) | chartoon_VERSION_aarch64.dmg |
+| Windows | splabo_VERSION_x64-setup.exe（推奨）または .msi |
+| macOS (Apple Silicon) | splabo_VERSION_aarch64.dmg |
 
 ## ⚠️ インストール時の警告について
 
@@ -19,7 +19,7 @@
 「壊れているため開けません」と表示された場合：
 ターミナルで以下を実行してください。
 ```
-xattr -cr /Applications/chartoon.app
+xattr -cr /Applications/splabo.app
 ```
 
 ---
