@@ -1,8 +1,15 @@
-<img src="app/public/chartoon-logo.png" alt="chartoon" height="300">
+<img src="app/public/splabo-logo.png" alt="splabo" height="300">
 
-# チャートゥーン (chartoon)
+# スプラボ (splabo)
 
 Nintendo アカウントから [nxapi](https://github.com/samuelthomas2774/nxapi) が解析した非公式 API 経由で Splatoon 3 のバトル履歴を取得し、グラフで可視化する OSS の PC アプリです。任天堂株式会社とは無関係です。
+
+> ## 📢 chartoon は splabo になりました
+>
+> - **chartoon** はギア管理アプリ **geartoon** と統合し、名称を **splabo** に変更しました。
+> - この更新（v0.7）から **「ギア」タブ**が加わり、所持ギアの取得・閲覧・コーデ（ギア構成）組みができます。
+> - **設定・戦績データはそのまま引き継がれます**。保存先はこのバージョンではまだ変わりません。将来の統合版（v2.0）で保存先が変わる際は、自動で移行されます。
+> - geartoon 単体アプリの役割は splabo に引き継がれます。
 
 バグ報告・機能要望・感想など、フィードバックは[フィードバックフォーム](https://docs.google.com/forms/d/e/1FAIpQLSd2m8eNn4HwTjOY1PMnecJvSH95QCJxNi0Lyy1w4zxhIdndrQ/viewform)からお気軽にどうぞ（匿名可）。
 
@@ -20,6 +27,7 @@ chartoon/
 - **ダッシュボード** — 武器別・モード別・ステージ別の勝率をグラフで表示
 - **バトルログ** — バトル履歴を一覧表示（ページング対応）。詳細モーダルでチーム編成・ギア・ランク / X パワー変動を確認できます
 - **武器図鑑** — 所持武器の勝率・サブ/スペシャル一覧
+- **ギア** — 所持ギアを取得して一覧表示。ギアパワーを組み合わせてコーデ（ギア構成）を組めます（旧 geartoon の機能を統合）
 - **環境分析** — [stat.ink](https://stat.ink/) の公開バトルデータ（全世界のプレイヤー投稿）を取り込み、武器ピック率・勝率などコミュニティ全体の環境を散布図・マトリクスヒートマップで分析。ロビー・ルール・バージョン・ウデマエ帯・期間で絞り込み可能
 - **stat.ink 自動アップロード** — 取得したバトルを [stat.ink](https://stat.ink/) へ自動アップロード（API キー登録時）。同一バトルは s3s と同じ UUID v5 名前空間で重複排除されます
 - **AI 分析** — 自然言語でグラフを生成（OpenAI / Google Gemini / Anthropic Claude / xAI Grok 対応）

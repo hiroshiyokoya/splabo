@@ -8,7 +8,7 @@ Splatoon 3 の非公式 API 系デスクトップアプリ **chartoon**（戦績
 
 | アプリ | 役割 | ディレクトリ | ダウンロード |
 |--------|------|--------------|--------------|
-| **chartoon** | Splatoon 3 の戦績ダッシュボード（バトル履歴・勝率分析・stat.ink 連携・AI 分析） | [`apps/chartoon`](apps/chartoon) | https://chartoon.pages.dev/ |
+| **chartoon**（配布名 **splabo**） | Splatoon 3 の戦績ダッシュボード（バトル履歴・勝率分析・stat.ink 連携・AI 分析）。v0.7 でギアタブを統合し、ユーザーには **splabo** として配布 | [`apps/chartoon`](apps/chartoon) | https://chartoon.pages.dev/ |
 | **geartoon** | 所持ギアの取得・表示・コーデ生成 | [`apps/geartoon`](apps/geartoon) | https://geartoon.pages.dev/ |
 
 関連（本リポジトリ外・別管理）:
