@@ -100,7 +100,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loginVersion])
 
-  // バトル取得中フラグ。サイドバーの「バトルデータを取得」ボタン、Dashboard 空状態ボタン等が参照する。
+  // バトル取得中フラグ。サイドバーの「最新データを取得」ボタン、Dashboard 空状態ボタン等が参照する。
   // 手動ボタン経由は handleFetchFull が直接 set。
   // 起動時取得・スケジューラ取得は Rust 側の fetch_start/fetch_finish イベントで設定される。
   const [fetching, setFetching] = useState(false)
@@ -226,7 +226,7 @@ export default function App() {
         await invoke('fetch_gear_full')
       } catch (gearErr) {
         console.error('gear fetch failed:', gearErr)
-        notify({ kind: 'warning', title: 'ギアの取得に失敗しました', message: '戦績は取得できました。ギアは時間をおいて「ギア」タブから再取得してください。', durationMs: 6000 })
+        notify({ kind: 'warning', title: 'ギアの取得に失敗しました', message: '戦績は取得できました。ギアは時間をおいて「最新データを取得」からもう一度取得してください。', durationMs: 6000 })
       }
     } catch (e) {
       reportFetchError(e, handleFetchFull)
@@ -253,9 +253,9 @@ export default function App() {
           className="btn-primary sidebar-fetch-btn"
           onClick={handleFetchFull}
           disabled={fetching}
-          title="SplatNet3 から最新のバトル結果・詳細データを取得"
+          title="SplatNet3 から最新のバトル結果・ギアデータを取得"
         >
-          {fetching ? '取得中...' : 'バトルデータを取得'}
+          {fetching ? '取得中...' : '最新データを取得'}
         </button>
         <div className="sidebar-last-fetched">
           {lastFetchedAt ? `データ最終更新日時: ${lastFetchedAt}` : '未取得'}
