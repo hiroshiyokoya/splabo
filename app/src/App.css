@@ -1745,10 +1745,6 @@ body {
   font-size: 13px;
   color: var(--text-muted);
 }
-.about-author {
-  font-size: 12px;
-  color: var(--text-muted);
-}
 .about-desc {
   font-size: 13px;
   color: var(--text-muted);
@@ -1765,9 +1761,8 @@ body {
 .about-notice {
   font-size: 11px;
   color: var(--text-muted);
-  max-width: 300px;
+  white-space: nowrap;
   line-height: 1.5;
-  text-wrap: pretty;
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
