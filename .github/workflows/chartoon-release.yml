@@ -49,7 +49,7 @@ jobs:
         run: |
           PAYLOAD=$(jq -n \
             --arg tag "${{ github.ref_name }}" \
-            --arg name "chartoon ${GITHUB_REF_NAME#chartoon-}" \
+            --arg name "splabo ${GITHUB_REF_NAME#chartoon-}" \
             --arg body "$RELEASE_BODY" \
             '{tag_name: $tag, name: $name, body: $body, draft: true, prerelease: false}')
           release_id=$(gh api repos/${{ github.repository }}/releases \
