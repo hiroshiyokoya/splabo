@@ -186,6 +186,22 @@ export default function App() {
     return () => { unlistenPromise.then(fn => fn()) }
   }, [])
 
+  // 移行が発火した初回起動時、旧バージョン（v0.7 以前の chartoon / geartoon）の
+  // アンインストールを案内する。別 identifier のため single-instance では共存を防げず、
+  // 旧版と同時起動してしまうのを案内で解消する（#279）。
+  useEffect(() => {
+    const unlistenPromise = listen('migration_completed', () => {
+      notify({
+        kind: 'info',
+        title: 'データを引き継ぎました',
+        message: '旧バージョン（chartoon / geartoon）のデータを splabo に移行しました。旧アプリが残っている場合はアンインストールをおすすめします（旧版と同時に起動してしまうのを防げます）。',
+        durationMs: 0,
+      })
+    })
+    return () => { unlistenPromise.then(fn => fn()) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   function saveSettings(s: AppSettings) {
     setSettings(s)
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(s))
