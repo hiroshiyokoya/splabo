@@ -1,0 +1,40 @@
+[package]
+name = "splabo"
+version = "0.0.0-dev"
+description = "Splatoon battle data logger and analytics dashboard"
+authors = []
+edition = "2021"
+
+[lib]
+name = "splabo_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { workspace = true, features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+# protocol-asset: geartoon 由来のギア画像を asset:// で表示するため（tauri.conf の assetProtocol.enable と対）
+tauri = { workspace = true, features = ["tray-icon", "protocol-asset"] }
+tauri-plugin-log = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-store = "2"
+tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-notification = "2"
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "macros"] }
+# Nintendo auth
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4", "v5"] }
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
+# ギアデータ暗号化（geartoon 由来・gear_crypto.rs / gear-export-v1 契約）
+aes-gcm = "0.10"
+chrono = { version = "0.4", features = ["serde"] }
+csv = "1.3"
+zip = { version = "2", default-features = false, features = ["deflate"] }

@@ -2,9 +2,8 @@
   "name": "splabo",
   "version": "0.0.0",
   "private": true,
-  "description": "splabo monorepo (chartoon + geartoon)",
+  "description": "splabo (Splatoon3 戦績 + ギア 統合アプリ)",
   "workspaces": [
-    "apps/chartoon/app",
-    "apps/geartoon/app"
+    "apps/splabo/app"
   ]
 }
