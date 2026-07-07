@@ -1,4 +1,4 @@
-// splabo v2.0 統合(#241): chartoon シェルのテーマキーは `splabo:shellThemeId`。
+// splabo v0.8 統合(#241): chartoon シェルのテーマキーは `splabo:shellThemeId`。
 // gear 側の `splabo:themeId` とはテーマ ID の系統が異なるため別名にする（衝突回避）。
 // 読み出しは新キー優先・旧 `chartoon:themeId` フォールバック、書き込みは常に新キー。
 const THEME_KEY     = 'splabo:shellThemeId'

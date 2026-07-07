@@ -1,4 +1,4 @@
-//! v2.0 統合時のデータ移行モジュール（Phase C・#242）。
+//! v0.8 統合時のデータ移行モジュール（Phase C・#242）。
 //!
 //! 旧 `com.chartoon.app` / `com.geartoon.app` の app data（戦績 SQLite・ギア DB・
 //! 画像キャッシュ・store）を新 `com.splabo.app` 配下へ **非破壊コピー** する。

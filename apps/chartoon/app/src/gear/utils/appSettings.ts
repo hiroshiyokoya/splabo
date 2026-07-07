@@ -148,7 +148,7 @@ export type NearLimitValue = typeof NEAR_LIMITS[number]
 
 // ── localStorage ──────────────────────────────────────────────
 //
-// splabo v2.0 統合: 新キーは `splabo:*`。読み出しは `splabo:*` を優先し、
+// splabo v0.8 統合: 新キーは `splabo:*`。読み出しは `splabo:*` を優先し、
 // 無ければ旧 geartoon 単体アプリの `geartoon:*` にフォールバックする（設定移行の互換層）。
 // 保存は常に `splabo:*` に書く。
 

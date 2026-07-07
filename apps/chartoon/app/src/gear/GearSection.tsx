@@ -123,7 +123,7 @@ function applyFilter(items: GearItem[], filter: FilterState): GearItem[] {
 }
 
 /**
- * ギアセクション（splabo v2.0 Phase B1）。
+ * ギアセクション（splabo v0.8 Phase B1）。
  *
  * 旧 geartoon 単体アプリの `App.tsx` を chartoon シェルのセクションとして取り込んだもの。
  * ルート要素は `className="gear-root"` で、CSS（gear.css）はこのスコープに閉じている。

@@ -1,6 +1,6 @@
 //! geartoon 由来のギア表示系コマンドモジュール。
 //!
-//! splabo v2.0 統合（Phase A1）で geartoon の `lib.rs` からギア表示系 4 コマンドを
+//! splabo v0.8 統合（Phase A1）で geartoon の `lib.rs` からギア表示系 4 コマンドを
 //! chartoon crate へ移植したもの。暗号化・復号は `crate::gear_crypto` に委譲する。
 //!
 //! 表示系コマンド（Phase A1）:
@@ -9,7 +9,7 @@
 //! - `read_all_gti`     : images/ 配下の全 .gti を XOR 解除して base64 data URL 化して返す
 //! - `delete_gear_data` : app_data/data/ を丸ごと削除する
 //!
-//! 取得系コマンド（Phase A2・splabo v2.0）:
+//! 取得系コマンド（Phase A2・splabo v0.8）:
 //! - `fetch_gear_full`  : bullet_token → GraphQL → 画像 DL → gear_db.json 構築 → 暗号化して
 //!                        gear_db.bin / .gti 化。geartoon サイドカー fetch_gear を Rust に置換。
 //!                        出力フォーマットは現行 geartoon 出力（gear-export-v1）と完全互換。

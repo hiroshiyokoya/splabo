@@ -19,7 +19,7 @@ const HASH_EVENT: &str = "e47f9aac5599f75c842335ef0ab8f4c640e8bf2afe588a3b1d4b48
 const HASH_DETAIL:   &str = "94faa2ff992222d11ced55e0f349920a82ac50f414ae33c83d1d1c9d8161c5dd";
 // WeaponRecordQuery は v10 で廃止。HistoryRecordQuery の weaponHistory に武器+カテゴリが含まれる。
 const HASH_WEAPONS:  &str = "a654ecc80161a7ca5c38761c1d9e502d405eae764e2d343618b9c74b1dc0a80f";
-// MyOutfitCommonDataEquipmentsQuery（所持ギア一覧）。splabo v2.0 ギア取得 Rust 化（Phase A2）。
+// MyOutfitCommonDataEquipmentsQuery（所持ギア一覧）。splabo v0.8 ギア取得 Rust 化（Phase A2）。
 // s3s utils.py の translate_rid より。Phase 0 スパイクで実機取得を実証済みの canonical hash。
 const HASH_GEAR: &str = "45a4c343d973864f7bb9e9efac404182be1d48cf2181619505e9b7cd3b56a6e8";
 
@@ -80,7 +80,7 @@ async fn graphql_request(
 }
 
 // ---------------------------------------------------------------------------
-// ギア取得（MyOutfitCommonDataEquipmentsQuery）— splabo v2.0 Phase A2
+// ギア取得（MyOutfitCommonDataEquipmentsQuery）— splabo v0.8 Phase A2
 //
 // chartoon の GraphQL 経路（graphql_request）で所持ギア（頭/服/靴）を取得する。
 // Phase 0 スパイクで実機取得を実証済み。geartoon サイドカーの fetch_gear を置換する。

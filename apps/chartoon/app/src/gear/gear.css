@@ -1,5 +1,5 @@
 /*
- * gear.css — geartoon の index.css を `.gear-root` スコープに閉じ込めたもの（splabo v2.0 Phase B1）。
+ * gear.css — geartoon の index.css を `.gear-root` スコープに閉じ込めたもの（splabo v0.8 Phase B1）。
  *
  * 方針:
  *  - geartoon の `:root` 変数（chartoon と同名で値違いの --text-muted:#6060a0 や

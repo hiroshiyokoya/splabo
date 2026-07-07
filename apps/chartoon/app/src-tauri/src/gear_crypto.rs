@@ -1,6 +1,6 @@
 //! geartoon 由来のギアデータ暗号化・復号・スクランブルモジュール。
 //!
-//! splabo v2.0 統合（Phase A1）で geartoon の `crypto.rs` を chartoon crate へ移植したもの。
+//! splabo v0.8 統合（Phase A1）で geartoon の `crypto.rs` を chartoon crate へ移植したもの。
 //! gear-export-v1 契約（gear_db.bin / .gti フォーマット）の心臓部であり、
 //! geartoon-viewer との互換性を保つため鍵・アルゴリズムは一切変更しないこと。
 //!
