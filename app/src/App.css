@@ -1745,6 +1745,10 @@ body {
   font-size: 13px;
   color: var(--text-muted);
 }
+.about-author {
+  font-size: 12px;
+  color: var(--text-muted);
+}
 .about-desc {
   font-size: 13px;
   color: var(--text-muted);
