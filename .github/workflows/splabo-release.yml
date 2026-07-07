@@ -1,9 +1,9 @@
-name: Release chartoon
+name: Release splabo
 
 on:
   push:
     tags:
-      - 'chartoon-v*'
+      - 'splabo-v*'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -21,12 +21,12 @@ jobs:
 
       - name: Extract changelog for this version
         id: changelog
-        working-directory: apps/chartoon
+        working-directory: apps/splabo
         run: |
-          VERSION="${GITHUB_REF_NAME#chartoon-v}"
+          VERSION="${GITHUB_REF_NAME#splabo-v}"
           BODY=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md)
           if [ -z "$BODY" ]; then
-            BODY="詳細は [CHANGELOG](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/apps/chartoon/CHANGELOG.md) を参照してください。"
+            BODY="詳細は [CHANGELOG](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/apps/splabo/CHANGELOG.md) を参照してください。"
           fi
           # イシュー番号 (#xx) をリリースノートから除去
           BODY=$(echo "$BODY" | sed 's/ (#[0-9]*[0-9])//g')
@@ -49,7 +49,7 @@ jobs:
         run: |
           PAYLOAD=$(jq -n \
             --arg tag "${{ github.ref_name }}" \
-            --arg name "splabo ${GITHUB_REF_NAME#chartoon-}" \
+            --arg name "splabo ${GITHUB_REF_NAME#splabo-v}" \
             --arg body "$RELEASE_BODY" \
             '{tag_name: $tag, name: $name, body: $body, draft: true, prerelease: false}')
           release_id=$(gh api repos/${{ github.repository }}/releases \
@@ -87,15 +87,15 @@ jobs:
         with:
           node-version: '20'
 
-      # git タグ（例: chartoon-v0.6.7）からバージョンを取り出して
+      # git タグ（例: splabo-v0.8.0）からバージョンを取り出して
       # tauri.conf.json と Cargo.toml に書き込む
       - name: Sync version with git tag
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#chartoon-v}"
+          VERSION="${GITHUB_REF_NAME#splabo-v}"
           node -e "
             const fs = require('fs');
-            const path = 'apps/chartoon/app/src-tauri/tauri.conf.json';
+            const path = 'apps/splabo/app/src-tauri/tauri.conf.json';
             const conf = JSON.parse(fs.readFileSync(path, 'utf8'));
             conf.version = '${VERSION}';
             fs.writeFileSync(path, JSON.stringify(conf, null, 2) + '\n');
@@ -104,7 +104,7 @@ jobs:
           # Cargo.toml の [package] セクションの version を更新
           node -e "
             const fs = require('fs');
-            const path = 'apps/chartoon/app/src-tauri/Cargo.toml';
+            const path = 'apps/splabo/app/src-tauri/Cargo.toml';
             const src = fs.readFileSync(path, 'utf8');
             const updated = src.replace(/^version = \"[^\"]*\"/m, 'version = \"${VERSION}\"');
             fs.writeFileSync(path, updated);
@@ -124,7 +124,7 @@ jobs:
 
       # nxapi-wrapper サイドカーをビルド
       - name: Build nxapi-wrapper sidecar
-        working-directory: apps/chartoon/tools/nxapi-wrapper
+        working-directory: apps/splabo/tools/nxapi-wrapper
         run: |
           npm ci
           npm run ${{ matrix.sidecar-build }}
@@ -154,6 +154,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: './apps/chartoon/app'
+          projectPath: './apps/splabo/app'
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.tauri-args }}
