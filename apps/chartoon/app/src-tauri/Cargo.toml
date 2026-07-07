@@ -1,12 +1,12 @@
 [package]
-name = "chartoon"
+name = "splabo"
 version = "0.0.0-dev"
 description = "Splatoon battle data logger and analytics dashboard"
 authors = []
 edition = "2021"
 
 [lib]
-name = "chartoon_lib"
+name = "splabo_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
