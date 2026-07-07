@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://geartoon.pages.dev/sitemap.xml
