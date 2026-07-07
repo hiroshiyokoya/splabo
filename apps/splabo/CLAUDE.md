@@ -1,16 +1,16 @@
-# chartoon - Claude 作業ルール
+# splabo - Claude 作業ルール
 
-このファイルは **chartoon 固有のルール** のみ記述する。共通ルール（実装前の構想確認・ブランチ/PR フロー・コミット前確認・イシューラベル付け・`cd && git` 回避・ファイル操作・git 安全則）は `~/.claude/CLAUDE.md` を参照。
+このファイルは **splabo アプリ固有のルール** のみ記述する。共通ルール（実装前の構想確認・ブランチ/PR フロー・コミット前確認・イシューラベル付け・`cd && git` 回避・ファイル操作・git 安全則）は `~/.claude/CLAUDE.md` を参照。
 
-> **リポジトリ名とアプリ名の乖離について:** GitHub リポジトリ名は `splabo` にリネーム済み（リポ参照 URL・`gh -R` はすべて `hiroshiyokoya/splabo`）。一方、アプリ名／プロダクト名（ウィンドウタイトル・ロゴ・README 見出しなど）および識別子 `com.chartoon.app` は当面 `chartoon` のまま据え置く。
+> **v0.8 統合済み:** 旧 chartoon（戦績）と geartoon（ギア）を 1 バイナリ **splabo**（識別子 `com.splabo.app`）に統合した。ギア機能は「ギア」タブとして splabo に取り込み済み。旧 `com.chartoon.app` / `com.geartoon.app` のデータは起動時に非破壊コピーで移行される（`src-tauri/src/migration.rs`）。
 
 ---
 
-## geartoon を参考にすること
+## 旧 geartoon コードの参照
 
-chartoon と同じ作者が開発する Tauri + React アプリ。構成・実装・UI/UX のいずれも geartoon を第一の参考にし、転用できるものは積極的に転用する。
+ギア機能は splabo に移植済み（フロント `app/src/gear/`・Rust `gear.rs` / `gear_crypto.rs`）。移植元の旧 geartoon 単体アプリの実装を参照したい場合は GitHub API で取得できる。
 
-**リポジトリ:** `hiroshiyokoya/geartoon`（ローカルにない場合は GitHub API で取得）
+**リポジトリ:** `hiroshiyokoya/geartoon`（統合済みのアーカイブ扱い）
 
 ```bash
 # ファイル一覧
@@ -20,23 +20,15 @@ gh api repos/hiroshiyokoya/geartoon/contents/<path> | python3 -c "import sys,jso
 gh api repos/hiroshiyokoya/geartoon/contents/<path> --jq '.content' | base64 -d
 ```
 
-### 転用・参照の優先順位
+### 主な構成
 
-| 判断 | ケース |
-|------|--------|
-| **そのまま転用** | ほぼ同じ課題（ビルドスクリプト・設定ファイル・CI など） |
-| **改変して転用** | 目的は同じだが chartoon 向けに調整が必要（サイドカー・認証フローなど） |
-| **参考にして独自実装** | UI コンポーネントや機能が chartoon 固有の場合 |
-
-### 主な参照先
-
-| 対象 | geartoon でのパス |
+| 対象 | パス |
 |------|-----------------|
 | nxapi サイドカー | `tools/nxapi-wrapper/` |
 | Tauri 設定 | `app/src-tauri/tauri.conf.json` |
-| Rust バックエンド構成 | `app/src-tauri/src/` |
-| React コンポーネント構成 | `app/src/components/` |
-| CSS 設計・カラーパレット | `app/src/App.css` |
+| Rust バックエンド構成 | `app/src-tauri/src/`（戦績＋ `gear.rs` / `gear_crypto.rs`） |
+| React コンポーネント構成 | `app/src/components/`（戦績）・`app/src/gear/`（ギア） |
+| CSS 設計・カラーパレット | `app/src/App.css`・`app/src/gear/gear.css`（`.gear-root` スコープ） |
 
 ---
 
@@ -96,11 +88,11 @@ gh api repos/hiroshiyokoya/splabo/issues/15 -X PATCH -F body=@/tmp/tracking.md
 ### 3. ブランチ・PR を作成してマージ
 
 ```
-git -C D:/develop/splatoon-gear/chartoon checkout -b release/vX.Y.Z
-# ファイル編集後
-git -C D:/develop/splatoon-gear/chartoon add CHANGELOG.md README.md
-git -C D:/develop/splatoon-gear/chartoon commit -m "chore: リリース準備 vX.Y.Z"
-git -C D:/develop/splatoon-gear/chartoon push origin release/vX.Y.Z
+git -C D:/develop/splatoon-gear/splabo checkout -b release/vX.Y.Z
+# ファイル編集後（CHANGELOG は apps/splabo/CHANGELOG.md）
+git -C D:/develop/splatoon-gear/splabo add apps/splabo/CHANGELOG.md apps/splabo/README.md
+git -C D:/develop/splatoon-gear/splabo commit -m "chore: リリース準備 vX.Y.Z"
+git -C D:/develop/splatoon-gear/splabo push origin release/vX.Y.Z
 gh pr create -R hiroshiyokoya/splabo --base develop --title "chore: リリース準備 vX.Y.Z" --body "..."
 ```
 
@@ -108,10 +100,10 @@ gh pr create -R hiroshiyokoya/splabo --base develop --title "chore: リリース
 
 ### 4. タグ打ち（ユーザーが実施）
 
-ユーザーが develop ブランチで以下を実行：
+リリースは単一 `splabo-vX.Y.Z` タグ（`.github/workflows/splabo-release.yml` がトリガー）。ユーザーが develop ブランチで以下を実行：
 ```
-git tag vX.Y.Z
-git push origin vX.Y.Z
+git tag splabo-vX.Y.Z
+git push origin splabo-vX.Y.Z
 ```
 
 ---

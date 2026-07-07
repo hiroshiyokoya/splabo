@@ -16,10 +16,10 @@ Nintendo アカウントから [nxapi](https://github.com/samuelthomas2774/nxapi
 🌐 **ダウンロードページ**: https://chartoon.pages.dev/
 
 ```
-chartoon/
+splabo/
 └── app/         # Tauri アプリ本体（Vite + React + recharts + Rust）
-    ├── src/         # フロントエンド（React + TypeScript）
-    └── src-tauri/   # Rust バックエンド（Tauri + SQLite）
+    ├── src/         # フロントエンド（React + TypeScript。戦績 components/ ＋ ギア gear/）
+    └── src-tauri/   # Rust バックエンド（Tauri + SQLite + ギア暗号化 + データ移行）
 ```
 
 ## 機能
@@ -143,7 +143,7 @@ OpenAI / Google Gemini / Anthropic Claude / xAI Grok のいずれかに集計デ
 
 - 本ツールは個人の利用を目的としています。
 - SplatNet 3 は任天堂が公式に公開している API ではありません。任天堂側の仕様変更により、予告なく動作しなくなる可能性があります。
-- 認証情報はアプリの AppData ディレクトリにのみ保存されます（Windows: `%APPDATA%\com.chartoon.app\`、macOS: `~/Library/Application Support/com.chartoon.app/`）。コミットしないでください。
+- 認証情報はアプリの AppData ディレクトリにのみ保存されます（Windows: `%APPDATA%\com.splabo.app\`、macOS: `~/Library/Application Support/com.splabo.app/`）。旧 chartoon / geartoon からのデータは初回起動時に非破壊コピーで移行されます。コミットしないでください。
 - アプリの UI は現状日本語のみです。
 
 ## プライバシーポリシー

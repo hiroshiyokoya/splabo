@@ -24,7 +24,7 @@ xattr -cr /Applications/splabo.app
 
 ---
 
-📄 [README](https://github.com/hiroshiyokoya/splabo/blob/chartoon-vVERSION/apps/chartoon/README.md)
+📄 [README](https://github.com/hiroshiyokoya/splabo/blob/splabo-vVERSION/apps/splabo/README.md)
 
 <br>
 
