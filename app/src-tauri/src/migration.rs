@@ -341,7 +341,7 @@ fn same_dir(a: &Path, b: &Path) -> bool {
 /// 旧識別子ディレクトリは `app_data_dir().parent().join(<旧識別子>)` で導出する
 /// （識別子文字列の置換ではなく parent() ベースで OS 差を吸収する）。
 pub fn run_startup_migration(app: &tauri::AppHandle) -> MigrationReport {
-    use tauri::Manager;
+    use tauri::{Emitter, Manager};
     let new_root = match app.path().app_data_dir() {
         Ok(p) => p,
         Err(e) => {
@@ -371,6 +371,9 @@ pub fn run_startup_migration(app: &tauri::AppHandle) -> MigrationReport {
             report.geartoon.as_ref().map(|r| r.copied_files),
             report.gear_source,
         );
+        // 移行が発火した初回起動時、フロントに旧バージョンのアンインストール案内を出させる。
+        // marker により移行は1回だけ発火するので、この emit も初回のみ（#279）。
+        let _ = app.emit("migration_completed", ());
     } else {
         log::info!("[migration] skip ({:?})", report.skip_reason);
     }
