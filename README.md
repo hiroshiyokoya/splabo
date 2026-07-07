@@ -6,7 +6,7 @@ Nintendo アカウントから [nxapi](https://github.com/samuelthomas2774/nxapi
 
 > ## 📢 chartoon は splabo になりました
 >
-> - **chartoon**（戦績）はギア管理アプリ **geartoon**（ギア）と統合し、名称を **splabo** に、1 バイナリ（識別子 `com.splabo.app`）に変更しました。
+> - 戦績可視化・分析アプリ **chartoon** はギア管理アプリ **geartoon** と統合し、名称を **splabo** に、1 バイナリ（識別子 `com.splabo.app`）に変更しました。
 > - **「ギア」タブ**で所持ギアの取得・閲覧・コーデ（ギア構成）組みができます（旧 geartoon の機能を統合）。
 > - **設定・戦績データ・ギアデータはそのまま引き継がれます**。旧 `com.chartoon.app` / `com.geartoon.app` のデータは splabo 初回起動時に**非破壊コピー**で自動移行されます（`app/src-tauri/src/migration.rs`）。
 
@@ -34,6 +34,7 @@ splabo/
 - **ダッシュボード** — 武器別・モード別・ステージ別の勝率をグラフで表示
 - **バトルログ** — バトル履歴を一覧表示（ページング対応）。詳細モーダルでチーム編成・ギア・ランク / X パワー変動を確認できます
 - **武器図鑑** — 所持武器の勝率・サブ/スペシャル一覧
+- **ステージ図鑑** — ステージ別の勝率・バトル数・平均キル / デス・KO 率を一覧表示
 - **ギア** — 所持ギアを取得して一覧表示。ギアパワーを組み合わせてコーデ（ギア構成）を組めます（旧 geartoon の機能を統合）
 - **環境分析** — [stat.ink](https://stat.ink/) の公開バトルデータ（全世界のプレイヤー投稿）を取り込み、武器ピック率・勝率などコミュニティ全体の環境を散布図・マトリクスヒートマップで分析。ロビー・ルール・バージョン・ウデマエ帯・期間で絞り込み可能
 - **stat.ink 自動アップロード** — 取得したバトルを [stat.ink](https://stat.ink/) へ自動アップロード（API キー登録時）。同一バトルは s3s と同じ UUID v5 名前空間で重複排除されます
@@ -130,7 +131,7 @@ npx tauri build    # インストーラーを生成（初回は Rust のフル�
 
 **SplatNet 3** は、Nintendo Switch Online スマートフォンアプリが内部で使用している任天堂のサービスです。バトル履歴・ギア情報などを取得できる GraphQL API を持ちますが、公式には公開されていません。
 
-[**nxapi**](https://github.com/samuelthomas2774/nxapi)（Samuel Thomas 氏が開発する OSS）は、このフローを解析し、サードパーティ製ツールから SplatNet 3 へアクセスする方法を明らかにしました。splabo の認証実装はこの nxapi のフローを Rust で再実装したものです。
+[**nxapi**](https://github.com/samuelthomas2774/nxapi)（samuelthomas2774 氏が開発する OSS）は、このフローを解析し、サードパーティ製ツールから SplatNet 3 へアクセスする方法を明らかにしました。splabo の認証実装はこの nxapi のフローを Rust で再実装したものです。
 
 ### 認証
 
@@ -201,7 +202,7 @@ OpenAI / Google Gemini / Anthropic Claude / xAI Grok のいずれかに集計デ
 Nintendo Switch Online 認証・SplatNet 3 API アクセス・stat.ink 連携の実装に際して以下を参照しました。
 
 - [samuelthomas2774/nxapi](https://github.com/samuelthomas2774/nxapi) — Nintendo Switch Online の認証・API アクセスライブラリ。splabo の認証フローはこのプロジェクトが明らかにした仕様に基づいています。f-token 生成も nxapi が内部で使用するエンドポイント（`nxapi-znca-api.fancy.org.uk`）を利用します。
-- [fetus-hina/stat.ink](https://github.com/fetus-hina/stat.ink) — AIZU 氏が運営する Splatoon シリーズのバトル統計共有プラットフォーム（[stat.ink](https://stat.ink/)）の OSS 実装。splabo の stat.ink アップロード機能はこのサービスの公開 API（`api/v3/battle`）を利用します。
+- [fetus-hina/stat.ink](https://github.com/fetus-hina/stat.ink) — AIZAWA Hina 氏が運営する Splatoon シリーズのバトル統計共有プラットフォーム（[stat.ink](https://stat.ink/)）の OSS 実装。splabo の stat.ink アップロード機能はこのサービスの公開 API（`api/v3/battle`）を利用します。
 - [frozenpandaman/s3s](https://github.com/frozenpandaman/s3s) — SplatNet 3 から stat.ink へバトルデータを送る Python 製ツール。splabo の stat.ink アップロード機能はこのリポジトリのペイロード構築ロジック（`prepare_battle_result` / `set_scoreboard` 相当）・UUID v5 名前空間・武器/ステージ ID 変換ルールを Rust で再実装したものです。
 
 ## 免責事項
