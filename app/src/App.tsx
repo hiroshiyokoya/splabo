@@ -204,6 +204,14 @@ export default function App() {
     setFetching(true)
     try {
       await invoke('fetch_battles_full')
+      // 統合: サイドバーの取得で戦績に続けてギアも取得する。
+      // ギアの失敗は戦績取得と独立に通知し、戦績取得の成功は保つ。
+      try {
+        await invoke('fetch_gear_full')
+      } catch (gearErr) {
+        console.error('gear fetch failed:', gearErr)
+        notify({ kind: 'warning', title: 'ギアの取得に失敗しました', message: '戦績は取得できました。ギアは時間をおいて「ギア」タブから再取得してください。', durationMs: 6000 })
+      }
     } catch (e) {
       reportFetchError(e, handleFetchFull)
     } finally {
