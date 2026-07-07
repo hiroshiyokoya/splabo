@@ -14,6 +14,7 @@ apps/*/tools/nxapi-wrapper/dist/
 .env
 .claude/worktrees/
 .claude/settings.local.json
+.claude/launch.json
 
 # ロゴ・ファビコン生成ツール（ローカル作業用・git 管理外）
 # 使い方: ブラウザで app/gen-logo.html / app/gen-favicon.html を開いて
