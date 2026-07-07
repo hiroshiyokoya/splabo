@@ -33,11 +33,17 @@ export function About({ onClose }: Props) {
         <div className="modal-body about-body">
           <img className="about-logo" src="/splabo-logo.png" alt="splabo" />
           {version && <div className="about-version">v{version}</div>}
-          <div className="about-author">Author: hiroshiyokoya</div>
           <p className="about-desc">
             Splatoon 3 のバトルデータを記録・分析するデスクトップアプリです。
           </p>
           <div className="about-links">
+            <a
+              className="about-link"
+              href="https://github.com/hiroshiyokoya"
+              onClick={e => { e.preventDefault(); openUrl('https://github.com/hiroshiyokoya').catch(console.error) }}
+            >
+              @hiroshiyokoya
+            </a>
             <a
               className="about-link"
               href="https://github.com/hiroshiyokoya/splabo"
@@ -54,8 +60,7 @@ export function About({ onClose }: Props) {
             </a>
           </div>
           <div className="about-notice">
-            本アプリは非公式ツールです。<br />
-            Nintendo / スプラトゥーンとは無関係です。
+            本アプリは非公式ツールです。Nintendo / スプラトゥーンとは無関係です。
           </div>
         </div>
       </div>
