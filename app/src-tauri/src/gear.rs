@@ -14,7 +14,7 @@
 //!                        gear_db.bin / .gti 化。geartoon サイドカー fetch_gear を Rust に置換。
 //!                        出力フォーマットは現行 geartoon 出力（gear-export-v1）と完全互換。
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::gear_crypto;
 
@@ -443,6 +443,9 @@ pub async fn fetch_gear_full(app: AppHandle) -> Result<GearFetchResult, String> 
         "[gear] 取得完了 頭 {} / 服 {} / 靴 {} / スキル {} → {}",
         result.head, result.clothing, result.shoes, result.skills, result.db_path
     );
+    // 取得元（ギアタブの「データ更新」/ サイドバーの一括取得）を問わず、
+    // フロントのギア一覧を再読み込みさせるためのイベントを発火する。
+    let _ = app.emit("gear_updated", ());
     Ok(result)
 }
 

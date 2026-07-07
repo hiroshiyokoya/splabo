@@ -144,6 +144,20 @@ export function GearSection() {
     initAppSettings()
   }, [])
 
+  // どこからギアを取得しても（ギアタブの「データ更新」/ サイドバーの一括取得）、
+  // Rust が発火する gear_updated イベントで最終取得日時の更新と一覧の再読み込みを一元化する。
+  useEffect(() => {
+    if (!isTauri()) return
+    let un: (() => void) | undefined
+    void import('@tauri-apps/api/event').then(({ listen }) =>
+      listen('gear_updated', () => {
+        saveLastFetchedAt(new Date())
+        reload()
+      }).then((fn) => { un = fn })
+    )
+    return () => { un?.() }
+  }, [reload])
+
   // ── データ更新フロー ──────────────────────────────────────
   const [updatePhase, setUpdatePhase] = useState<UpdatePhase>('idle')
   const [updateError, setUpdateError] = useState<string | null>(null)
@@ -191,15 +205,14 @@ export function GearSection() {
       setUpdatePhase('fetching')
       await invoke('fetch_gear_full')
 
-      // 3. 取得日時を保存してから UI を再読み込み
-      saveLastFetchedAt(new Date())
-      reload()
+      // 3. 取得成功。lastFetchedAt の更新と一覧の再読み込みは gear_updated イベント経由で
+      //    行う（サイドバーの一括取得など取得元を問わず同じ経路で反映するため）。
       setUpdatePhase('idle')
     } catch (e) {
       setUpdateError(String(e))
       setUpdatePhase('error')
     }
-  }, [updatePhase, isCoolingDown, reload])
+  }, [updatePhase, isCoolingDown])
   const [sortKey, setSortKey]       = useState<SortKey>('name')
   const [drawerOpen, setDrawerOpen]       = useState(false)
   const [comboLimit] = useState<ComboLimitValue>(loadComboLimit)
