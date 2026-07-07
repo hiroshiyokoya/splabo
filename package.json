@@ -4,6 +4,6 @@
   "private": true,
   "description": "splabo (Splatoon3 戦績 + ギア 統合アプリ)",
   "workspaces": [
-    "apps/splabo/app"
+    "app"
   ]
 }

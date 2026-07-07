@@ -26,7 +26,7 @@ jobs:
         id: filter
         with:
           # ルート共通ファイル（workspace 設定・lockfile・CI 自身）または
-          # アプリ本体（apps/splabo）に変更があればチェックする。
+          # アプリ本体（app / tools）に変更があればチェックする。
           filters: |
             splabo:
               - 'package.json'
@@ -34,7 +34,8 @@ jobs:
               - 'Cargo.toml'
               - 'Cargo.lock'
               - '.github/workflows/ci.yml'
-              - 'apps/splabo/**'
+              - 'app/**'
+              - 'tools/**'
 
   # ── splabo: フロントエンド型チェック + ビルド ──────────────────
   splabo-frontend:
@@ -64,7 +65,7 @@ jobs:
 
       # tsc + vite build（splabo の "build" は tsc && vite build）
       - name: Build (typecheck + vite)
-        run: npm run build -w apps/splabo/app
+        run: npm run build -w app
 
   # ── splabo: cargo check（Tauri バックエンド）───────────────────
   splabo-rust:
@@ -90,7 +91,7 @@ jobs:
       # nxapi-sidecar をビルド（tauri.conf.json の externalBin として要求されるため、
       # 存在しないと build.rs の存在チェックで cargo check が失敗する）
       - name: Build nxapi-wrapper sidecar (linux)
-        working-directory: apps/splabo/tools/nxapi-wrapper
+        working-directory: tools/nxapi-wrapper
         run: |
           npm ci
           npm run build:linux
@@ -99,8 +100,8 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/splabo/app/src-tauri
+          workspaces: app/src-tauri
 
       - name: cargo check
-        working-directory: apps/splabo/app/src-tauri
+        working-directory: app/src-tauri
         run: cargo check --all-targets
