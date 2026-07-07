@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>スプラボ (splabo) — Splatoon 3 戦績＆ギア</title>
+  <title>スプラボ (splabo) — Splatoon 3 戦績＆ギア表示アプリ</title>
   <meta name="description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。武器・ステージ・ルール別の勝率や、自由にカスタマイズできる線・散布図・ヒートマップで自分のプレイを分析できます。stat.ink 公開データを使ったコミュニティ全体の環境分析にも対応。Windows / macOS / Linux 対応。stat.ink への自動アップロードにも対応。">
   <meta name="keywords" content="Splatoon 3, スプラトゥーン3, バトル可視化, 勝率, ダッシュボード, stat.ink, nxapi, OSS, デスクトップアプリ, Tauri">
   <link rel="canonical" href="https://chartoon.pages.dev/">
@@ -12,14 +12,14 @@
   <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="splabo">
-  <meta property="og:title" content="スプラボ (splabo) — Splatoon 3 戦績＆ギア">
+  <meta property="og:title" content="スプラボ (splabo) — Splatoon 3 戦績＆ギア表示アプリ">
   <meta property="og:description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。武器・ステージ・ルール別の勝率や、自由にカスタマイズできるチャートで自分のプレイを分析。">
   <meta property="og:url" content="https://chartoon.pages.dev/">
   <meta property="og:image" content="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-logo.png">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="スプラボ (splabo) — Splatoon 3 戦績＆ギア">
+  <meta name="twitter:title" content="スプラボ (splabo) — Splatoon 3 戦績＆ギア表示アプリ">
   <meta name="twitter:description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。武器・ステージ・ルール別の勝率や、自由にカスタマイズできるチャートで自分のプレイを分析。">
   <meta name="twitter:image" content="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-logo.png">
 
@@ -332,11 +332,12 @@
       src="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-logo.png"
       alt="splabo logo">
     <h1>スプラボ (splabo)</h1>
-    <p class="hero-tagline">Splatoon 3 戦績＆ギア</p>
+    <p class="hero-tagline">Splatoon 3 戦績＆ギア表示アプリ</p>
     <p class="hero-desc">
       Nintendo アカウントから非公式 API 経由で Splatoon 3 のバトル履歴を取得し、グラフで可視化する OSS の PC アプリです。<br>
       武器・ステージ・ルール別の勝率や、カスタマイズ可能な線・散布図・ヒートマップで自分のプレイを多角的に分析できます。<br>
-      所持ギアの取得・一覧表示や、ギアパワーを組み合わせたコーデ作成にも対応しています。
+      所持ギアの取得・一覧表示や、ギアパワーを組み合わせたコーデ作成にも対応しています。<br>
+      戦績アプリ <strong>chartoon</strong> とギア管理アプリ <strong>geartoon</strong> を統合して誕生した後継アプリです。
     </p>
     <div class="hero-download">
       <a class="btn-download" id="btn-win" href="https://github.com/hiroshiyokoya/splabo/releases/latest">
