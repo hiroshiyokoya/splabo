@@ -93,6 +93,29 @@ main().catch((e) => {
  * setup <session_token> <data_dir>
  * session_token を nxapi のストレージ形式で保存する。
  */
+/**
+ * 一時エラー（znca-api の 5xx / タイムアウト / ネットワーク断）に対して指数バックオフで再試行する。
+ * 恒久エラー（未ログイン・4xx 等）は即座に投げる。nxapi の znca-api 呼び出しが断続的に
+ * 500{"error":"timeout"} を返す事象への耐性（#272）。
+ */
+async function withRetry(fn, { attempts = 3, baseDelayMs = 800, label = 'znca-api' } = {}) {
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const msg = String((e && e.message) || e);
+      const transient = /Non-200 status code:\s*5\d\d|timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|socket hang up|fetch failed|network/i.test(msg);
+      if (!transient || i === attempts) throw e;
+      const wait = baseDelayMs * i;
+      process.stderr.write(`[${label}] 一時エラー (${i}/${attempts}): ${msg} — ${wait}ms 後に再試行\n`);
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  throw lastErr;
+}
+
 async function cmdSetup([sessionToken, dataDir]) {
   if (!sessionToken || !dataDir) {
     throw new Error('usage: setup <session_token> <data_dir>');
@@ -124,7 +147,7 @@ async function cmdGetBulletToken([dataDir]) {
   process.stderr.write('bulletToken を取得中...\n');
   // splatnet3.js は coral の top-level await を含むため、ここで動的インポート
   const { getBulletToken } = await import('./node_modules/nxapi/dist/common/auth/splatnet3.js');
-  const { data } = await getBulletToken(storage, sessionToken, undefined, true);
+  const { data } = await withRetry(() => getBulletToken(storage, sessionToken, undefined, true));
 
   respond({
     ok: true,
@@ -175,7 +198,7 @@ async function cmdWeaponRecords([dataDir]) {
   process.stderr.write('WeaponRecordQuery を実行中...\n');
   const { getBulletToken } = await import('./node_modules/nxapi/dist/common/auth/splatnet3.js');
   // 第 4 引数 allow_fetch_token=true により bullet_token が無ければ自動取得する。
-  const { splatnet } = await getBulletToken(storage, sessionToken, undefined, true);
+  const { splatnet } = await withRetry(() => getBulletToken(storage, sessionToken, undefined, true));
 
   const result = await splatnet.getWeaponRecords();
   // result は { data, ... }。data.weaponRecords.nodes が本体。
