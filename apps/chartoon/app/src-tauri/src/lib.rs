@@ -12,6 +12,7 @@ pub mod env_import;
 pub mod gear;
 pub mod gear_crypto;
 pub mod images;
+pub mod migration;
 pub mod nxapi;
 pub mod splatnet3;
 pub mod statink;
@@ -122,8 +123,15 @@ pub fn run() {
             gear::delete_gear_data,
             // ギア取得系（Rust GraphQL 経路・Phase A2・gear.rs）
             gear::fetch_gear_full,
+            // データ移行（Phase C・migration.rs）
+            migration::get_migration_report,
         ])
         .setup(|app| {
+            // データ移行（Phase C・#242）: DB 初期化より前に同期実行する。
+            // 識別子据え置き（com.chartoon.app）中は移行元==移行先で no-op になる。
+            // 本番 D で識別子が com.splabo.app に変わって初めて発火する。
+            migration::run_startup_migration(app.handle());
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
