@@ -391,7 +391,7 @@ export function GearSection() {
           </p>
           <p className="empty-state__body">
             {error && <><span className="empty-state__detail">{error}</span><br /></>}
-            「データ更新」ボタンから SplatNet3 のギアデータを取得してください。
+            サイドバーの「最新データを取得」または下のボタンから SplatNet3 のギアデータを取得してください。
           </p>
           {isTauri() && (
             <button
@@ -440,53 +440,7 @@ export function GearSection() {
                 >
                   {`全${total.toLocaleString()}ギア取得`}
                 </span>
-                <button
-                  type="button"
-                  className={`app-db-refresh${updatePhase !== 'idle' && updatePhase !== 'error' ? ' app-db-refresh--busy' : ''}`}
-                  onClick={handleDataUpdate}
-                  disabled={(updatePhase !== 'idle' && updatePhase !== 'error') || isCoolingDown}
-                  title={
-                    !isTauri() ? 'Tauri アプリ上でのみ利用できます' :
-                    isCoolingDown ? '前回の更新から5分以内は再更新できません' :
-                    updatePhase === 'fetching' ? 'SplatNet3 からデータを取得中...' :
-                    updatePhase === 'checking' ? 'ログイン状態を確認中...' :
-                    'SplatNet3 からギアデータを取得する'
-                  }
-                >
-                  {updatePhase === 'checking' ? '確認中...' :
-                   updatePhase === 'fetching' ? 'データ取得中...' :
-                   'データ更新'}
-                </button>
               </div>
-              {updateError && (
-                <p className="app-update-error" role="alert">
-                  <span className="app-update-error__icon">⚠️</span>
-                  {updateError}
-                  <button
-                    type="button"
-                    className="app-update-error__dismiss"
-                    onClick={() => { setUpdateError(null); setUpdatePhase('idle') }}
-                    aria-label="エラーを閉じる"
-                  >✕</button>
-                </p>
-              )}
-              <p className="app-db-meta">
-                <span className="app-db-meta__inner">
-                  <span className="app-db-meta__label">最終更新:</span>
-                  <span className="app-db-meta__value">
-                    {lastFetchedAt
-                      ? lastFetchedAt.toLocaleString('ja-JP', {
-                          year: 'numeric',
-                          month: '2-digit',
-                          day: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit',
-                        })
-                      : '—'}
-                  </span>
-                </span>
-              </p>
             </div>
           </header>
 
