@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/splabo/app/src-tauri",
+    "app/src-tauri",
 ]
 
 # 依存はここでバージョンを一元管理する。
