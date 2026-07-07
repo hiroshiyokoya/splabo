@@ -413,7 +413,7 @@ export function GearSection() {
 
   return (
     <div className="gear-root">
-      <div className={`app${comboOpen ? ' app--combo-open' : ''}`}>
+      <div className={`gear-app${comboOpen ? ' gear-app--combo-open' : ''}`}>
         <div ref={appTopRef} className="app-top app-top--sticky">
           <header className="app-header">
             <div className="app-header__left">
@@ -502,7 +502,7 @@ export function GearSection() {
             ))}
 
             <button
-              className={`filter-btn ${activeFilterCount > 0 ? 'filter-btn--active' : ''}`}
+              className={`gear-filter-btn ${activeFilterCount > 0 ? 'gear-filter-btn--active' : ''}`}
               onClick={() => setDrawerOpen(true)}
               aria-label="絞り込み"
             >
@@ -521,7 +521,7 @@ export function GearSection() {
               </svg>
               絞り込み
               {activeFilterCount > 0 && (
-                <span className="filter-btn__badge">{activeFilterCount}</span>
+                <span className="gear-filter-btn__badge">{activeFilterCount}</span>
               )}
             </button>
 
