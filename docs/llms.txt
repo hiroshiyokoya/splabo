@@ -1,12 +1,13 @@
-# chartoon
+# splabo
 
-> Nintendo アカウントから非公式 API（nxapi が解析した SplatNet 3 / GraphQL）経由で Splatoon 3 のバトル履歴を取得し、グラフで可視化する OSS の PC アプリ。Windows / macOS / Linux 対応（Tauri）。**任天堂株式会社とは無関係の非公式アプリ**。
+> Nintendo アカウントから非公式 API（nxapi が解析した SplatNet 3 / GraphQL）経由で Splatoon 3 のバトル履歴を取得しグラフで可視化し、所持ギアの取得・コーデ作成もできる OSS の PC アプリ。Windows / macOS / Linux 対応（Tauri）。**任天堂株式会社とは無関係の非公式アプリ**。
 
 主な機能:
 - ダッシュボード: 主要指標（バトル数・勝率・キル/デス・キルレシオ）と、武器・ステージ・ルール・モード別の集計グラフ
 - カスタムグラフ: 線・棒・散布図・ヒートマップ・カレンダーを、集計軸と表示メトリクスを自由に組み合わせて追加
 - バトルログ: 履歴を検索・フィルター・ソート。詳細モーダルでチーム編成・ギア・ランク変動を確認
 - 武器図鑑: 所持武器の勝率・サブ/SP 一覧
+- ギア: 所持ギアの取得・一覧表示、ギアパワーを組み合わせたコーデ作成（旧 geartoon の機能を統合）
 - AI 分析: 自然言語で集計クエリを実行（OpenAI / Google Gemini / Anthropic Claude / xAI Grok 対応）
 - 自動取得: 15 分〜24 時間ごとの定期取得、トレイ常駐、完了通知
 - stat.ink 連携: 取得バトルを stat.ink に自動アップロード（s3s 互換ペイロード、UUID v5 で重複排除）
@@ -31,7 +32,7 @@
 
 ## Related
 
-- [nxapi](https://github.com/samuelthomas2774/nxapi): Nintendo Switch Online の認証・API アクセスライブラリ。chartoon の認証実装はこのプロジェクトが明らかにしたフローを Rust で再実装したもの。
-- [stat.ink](https://github.com/fetus-hina/stat.ink): Splatoon シリーズのバトル統計共有プラットフォーム。chartoon はこの API にバトルをアップロードできる。
-- [s3s](https://github.com/frozenpandaman/s3s): SplatNet 3 から stat.ink へバトルデータを送る Python ツール。chartoon の stat.ink アップロード機能はこのリポジトリのペイロード構築ロジックを Rust で再実装したもの。
-- [geartoon](https://github.com/hiroshiyokoya/geartoon): 同作者の Splatoon 3 所持ギア表示アプリ（姉妹プロジェクト）。
+- [nxapi](https://github.com/samuelthomas2774/nxapi): Nintendo Switch Online の認証・API アクセスライブラリ。splabo の認証実装はこのプロジェクトが明らかにしたフローを Rust で再実装したもの。
+- [stat.ink](https://github.com/fetus-hina/stat.ink): Splatoon シリーズのバトル統計共有プラットフォーム。splabo はこの API にバトルをアップロードできる。
+- [s3s](https://github.com/frozenpandaman/s3s): SplatNet 3 から stat.ink へバトルデータを送る Python ツール。splabo の stat.ink アップロード機能はこのリポジトリのペイロード構築ロジックを Rust で再実装したもの。
+- [geartoon](https://github.com/hiroshiyokoya/geartoon): 旧・Splatoon 3 所持ギア表示アプリ。splabo に統合済み（「ギア」タブ）。
