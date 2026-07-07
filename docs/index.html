@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>チャートゥーン (chartoon) — Splatoon 3 Battle Visualizer</title>
+  <title>スプラボ (splabo) — Splatoon 3 戦績＆ギア</title>
   <meta name="description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。武器・ステージ・ルール別の勝率や、自由にカスタマイズできる線・散布図・ヒートマップで自分のプレイを分析できます。stat.ink 公開データを使ったコミュニティ全体の環境分析にも対応。Windows / macOS / Linux 対応。stat.ink への自動アップロードにも対応。">
   <meta name="keywords" content="Splatoon 3, スプラトゥーン3, バトル可視化, 勝率, ダッシュボード, stat.ink, nxapi, OSS, デスクトップアプリ, Tauri">
   <link rel="canonical" href="https://chartoon.pages.dev/">
@@ -11,17 +11,17 @@
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="chartoon">
-  <meta property="og:title" content="チャートゥーン (chartoon) — Splatoon 3 Battle Visualizer">
+  <meta property="og:site_name" content="splabo">
+  <meta property="og:title" content="スプラボ (splabo) — Splatoon 3 戦績＆ギア">
   <meta property="og:description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。武器・ステージ・ルール別の勝率や、自由にカスタマイズできるチャートで自分のプレイを分析。">
   <meta property="og:url" content="https://chartoon.pages.dev/">
-  <meta property="og:image" content="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/chartoon-logo.png">
+  <meta property="og:image" content="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-logo.png">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="チャートゥーン (chartoon) — Splatoon 3 Battle Visualizer">
+  <meta name="twitter:title" content="スプラボ (splabo) — Splatoon 3 戦績＆ギア">
   <meta name="twitter:description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。武器・ステージ・ルール別の勝率や、自由にカスタマイズできるチャートで自分のプレイを分析。">
-  <meta name="twitter:image" content="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/chartoon-logo.png">
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-logo.png">
 
   <style>
     :root {
@@ -329,13 +329,14 @@
   <!-- Hero -->
   <section class="hero">
     <img class="hero-logo"
-      src="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/chartoon-logo.png"
-      alt="chartoon logo">
-    <h1>チャートゥーン (chartoon)</h1>
-    <p class="hero-tagline">Splatoon 3 Battle Visualizer</p>
+      src="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-logo.png"
+      alt="splabo logo">
+    <h1>スプラボ (splabo)</h1>
+    <p class="hero-tagline">Splatoon 3 戦績＆ギア</p>
     <p class="hero-desc">
       Nintendo アカウントから非公式 API 経由で Splatoon 3 のバトル履歴を取得し、グラフで可視化する OSS の PC アプリです。<br>
-      武器・ステージ・ルール別の勝率や、カスタマイズ可能な線・散布図・ヒートマップで自分のプレイを多角的に分析できます。
+      武器・ステージ・ルール別の勝率や、カスタマイズ可能な線・散布図・ヒートマップで自分のプレイを多角的に分析できます。<br>
+      所持ギアの取得・一覧表示や、ギアパワーを組み合わせたコーデ作成にも対応しています。
     </p>
     <div class="hero-download">
       <a class="btn-download" id="btn-win" href="https://github.com/hiroshiyokoya/splabo/releases/latest">
@@ -420,7 +421,7 @@
     <div class="warning-box">
       <h3>macOS — 「壊れているため開けません」と表示された場合</h3>
       <p>ターミナルで以下を実行してください：<br>
-        <code>xattr -cr /Applications/chartoon.app</code>
+        <code>xattr -cr /Applications/splabo.app</code>
       </p>
     </div>
   </section>
@@ -503,7 +504,7 @@
 
   <!-- Footer -->
   <footer>
-    <p>chartoon は任天堂株式会社と無関係の非公式 OSS アプリです。Splatoon™ は任天堂株式会社の商標です。</p>
+    <p>splabo は任天堂株式会社と無関係の非公式 OSS アプリです。Splatoon™ は任天堂株式会社の商標です。</p>
     <p style="margin-top: 0.4rem;">
       <a href="https://github.com/hiroshiyokoya/splabo">GitHub</a>
       &nbsp;·&nbsp;
