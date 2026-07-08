@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter};
 
 /// stat.ink への HTTP リクエストに付与する User-Agent。
 /// 他クライアント（s3s 等）の表示形式に揃えてバージョン部分を `v` 始まりにする。
-const USER_AGENT: &str = concat!("splabo/v", env!("CARGO_PKG_VERSION"));
+const USER_AGENT: &str = concat!("splabo/chartoon/v", env!("CARGO_PKG_VERSION"));
 
 // s3s と同じ UUID5 名前空間。同一バトルで s3s と UUID が一致するため stat.ink 側で重複排除される。
 const S3S_NAMESPACE_BYTES: [u8; 16] = [
@@ -539,7 +539,7 @@ fn build_payload(detail: &serde_json::Value, parent: Option<&serde_json::Value>)
     }
 
     // --- エージェント情報 ---
-    payload["agent"]         = serde_json::json!("splabo");
+    payload["agent"]         = serde_json::json!("splabo/chartoon");
     payload["agent_version"] = serde_json::json!(concat!("v", env!("CARGO_PKG_VERSION")));
     // automated は既に上で "yes" を入れている（s3s 準拠の文字列値）
 
