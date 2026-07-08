@@ -132,7 +132,7 @@ fn save_session_token(app: &AppHandle, token: &str) -> Result<(), String> {
     let payload = serde_json::json!({
         "session_token": token,
         "updated_at":    chrono::Utc::now().to_rfc3339(),
-        "source_app":    "chartoon",
+        "source_app":    "splabo",
     });
     std::fs::write(&path, serde_json::to_string_pretty(&payload).unwrap_or_default())
         .map_err(|e| format!("共有 auth.json 書き込み失敗: {e}"))
@@ -169,7 +169,7 @@ fn save_pending_shared(app: &AppHandle, p: &PendingAuth) -> Result<(), String> {
         "state":          p.state,
         "verifier":       p.verifier,
         "started_at":     chrono::Utc::now().to_rfc3339(),
-        "started_by_app": "chartoon",
+        "started_by_app": "splabo",
     });
     std::fs::write(&path, serde_json::to_string_pretty(&payload).unwrap_or_default())
         .map_err(|e| format!("共有 pending 書き込み失敗: {e}"))
