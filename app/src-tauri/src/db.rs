@@ -1211,6 +1211,9 @@ pub async fn db_list_battles(
            AND (? IS NULL OR res.key = ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)
+           -- トリカラマッチはバトルリストに載せない（#293）。ルールが他と大きく異なるため。
+           AND (json_extract(b.raw_json, '$.vsRule.rule') IS NULL
+                OR json_extract(b.raw_json, '$.vsRule.rule') <> 'TRI_COLOR')
          ORDER BY {order_expr} {order_dir} LIMIT ? OFFSET ?"
     );
     let rows = sqlx::query_as::<_, BattleRow>(&sql)
@@ -3303,6 +3306,51 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             "migrate v17: インポート済みバトル {} 件に statink_uuid を補填（再送防止）",
             res.rows_affected()
         );
+    }
+
+    // version 18: フェス(チャレンジ)の誤分類を修正 (#293)。
+    //             v14 は存在しない festMatch.mode を見ていたため、フェス(チャレンジ)を
+    //             含む全フェス戦が splatfest_open に倒れていた。vsMode.id で振り直す。
+    //               VsMode-7 (base64 "VnNNb2RlLTc=") = splatfest_challenge(7)
+    //               それ以外（VsMode-6=オープン / VsMode-8=トリカラ）= splatfest_open(6)
+    //             トリカラ(8) はオープン扱いのまま（バトルリストは vsRule=TRI_COLOR で除外）。
+    if current_version < 18 {
+        let rows = sqlx::query(
+            "SELECT b.id, b.raw_json
+             FROM battle b
+             JOIN lobby l ON l.id = b.lobby_id
+             WHERE b.raw_json IS NOT NULL
+               AND l.key LIKE 'splatfest%'"
+        )
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let mut fixed = 0usize;
+        for row in &rows {
+            let id: String = row.get("id");
+            let raw_json: String = row.get("raw_json");
+            let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw_json) else { continue };
+
+            let vsmode_id = json.pointer("/vsMode/id").and_then(|v| v.as_str()).unwrap_or("");
+            let new_key = if vsmode_id == "VnNNb2RlLTc=" { "splatfest_challenge" } else { "splatfest_open" };
+            let Some(lobby_id) = old_mode_to_lobby_id(new_key) else { continue };
+
+            let res = sqlx::query("UPDATE battle SET lobby_id = ? WHERE id = ? AND lobby_id <> ?")
+                .bind(lobby_id)
+                .bind(&id)
+                .bind(lobby_id)
+                .execute(pool.as_ref())
+                .await
+                .map_err(|e| e.to_string())?;
+            fixed += res.rows_affected() as usize;
+        }
+
+        sqlx::query("PRAGMA user_version = 18")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!("migrate v18: フェス(チャレンジ)の lobby を vsMode.id で振り直し ({} 件補正)", fixed);
     }
 
     Ok(updated)
