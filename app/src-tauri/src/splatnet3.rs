@@ -672,19 +672,19 @@ pub async fn fetch_and_update_details(
             // イベント＝リーグ系であることが確認できる。lobby=event(5) に正規化する。
             "LEAGUE" => "event".to_string(),
             "FEST" => {
-                // festMatch.mode の値は splatnet3-types の FestMatchMode enum で
-                // REGULAR / CHALLENGE のみ。トリカラは festMatch.mode には現れず別経路
-                // （vsRule=TRI_COLOR 等）なので、念のため TRI_COLOR も判別だけしておく。
-                // TRI_COLOR は LOBBY_SEED 未対応のため集計外のまま（別イシューで対応）。
-                let fm = detail.pointer("/festMatch/mode").and_then(|v| v.as_str()).unwrap_or("");
-                match fm {
-                    "CHALLENGE" => "splatfest_challenge".to_string(),
-                    "TRI_COLOR" => "splatfest_tricolor".to_string(),
-                    "REGULAR" | "" => "splatfest_open".to_string(),
-                    other => {
-                        log::warn!("未知の festMatch/mode: {} (id={}) -> splatfest_open にフォールバック", other, id);
-                        "splatfest_open".to_string()
-                    }
+                // オープン/チャレンジは vsMode.id で区別する。
+                // 以前は festMatch.mode を見ていたが、このフィールドは VsHistoryDetail に
+                // 存在せず常に空 → 全て splatfest_open に誤分類されていた（#293）。
+                // stat.ink 送信側（statink.rs）と同じ vsMode.id 判定に統一する。
+                //   VsMode-7 (base64 "VnNNb2RlLTc=") = フェス(チャレンジ)
+                //   VsMode-6 = フェス(オープン) / VsMode-8 = トリカラ
+                // トリカラ(8) も lobby は open 扱いにして詳細更新のスキップ（無限リトライ）を防ぎ、
+                // バトルリスト表示側で vsRule=TRI_COLOR により別途除外する。
+                let vsmode_id = detail.pointer("/vsMode/id").and_then(|v| v.as_str()).unwrap_or("");
+                if vsmode_id == "VnNNb2RlLTc=" {
+                    "splatfest_challenge".to_string()
+                } else {
+                    "splatfest_open".to_string()
                 }
             }
             ""        => String::new(),
