@@ -672,18 +672,31 @@ pub async fn fetch_and_update_details(
             // イベント＝リーグ系であることが確認できる。lobby=event(5) に正規化する。
             "LEAGUE" => "event".to_string(),
             "FEST" => {
-                // オープン/チャレンジは vsMode.id で区別する。
-                // 以前は festMatch.mode を見ていたが、このフィールドは VsHistoryDetail に
-                // 存在せず常に空 → 全て splatfest_open に誤分類されていた（#293）。
-                // stat.ink 送信側（statink.rs）と同じ vsMode.id 判定に統一する。
-                //   VsMode-7 (base64 "VnNNb2RlLTc=") = フェス(チャレンジ)
-                //   VsMode-6 = フェス(オープン) / VsMode-8 = トリカラ
-                // トリカラ(8) も lobby は open 扱いにして詳細更新のスキップ（無限リトライ）を防ぎ、
-                // バトルリスト表示側で vsRule=TRI_COLOR により別途除外する。
+                // オープン/チャレンジの判定（#293 / #306）。
+                //
+                // festMatch.mode は VsHistoryDetail に存在しない（実 DB のフェス戦を全数調査して確認）。
+                // これに依存していたため、以前は全て splatfest_open に誤分類されていた。
+                //
+                // 実データ（オープン 45 戦）で確認できた事実:
+                //   - vsMode は全件 {"id":"VnNNb2RlLTY=","mode":"FEST"}（= VsMode-6）
+                //   - festMatch のキーは conchShell / contribution / dragonMatchType / jewel / myFestPower
+                //   - myFestPower は全件 null（＝オープンにはフェスパワーが無い）
+                //
+                // フェスパワー（myFestPower）はチャレンジにしか付かないので、これを主たる根拠にする。
+                // stat.ink 送信側（statink.rs）が使う VsMode-7 判定も OR で併用しておく
+                // （チャレンジ戦のサンプルが手元に無く、どちらが真の判別材料か確証が無いため）。
+                // オープンはどちらの条件も満たさないので、併用しても誤判定は起きない。
                 let vsmode_id = detail.pointer("/vsMode/id").and_then(|v| v.as_str()).unwrap_or("");
-                if vsmode_id == "VnNNb2RlLTc=" {
+                let has_fest_power = detail
+                    .pointer("/festMatch/myFestPower")
+                    .map(|v| !v.is_null())
+                    .unwrap_or(false);
+                if vsmode_id == "VnNNb2RlLTc=" || has_fest_power {
                     "splatfest_challenge".to_string()
                 } else {
+                    // オープン（VsMode-6）とトリカラ（VsMode-8）。トリカラも lobby は open 扱いに
+                    // して詳細更新のスキップ（無限リトライ）を防ぎ、バトルリスト表示側で
+                    // vsRule=TRI_COLOR により別途除外する。
                     "splatfest_open".to_string()
                 }
             }

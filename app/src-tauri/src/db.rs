@@ -2265,6 +2265,11 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// PRAGMA user_version でどこまで完了したかを管理する。
 ///
 /// version 1: mode/rule/stage/result を stat.ink ID 形式に変換（初回実装・バグあり）
+/// 適用済みマイグレーションの最新版。**新しい `if current_version < N` ブロックを足したら
+/// 必ずここを N に更新する。** 更新を忘れると `migrate_battle_ids` 冒頭の早期 return に
+/// 阻まれ、追加したマイグレーションが一度も実行されない（#206・#306 の再発防止）。
+const LATEST_MIGRATION_VERSION: i64 = 18;
+
 /// version 2: mode 判定バグ修正版で全件再処理
 /// version 3: kill カウントを kill_or_assist から実キル数に修正
 /// version 4: rule を raw_json から再パースして修復
@@ -2280,6 +2285,11 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// version 14: フェスマッチ(ナワバリ)の lobby_id を raw_json から救済 (#180)
 /// version 15: weapon / map に statink_key カラム追加 (#184)
 /// version 16: env_battles テーブル新設（stat.ink 公開バトルデータ）(#184)
+/// version 17: インポート済みバトルに statink_uuid を補填（再送防止）(#200 / #204)
+/// version 18: フェス(チャレンジ)の lobby を raw_json から振り直し (#293)
+///
+/// ⚠ **マイグレーションを追加したら `LATEST_MIGRATION_VERSION` も必ず上げること。**
+///    ここが古いままだと早期 return に阻まれて新しい版が一度も走らない（#206 / #306 で 2 度踏んだ）。
 pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
     let ver_row = sqlx::query("PRAGMA user_version")
         .fetch_one(pool.as_ref())
@@ -2287,7 +2297,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
     let current_version: i64 = ver_row.get(0);
 
-    if current_version >= 17 {
+    if current_version >= LATEST_MIGRATION_VERSION {
         return Ok(0); // 最新バージョンに達している
     }
 
@@ -3308,12 +3318,15 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         );
     }
 
-    // version 18: フェス(チャレンジ)の誤分類を修正 (#293)。
+    // version 18: フェス(チャレンジ)の誤分類を修正 (#293 / #306)。
     //             v14 は存在しない festMatch.mode を見ていたため、フェス(チャレンジ)を
-    //             含む全フェス戦が splatfest_open に倒れていた。vsMode.id で振り直す。
-    //               VsMode-7 (base64 "VnNNb2RlLTc=") = splatfest_challenge(7)
-    //               それ以外（VsMode-6=オープン / VsMode-8=トリカラ）= splatfest_open(6)
-    //             トリカラ(8) はオープン扱いのまま（バトルリストは vsRule=TRI_COLOR で除外）。
+    //             含む全フェス戦が splatfest_open に倒れていた。raw_json から振り直す。
+    //
+    //             判定は splatnet3.rs の FEST 分岐と同一:
+    //               festMatch.myFestPower が非 null（フェスパワーはチャレンジにしか付かない）
+    //               または vsMode.id == VsMode-7 → splatfest_challenge(7)
+    //               それ以外（VsMode-6=オープン / VsMode-8=トリカラ）→ splatfest_open(6)
+    //             トリカラはオープン扱いのまま（バトルリストは vsRule=TRI_COLOR で除外）。
     if current_version < 18 {
         let rows = sqlx::query(
             "SELECT b.id, b.raw_json
@@ -3333,7 +3346,15 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw_json) else { continue };
 
             let vsmode_id = json.pointer("/vsMode/id").and_then(|v| v.as_str()).unwrap_or("");
-            let new_key = if vsmode_id == "VnNNb2RlLTc=" { "splatfest_challenge" } else { "splatfest_open" };
+            let has_fest_power = json
+                .pointer("/festMatch/myFestPower")
+                .map(|v| !v.is_null())
+                .unwrap_or(false);
+            let new_key = if vsmode_id == "VnNNb2RlLTc=" || has_fest_power {
+                "splatfest_challenge"
+            } else {
+                "splatfest_open"
+            };
             let Some(lobby_id) = old_mode_to_lobby_id(new_key) else { continue };
 
             let res = sqlx::query("UPDATE battle SET lobby_id = ? WHERE id = ? AND lobby_id <> ?")

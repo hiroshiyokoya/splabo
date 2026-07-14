@@ -243,10 +243,16 @@ fn build_payload(detail: &serde_json::Value, parent: Option<&serde_json::Value>)
         "X_MATCH" => "xmatch",
         "PRIVATE" => "private",
         "FEST" => {
-            // VsMode ID: 6=tricolor/open 7=pro 8=open
+            // オープン/チャレンジの判定は splatnet3.rs の FEST 分岐と揃える（#306）。
+            // フェスパワー（myFestPower）はチャレンジにしか付かないため主たる根拠にし、
+            // 従来の VsMode-7 判定も OR で併用する（オープンはどちらも満たさない）。
             let mode_id_b64 = detail.pointer("/vsMode/id").and_then(|v| v.as_str()).unwrap_or("");
             let mode_id = b64d(mode_id_b64).replace("VsMode-", "").parse::<i64>().unwrap_or(0);
-            if mode_id == 7 { "splatfest_challenge" } else { "splatfest_open" }
+            let has_fest_power = detail
+                .pointer("/festMatch/myFestPower")
+                .map(|v| !v.is_null())
+                .unwrap_or(false);
+            if mode_id == 7 || has_fest_power { "splatfest_challenge" } else { "splatfest_open" }
         }
         "LEAGUE" => "event",
         other => other,
