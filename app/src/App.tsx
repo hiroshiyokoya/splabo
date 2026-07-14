@@ -283,13 +283,15 @@ export default function App() {
       <main className="content">
         {tab === 'battles' && (
           <>
+            {/* 図鑑タブ（FilterBar → 図鑑ヘッダ内の ViewToggle）と並びを揃えるため、
+                切替は絞り込みの下に置く。 */}
+            <FilterBar filters={filters} onChange={setFilters} />
             <ViewToggle
               options={BATTLES_VIEWS}
               value={battlesView}
               onChange={setBattlesView}
               ariaLabel="バトルの表示切替"
             />
-            <FilterBar filters={filters} onChange={setFilters} />
             {battlesView === 'dashboard' ? (
               <Dashboard
                 filters={filters}
