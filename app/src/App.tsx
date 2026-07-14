@@ -260,11 +260,12 @@ export default function App() {
         <button className="logo" onClick={() => setShowAbout(true)} aria-label="splabo について">
           <img src="/splabo-logo.png" alt="splabo" />
         </button>
-        {/* 並び順: バトル → 武器 → ステージ → ギア → 環境 → AI → 設定 */}
-        <NavItem id="battles"   icon="⚔️" label="バトル"         active={tab} onClick={setTab} />
+        {/* 並び順: 戦績 → 武器図鑑 → ステージ図鑑 → ギアコーデ → 環境分析 → AI分析 → 設定
+            命名は「対象＋役割」で統一（戦績 / 〜図鑑 / 〜コーデ / 〜分析）。 */}
+        <NavItem id="battles"   icon="⚔️" label="戦績"           active={tab} onClick={setTab} />
         <NavItem id="weapons"   icon="🔫" label="武器図鑑"       active={tab} onClick={setTab} />
         <NavItem id="stages"    icon="🗺️" label="ステージ図鑑"   active={tab} onClick={setTab} />
-        <NavItem id="gear"      icon="👕" label="ギア"           active={tab} onClick={setTab} />
+        <NavItem id="gear"      icon="👕" label="ギアコーデ"     active={tab} onClick={setTab} />
         <NavItem id="env"       icon="🌍" label="環境分析"       active={tab} onClick={setTab} />
         <NavItem id="ai"        icon="🧙" label="AI分析"         active={tab} onClick={setTab} />
         <NavItem id="settings"  icon="⚙️" label="設定"           active={tab} onClick={setTab} />
@@ -291,7 +292,7 @@ export default function App() {
               options={BATTLES_VIEWS}
               value={battlesView}
               onChange={setBattlesView}
-              ariaLabel="バトルの表示切替"
+              ariaLabel="戦績の表示切替"
             />
             {battlesView === 'dashboard' ? (
               <Dashboard
