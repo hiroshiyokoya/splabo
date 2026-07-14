@@ -10,6 +10,12 @@ function winRateColor(rate: number): string {
   return '#f472b6'
 }
 
+/** 「勝率の良いステージ」の下限バトル数（少数サンプルによる勝率のブレを避ける）。
+ *  StageDetailModal の「勝率 TOP 武器」と同じ流儀・同じ値に揃えている。 */
+const STAGE_MIN_BATTLES = 5
+/** 「勝率の良いステージ」で表示する件数。 */
+const STAGE_TOP_N = 5
+
 function fmtNum(n: number | null | undefined, digits = 2): string {
   if (n === null || n === undefined) return '—'
   return n.toFixed(digits)
@@ -78,6 +84,20 @@ export function WeaponDetailModal({
 
   // ステージ Top 5（バトル数降順、既に db 側でソート済み）
   const topStages = (stageRows ?? []).slice(0, 5)
+
+  // 勝率の良いステージ Top 5（#302）。取得済みの stageRows を使い回すので追加クエリは不要。
+  // 少数サンプルで勝率が跳ねるのを避けるため STAGE_MIN_BATTLES 戦以上に絞る。
+  // 勝率を算出できない（引き分けのみ等で decisive=0）ステージは除外し、
+  // 同率のときはバトル数の多い方を上位にする。
+  const bestStages = (stageRows ?? [])
+    .filter(r => r.total >= STAGE_MIN_BATTLES)
+    .map(r => {
+      const dec = r.total - r.draws
+      return { row: r, winRate: dec > 0 ? r.wins / dec : null }
+    })
+    .filter((x): x is { row: GroupedStatsRow; winRate: number } => x.winRate !== null)
+    .sort((a, b) => (b.winRate - a.winRate) || (b.row.total - a.row.total))
+    .slice(0, STAGE_TOP_N)
   // ルール別は 5 ルール固定順で表示（データが無いルールは試合数 0 として並べる）
   const ruleOrder = Object.keys(RULE_LABELS)
   const ruleMap = new Map((ruleRows ?? []).map(r => [r.key, r]))
@@ -188,6 +208,31 @@ export function WeaponDetailModal({
                     </div>
                   )
                 })}
+              </div>
+            )}
+          </section>
+
+          {/* 勝率の良いステージ Top 5（#302）。stageRows を勝率降順で並べ替えたもの。 */}
+          <section className="modal-section">
+            <h3 className="modal-section-title">
+              勝率の良いステージ Top {STAGE_TOP_N}
+              <span className="weapon-modal-section-note"> ({STAGE_MIN_BATTLES} 戦以上)</span>
+            </h3>
+            {loading && <div className="loading">読み込み中...</div>}
+            {!loading && error && <div className="empty">読み込み失敗: {error}</div>}
+            {!loading && !error && bestStages.length === 0 && <div className="empty">{STAGE_MIN_BATTLES} 戦以上のステージなし</div>}
+            {!loading && !error && bestStages.length > 0 && (
+              <div className="weapon-modal-stage-list">
+                {bestStages.map(({ row: r, winRate: wr }) => (
+                  <div key={r.key} className="weapon-modal-stage-row">
+                    <span className="weapon-modal-stage-name" title={r.name}>{r.name}</span>
+                    <span className="weapon-modal-stage-count">{r.total} 戦</span>
+                    <span
+                      className="weapon-modal-stage-rate"
+                      style={{ color: winRateColor(wr) }}
+                    >{`${(wr * 100).toFixed(1)}%`}</span>
+                  </div>
+                ))}
               </div>
             )}
           </section>
