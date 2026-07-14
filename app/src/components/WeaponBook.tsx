@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { GroupedStatsRow, WeaponRecord, BookView } from '../types'
+import { avgKillRatio } from '../types'
 import { WeaponDetailModal } from './WeaponDetailModal'
 import { ViewToggle, BOOK_VIEWS } from './ViewToggle'
 import { SortHeader } from './SortHeader'
@@ -27,6 +28,8 @@ type SortKey =
   | 'win_rate'        // 勝率
   | 'avg_kill'        // 平均キル数（db_grouped_stats から）
   | 'avg_death'       // 平均デス数（db_grouped_stats から・少ないほど上位）
+  | 'knockout_rate'   // KO 率（db_grouped_stats の knockout_win / total）
+  | 'avg_inked'       // 平均塗りポイント（db_grouped_stats から）
   | 'weapon_level'    // 熟練度（WeaponRecord）
   | 'win_count_total' // 通算勝利数（WeaponRecord）
   | 'paint_point_total' // 総塗りポイント（WeaponRecord）
@@ -38,6 +41,8 @@ const SORT_LABELS: Record<SortKey, string> = {
   win_rate:          '勝率',
   avg_kill:          '平均キル',
   avg_death:         '平均デス',
+  knockout_rate:     'KO率',
+  avg_inked:         '平均塗り',
   weapon_level:      '熟練度',
   win_count_total:   '通算勝利数',
   paint_point_total: '総塗',
@@ -161,6 +166,13 @@ export function WeaponBook() {
       statsByWeapon.get(w.name)?.avg_kill ?? null
     const avgDeath = (w: WeaponRecord): number | null =>
       statsByWeapon.get(w.name)?.avg_death ?? null
+    const avgInked = (w: WeaponRecord): number | null =>
+      statsByWeapon.get(w.name)?.avg_inked ?? null
+    const koRate = (w: WeaponRecord): number | null => {
+      const s = statsByWeapon.get(w.name)
+      if (!s || s.total === 0) return null
+      return s.knockout_win / s.total
+    }
     const sorted = [...arr].sort((a, b) => {
       switch (sortKey) {
         case 'total':             return b.total - a.total
@@ -168,6 +180,8 @@ export function WeaponBook() {
         case 'win_rate':          return cmpNum(winRate(a), winRate(b))
         case 'avg_kill':          return cmpNum(avgKill(a), avgKill(b))
         case 'avg_death':         return cmpNumAsc(avgDeath(a), avgDeath(b))
+        case 'knockout_rate':     return cmpNum(koRate(a),   koRate(b))
+        case 'avg_inked':         return cmpNum(avgInked(a), avgInked(b))
         case 'weapon_level':      return cmpNum(a.weapon_level,      b.weapon_level)
         case 'win_count_total':   return cmpNum(a.win_count_total,   b.win_count_total)
         case 'paint_point_total': return cmpNum(a.paint_point_total, b.paint_point_total)
@@ -358,8 +372,11 @@ function WeaponTable({ rows, statsByWeapon, sortKey, ascending, onSort, onSelect
             <SortHeader label="スペシャル"                   activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
             <SortHeader label="バトル数" sortKey="total"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="勝率"     sortKey="win_rate"  activeKey={sortKey} ascending={ascending} onSort={onSort} />
-            <SortHeader label="平均K"    sortKey="avg_kill"  activeKey={sortKey} ascending={ascending} onSort={onSort} />
-            <SortHeader label="平均D"    sortKey="avg_death" activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="平均K"    sortKey="avg_kill"      activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="平均D"    sortKey="avg_death"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="K/D"                              activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="KO率"     sortKey="knockout_rate" activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="平均塗り" sortKey="avg_inked"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
           </tr>
         </thead>
         <tbody>
@@ -367,6 +384,7 @@ function WeaponTable({ rows, statsByWeapon, sortKey, ascending, onSort, onSelect
             const decisive = w.total - w.draws
             const winRate  = decisive > 0 ? w.wins / decisive : null
             const stats    = statsByWeapon.get(w.name) ?? null
+            const koRate   = stats && stats.total > 0 ? stats.knockout_win / stats.total : null
             return (
               <tr key={w.name} className="book-tr clickable-row" onClick={() => onSelect(w)}>
                 <td className="book-td book-td--left">{w.name}</td>
@@ -379,6 +397,9 @@ function WeaponTable({ rows, statsByWeapon, sortKey, ascending, onSort, onSelect
                 </td>
                 <td className="book-td">{stats?.avg_kill  != null ? stats.avg_kill.toFixed(2)  : '—'}</td>
                 <td className="book-td">{stats?.avg_death != null ? stats.avg_death.toFixed(2) : '—'}</td>
+                <td className="book-td">{avgKillRatio(stats?.avg_kill ?? null, stats?.avg_death ?? null)}</td>
+                <td className="book-td">{koRate !== null ? `${(koRate * 100).toFixed(1)}%` : '—'}</td>
+                <td className="book-td">{stats?.avg_inked != null ? Math.round(stats.avg_inked).toLocaleString() : '—'}</td>
               </tr>
             )
           })}
