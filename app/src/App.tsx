@@ -260,12 +260,13 @@ export default function App() {
         <button className="logo" onClick={() => setShowAbout(true)} aria-label="splabo について">
           <img src="/splabo-logo.png" alt="splabo" />
         </button>
+        {/* 並び順: バトル → 武器 → ステージ → ギア → 環境 → AI → 設定 */}
         <NavItem id="battles"   icon="⚔️" label="バトル"         active={tab} onClick={setTab} />
-        <NavItem id="ai"        icon="🧙" label="AI分析"         active={tab} onClick={setTab} />
         <NavItem id="weapons"   icon="🔫" label="武器図鑑"       active={tab} onClick={setTab} />
-        <NavItem id="stages"    icon="🗺" label="ステージ図鑑"   active={tab} onClick={setTab} />
-        <NavItem id="env"       icon="🌍" label="環境分析"       active={tab} onClick={setTab} />
+        <NavItem id="stages"    icon="🗺️" label="ステージ図鑑"   active={tab} onClick={setTab} />
         <NavItem id="gear"      icon="👕" label="ギア"           active={tab} onClick={setTab} />
+        <NavItem id="env"       icon="🌍" label="環境分析"       active={tab} onClick={setTab} />
+        <NavItem id="ai"        icon="🧙" label="AI分析"         active={tab} onClick={setTab} />
         <NavItem id="settings"  icon="⚙️" label="設定"           active={tab} onClick={setTab} />
         <button
           className="btn-primary sidebar-fetch-btn"
