@@ -15,9 +15,10 @@ function winRateColor(rate: number): string {
 }
 
 // 大きい数値を「12.3万」短縮表示。
-/** 平均統計（K/D/A/SP/inked/duration）用の小行。 */
-function statLine(label: string, value: string): { label: string; value: string } {
-  return { label, value }
+/** 平均統計（K/D/A/SP/inked/duration）用の小行。
+ *  `title` はホバー時のツールチップ（カッコ内の意味を補足する用途・#313）。 */
+function statLine(label: string, value: string, title?: string): { label: string; value: string; title?: string } {
+  return { label, value, title }
 }
 
 // カード一覧のソート種別。
@@ -495,11 +496,18 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
   const officialRows = total > 0 ? [
     // Lv（熟練度）は任天堂由来で常に全期間の値。フィルタには追従しない（#298）。
     statLine('Lv*',   weapon.weapon_level !== null ? String(weapon.weapon_level) : '—'),
+    // KO 勝ち／KO 負けは勝ち／負けの「内数」なので、カッコで内訳として見せる（#313）。
     ...(avgStats ? [
-      statLine('勝',     avgStats.wins.toLocaleString()),
-      statLine('KO勝',   avgStats.knockout_win.toLocaleString()),
-      statLine('負け',   (avgStats.total - avgStats.wins - avgStats.draws).toLocaleString()),
-      statLine('KO負け', avgStats.knockout_lose.toLocaleString()),
+      statLine(
+        '勝ち',
+        `${avgStats.wins.toLocaleString()} (${avgStats.knockout_win.toLocaleString()})`,
+        `勝ち ${avgStats.wins.toLocaleString()} 戦（うち KO 勝ち ${avgStats.knockout_win.toLocaleString()} 戦）`,
+      ),
+      statLine(
+        '負け',
+        `${(avgStats.total - avgStats.wins - avgStats.draws).toLocaleString()} (${avgStats.knockout_lose.toLocaleString()})`,
+        `負け ${(avgStats.total - avgStats.wins - avgStats.draws).toLocaleString()} 戦（うち KO 負け ${avgStats.knockout_lose.toLocaleString()} 戦）`,
+      ),
       statLine('平均塗', avgStats.avg_inked !== null ? Math.round(avgStats.avg_inked).toLocaleString() : '—'),
       statLine('総塗',   avgStats.sum_inked !== null ? avgStats.sum_inked.toLocaleString() : '—'),
     ] : []),
@@ -541,7 +549,7 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
           <div className="weapon-card-stats-grid">
             <div className="weapon-card-stats-col">
               {officialRows.map(r => (
-                <div key={r.label} className="weapon-card-mini">
+                <div key={r.label} className="weapon-card-mini" title={r.title}>
                   <span className="weapon-card-mini-label">{r.label}</span>
                   <span className="weapon-card-mini-value">{r.value}</span>
                 </div>
