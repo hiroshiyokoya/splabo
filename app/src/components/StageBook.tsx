@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { GroupedStatsRow } from '../types'
+import type { GroupedStatsRow, BookView } from '../types'
 import { avgKillRatio } from '../types'
 import { StageDetailModal } from './StageDetailModal'
+import { ViewToggle, BOOK_VIEWS } from './ViewToggle'
+import { SortHeader } from './SortHeader'
+import { loadViewPrefs, saveViewPrefs } from '../utils/viewPrefs'
 
 // Dashboard / WeaponBook.winRateColor と同期。
 function winRateColor(rate: number): string {
@@ -12,26 +15,57 @@ function winRateColor(rate: number): string {
 }
 
 /** ステージ図鑑のソートキー。 */
-type SortKey = 'total' | 'win_rate' | 'avg_kill' | 'avg_death' | 'knockout_rate' | 'name'
+type SortKey =
+  | 'total' | 'wins' | 'loses' | 'draws'
+  | 'win_rate' | 'avg_kill' | 'avg_death' | 'kd' | 'knockout_rate' | 'name'
 
 const SORT_LABELS: Record<SortKey, string> = {
   total:          'バトル数',
+  wins:           '勝ち(W)',
+  loses:          '負け(L)',
+  draws:          '引分(D)',
   win_rate:       '勝率',
   avg_kill:       '平均K',
   avg_death:      '平均D',
+  kd:             'K/D',
   knockout_rate:  'KO 率',
   name:           '名前',
 }
 
-const SORT_KEYS: SortKey[] = ['total', 'win_rate', 'avg_kill', 'avg_death', 'knockout_rate', 'name']
+const SORT_KEYS: SortKey[] = [
+  'total', 'wins', 'loses', 'draws',
+  'win_rate', 'avg_kill', 'avg_death', 'kd', 'knockout_rate', 'name',
+]
 
-/** 比較関数（DESC を基本に、name のみ ASC）。 */
+/** K/D = 平均K ÷ 平均D。デス 0 は上位（Infinity）、データ無しは null。 */
+function kdOf(r: GroupedStatsRow): number | null {
+  if (r.avg_kill === null || r.avg_death === null) return null
+  if (r.avg_death === 0) return r.avg_kill > 0 ? Number.POSITIVE_INFINITY : null
+  return r.avg_kill / r.avg_death
+}
+
+/** compareRows が「昇順」で並べるキー（それ以外は降順）。一覧ビューの矢印表示に使う。 */
+const ASC_SORT_KEYS: ReadonlySet<SortKey> = new Set<SortKey>(['name', 'avg_death'])
+
+/** 比較関数（DESC を基本に、name / avg_death は ASC）。 */
 function compareRows(a: GroupedStatsRow, b: GroupedStatsRow, sort: SortKey): number {
   switch (sort) {
     case 'total':
       return b.total - a.total
+    case 'wins':
+      return b.wins - a.wins
+    case 'loses':
+      return (b.total - b.wins - b.draws) - (a.total - a.wins - a.draws)
+    case 'draws':
+      return b.draws - a.draws
     case 'win_rate':
       return b.win_rate - a.win_rate
+    case 'kd': {
+      // K/D は大きいほど良いので降順。データ無しは末尾。
+      const av = kdOf(a) ?? Number.NEGATIVE_INFINITY
+      const bv = kdOf(b) ?? Number.NEGATIVE_INFINITY
+      return bv - av
+    }
     case 'avg_kill': {
       const av = a.avg_kill ?? -1
       const bv = b.avg_kill ?? -1
@@ -59,6 +93,22 @@ export function StageBook() {
   const [loading,     setLoading]     = useState(true)
   const [sort,        setSort]        = useState<SortKey>('total')
   const [selected,    setSelected]    = useState<GroupedStatsRow | null>(null)
+  // パネル / 一覧の切替（#297）。前回選択を localStorage から復元する。
+  const [view,        setViewState]   = useState<BookView>(() => loadViewPrefs().stages)
+  // compareRows は各キーの「自然な向き」を返すので、反転フラグで昇順/降順をトグルする。
+  const [reversed,    setReversed]    = useState(false)
+  const [search,      setSearch]      = useState('')
+
+  function setView(next: BookView) {
+    setViewState(next)
+    saveViewPrefs({ ...loadViewPrefs(), stages: next })
+  }
+
+  /** テーブルヘッダのクリック: 同じキーなら向きを反転、違うキーなら自然な向きで並べ替え。 */
+  function handleSort(key: SortKey) {
+    if (key === sort) setReversed(r => !r)
+    else { setSort(key); setReversed(false) }
+  }
 
   useEffect(() => {
     // フィルター無し・全期間でステージ別集計を取得。
@@ -81,29 +131,54 @@ export function StageBook() {
       .finally(() => setLoading(false))
   }, [])
 
+  // 一覧ビューの名前検索（パネルには出さない）。
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (view !== 'list' || !q) return rows
+    return rows.filter(r => r.name.toLowerCase().includes(q))
+  }, [rows, search, view])
+
   const sorted = useMemo(() => {
-    const copy = [...rows]
+    const copy = [...filtered]
     copy.sort((a, b) => compareRows(a, b, sort))
+    if (reversed) copy.reverse()
     return copy
-  }, [rows, sort])
+  }, [filtered, sort, reversed])
 
   return (
     <div className="stage-book">
       <div className="stage-book-header">
         <h2>ステージ図鑑</h2>
-        <span className="total-count">{rows.length} ステージ</span>
-        <div className="stage-sort">
-          <label className="stage-sort-label">並び順</label>
-          <select
-            className="stage-sort-select"
-            value={sort}
-            onChange={e => setSort(e.target.value as SortKey)}
-          >
-            {SORT_KEYS.map(k => (
-              <option key={k} value={k}>{SORT_LABELS[k]}</option>
-            ))}
-          </select>
-        </div>
+        <span className="total-count">{filtered.length} ステージ</span>
+        <ViewToggle
+          options={BOOK_VIEWS}
+          value={view}
+          onChange={setView}
+          ariaLabel="ステージ図鑑の表示切替"
+        />
+        {view === 'list' ? (
+          <input
+            className="book-search"
+            type="search"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="ステージ名で絞り込み"
+            aria-label="ステージ名で絞り込み"
+          />
+        ) : (
+          <div className="stage-sort">
+            <label className="stage-sort-label">並び順</label>
+            <select
+              className="stage-sort-select"
+              value={sort}
+              onChange={e => setSort(e.target.value as SortKey)}
+            >
+              {SORT_KEYS.map(k => (
+                <option key={k} value={k}>{SORT_LABELS[k]}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -113,6 +188,14 @@ export function StageBook() {
           プレイ実績のあるステージがありません。<br />
           バトルデータを取得してから再度表示してください。
         </div>
+      ) : view === 'list' ? (
+        <StageTable
+          rows={sorted}
+          sort={sort}
+          ascending={ASC_SORT_KEYS.has(sort) !== reversed}
+          onSort={handleSort}
+          onSelect={setSelected}
+        />
       ) : (
         <div className="stage-grid">
           {sorted.map(r => (
@@ -133,6 +216,65 @@ export function StageBook() {
           onClose={() => setSelected(null)}
         />
       )}
+    </div>
+  )
+}
+
+/** 一覧ビュー（#297）。ヘッダクリックで並び替え、行クリックで詳細モーダル。 */
+function StageTable({ rows, sort, ascending, onSort, onSelect }: {
+  rows:      GroupedStatsRow[]
+  sort:      SortKey
+  ascending: boolean
+  onSort:    (k: SortKey) => void
+  onSelect:  (r: GroupedStatsRow) => void
+}) {
+  if (rows.length === 0) {
+    return <div className="empty">条件に一致するステージがありません。</div>
+  }
+  return (
+    <div className="book-table-wrap">
+      <table className="book-table">
+        <thead>
+          <tr>
+            <SortHeader label="ステージ" sortKey="name"          activeKey={sort} ascending={ascending} onSort={onSort} align="left" />
+            <SortHeader label="バトル数" sortKey="total"         activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="W"        sortKey="wins"          activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="L"        sortKey="loses"         activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="D"        sortKey="draws"         activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="勝率"     sortKey="win_rate"      activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="平均K"    sortKey="avg_kill"      activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="平均D"    sortKey="avg_death"     activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="K/D"      sortKey="kd"            activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="KO率"     sortKey="knockout_rate" activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="平均塗り"                         activeKey={sort} ascending={ascending} onSort={onSort} />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => {
+            const decisive = r.total - r.draws
+            const winRate  = decisive > 0 ? r.wins / decisive : null
+            const loses    = r.total - r.wins - r.draws
+            const koWin    = r.total > 0 ? r.knockout_win / r.total : 0
+            return (
+              <tr key={r.key} className="book-tr clickable-row" onClick={() => onSelect(r)}>
+                <td className="book-td book-td--left">{r.name}</td>
+                <td className="book-td">{r.total}</td>
+                <td className="book-td">{r.wins}</td>
+                <td className="book-td">{loses}</td>
+                <td className="book-td">{r.draws}</td>
+                <td className="book-td" style={{ color: winRate !== null ? winRateColor(winRate) : undefined }}>
+                  {winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '—'}
+                </td>
+                <td className="book-td">{r.avg_kill  !== null ? r.avg_kill.toFixed(2)  : '—'}</td>
+                <td className="book-td">{r.avg_death !== null ? r.avg_death.toFixed(2) : '—'}</td>
+                <td className="book-td">{avgKillRatio(r.avg_kill, r.avg_death)}</td>
+                <td className="book-td">{(koWin * 100).toFixed(1)}%</td>
+                <td className="book-td">{r.avg_inked !== null ? r.avg_inked.toFixed(0) : '—'}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }

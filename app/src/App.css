@@ -538,6 +538,59 @@ body {
 }
 .view-toggle__icon { font-size: 14px; line-height: 1; }
 
+/* ── 図鑑の一覧ビュー（#297・武器/ステージ共用） ── */
+.book-search {
+  padding: 6px 10px;
+  min-width: 200px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+}
+.book-search:focus { outline: none; border-color: var(--accent); }
+
+.book-table-wrap { overflow-x: auto; }
+.book-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.book-th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 10px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+  user-select: none;
+}
+.book-th--left { text-align: left; }
+.book-th--sortable { cursor: pointer; }
+.book-th--sortable:hover { color: var(--text); }
+.book-th--active { color: var(--accent); }
+.book-th__arrow { display: inline-block; width: 1em; font-size: 10px; }
+
+.book-td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  color: var(--text);
+}
+.book-td--left { text-align: left; font-weight: 600; }
+.book-icon {
+  display: block;
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+.book-tr:hover { background: color-mix(in srgb, var(--text-muted) 10%, transparent); }
+
 /* ── Filter Bar ── */
 .filter-bar {
   display: flex;
