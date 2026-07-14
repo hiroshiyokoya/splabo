@@ -33,6 +33,8 @@ export const LAST_FETCHED_KEY      = 'splabo:shellLastFetchedAt'
 export const LAST_WEAPONS_FETCH_KEY = 'splabo:shellLastWeaponsFetchAt'
 export const THEME_KEY             = 'splabo:shellThemeId'
 export const CUSTOM_CHARTS_KEY     = 'splabo:shellCustomCharts'
+/** タブ内ビューの選択状態（#296）。旧 chartoon 時代には無いので OLD キーは持たない。 */
+export const VIEWS_KEY             = 'splabo:shellViews'
 
 const SETTINGS_KEY_OLD           = 'chartoon:settings'
 const LAST_FETCHED_KEY_OLD       = 'chartoon:lastFetchedAt'
@@ -61,6 +63,7 @@ const MIRROR_KEYS: readonly string[] = [
   LAST_WEAPONS_FETCH_KEY,
   THEME_KEY,
   CUSTOM_CHARTS_KEY,
+  VIEWS_KEY,
   // gear 側設定（gear/utils/appSettings.ts と同名。ここでは値をそのままミラーするだけ）
   'splabo:themeId',
   'splabo:densityId',

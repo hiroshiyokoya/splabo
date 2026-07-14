@@ -11,8 +11,11 @@ import { EnvAnalysis } from './components/EnvAnalysis'
 import { Settings } from './components/Settings'
 import { About } from './components/About'
 import { GearSection } from './gear/GearSection'
-import type { Tab, AppSettings, ChartSpec, Filters } from './types'
+import { ViewToggle } from './components/ViewToggle'
+import type { ViewToggleOption } from './components/ViewToggle'
+import type { Tab, BattlesView, AppSettings, ChartSpec, Filters } from './types'
 import { DEFAULT_FILTERS } from './types'
+import { loadViewPrefs, saveViewPrefs } from './utils/viewPrefs'
 import { initAppSettings } from './utils/appSettings'
 import { useNotify, parseFetchError } from './utils/notify'
 import {
@@ -36,6 +39,12 @@ const DEFAULT_SETTINGS: AppSettings = {
 /** 武器マスターを再取得するインターバル（ミリ秒）。24 時間。 */
 const WEAPONS_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000
 
+/** 「バトル」タブ内のビュー切替（#296）。 */
+const BATTLES_VIEWS: readonly ViewToggleOption<BattlesView>[] = [
+  { key: 'dashboard', label: 'ダッシュボード', icon: '📊' },
+  { key: 'list',      label: '一覧',           icon: '📋' },
+]
+
 function loadSettings(): AppSettings {
   try {
     const raw = lsGet(SETTINGS_KEY)
@@ -52,7 +61,9 @@ function loadSettings(): AppSettings {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('dashboard')
+  const [tab, setTab] = useState<Tab>('battles')
+  // 「バトル」タブ内のビュー。前回選択を localStorage から復元する（#296）。
+  const [battlesView, setBattlesViewState] = useState<BattlesView>(() => loadViewPrefs().battles)
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
   const [aiChart, setAiChart] = useState<ChartSpec | null>(null)
   const [loginVersion, setLoginVersion] = useState(0)
@@ -209,9 +220,17 @@ export default function App() {
     void mirrorToStore()
   }
 
+  /** ビュー切替。選択を localStorage に保存して次回起動時にも復元する（#296）。 */
+  function setBattlesView(next: BattlesView) {
+    setBattlesViewState(next)
+    saveViewPrefs({ ...loadViewPrefs(), battles: next })
+  }
+
   function handleAiChart(spec: ChartSpec) {
     setAiChart(spec)
-    setTab('dashboard')
+    // 生成したグラフはダッシュボードに出るので、「バトル」タブのダッシュボードへ送る。
+    setTab('battles')
+    setBattlesView('dashboard')
   }
 
   // サイドバーから呼ばれる「バトルデータ更新」処理
@@ -241,8 +260,7 @@ export default function App() {
         <button className="logo" onClick={() => setShowAbout(true)} aria-label="splabo について">
           <img src="/splabo-logo.png" alt="splabo" />
         </button>
-        <NavItem id="dashboard" icon="📊" label="ダッシュボード" active={tab} onClick={setTab} />
-        <NavItem id="battles"   icon="⚔️" label="バトルログ"     active={tab} onClick={setTab} />
+        <NavItem id="battles"   icon="⚔️" label="バトル"         active={tab} onClick={setTab} />
         <NavItem id="ai"        icon="🧙" label="AI分析"         active={tab} onClick={setTab} />
         <NavItem id="weapons"   icon="🔫" label="武器図鑑"       active={tab} onClick={setTab} />
         <NavItem id="stages"    icon="🗺" label="ステージ図鑑"   active={tab} onClick={setTab} />
@@ -263,19 +281,28 @@ export default function App() {
       </nav>
 
       <main className="content">
-        {(tab === 'dashboard' || tab === 'battles') && (
-          <FilterBar filters={filters} onChange={setFilters} />
+        {tab === 'battles' && (
+          <>
+            <ViewToggle
+              options={BATTLES_VIEWS}
+              value={battlesView}
+              onChange={setBattlesView}
+              ariaLabel="バトルの表示切替"
+            />
+            <FilterBar filters={filters} onChange={setFilters} />
+            {battlesView === 'dashboard' ? (
+              <Dashboard
+                filters={filters}
+                aiChart={aiChart}
+                onFetchRequest={handleFetchFull}
+                onOpenSettings={() => setTab('settings')}
+                fetching={fetching}
+              />
+            ) : (
+              <BattleLog filters={filters} statinkScreenName={settings.statink.screenName} />
+            )}
+          </>
         )}
-        {tab === 'dashboard' && (
-          <Dashboard
-            filters={filters}
-            aiChart={aiChart}
-            onFetchRequest={handleFetchFull}
-            onOpenSettings={() => setTab('settings')}
-            fetching={fetching}
-          />
-        )}
-        {tab === 'battles'   && <BattleLog filters={filters} statinkScreenName={settings.statink.screenName} />}
         {tab === 'weapons'   && <WeaponBook />}
         {tab === 'stages'    && <StageBook />}
         {tab === 'env'       && <EnvAnalysis />}

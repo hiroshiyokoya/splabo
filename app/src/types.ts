@@ -1,4 +1,10 @@
-export type Tab = 'dashboard' | 'battles' | 'weapons' | 'stages' | 'ai' | 'env' | 'gear' | 'settings'
+export type Tab = 'battles' | 'weapons' | 'stages' | 'ai' | 'env' | 'gear' | 'settings'
+
+/** 「バトル」タブ内のビュー（#296: 旧ダッシュボードタブ + 旧バトルログタブの統合）。 */
+export type BattlesView = 'dashboard' | 'list'
+
+/** 図鑑（武器・ステージ）タブ内のビュー（#297）。 */
+export type BookView = 'panel' | 'list'
 
 export type Period = 'all' | 'current_season' | '30d' | '7d' | 'custom'
 
