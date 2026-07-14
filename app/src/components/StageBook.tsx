@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { GroupedStatsRow, BookView } from '../types'
-import { avgKillRatio } from '../types'
+import type { GroupedStatsRow, BookView, Filters } from '../types'
+import { avgKillRatio, filtersToBookArgs } from '../types'
 import { StageDetailModal } from './StageDetailModal'
 import { ViewToggle, BOOK_VIEWS } from './ViewToggle'
 import { SortHeader } from './SortHeader'
@@ -59,7 +59,7 @@ function compareRows(a: GroupedStatsRow, b: GroupedStatsRow, sort: SortKey): num
   }
 }
 
-export function StageBook() {
+export function StageBook({ filters }: { filters: Filters }) {
   const [rows,        setRows]        = useState<GroupedStatsRow[]>([])
   const [stageImages, setStageImages] = useState<Map<string, string>>(new Map())
   const [loading,     setLoading]     = useState(true)
@@ -83,8 +83,10 @@ export function StageBook() {
   }
 
   useEffect(() => {
-    // フィルター無し・全期間でステージ別集計を取得。
-    invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'stage' })
+    setLoading(true)
+    // 共通 FilterBar（期間・モード・ルール・結果）を集計に反映する（#298）。
+    // ステージ図鑑はローカル集計のみなので、全項目がフィルタに追従する。
+    invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'stage', ...filtersToBookArgs(filters) })
       .then(data => {
         setRows(data)
 
@@ -101,7 +103,7 @@ export function StageBook() {
       })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [])
+  }, [filters])
 
   // 一覧ビューの名前検索（パネルには出さない）。
   const filtered = useMemo(() => {

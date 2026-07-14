@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { GroupedStatsRow, WeaponRecord, BookView } from '../types'
+import type { GroupedStatsRow, WeaponRecord, BookView, Filters } from '../types'
+import { filtersToBookArgs } from '../types'
 import { WeaponDetailModal } from './WeaponDetailModal'
 import { ViewToggle, BOOK_VIEWS } from './ViewToggle'
 import { SortHeader } from './SortHeader'
@@ -47,7 +48,7 @@ const SORT_LABELS: Record<SortKey, string> = {
 /** ソート関数が「昇順」で並べるキー（それ以外は降順）。一覧ビューの矢印表示に使う。 */
 const ASC_SORT_KEYS: ReadonlySet<SortKey> = new Set<SortKey>(['name', 'avg_death'])
 
-export function WeaponBook() {
+export function WeaponBook({ filters }: { filters: Filters }) {
   const [weapons,        setWeapons]        = useState<WeaponRecord[]>([])
   const [weaponImages,   setWeaponImages]   = useState<Map<string, string>>(new Map())
   const [subImages,      setSubImages]      = useState<Map<string, string>>(new Map())
@@ -124,10 +125,13 @@ export function WeaponBook() {
       .finally(() => setLoading(false))
 
     // 武器ごとの平均統計を 1 回まとめて取得。フィルタ無しで全期間。
-    invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'weapon' })
+    // 共通 FilterBar（期間・モード・ルール・結果）をローカル集計に反映する（#298）。
+    // ※ 任天堂由来の WeaponRecord（熟練度・通算勝利数・総塗）は全期間固定でフィルタ不可。
+    //    そちらは db_list_weapons 由来なので、この呼び出しには追従しない（「全期間」バッジで区別）。
+    invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'weapon', ...filtersToBookArgs(filters) })
       .then(rows => setStatsByWeapon(new Map(rows.map(r => [r.key, r]))))
       .catch(console.error)
-  }, [])
+  }, [filters])
 
   const categories     = [...new Set(weapons.map(w => w.category))].filter(Boolean).sort()
   const subWeapons     = [...new Set(weapons.map(w => w.sub_weapon).filter((s): s is string => !!s))].sort()
@@ -153,18 +157,18 @@ export function WeaponBook() {
       if (b === null) return -1
       return a - b
     }
-    const winRate = (w: WeaponRecord): number | null => {
-      const dec = w.total - w.draws
-      return dec > 0 ? w.wins / dec : null
-    }
-    const avgKill = (w: WeaponRecord): number | null =>
-      statsByWeapon.get(w.name)?.avg_kill ?? null
-    const avgDeath = (w: WeaponRecord): number | null =>
-      statsByWeapon.get(w.name)?.avg_death ?? null
+    // バトル数・勝数・勝率・平均K/D はすべて db_grouped_stats（フィルタ済み）を参照する。
+    // WeaponRecord.total/wins/draws は db_list_weapons 由来で全期間固定のため使わない（#298）。
+    const st       = (w: WeaponRecord) => statsByWeapon.get(w.name) ?? null
+    const total    = (w: WeaponRecord): number => st(w)?.total ?? 0
+    const wins     = (w: WeaponRecord): number => st(w)?.wins  ?? 0
+    const winRate  = (w: WeaponRecord): number | null => st(w)?.win_rate  ?? null
+    const avgKill  = (w: WeaponRecord): number | null => st(w)?.avg_kill  ?? null
+    const avgDeath = (w: WeaponRecord): number | null => st(w)?.avg_death ?? null
     const sorted = [...arr].sort((a, b) => {
       switch (sortKey) {
-        case 'total':             return b.total - a.total
-        case 'wins':              return b.wins  - a.wins
+        case 'total':             return total(b) - total(a)
+        case 'wins':              return wins(b)  - wins(a)
         case 'win_rate':          return cmpNum(winRate(a), winRate(b))
         case 'avg_kill':          return cmpNum(avgKill(a), avgKill(b))
         case 'avg_death':         return cmpNumAsc(avgDeath(a), avgDeath(b))
@@ -238,6 +242,15 @@ export function WeaponBook() {
           </div>
         )}
       </div>
+
+      {hasOfficialStats && (
+        <p className="book-note">
+          <span className="book-note__badge">全期間</span>
+          <strong>Lv*</strong>（熟練度）・通算勝利数・総塗ポイントは任天堂から取得する累計値のため、
+          上のフィルター（期間・モード・ルール）を変えても<strong>全期間の値のまま</strong>です。
+          バトル数・勝率・平均K/D はフィルターに追従します。
+        </p>
+      )}
 
       <div className="category-tabs">
         {categories.map(c => (
@@ -364,16 +377,18 @@ function WeaponTable({ rows, statsByWeapon, sortKey, ascending, onSort, onSelect
         </thead>
         <tbody>
           {rows.map(w => {
-            const decisive = w.total - w.draws
-            const winRate  = decisive > 0 ? w.wins / decisive : null
+            // 集計値はすべてフィルタ済みの db_grouped_stats 由来（#298）。
             const stats    = statsByWeapon.get(w.name) ?? null
+            const total    = stats?.total ?? 0
+            const decisive = total - (stats?.draws ?? 0)
+            const winRate  = decisive > 0 ? (stats!.wins / decisive) : null
             return (
               <tr key={w.name} className="book-tr clickable-row" onClick={() => onSelect(w)}>
                 <td className="book-td book-td--left">{w.name}</td>
                 <td className="book-td book-td--left">{w.category}</td>
                 <td className="book-td book-td--left">{w.sub_weapon     ?? '—'}</td>
                 <td className="book-td book-td--left">{w.special_weapon ?? '—'}</td>
-                <td className="book-td">{w.total}</td>
+                <td className="book-td">{total}</td>
                 <td className="book-td" style={{ color: winRate !== null ? winRateColor(winRate) : undefined }}>
                   {winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '—'}
                 </td>
@@ -396,8 +411,11 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
   spImage:  string | null
   onClick:  () => void
 }) {
-  const decisive = weapon.total - weapon.draws
-  const winRate = decisive > 0 ? weapon.wins / decisive : null
+  // 試合数・勝率はフィルタ済みの db_grouped_stats 由来（#298）。
+  // WeaponRecord.total/wins/draws は全期間固定なので使わない。
+  const total    = avgStats?.total ?? 0
+  const decisive = total - (avgStats?.draws ?? 0)
+  const winRate  = decisive > 0 ? (avgStats!.wins / decisive) : null
 
   // 平均 K/D = K/D 比。0 除算は '—'。
   const kdStr =
@@ -408,8 +426,9 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
         : (avgStats.avg_kill / avgStats.avg_death).toFixed(2)
 
   // 2 列のサマリ：左に戦績サマリー、右に平均統計。バトル 0 戦の武器は最小カードのままにする。
-  const officialRows = weapon.total > 0 ? [
-    statLine('Lv',    weapon.weapon_level !== null ? String(weapon.weapon_level) : '—'),
+  const officialRows = total > 0 ? [
+    // Lv（熟練度）は任天堂由来で常に全期間の値。フィルタには追従しない（#298）。
+    statLine('Lv*',   weapon.weapon_level !== null ? String(weapon.weapon_level) : '—'),
     ...(avgStats ? [
       statLine('勝',     avgStats.wins.toLocaleString()),
       statLine('KO勝',   avgStats.knockout_win.toLocaleString()),
@@ -419,7 +438,7 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
       statLine('総塗',   avgStats.sum_inked !== null ? avgStats.sum_inked.toLocaleString() : '—'),
     ] : []),
   ] : []
-  const avgRows = (weapon.total > 0 && avgStats) ? [
+  const avgRows = (total > 0 && avgStats) ? [
     statLine('K',   avgStats.avg_kill    !== null ? avgStats.avg_kill.toFixed(1)    : '—'),
     statLine('A',   avgStats.avg_assist  !== null ? avgStats.avg_assist.toFixed(1)  : '—'),
     statLine('D',   avgStats.avg_death   !== null ? avgStats.avg_death.toFixed(1)   : '—'),
@@ -444,10 +463,10 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
         </div>
       )}
       <div className="weapon-card-name" title={weapon.name}>{weapon.name}</div>
-      {weapon.total > 0 ? (
+      {total > 0 ? (
         <>
           <div className="weapon-card-stats">
-            <span className="weapon-card-stat">{weapon.total}試合</span>
+            <span className="weapon-card-stat">{total}試合</span>
             <span
               className="weapon-card-stat weapon-card-winrate"
               style={{ color: winRateColor(winRate!) }}
