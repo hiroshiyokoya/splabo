@@ -19,6 +19,10 @@ import { METRIC_LABELS, getMetric, metricGroup } from '../../types'
 const CELL  = 16
 const GAP   = 3
 const PITCH = CELL + GAP
+/** 月が変わる週の手前に空ける隙間（1 列ぶん）。月の区切りを視認しやすくする（#308）。 */
+const MONTH_GAP = PITCH
+/** グリッド左端（曜日ラベルぶんのオフセット）。 */
+const GRID_LEFT = 22
 
 const DOW_LABELS = ['月', '火', '水', '木', '金', '土', '日']
 
@@ -177,21 +181,39 @@ export function CalendarHeatmapChart({
   const GRID_TOP = 32
   const GRID_HEIGHT = 7 * PITCH
 
-  // 月ラベル: 月が変わる週の直前 (＝その月最初に出現する週) にラベルを描く
+  // 週ごとの x 座標。月が変わる週の手前に 1 列ぶんの隙間を入れる（#308）。
+  // セル・月ラベル・全体幅はすべてこの配列に追随させる。
+  const weekX = useMemo(() => {
+    const xs: number[] = []
+    let gaps = 0
+    let prevMonth = -1
+    weeks.forEach((weekStart, wi) => {
+      const m = weekStart.getUTCMonth()
+      // 先頭週は「変わり目」ではないので隙間を入れない
+      if (prevMonth !== -1 && m !== prevMonth) gaps++
+      prevMonth = m
+      xs.push(GRID_LEFT + wi * PITCH + gaps * MONTH_GAP)
+    })
+    return xs
+  }, [weeks])
+
+  // 月ラベル: その月が最初に現れる週の位置に描く
   const monthLabels = useMemo(() => {
     const labels: { x: number; text: string }[] = []
     let prevMonth = -1
     weeks.forEach((weekStart, wi) => {
       const m = weekStart.getUTCMonth()
       if (m !== prevMonth) {
-        labels.push({ x: 22 + wi * PITCH, text: MONTH_LABELS[m] })
+        labels.push({ x: weekX[wi], text: MONTH_LABELS[m] })
         prevMonth = m
       }
     })
     return labels
-  }, [weeks])
+  }, [weeks, weekX])
 
-  const width  = Math.max(weeks.length * PITCH + 26, 280)
+  // 隙間のぶん幅が広がるので、最終週の x から算出する（weeks.length * PITCH のままだと右端が切れる）
+  const lastX = weekX.length > 0 ? weekX[weekX.length - 1] : GRID_LEFT
+  const width  = Math.max(lastX + CELL + 8, 280)
   const height = GRID_TOP + GRID_HEIGHT + 8
 
   // カレンダーは左が古い・右が最新。初期表示・データ更新時に最新（右端）が見えるよう右端へスクロール。
@@ -250,7 +272,7 @@ export function CalendarHeatmapChart({
             const wins  = entry?.wins ?? 0
             const draws = entry?.draws ?? 0
             const fill = cellFill(dateStr, v, total)
-            const x = 22 + wi * PITCH
+            const x = weekX[wi]
             const y = GRID_TOP + di * PITCH
             return (
               <rect
