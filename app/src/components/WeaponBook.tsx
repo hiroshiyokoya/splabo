@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { GroupedStatsRow, WeaponRecord } from '../types'
+import type { GroupedStatsRow, WeaponRecord, BookView } from '../types'
 import { WeaponDetailModal } from './WeaponDetailModal'
+import { ViewToggle, BOOK_VIEWS } from './ViewToggle'
+import { SortHeader } from './SortHeader'
+import { loadViewPrefs, saveViewPrefs } from '../utils/viewPrefs'
 
 // Dashboard.winRateColor と同期。
 function winRateColor(rate: number): string {
@@ -23,6 +26,7 @@ type SortKey =
   | 'wins'            // 勝数（DB バトル集計）
   | 'win_rate'        // 勝率
   | 'avg_kill'        // 平均キル数（db_grouped_stats から）
+  | 'avg_death'       // 平均デス数（db_grouped_stats から・少ないほど上位）
   | 'weapon_level'    // 熟練度（WeaponRecord）
   | 'win_count_total' // 通算勝利数（WeaponRecord）
   | 'paint_point_total' // 総塗りポイント（WeaponRecord）
@@ -33,11 +37,15 @@ const SORT_LABELS: Record<SortKey, string> = {
   wins:              '勝数',
   win_rate:          '勝率',
   avg_kill:          '平均キル',
+  avg_death:         '平均デス',
   weapon_level:      '熟練度',
   win_count_total:   '通算勝利数',
   paint_point_total: '総塗',
   name:              '名前',
 }
+
+/** ソート関数が「昇順」で並べるキー（それ以外は降順）。一覧ビューの矢印表示に使う。 */
+const ASC_SORT_KEYS: ReadonlySet<SortKey> = new Set<SortKey>(['name', 'avg_death'])
 
 export function WeaponBook() {
   const [weapons,        setWeapons]        = useState<WeaponRecord[]>([])
@@ -52,6 +60,21 @@ export function WeaponBook() {
   const [selected,       setSelected]       = useState<WeaponRecord | null>(null)
   // 武器ごとの平均統計（K/D/A/SP/inked/duration）。db_grouped_stats(group_by='weapon') を 1 回呼んでマップ化。
   const [statsByWeapon,  setStatsByWeapon]  = useState<Map<string, GroupedStatsRow>>(new Map())
+  // パネル / 一覧の切替（#297）。前回選択を localStorage から復元する。
+  const [view,           setViewState]      = useState<BookView>(() => loadViewPrefs().weapons)
+  // 各ソートキーの「自然な向き」を反転するフラグ（一覧ビューのヘッダ再クリック）。
+  const [reversed,       setReversed]       = useState(false)
+
+  function setView(next: BookView) {
+    setViewState(next)
+    saveViewPrefs({ ...loadViewPrefs(), weapons: next })
+  }
+
+  /** テーブルヘッダのクリック: 同じキーなら向きを反転、違うキーなら自然な向きで並べ替え。 */
+  function handleSort(key: SortKey) {
+    if (key === sortKey) setReversed(r => !r)
+    else { setSortKey(key); setReversed(false) }
+  }
 
   useEffect(() => {
     invoke<WeaponRecord[]>('db_list_weapons')
@@ -123,25 +146,38 @@ export function WeaponBook() {
       if (b === null) return -1
       return b - a // 降順
     }
+    // 平均デスは「少ないほど良い」ので昇順。null は末尾。
+    const cmpNumAsc = (a: number | null, b: number | null) => {
+      if (a === null && b === null) return 0
+      if (a === null) return  1
+      if (b === null) return -1
+      return a - b
+    }
     const winRate = (w: WeaponRecord): number | null => {
       const dec = w.total - w.draws
       return dec > 0 ? w.wins / dec : null
     }
     const avgKill = (w: WeaponRecord): number | null =>
       statsByWeapon.get(w.name)?.avg_kill ?? null
-    return [...arr].sort((a, b) => {
+    const avgDeath = (w: WeaponRecord): number | null =>
+      statsByWeapon.get(w.name)?.avg_death ?? null
+    const sorted = [...arr].sort((a, b) => {
       switch (sortKey) {
         case 'total':             return b.total - a.total
         case 'wins':              return b.wins  - a.wins
         case 'win_rate':          return cmpNum(winRate(a), winRate(b))
         case 'avg_kill':          return cmpNum(avgKill(a), avgKill(b))
+        case 'avg_death':         return cmpNumAsc(avgDeath(a), avgDeath(b))
         case 'weapon_level':      return cmpNum(a.weapon_level,      b.weapon_level)
         case 'win_count_total':   return cmpNum(a.win_count_total,   b.win_count_total)
         case 'paint_point_total': return cmpNum(a.paint_point_total, b.paint_point_total)
         case 'name':              return a.name.localeCompare(b.name, 'ja')
       }
     })
-  }, [weapons, category, subWeapon, specialWeapon, sortKey, statsByWeapon])
+    // 各キーの「自然な向き」を基準に、一覧ビューのヘッダ再クリックで反転する（#297）。
+    if (reversed) sorted.reverse()
+    return sorted
+  }, [weapons, category, subWeapon, specialWeapon, sortKey, statsByWeapon, reversed])
 
   const hasFilter = !!(category || subWeapon || specialWeapon)
 
@@ -179,20 +215,28 @@ export function WeaponBook() {
         {hasFilter && (
           <button className="filter-reset-btn" onClick={reset} style={{ marginLeft: 8 }}>✕ リセット</button>
         )}
-        <div className="weapon-book-sort">
-          <label htmlFor="weapon-sort">並び替え</label>
-          <select
-            id="weapon-sort"
-            value={sortKey}
-            onChange={e => setSortKey(e.target.value as SortKey)}
-          >
-            {(Object.keys(SORT_LABELS) as SortKey[]).map(k => {
-              const isOfficial = k === 'weapon_level' || k === 'win_count_total' || k === 'paint_point_total'
-              if (isOfficial && !hasOfficialStats) return null
-              return <option key={k} value={k}>{SORT_LABELS[k]}</option>
-            })}
-          </select>
-        </div>
+        <ViewToggle
+          options={BOOK_VIEWS}
+          value={view}
+          onChange={setView}
+          ariaLabel="武器図鑑の表示切替"
+        />
+        {view === 'panel' && (
+          <div className="weapon-book-sort">
+            <label htmlFor="weapon-sort">並び替え</label>
+            <select
+              id="weapon-sort"
+              value={sortKey}
+              onChange={e => setSortKey(e.target.value as SortKey)}
+            >
+              {(Object.keys(SORT_LABELS) as SortKey[]).map(k => {
+                const isOfficial = k === 'weapon_level' || k === 'win_count_total' || k === 'paint_point_total'
+                if (isOfficial && !hasOfficialStats) return null
+                return <option key={k} value={k}>{SORT_LABELS[k]}</option>
+              })}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="category-tabs">
@@ -254,6 +298,15 @@ export function WeaponBook() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="empty">条件に一致する武器がありません。</div>
+      ) : view === 'list' ? (
+        <WeaponTable
+          rows={filtered}
+          statsByWeapon={statsByWeapon}
+          sortKey={sortKey}
+          ascending={ASC_SORT_KEYS.has(sortKey) !== reversed}
+          onSort={handleSort}
+          onSelect={setSelected}
+        />
       ) : (
         <div className="weapon-grid">
           {filtered.map(w => (
@@ -280,6 +333,57 @@ export function WeaponBook() {
           onClose={() => setSelected(null)}
         />
       )}
+    </div>
+  )
+}
+
+/** 一覧ビュー（#297）。ヘッダクリックで並び替え、行クリックで詳細モーダル。
+ *  列はローカル集計中心（任天堂由来の熟練度・通算勝利数はパネル／詳細モーダルに任せる）。 */
+function WeaponTable({ rows, statsByWeapon, sortKey, ascending, onSort, onSelect }: {
+  rows:          WeaponRecord[]
+  statsByWeapon: Map<string, GroupedStatsRow>
+  sortKey:       SortKey
+  ascending:     boolean
+  onSort:        (k: SortKey) => void
+  onSelect:      (w: WeaponRecord) => void
+}) {
+  return (
+    <div className="book-table-wrap">
+      <table className="book-table">
+        <thead>
+          <tr>
+            <SortHeader label="武器"     sortKey="name"      activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
+            <SortHeader label="カテゴリ"                     activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
+            <SortHeader label="サブ"                         activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
+            <SortHeader label="スペシャル"                   activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
+            <SortHeader label="バトル数" sortKey="total"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="勝率"     sortKey="win_rate"  activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="平均K"    sortKey="avg_kill"  activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="平均D"    sortKey="avg_death" activeKey={sortKey} ascending={ascending} onSort={onSort} />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(w => {
+            const decisive = w.total - w.draws
+            const winRate  = decisive > 0 ? w.wins / decisive : null
+            const stats    = statsByWeapon.get(w.name) ?? null
+            return (
+              <tr key={w.name} className="book-tr clickable-row" onClick={() => onSelect(w)}>
+                <td className="book-td book-td--left">{w.name}</td>
+                <td className="book-td book-td--left">{w.category}</td>
+                <td className="book-td book-td--left">{w.sub_weapon     ?? '—'}</td>
+                <td className="book-td book-td--left">{w.special_weapon ?? '—'}</td>
+                <td className="book-td">{w.total}</td>
+                <td className="book-td" style={{ color: winRate !== null ? winRateColor(winRate) : undefined }}>
+                  {winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '—'}
+                </td>
+                <td className="book-td">{stats?.avg_kill  != null ? stats.avg_kill.toFixed(2)  : '—'}</td>
+                <td className="book-td">{stats?.avg_death != null ? stats.avg_death.toFixed(2) : '—'}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }
