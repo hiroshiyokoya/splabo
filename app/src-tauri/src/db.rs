@@ -267,6 +267,24 @@ const RESULT_SEED: &[(i64, &str)] = &[
     (3, "draw"),
 ];
 
+/// SplatNet3 の `knockout` フィールドを `battle.is_knockout` の三値に変換する（#315）。
+///
+/// `knockout` は **"WIN" / "LOSE" / "NEITHER"** の 3 値（ナワバリ等では null）。
+///   - `"WIN"`  → `Some(1)` : KO 勝ち
+///   - `"LOSE"` → `Some(0)` : KO 負け
+///   - `"NEITHER"` / 未知 / null → `None` : ノックアウト無し（時間切れ決着）
+///
+/// ⚠ 以前は `if k == "WIN" { 1 } else { 0 }` という 2 値変換で、**"NEITHER" まで 0 に潰していた**。
+///    集計側（`SUM(is_knockout = 0) as knockout_lose`）は三値前提なので、
+///    KO 負けに時間切れバトルが全部混ざって約 3.5 倍に膨らんでいた。
+fn knockout_flag(knockout: Option<&str>) -> Option<i64> {
+    match knockout {
+        Some("WIN")  => Some(1),
+        Some("LOSE") => Some(0),
+        _            => None,
+    }
+}
+
 /// 旧 `battles.mode` の slug を新 `lobby.id` に変換する。
 /// 未知の値は `None` を返し、呼び出し元で migration をスキップする。
 fn old_mode_to_lobby_id(mode: &str) -> Option<i64> {
@@ -447,10 +465,7 @@ async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), Strin
     }
 
     let kill_or_assist = row.kill + row.assist;
-    let is_knockout: Option<i64> = row
-        .knockout
-        .as_deref()
-        .map(|k| if k == "WIN" { 1 } else { 0 });
+    let is_knockout: Option<i64> = knockout_flag(row.knockout.as_deref());
 
     sqlx::query(
         "INSERT OR IGNORE INTO battle
@@ -627,7 +642,7 @@ async fn shadow_update_battle_detail(
     let (Some(lobby_id), Some(rule_id)) = (lobby_id, rule_id) else {
         return Ok(());
     };
-    let is_knockout: Option<i64> = knockout.map(|k| if k == "WIN" { 1 } else { 0 });
+    let is_knockout: Option<i64> = knockout_flag(knockout);
     let kill_or_assist = kill + assist;
 
     sqlx::query(
@@ -2268,7 +2283,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// 適用済みマイグレーションの最新版。**新しい `if current_version < N` ブロックを足したら
 /// 必ずここを N に更新する。** 更新を忘れると `migrate_battle_ids` 冒頭の早期 return に
 /// 阻まれ、追加したマイグレーションが一度も実行されない（#206・#306 の再発防止）。
-const LATEST_MIGRATION_VERSION: i64 = 18;
+const LATEST_MIGRATION_VERSION: i64 = 19;
 
 /// version 2: mode 判定バグ修正版で全件再処理
 /// version 3: kill カウントを kill_or_assist から実キル数に修正
@@ -2287,6 +2302,7 @@ const LATEST_MIGRATION_VERSION: i64 = 18;
 /// version 16: env_battles テーブル新設（stat.ink 公開バトルデータ）(#184)
 /// version 17: インポート済みバトルに statink_uuid を補填（再送防止）(#200 / #204)
 /// version 18: フェス(チャレンジ)の lobby を raw_json から振り直し (#293)
+/// version 19: is_knockout を三値に修復（KO負けから時間切れ決着を除外）(#315)
 ///
 /// ⚠ **マイグレーションを追加したら `LATEST_MIGRATION_VERSION` も必ず上げること。**
 ///    ここが古いままだと早期 return に阻まれて新しい版が一度も走らない（#206 / #306 で 2 度踏んだ）。
@@ -3372,6 +3388,39 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             .await
             .map_err(|e| e.to_string())?;
         log::info!("migrate v18: フェス(チャレンジ)の lobby を vsMode.id で振り直し ({} 件補正)", fixed);
+    }
+
+    // version 19: is_knockout の三値を修復 (#315)。
+    //             以前の変換 `if k == "WIN" { 1 } else { 0 }` は "NEITHER"（ノックアウト無し）
+    //             まで 0 に潰していたため、`SUM(is_knockout = 0) as knockout_lose` に
+    //             時間切れ決着のバトルが全部混ざり、KO 負けが約 3.5 倍に膨らんでいた。
+    //             生値は battle.knockout に残っているので SQL だけで振り直せる。
+    if current_version < 19 {
+        let res = sqlx::query(
+            "UPDATE battle
+                SET is_knockout = CASE knockout
+                                    WHEN 'WIN'  THEN 1
+                                    WHEN 'LOSE' THEN 0
+                                    ELSE NULL
+                                  END
+              WHERE is_knockout IS NOT (CASE knockout
+                                          WHEN 'WIN'  THEN 1
+                                          WHEN 'LOSE' THEN 0
+                                          ELSE NULL
+                                        END)",
+        )
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+        sqlx::query("PRAGMA user_version = 19")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!(
+            "migrate v19: is_knockout を三値に修復（KO負けから時間切れを除外・{} 件補正）",
+            res.rows_affected()
+        );
     }
 
     Ok(updated)
