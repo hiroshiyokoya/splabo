@@ -1312,10 +1312,12 @@ body {
   margin-bottom: 6px;
   letter-spacing: 0.04em;
 }
-.stage-modal-weapon-col-note {
+.stage-modal-weapon-col-note,
+.weapon-modal-section-note {
   font-size: 10px;
   color: var(--text-muted);
   opacity: 0.8;
+  font-weight: 400;
 }
 .stage-modal-weapon-list {
   display: flex;
