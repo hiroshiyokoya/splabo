@@ -550,6 +550,29 @@ body {
 }
 .book-search:focus { outline: none; border-color: var(--accent); }
 
+.book-note {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.book-note__badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .book-table-wrap { overflow-x: auto; }
 .book-table {
   width: 100%;

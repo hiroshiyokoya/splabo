@@ -307,8 +307,13 @@ export default function App() {
             )}
           </>
         )}
-        {tab === 'weapons'   && <WeaponBook />}
-        {tab === 'stages'    && <StageBook />}
+        {/* 図鑑タブ（#298）: 期間・モード・ルール・結果を集計に反映する。
+            武器/ステージ絞り込みは自己言及的なので hideTargetFilters で隠す。 */}
+        {(tab === 'weapons' || tab === 'stages') && (
+          <FilterBar filters={filters} onChange={setFilters} hideTargetFilters />
+        )}
+        {tab === 'weapons'   && <WeaponBook filters={filters} />}
+        {tab === 'stages'    && <StageBook  filters={filters} />}
         {tab === 'env'       && <EnvAnalysis />}
         {tab === 'gear'      && <GearSection />}
         {tab === 'ai' && <AiAnalysis settings={settings} onChartReady={handleAiChart} />}

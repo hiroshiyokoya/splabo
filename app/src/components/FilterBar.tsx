@@ -36,9 +36,12 @@ const PERIODS: { id: Period; label: string }[] = [
 interface Props {
   filters: Filters
   onChange: (f: Filters) => void
+  /** 武器・ステージの絞り込みを隠す（#298）。武器図鑑を武器で、ステージ図鑑を
+   *  ステージで絞るのは自己言及的で不自然なため、図鑑タブでは出さない。 */
+  hideTargetFilters?: boolean
 }
 
-export function FilterBar({ filters, onChange }: Props) {
+export function FilterBar({ filters, onChange, hideTargetFilters = false }: Props) {
   const [weaponList,      setWeaponList]      = useState<WeaponRecord[]>([])
   const [weaponImages,    setWeaponImages]    = useState<Map<string, string>>(new Map())
   const [pickerOpen,      setPickerOpen]      = useState(false)
@@ -122,6 +125,7 @@ export function FilterBar({ filters, onChange }: Props) {
         </FilterGroup>
       </div>
       <div className="filter-row">
+        {!hideTargetFilters && (
         <FilterGroup label="武器">
           <WeaponPicker
             weaponList={weaponList}
@@ -146,6 +150,8 @@ export function FilterBar({ filters, onChange }: Props) {
             onClear={() => patch('weapon', [])}
           />
         </FilterGroup>
+        )}
+        {!hideTargetFilters && (
         <FilterGroup label="ステージ">
           <StagePicker
             stageList={stageList}
@@ -162,6 +168,7 @@ export function FilterBar({ filters, onChange }: Props) {
             onClear={() => patch('stage', [])}
           />
         </FilterGroup>
+        )}
         <FilterGroup label="結果">
           {RESULTS.map(r => (
             <button

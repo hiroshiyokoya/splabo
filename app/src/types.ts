@@ -73,6 +73,32 @@ export function filtersToRange(filters: Filters): { since: string | null; until:
   return { since: periodToSince(filters.period), until: null }
 }
 
+/** 図鑑（武器・ステージ）用の集計フィルタ引数（#298）。
+ *
+ *  武器図鑑を武器で、ステージ図鑑をステージで絞るのは自己言及的で不自然なため、
+ *  `weapon` / `stage` は常に null にする（FilterBar 側でも図鑑タブでは非表示）。
+ *  フィルタ state 自体は「バトル」タブと共有なので、ここで明示的に落とす必要がある。 */
+export function filtersToBookArgs(filters: Filters): {
+  since: string | null
+  until: string | null
+  mode: string | null
+  rule: string | null
+  resultFilter: string | null
+  weapon: null
+  stage: null
+} {
+  const { since, until } = filtersToRange(filters)
+  return {
+    since,
+    until,
+    mode: modeFilterArg(filters.mode),
+    rule: ruleFilterArg(filters.rule),
+    resultFilter: filters.result,
+    weapon: null,
+    stage: null,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // バトル詳細用の型（my_team / other_teams JSON から復元）
 // ---------------------------------------------------------------------------
