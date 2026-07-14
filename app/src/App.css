@@ -583,6 +583,12 @@ body {
   color: var(--text);
 }
 .book-td--left { text-align: left; font-weight: 600; }
+.book-icon {
+  display: block;
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
 .book-tr:hover { background: color-mix(in srgb, var(--text-muted) 10%, transparent); }
 
 /* ── Filter Bar ── */

@@ -24,10 +24,13 @@ function statLine(label: string, value: string): { label: string; value: string 
 // 仕様：ブキチャレパワー系・ビッグラン熟練度は WeaponRecordQuery で取れないため除外（#149 事前共有）。
 type SortKey =
   | 'total'           // バトル数（既定）
-  | 'wins'            // 勝数（DB バトル集計）
+  | 'wins'            // 勝ち W（DB バトル集計）
+  | 'loses'           // 負け L（total - wins - draws）
+  | 'draws'           // 引分 D
   | 'win_rate'        // 勝率
   | 'avg_kill'        // 平均キル数（db_grouped_stats から）
   | 'avg_death'       // 平均デス数（db_grouped_stats から・少ないほど上位）
+  | 'kd'              // K/D（平均K ÷ 平均D）
   | 'knockout_rate'   // KO 率（db_grouped_stats の knockout_win / total）
   | 'avg_inked'       // 平均塗りポイント（db_grouped_stats から）
   | 'weapon_level'    // 熟練度（WeaponRecord）
@@ -37,10 +40,13 @@ type SortKey =
 
 const SORT_LABELS: Record<SortKey, string> = {
   total:             'バトル数',
-  wins:              '勝数',
+  wins:              '勝ち(W)',
+  loses:             '負け(L)',
+  draws:             '引分(D)',
   win_rate:          '勝率',
   avg_kill:          '平均キル',
   avg_death:         '平均デス',
+  kd:                'K/D',
   knockout_rate:     'KO率',
   avg_inked:         '平均塗り',
   weapon_level:      '熟練度',
@@ -173,13 +179,25 @@ export function WeaponBook() {
       if (!s || s.total === 0) return null
       return s.knockout_win / s.total
     }
+    const loses = (w: WeaponRecord): number => w.total - w.wins - w.draws
+    // K/D = 平均K ÷ 平均D。デス 0 は上位（Infinity）、データ無しは null。
+    const kd = (w: WeaponRecord): number | null => {
+      const ak = avgKill(w)
+      const ad = avgDeath(w)
+      if (ak === null || ad === null) return null
+      if (ad === 0) return ak > 0 ? Number.POSITIVE_INFINITY : null
+      return ak / ad
+    }
     const sorted = [...arr].sort((a, b) => {
       switch (sortKey) {
         case 'total':             return b.total - a.total
         case 'wins':              return b.wins  - a.wins
+        case 'loses':             return loses(b) - loses(a)
+        case 'draws':             return b.draws - a.draws
         case 'win_rate':          return cmpNum(winRate(a), winRate(b))
         case 'avg_kill':          return cmpNum(avgKill(a), avgKill(b))
         case 'avg_death':         return cmpNumAsc(avgDeath(a), avgDeath(b))
+        case 'kd':                return cmpNum(kd(a),      kd(b))
         case 'knockout_rate':     return cmpNum(koRate(a),   koRate(b))
         case 'avg_inked':         return cmpNum(avgInked(a), avgInked(b))
         case 'weapon_level':      return cmpNum(a.weapon_level,      b.weapon_level)
@@ -316,6 +334,8 @@ export function WeaponBook() {
         <WeaponTable
           rows={filtered}
           statsByWeapon={statsByWeapon}
+          subImages={subImages}
+          spImages={spImages}
           sortKey={sortKey}
           ascending={ASC_SORT_KEYS.has(sortKey) !== reversed}
           onSort={handleSort}
@@ -351,11 +371,20 @@ export function WeaponBook() {
   )
 }
 
+/** 一覧のサブ／スペシャル欄。画像があればアイコン、無ければ名前でフォールバックする。 */
+function BookIcon({ src, name }: { src: string | null; name: string | null }) {
+  if (!name) return <>—</>
+  if (!src)  return <>{name}</>
+  return <img src={src} alt={name} title={name} className="book-icon" />
+}
+
 /** 一覧ビュー（#297）。ヘッダクリックで並び替え、行クリックで詳細モーダル。
  *  列はローカル集計中心（任天堂由来の熟練度・通算勝利数はパネル／詳細モーダルに任せる）。 */
-function WeaponTable({ rows, statsByWeapon, sortKey, ascending, onSort, onSelect }: {
+function WeaponTable({ rows, statsByWeapon, subImages, spImages, sortKey, ascending, onSort, onSelect }: {
   rows:          WeaponRecord[]
   statsByWeapon: Map<string, GroupedStatsRow>
+  subImages:     Map<string, string>
+  spImages:      Map<string, string>
   sortKey:       SortKey
   ascending:     boolean
   onSort:        (k: SortKey) => void
@@ -366,15 +395,18 @@ function WeaponTable({ rows, statsByWeapon, sortKey, ascending, onSort, onSelect
       <table className="book-table">
         <thead>
           <tr>
-            <SortHeader label="武器"     sortKey="name"      activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
-            <SortHeader label="カテゴリ"                     activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
-            <SortHeader label="サブ"                         activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
-            <SortHeader label="スペシャル"                   activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
-            <SortHeader label="バトル数" sortKey="total"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
-            <SortHeader label="勝率"     sortKey="win_rate"  activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="武器"     sortKey="name"          activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
+            <SortHeader label="カテゴリ"                         activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
+            <SortHeader label="サブ"                             activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
+            <SortHeader label="スペシャル"                       activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
+            <SortHeader label="バトル数" sortKey="total"         activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="W"        sortKey="wins"          activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="L"        sortKey="loses"         activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="D"        sortKey="draws"         activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="勝率"     sortKey="win_rate"      activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均K"    sortKey="avg_kill"      activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均D"    sortKey="avg_death"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
-            <SortHeader label="K/D"                              activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="K/D"      sortKey="kd"            activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="KO率"     sortKey="knockout_rate" activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均塗り" sortKey="avg_inked"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
           </tr>
@@ -383,15 +415,25 @@ function WeaponTable({ rows, statsByWeapon, sortKey, ascending, onSort, onSelect
           {rows.map(w => {
             const decisive = w.total - w.draws
             const winRate  = decisive > 0 ? w.wins / decisive : null
+            const loses    = w.total - w.wins - w.draws
             const stats    = statsByWeapon.get(w.name) ?? null
             const koRate   = stats && stats.total > 0 ? stats.knockout_win / stats.total : null
+            const subImg   = w.sub_weapon     ? (subImages.get(w.sub_weapon)     ?? null) : null
+            const spImg    = w.special_weapon ? (spImages.get(w.special_weapon)  ?? null) : null
             return (
               <tr key={w.name} className="book-tr clickable-row" onClick={() => onSelect(w)}>
                 <td className="book-td book-td--left">{w.name}</td>
                 <td className="book-td book-td--left">{w.category}</td>
-                <td className="book-td book-td--left">{w.sub_weapon     ?? '—'}</td>
-                <td className="book-td book-td--left">{w.special_weapon ?? '—'}</td>
+                <td className="book-td book-td--left">
+                  <BookIcon src={subImg} name={w.sub_weapon} />
+                </td>
+                <td className="book-td book-td--left">
+                  <BookIcon src={spImg} name={w.special_weapon} />
+                </td>
                 <td className="book-td">{w.total}</td>
+                <td className="book-td">{w.wins}</td>
+                <td className="book-td">{loses}</td>
+                <td className="book-td">{w.draws}</td>
                 <td className="book-td" style={{ color: winRate !== null ? winRateColor(winRate) : undefined }}>
                   {winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '—'}
                 </td>

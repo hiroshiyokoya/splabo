@@ -15,18 +15,34 @@ function winRateColor(rate: number): string {
 }
 
 /** ステージ図鑑のソートキー。 */
-type SortKey = 'total' | 'win_rate' | 'avg_kill' | 'avg_death' | 'knockout_rate' | 'name'
+type SortKey =
+  | 'total' | 'wins' | 'loses' | 'draws'
+  | 'win_rate' | 'avg_kill' | 'avg_death' | 'kd' | 'knockout_rate' | 'name'
 
 const SORT_LABELS: Record<SortKey, string> = {
   total:          'バトル数',
+  wins:           '勝ち(W)',
+  loses:          '負け(L)',
+  draws:          '引分(D)',
   win_rate:       '勝率',
   avg_kill:       '平均K',
   avg_death:      '平均D',
+  kd:             'K/D',
   knockout_rate:  'KO 率',
   name:           '名前',
 }
 
-const SORT_KEYS: SortKey[] = ['total', 'win_rate', 'avg_kill', 'avg_death', 'knockout_rate', 'name']
+const SORT_KEYS: SortKey[] = [
+  'total', 'wins', 'loses', 'draws',
+  'win_rate', 'avg_kill', 'avg_death', 'kd', 'knockout_rate', 'name',
+]
+
+/** K/D = 平均K ÷ 平均D。デス 0 は上位（Infinity）、データ無しは null。 */
+function kdOf(r: GroupedStatsRow): number | null {
+  if (r.avg_kill === null || r.avg_death === null) return null
+  if (r.avg_death === 0) return r.avg_kill > 0 ? Number.POSITIVE_INFINITY : null
+  return r.avg_kill / r.avg_death
+}
 
 /** compareRows が「昇順」で並べるキー（それ以外は降順）。一覧ビューの矢印表示に使う。 */
 const ASC_SORT_KEYS: ReadonlySet<SortKey> = new Set<SortKey>(['name', 'avg_death'])
@@ -36,8 +52,20 @@ function compareRows(a: GroupedStatsRow, b: GroupedStatsRow, sort: SortKey): num
   switch (sort) {
     case 'total':
       return b.total - a.total
+    case 'wins':
+      return b.wins - a.wins
+    case 'loses':
+      return (b.total - b.wins - b.draws) - (a.total - a.wins - a.draws)
+    case 'draws':
+      return b.draws - a.draws
     case 'win_rate':
       return b.win_rate - a.win_rate
+    case 'kd': {
+      // K/D は大きいほど良いので降順。データ無しは末尾。
+      const av = kdOf(a) ?? Number.NEGATIVE_INFINITY
+      const bv = kdOf(b) ?? Number.NEGATIVE_INFINITY
+      return bv - av
+    }
     case 'avg_kill': {
       const av = a.avg_kill ?? -1
       const bv = b.avg_kill ?? -1
@@ -210,11 +238,13 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
           <tr>
             <SortHeader label="ステージ" sortKey="name"          activeKey={sort} ascending={ascending} onSort={onSort} align="left" />
             <SortHeader label="バトル数" sortKey="total"         activeKey={sort} ascending={ascending} onSort={onSort} />
-            <SortHeader label="W / L / D"                        activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="W"        sortKey="wins"          activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="L"        sortKey="loses"         activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="D"        sortKey="draws"         activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="勝率"     sortKey="win_rate"      activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均K"    sortKey="avg_kill"      activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均D"    sortKey="avg_death"     activeKey={sort} ascending={ascending} onSort={onSort} />
-            <SortHeader label="K/D"                              activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="K/D"      sortKey="kd"            activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="KO率"     sortKey="knockout_rate" activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均塗り"                         activeKey={sort} ascending={ascending} onSort={onSort} />
           </tr>
@@ -229,7 +259,9 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
               <tr key={r.key} className="book-tr clickable-row" onClick={() => onSelect(r)}>
                 <td className="book-td book-td--left">{r.name}</td>
                 <td className="book-td">{r.total}</td>
-                <td className="book-td">{r.wins} / {loses} / {r.draws}</td>
+                <td className="book-td">{r.wins}</td>
+                <td className="book-td">{loses}</td>
+                <td className="book-td">{r.draws}</td>
                 <td className="book-td" style={{ color: winRate !== null ? winRateColor(winRate) : undefined }}>
                   {winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '—'}
                 </td>
