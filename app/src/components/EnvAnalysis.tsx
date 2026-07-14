@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { EnvScatterStat, EnvMatrixCell, EnvStatus, EnvVersion, EnvRank } from '../types'
+import { currentSeasonStart } from '../types'
 import { ScatterChart } from './charts/ScatterChart'
 import type { ScatterPoint } from './charts/ScatterChart'
 import { Heatmap } from './charts/Heatmap'
@@ -129,13 +130,14 @@ function dimKeyLabeller(dim: string): (k: string) => string {
 // 期間プリセット
 // ---------------------------------------------------------------------------
 
-type Period = 'all' | '1y' | '180d' | '30d' | 'custom'
+type Period = 'all' | 'current_season' | '1y' | '180d' | '30d' | 'custom'
 const PERIOD_OPTIONS: { key: Period; label: string }[] = [
-  { key: 'all',    label: '全期間' },
-  { key: '1y',     label: '直近1年' },
-  { key: '180d',   label: '180日' },
-  { key: '30d',    label: '30日' },
-  { key: 'custom', label: 'カスタム' },
+  { key: 'all',            label: '全期間' },
+  { key: 'current_season', label: '今シーズン' },
+  { key: '1y',             label: '直近1年' },
+  { key: '180d',           label: '180日' },
+  { key: '30d',            label: '30日' },
+  { key: 'custom',         label: 'カスタム' },
 ]
 
 /** "YYYY-MM-DD" に日数を加算する（UTC 基準で tz ずれを避ける）。 */
@@ -233,6 +235,11 @@ export function EnvAnalysis() {
     const maxd = status?.max_date ?? null
     switch (period) {
       case 'all':    return { since: null, until: null }
+      // 他のプリセットは「データ最終取得日から遡る」相対期間だが、今シーズンだけは
+      // 暦上のシーズン開始日（3/6/9/12 月始まりの 3 ヶ月サイクル）を since にする。
+      // until は他と揃えて max_date（それ以降のデータは存在しない）。
+      case 'current_season':
+        return { since: currentSeasonStart(), until: maxd }
       case '1y':     return maxd ? { since: addDays(maxd, -364), until: maxd } : { since: null, until: null }
       case '180d':   return maxd ? { since: addDays(maxd, -179), until: maxd } : { since: null, until: null }
       case '30d':    return maxd ? { since: addDays(maxd, -29),  until: maxd } : { since: null, until: null }
