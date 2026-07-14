@@ -19,10 +19,10 @@ import { METRIC_LABELS, getMetric, metricGroup } from '../../types'
 const CELL  = 16
 const GAP   = 3
 const PITCH = CELL + GAP
-/** 月が変わる週の手前に空ける隙間（1 列ぶん）。月の区切りを視認しやすくする（#308）。 */
-const MONTH_GAP = PITCH
 /** グリッド左端（曜日ラベルぶんのオフセット）。 */
 const GRID_LEFT = 22
+/** 1 日 = ミリ秒。 */
+const DAY_MS = 24 * 60 * 60 * 1000
 
 const DOW_LABELS = ['月', '火', '水', '木', '金', '土', '日']
 
@@ -116,8 +116,8 @@ export function CalendarHeatmapChart({
 
   const group = metricGroup(metric)
 
-  // データ map と min/max 算出
-  const { dataMap, minVal, maxVal, weeks } = useMemo(() => {
+  // データ map / min-max / セル配置（列は日単位で割り当て・#310）
+  const { dataMap, minVal, maxVal, cells, monthLabels, maxCol } = useMemo(() => {
     const map = new Map<string, { value: number | null; total: number; wins: number; draws: number }>()
     let mn = Number.POSITIVE_INFINITY
     let mx = Number.NEGATIVE_INFINITY
@@ -145,15 +145,27 @@ export function CalendarHeatmapChart({
       earliest.setUTCDate(latest.getUTCDate() - 364)
     }
 
-    // 週の開始 (Monday) ～ latest までで矩形を作る
+    // 列は「日単位」で割り当てる（#310）。
+    //   - 月曜になったら列を +1（通常の週送り）
+    //   - 月が変わったら列を +1（週の途中でも。新しい月はその月の 1 日から新しい列で始まる）
+    //   - 月初が月曜なら両方に該当するが +1 は 1 回だけ
+    // これにより月境界の週は 2 列に分割され（曜日の行は保つ）、列と月が必ず一致する。
+    // 空の列は挟まない。結果として月ごとに階段状の「ずれ」ができる。
     const startMonday = mondayOf(earliest)
-    const numWeeks = Math.floor((latest.getTime() - startMonday.getTime()) / (1000 * 60 * 60 * 24 * 7)) + 1
+    const cells: { date: Date; col: number; row: number }[] = []
+    const labels: { col: number; month: number }[] = []
+    let col = 0
+    let prevMonth = -1
 
-    const weeks: Date[] = []
-    for (let i = 0; i < numWeeks; i++) {
-      const d = new Date(startMonday)
-      d.setUTCDate(startMonday.getUTCDate() + i * 7)
-      weeks.push(d)
+    for (let t = startMonday.getTime(); t <= latest.getTime(); t += DAY_MS) {
+      const d = new Date(t)
+      const row = weekdayMonStart(d)
+      const m = d.getUTCMonth()
+      const isFirst = cells.length === 0
+      if (!isFirst && (row === 0 || m !== prevMonth)) col++
+      if (m !== prevMonth) labels.push({ col, month: m })
+      cells.push({ date: d, col, row })
+      prevMonth = m
     }
 
     const rawMax = mx === Number.NEGATIVE_INFINITY ? 0 : mx
@@ -163,7 +175,9 @@ export function CalendarHeatmapChart({
       dataMap: map,
       minVal:  mn === Number.POSITIVE_INFINITY ? 0 : mn,
       maxVal:  finalMax,
-      weeks,
+      cells,
+      monthLabels: labels,
+      maxCol: col,
     }
   }, [data, metric, group, minSampleSize])
 
@@ -181,39 +195,11 @@ export function CalendarHeatmapChart({
   const GRID_TOP = 32
   const GRID_HEIGHT = 7 * PITCH
 
-  // 週ごとの x 座標。月が変わる週の手前に 1 列ぶんの隙間を入れる（#308）。
-  // セル・月ラベル・全体幅はすべてこの配列に追随させる。
-  const weekX = useMemo(() => {
-    const xs: number[] = []
-    let gaps = 0
-    let prevMonth = -1
-    weeks.forEach((weekStart, wi) => {
-      const m = weekStart.getUTCMonth()
-      // 先頭週は「変わり目」ではないので隙間を入れない
-      if (prevMonth !== -1 && m !== prevMonth) gaps++
-      prevMonth = m
-      xs.push(GRID_LEFT + wi * PITCH + gaps * MONTH_GAP)
-    })
-    return xs
-  }, [weeks])
+  /** 列インデックス → x 座標。 */
+  const colX = (col: number) => GRID_LEFT + col * PITCH
 
-  // 月ラベル: その月が最初に現れる週の位置に描く
-  const monthLabels = useMemo(() => {
-    const labels: { x: number; text: string }[] = []
-    let prevMonth = -1
-    weeks.forEach((weekStart, wi) => {
-      const m = weekStart.getUTCMonth()
-      if (m !== prevMonth) {
-        labels.push({ x: weekX[wi], text: MONTH_LABELS[m] })
-        prevMonth = m
-      }
-    })
-    return labels
-  }, [weeks, weekX])
-
-  // 隙間のぶん幅が広がるので、最終週の x から算出する（weeks.length * PITCH のままだと右端が切れる）
-  const lastX = weekX.length > 0 ? weekX[weekX.length - 1] : GRID_LEFT
-  const width  = Math.max(lastX + CELL + 8, 280)
+  // 月境界で列がずれるぶん、幅は最大列インデックスから算出する
+  const width  = Math.max(colX(maxCol) + CELL + 8, 280)
   const height = GRID_TOP + GRID_HEIGHT + 8
 
   // カレンダーは左が古い・右が最新。初期表示・データ更新時に最新（右端）が見えるよう右端へスクロール。
@@ -240,12 +226,12 @@ export function CalendarHeatmapChart({
         {monthLabels.map((ml, i) => (
           <text
             key={`m-${i}`}
-            x={ml.x}
+            x={colX(ml.col)}
             y={GRID_TOP - 6}
             fontSize={9}
             fontWeight={600}
             fill="var(--text)"
-          >{ml.text}</text>
+          >{MONTH_LABELS[ml.month]}</text>
         ))}
         {/* 曜日ラベル */}
         {DOW_LABELS.map((lbl, i) => (
@@ -258,39 +244,33 @@ export function CalendarHeatmapChart({
             fill="var(--text)"
           >{lbl}</text>
         ))}
-        {/* セル */}
-        {weeks.map((weekStart, wi) =>
-          Array.from({ length: 7 }, (_, di) => {
-            const cellDate = new Date(weekStart)
-            cellDate.setUTCDate(weekStart.getUTCDate() + di)
-            // 今日より後 (未来) のセルは描画しない
-            if (cellDate > todayUtc) return null
-            const dateStr = toIsoDate(cellDate)
-            const entry = dataMap.get(dateStr)
-            const v = entry?.value ?? null
-            const total = entry?.total ?? 0
-            const wins  = entry?.wins ?? 0
-            const draws = entry?.draws ?? 0
-            const fill = cellFill(dateStr, v, total)
-            const x = weekX[wi]
-            const y = GRID_TOP + di * PITCH
-            return (
-              <rect
-                key={`${wi}-${di}`}
-                className="cal-cell"
-                x={x}
-                y={y}
-                width={CELL}
-                height={CELL}
-                rx={2}
-                fill={fill}
-                onMouseEnter={(e) => setHover({ mx: e.clientX, my: e.clientY, date: dateStr, value: v, total, wins, draws })}
-                onMouseMove={(e) => setHover(prev => prev ? { ...prev, mx: e.clientX, my: e.clientY } : prev)}
-                onMouseLeave={() => setHover(null)}
-              />
-            )
-          })
-        )}
+        {/* セル: 列は日単位で割り当て済み（月境界で列がずれる・#310） */}
+        {cells.map(({ date, col, row }) => {
+          // 今日より後 (未来) のセルは描画しない
+          if (date > todayUtc) return null
+          const dateStr = toIsoDate(date)
+          const entry = dataMap.get(dateStr)
+          const v = entry?.value ?? null
+          const total = entry?.total ?? 0
+          const wins  = entry?.wins ?? 0
+          const draws = entry?.draws ?? 0
+          const fill = cellFill(dateStr, v, total)
+          return (
+            <rect
+              key={dateStr}
+              className="cal-cell"
+              x={colX(col)}
+              y={GRID_TOP + row * PITCH}
+              width={CELL}
+              height={CELL}
+              rx={2}
+              fill={fill}
+              onMouseEnter={(e) => setHover({ mx: e.clientX, my: e.clientY, date: dateStr, value: v, total, wins, draws })}
+              onMouseMove={(e) => setHover(prev => prev ? { ...prev, mx: e.clientX, my: e.clientY } : prev)}
+              onMouseLeave={() => setHover(null)}
+            />
+          )
+        })}
       </svg>
       {/* カラーバー (凡例) を SVG の下に HTML として配置 */}
       <div className="cal-legend">
