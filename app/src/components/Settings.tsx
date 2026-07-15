@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { getVersion } from '@tauri-apps/api/app'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import type { AppSettings } from '../types'
 import { THEMES, saveTheme, getThemeId } from '../utils/appSettings'
@@ -37,6 +38,13 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   const [importResult, setImportResult] = useState<string | null>(null)
   const [weaponUpdating, setWeaponUpdating] = useState(false)
   const [weaponUpdateResult, setWeaponUpdateResult] = useState<string | null>(null)
+  // 開発ビルド（0.0.0-dev）では stat.ink アップロードを無効化する（#320）。
+  // 実ガードは Rust の upload_pending_battles 側。ここは UI 表示のためだけ。
+  const [isDevBuild, setIsDevBuild] = useState(false)
+
+  useEffect(() => {
+    getVersion().then(v => setIsDevBuild(v === '0.0.0-dev')).catch(() => {})
+  }, [])
   // ── ギア設定 ──────────────────────────────────────────────
   const [gearDensity, setGearDensity] = useState<DensityId>(loadDensityId)
   const [gearComboLimit, setGearComboLimit] = useState<ComboLimitValue>(loadComboLimit)
@@ -267,15 +275,20 @@ async function handleUploadStatink() {
             type="checkbox"
             checked={settings.statink.autoUpload}
             onChange={(e) => update({ statink: { ...settings.statink, autoUpload: e.target.checked } })}
-            disabled={!settings.statink.apiKey}
+            disabled={!settings.statink.apiKey || isDevBuild}
           />
           バトルデータ取得後に自動でアップロードする
         </label>
+        {isDevBuild && (
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '6px 0 0' }}>
+            ⚠ 開発ビルド（0.0.0-dev）では、実データの誤送信を防ぐため stat.ink へのアップロードは無効化されています。
+          </p>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
           <button
             className="btn-secondary"
             onClick={handleUploadStatink}
-            disabled={uploading || !settings.statink.apiKey}
+            disabled={uploading || !settings.statink.apiKey || isDevBuild}
           >
             {uploading ? 'アップロード中...' : '今すぐアップロード'}
           </button>

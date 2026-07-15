@@ -12,6 +12,13 @@ use tauri::{AppHandle, Emitter};
 /// 他クライアント（s3s 等）の表示形式に揃えてバージョン部分を `v` 始まりにする。
 const USER_AGENT: &str = concat!("splabo/chartoon/v", env!("CARGO_PKG_VERSION"));
 
+/// 開発ビルド（バージョン `0.0.0-dev`）かどうか（#320）。
+/// リリースワークフローが Cargo.toml の version を数値版（例: 0.9.1）へ書き換えるため、
+/// 開発中のみ `0.0.0-dev` になる。stat.ink への誤アップロード防止ガードに使う。
+pub fn is_dev_build() -> bool {
+    env!("CARGO_PKG_VERSION") == "0.0.0-dev"
+}
+
 // s3s と同じ UUID5 名前空間。同一バトルで s3s と UUID が一致するため stat.ink 側で重複排除される。
 const S3S_NAMESPACE_BYTES: [u8; 16] = [
     0xb3, 0xa2, 0xdb, 0xf5,
@@ -596,6 +603,14 @@ pub async fn upload_pending_battles(
     limit: Option<usize>,
     app: Option<&AppHandle>,
 ) -> Result<usize, String> {
+    // 開発ビルド（0.0.0-dev）では stat.ink への実アップロードを行わない（#320）。
+    // 手動アップロード（upload_to_statink / _one）も自動アップロード（fetch 後）も
+    // この関数に集約されているため、ここ 1 箇所で両経路の誤アップロードを防げる。
+    // リリースワークフローが version を数値版に書き換えるので dev のみ 0.0.0-dev になる。
+    if is_dev_build() {
+        log::warn!("[stat.ink] 開発ビルド(0.0.0-dev)のためアップロードをスキップします");
+        return Ok(0);
+    }
     if api_key.is_empty() {
         return Ok(0);
     }
