@@ -56,17 +56,9 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
     invoke<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
   }, [loginVersion])
 
-  // 起動時にスケジューラー設定を Rust 側へ同期
-  useEffect(() => {
-    invoke('set_scheduler_config', {
-      enabled: settings.autoFetchEnabled,
-      intervalMin: settings.autoFetchIntervalMin,
-    }).catch(console.error)
-    invoke('set_statink_config', {
-      autoUpload: settings.statink.autoUpload,
-      apiKey: settings.statink.apiKey,
-    }).catch(console.error)
-  }, [])
+  // 起動時のスケジューラー / stat.ink 設定同期は App.tsx が担う（#322）。
+  // 設定タブを開かなくても同期されるよう起動時 useEffect を App 側へ移設した。
+  // ここでは下の update() 内で、ユーザー操作による変更を即時同期するに留める。
 
   function update(patch: Partial<AppSettings>) {
     const next = { ...settings, ...patch }
