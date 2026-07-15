@@ -90,6 +90,27 @@ export default function App() {
     return () => { cancelled = true }
   }, [])
 
+  // 起動直後・設定変更時・store 取り込み後に、自動取得と stat.ink 設定を
+  // バックエンドへ同期する（#322）。以前は設定タブ（Settings）を開いたときにしか
+  // 同期されず、開かずに閉じると「自動取得 ON でもトレイに残らず終了」「スケジューラーが
+  // 動かない」状態になっていた。settings は本コンポーネントが持つので、mount 時
+  // （loadSettings の値）と import 後（setSettings）で必ず同期される。
+  useEffect(() => {
+    invoke('set_scheduler_config', {
+      enabled: settings.autoFetchEnabled,
+      intervalMin: settings.autoFetchIntervalMin,
+    }).catch(console.error)
+    invoke('set_statink_config', {
+      autoUpload: settings.statink.autoUpload,
+      apiKey: settings.statink.apiKey,
+    }).catch(console.error)
+  }, [
+    settings.autoFetchEnabled,
+    settings.autoFetchIntervalMin,
+    settings.statink.autoUpload,
+    settings.statink.apiKey,
+  ])
+
   /** フェッチ失敗を共通の流儀でトーストに変換する。
    *  ・未ログイン → 設定タブへ誘導するボタン付き
    *  ・期限切れ・ネットワーク → 再試行ボタン付き
