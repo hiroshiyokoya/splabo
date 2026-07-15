@@ -165,3 +165,42 @@ jobs:
           projectPath: './app'
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.tauri-args }}
+
+  # ── Step 3: 完了を Slack へ通知（成功・失敗どちらでも最後に1回） ──────────
+  # このワークフロー（= リリースのタグ push）からのみ通知が飛ぶ。
+  # Slack の Incoming Webhook URL をリポジトリ Secret `SLACK_WEBHOOK_URL` に登録して使う。
+  # Secret 未設定なら通知はスキップし、ワークフロー自体は成功のまま。
+  notify:
+    needs: [create-release, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          # build は matrix なので、いずれか失敗したら result は 'failure'
+          BUILD_RESULT: ${{ needs.build.result }}
+          RELEASE_RESULT: ${{ needs.create-release.result }}
+          VERSION: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+        if: env.SLACK_WEBHOOK_URL != ''
+        run: |
+          # printf の %s\n で「実際の改行」を入れる（"...\n..." だと Slack に \n が
+          # そのまま表示されてしまうため）。jq --arg が改行を JSON へ正しくエスケープする。
+          if [ "$BUILD_RESULT" = "success" ] && [ "$RELEASE_RESULT" = "success" ]; then
+            TEXT=$(printf '%s\n' \
+              "✅ *splabo リリースビルド完了*（成功）" \
+              "• バージョン: \`${VERSION}\`" \
+              "• リリース（ドラフト）: ${RELEASE_URL}" \
+              "• 実行ログ: ${RUN_URL}")
+          else
+            TEXT=$(printf '%s\n' \
+              "❌ *splabo リリースビルド失敗*" \
+              "• バージョン: \`${VERSION}\`" \
+              "• create-release: ${RELEASE_RESULT} / build: ${BUILD_RESULT}" \
+              "• 実行ログ: ${RUN_URL}")
+          fi
+          # jq でエスケープ済みの JSON を組み立てて POST（メッセージ内の記号・改行で壊れないように）
+          PAYLOAD=$(jq -n --arg text "$TEXT" '{text: $text}')
+          curl -sS -X POST -H 'Content-Type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"
