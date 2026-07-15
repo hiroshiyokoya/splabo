@@ -6,6 +6,7 @@ use tauri::{
 
 pub mod abilities;
 pub mod auth;
+pub mod battle_export;
 pub mod crypto;
 pub mod db;
 pub mod env_import;
@@ -123,6 +124,8 @@ pub fn run() {
             gear::delete_gear_data,
             // ギア取得系（Rust GraphQL 経路・Phase A2・gear.rs）
             gear::fetch_gear_full,
+            // battle_db エクスポート（モバイルコンパニオン・#325・battle_export.rs）
+            battle_export::export_battle_db,
             // データ移行（Phase C・migration.rs）
             migration::get_migration_report,
         ])
