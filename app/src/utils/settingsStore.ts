@@ -53,9 +53,12 @@ const OLD_KEY: Record<string, string> = {
 
 /**
  * ミラー対象のキー一覧。chartoon シェル設定に加え、gear 側設定
- * （`splabo:themeId` 等）も含める。gear キーは軽量で、識別子変更後の
+ * （`splabo:densityId` 等）も含める。gear キーは軽量で、識別子変更後の
  * 再設定ゼロにできるため一緒にミラーしておく（実装メモ #241 の推奨）。
  * gear キーには旧 `chartoon:*` フォールバックは無い（別系統なので OLD_KEY 対象外）。
+ *
+ * テーマは #344 でシェル（THEME_KEY）に一本化したため、gear 側の
+ * `splabo:themeId` はミラーしない（ギアはシェルのテーマに追従する）。
  */
 const MIRROR_KEYS: readonly string[] = [
   SETTINGS_KEY,
@@ -65,7 +68,6 @@ const MIRROR_KEYS: readonly string[] = [
   CUSTOM_CHARTS_KEY,
   VIEWS_KEY,
   // gear 側設定（gear/utils/appSettings.ts と同名。ここでは値をそのままミラーするだけ）
-  'splabo:themeId',
   'splabo:densityId',
   'splabo:comboLimit',
   'splabo:nearLimit',

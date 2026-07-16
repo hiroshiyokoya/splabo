@@ -57,6 +57,14 @@
     --dot-color: #ffffff08;
     --dot-size:  28px;
 
+    /* ── テーマ変数から導出する色（#344） ──
+       テーマのパレット（THEMES）に含まれず白固定だった箇所は、ライトテーマで
+       背景に溶けて見えなくなるため、テーマの文字色 --text から混色して導出する。
+       ダークテーマでは --text がほぼ白のため、従来の見た目のまま。 */
+    --badge-bg:           color-mix(in srgb, var(--text) 12%, transparent);
+    --handle-color:       color-mix(in srgb, var(--text) 35%, transparent);
+    --handle-color-hover: color-mix(in srgb, var(--text) 60%, transparent);
+
     /* ── Combo sheet theme ── */
     /* カラーテーマ選択肢: A=パープル(default), B=ネイビー+オレンジ, C=グリーン, D=ダークオレンジ */
     --sheet-bg:            rgba(35, 25, 70, 0.75);   /* シート背景色 */
@@ -421,7 +429,7 @@
   .tab__badge {
     font-size: 0.7rem;
     font-weight: 700;
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--badge-bg);
     border-radius: 999px;
     padding: 0.1rem 0.45rem;
     line-height: 1.5;
@@ -1151,13 +1159,13 @@
     width: 88px;
     height: 5px;
     border-radius: 3px;
-    background: rgba(255, 255, 255, 0.35);
+    background: var(--handle-color);
     transition: background 0.15s;
     box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
   }
 
   .combo-sheet__handle-row:hover .combo-sheet__handle {
-    background: rgba(255, 255, 255, 0.6);
+    background: var(--handle-color-hover);
   }
 
   .combo-sheet__header {

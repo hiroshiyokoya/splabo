@@ -2,13 +2,29 @@
  * appSettings — テーマ・表示密度・コーデ設定の定義と localStorage 永続化
  */
 
+import { getThemeId as getShellThemeId } from '../../utils/appSettings'
+
 // ── テーマ ────────────────────────────────────────────────────
+//
+// テーマは splabo シェル（設定タブ）が単一の情報源。ギアは自前の保存を持たず、
+// シェルのテーマ ID に対応するパレットを `.gear-root` へ適用して追従する（#344）。
+// ギアはシェルと同名の変数（--bg / --surface / --accent …）を `.gear-root` に
+// 再定義しているため、:root へのテーマ適用は届かない。ここで明示的に流し込む。
 
 export interface Theme {
   id: string
   /** カラードット表示用の代表色（CSS background 値、グラデーション可） */
   dot: string
   vars: Record<string, string>
+}
+
+/**
+ * シェルのテーマ ID → ギアのテーマ ID。
+ * ギアの既定パレットは geartoon 由来の 'purple' で、シェルの 'dark' と対になる。
+ * それ以外（solarized-light / solarized-dark）は ID が一致するのでそのまま使う。
+ */
+function gearThemeIdFor(shellThemeId: string): string {
+  return shellThemeId === 'dark' ? 'purple' : shellThemeId
 }
 
 export const THEMES: Theme[] = [
@@ -50,7 +66,8 @@ export const THEMES: Theme[] = [
       '--surface-hover':       '#e6dfc8',
       '--border':              '#cdc8b8',
       '--text':                '#3d454a',
-      '--text-muted':          '#93a1a1',
+      // #93a1a1 は薄すぎるためシェル側で Solarized base00 寄りに是正済み。値を合わせる（#344）。
+      '--text-muted':          '#657b83',
       '--accent':              '#268bd2',
       '--accent-dim':          '#1a6fa8',
       '--accent-dark':         '#f5eedc',
@@ -152,12 +169,11 @@ export type NearLimitValue = typeof NEAR_LIMITS[number]
 // 無ければ旧 geartoon 単体アプリの `geartoon:*` にフォールバックする（設定移行の互換層）。
 // 保存は常に `splabo:*` に書く。
 
-const LS_THEME_KEY       = 'splabo:themeId'
+// テーマはシェル（`splabo:shellThemeId`）が単一の情報源のため、ギア側の保存キーは持たない（#344）。
 const LS_DENSITY_KEY     = 'splabo:densityId'
 const LS_COMBO_LIMIT_KEY = 'splabo:comboLimit'
 const LS_NEAR_LIMIT_KEY  = 'splabo:nearLimit'
 
-const LS_THEME_KEY_OLD       = 'geartoon:themeId'
 const LS_DENSITY_KEY_OLD     = 'geartoon:densityId'
 const LS_COMBO_LIMIT_KEY_OLD = 'geartoon:comboLimit'
 const LS_NEAR_LIMIT_KEY_OLD  = 'geartoon:nearLimit'
@@ -165,10 +181,6 @@ const LS_NEAR_LIMIT_KEY_OLD  = 'geartoon:nearLimit'
 /** splabo:* を優先し、無ければ geartoon:* を読む。 */
 function readWithFallback(newKey: string, oldKey: string): string | null {
   return localStorage.getItem(newKey) ?? localStorage.getItem(oldKey)
-}
-
-export function loadThemeId(): string {
-  return readWithFallback(LS_THEME_KEY, LS_THEME_KEY_OLD) ?? 'purple'
 }
 
 export function loadDensityId(): DensityId {
@@ -202,15 +214,19 @@ function gearRootEl(): HTMLElement | null {
   return document.querySelector<HTMLElement>('.gear-root')
 }
 
-export function applyTheme(themeId: string): void {
-  const theme = THEMES.find(t => t.id === themeId) ?? THEMES[0]
+/**
+ * シェルのテーマ ID を受け取り、対応するギアのパレットを `.gear-root` に適用する。
+ * ギア側にテーマの保存は持たない（シェルが単一の情報源・#344）。
+ */
+export function applyTheme(shellThemeId: string): void {
+  const gearThemeId = gearThemeIdFor(shellThemeId)
+  const theme = THEMES.find(t => t.id === gearThemeId) ?? THEMES[0]
   const root = gearRootEl()
   if (root) {
     for (const [k, v] of Object.entries(theme.vars)) {
       root.style.setProperty(k, v)
     }
   }
-  localStorage.setItem(LS_THEME_KEY, themeId)
 }
 
 export function applyDensity(densityId: DensityId): void {
@@ -225,11 +241,14 @@ export function applyDensity(densityId: DensityId): void {
 }
 
 /**
- * ギアセクションのマウント後に呼ぶ — 保存済みテーマ・密度を `.gear-root` に復元する。
+ * ギアセクションのマウント後に呼ぶ — シェルのテーマと保存済み密度を `.gear-root` に適用する。
  * 旧 geartoon では module ロード時に呼んでいたが、統合後は `.gear-root` が
  * 描画されてから適用する必要があるため GearSection の useEffect から呼ぶ。
+ *
+ * GearSection はタブ離脱でアンマウントされるため、設定でテーマを変更したあと
+ * ギアタブを開き直した時点で、ここで最新のシェルテーマが再適用される（#344）。
  */
 export function initAppSettings(): void {
-  applyTheme(loadThemeId())
+  applyTheme(getShellThemeId())
   applyDensity(loadDensityId())
 }
