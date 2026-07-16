@@ -797,6 +797,17 @@ export const METRIC_LABELS: Record<MetricKey, string> = {
   sum_inked:    '塗りP（合計）',
 }
 
+/**
+ * 合計系メトリクス。2D クロス集計（GroupedStatsRow2D）には列が無く、
+ * getMetric2D が必ず null を返すため、ヒートマップでは選択させない（#351）。
+ * カレンダー・折れ線は GroupedStatsRow に列があるので従来どおり使える。
+ */
+export const SUM_METRICS: MetricKey[] = ['sum_kill', 'sum_death', 'sum_assist', 'sum_inked']
+
+/** ヒートマップ（2D クロス集計）で選べるメトリクス。合計系を除いたもの（#351）。 */
+export const HEATMAP_METRICS = (Object.keys(METRIC_LABELS) as MetricKey[])
+  .filter(m => !SUM_METRICS.includes(m))
+
 /** GroupedStatsRow から指定メトリクスの数値を取り出す。NULL は null を返す。
  *  `avg_kd` は avg_kill / avg_death をクライアント側で算出（D=0 は null）。 */
 export function getMetric(row: GroupedStatsRow, metric: MetricKey): number | null {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey, BattleNumericMetric } from '../types'
 import {
-  GROUP_BY_LABELS, METRIC_LABELS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
+  GROUP_BY_LABELS, METRIC_LABELS, HEATMAP_METRICS, SUM_METRICS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
   IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, scatterMetricOptions,
   BATTLE_NUMERIC_METRIC_LABELS, BATTLE_NUMERIC_DEFAULT_BIN,
 } from '../types'
@@ -46,7 +46,11 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   const [dotUnit,      setDotUnit]      = useState<'battle' | 'weapon' | 'stage'>(initial?.dotUnit ?? 'weapon')
   const [xMetric,      setXMetric]      = useState<string>(initial?.xMetric ?? 'avg_kill')
   const [yMetric,      setYMetric]      = useState<string>(initial?.yMetric ?? 'win_rate')
-  const [sizeMetric,   setSizeMetric]   = useState<string>(initial?.sizeMetric ?? 'total')
+  // サイズは「（一定サイズ）」が '' で、保存時に undefined へ落ちる（handleSave 参照）。
+  // そのため `initial?.sizeMetric ?? 'total'` にすると、一定サイズで保存したグラフを
+  // 編集で開いたとき「バトル数」に化けてしまう。編集時は保存値をそのまま（undefined は
+  // 一定サイズ = ''）復元し、新規作成のときだけ既定値 'total' を使う。
+  const [sizeMetric,   setSizeMetric]   = useState<string>(initial ? (initial.sizeMetric ?? '') : 'total')
   const [colorMetric,  setColorMetric]  = useState<string>(initial?.colorMetric ?? '')
 
   // shape ごとに groupBy / yComposition を適切に補正する：
@@ -65,6 +69,9 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       if (isTimeBucketGroupBy(groupBy)) setGroupBy('weapon')
       if (isTimeBucketGroupBy(groupBy2)) setGroupBy2('stage')
       if (yComposition !== 'single_metric') setYComposition('single_metric')
+      // 合計系はヒートマップでは全セル空になるので、選ばれていたら勝率へ退避（#351）。
+      // 既存の保存済みグラフを開いた場合の救済も兼ねる。
+      if (SUM_METRICS.includes(metric)) setMetric('win_rate')
     } else if (shape === 'scatter') {
       // groupBy はデータプリフェッチに使う。battle は db_list_battles で別取得するので
       // 任意の値で OK だが、weapon/stage と整合させておく。
@@ -87,14 +94,16 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   }, [dotUnit, shape])
 
   // dotUnit を切り替えたとき X / Y / size / color の選択肢系統が変わるのでデフォルトに戻す。
-  // ただし **編集モードで開いたときの初回マウントでは保存値を保持** したいので、
-  // ref で 1 回目をスキップする（#143）。
-  const dotUnitSkipFirstRef = useRef(true)
+  // ただし **編集モードで開いたときの初回マウントでは保存値を保持** したい（#143）。
+  //
+  // 以前は「ref で 1 回目をスキップ」していたが、StrictMode は effect を
+  // setup → cleanup → setup と 2 回走らせるため、2 回目でスキップが外れて
+  // 保存値が既定値に上書きされていた（編集を開くと設定が違って見えるバグ）。
+  // 「実際に dotUnit が変わったときだけ反応する」形にして、何回走っても安全にする。
+  const prevDotUnitRef = useRef(dotUnit)
   useEffect(() => {
-    if (dotUnitSkipFirstRef.current) {
-      dotUnitSkipFirstRef.current = false
-      return
-    }
+    if (prevDotUnitRef.current === dotUnit) return  // 初回マウント・再実行では発火しない
+    prevDotUnitRef.current = dotUnit
     if (shape !== 'scatter') return
     if (dotUnit === 'battle') {
       setXMetric('kill')
@@ -348,8 +357,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
           {shape !== 'scatter' && shape !== 'bar' && yComposition === 'single_metric' && (
             <div className="form-field">
               <label className="form-label">メトリクス</label>
+              {/* ヒートマップは合計系を出さない。2D クロス集計に列が無く、
+                  選んでも全セルが空になるため（#351）。 */}
               <select className="form-input" value={metric} onChange={e => setMetric(e.target.value as MetricKey)}>
-                {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
+                {(shape === 'heatmap' ? HEATMAP_METRICS : (Object.keys(METRIC_LABELS) as MetricKey[])).map(m => (
                   <option key={m} value={m}>{METRIC_LABELS[m]}</option>
                 ))}
               </select>

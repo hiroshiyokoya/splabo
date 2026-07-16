@@ -15,17 +15,34 @@
   --draw:          #f59e0b;
   --sidebar-w:     180px;
 
-  /* カレンダーヒートマップ用のセル色 (5 段階)
+  /* ヒートマップ用のセル色。
      sequential は「ほぼ白 → accent (ライム)」、
-     divergent は「青 ← 白 → 赤」で、中央が暗くならないように白を通す */
-  --cell-empty:    #9c9caa;  /* 空 (バトル無し)。明るめのグレー */
-  --cell-sparse:   #c8c8d2;  /* サンプル不足。空より更に薄いグレー */
-  /* 平均系 sequential: ほぼ白 → accent (ライム) */
-  --cell-c1:       #f3f6e6;  /* 最薄 = ほぼ白 */
-  --cell-c2:       #e2efb6;
-  --cell-c3:       #d6ea7d;
-  --cell-c4:       #cce155;
-  --cell-c5:       #c8f030;  /* 最濃 = accent */
+     divergent (勝率) は「赤 ← 中立 → 青」の 7 段階（#351）。 */
+
+  /* 欠損は「値」ではないので色スケール上の色を持たせず、斜線ハッチで示す（#351）。
+     データなしとサンプル不足は「地と線の明暗を反転」させて区別する。
+     いずれも text / bg からの混色なので、テーマを問わず正しい向きになる。
+       - データなし  : 薄い地に薄い線（控えめ）
+       - サンプル不足: グレー地に濃い線（反転・存在感がある）
+     「データはあるが足りない」方が「そもそも無い」より存在感がある、という順序づけ。 */
+  --cell-empty:       color-mix(in srgb, var(--text) 6%, transparent);  /* データなしの地 */
+  --cell-empty-line:  var(--text-muted);                                /* データなしの線 */
+  --cell-sparse-bg:   color-mix(in srgb, var(--text) 45%, var(--bg));   /* サンプル不足の地（グレー） */
+  /* サンプル不足の線は「グレー地に黒」。地はどのテーマでも中間グレーになるため、
+     線は var(--bg) ではなく黒固定にする（ライトでは bg がクリーム色で、
+     地より明るくなって反転しなくなるため）。 */
+  --cell-sparse-line: #14141c;
+  /* 勝数・平均系 sequential のベース色（#351）。
+     棒グラフの勝敗色を流用し、意味で色を割り当てる（割り当ては utils/heatmapColors.tsx）:
+       --seq-good    緑 … 多いほど良い（勝数・キル・キルレ）
+       --seq-bad     赤 … 多いほど悪い（デス）
+       --seq-neutral 橙 … 良し悪しの無い量（バトル数・アシスト・SP・塗り・時間）
+     段はこのベースを白（淡く）・黒（濃く）と混ぜて作る（utils/heatmapColors.tsx）。
+     背景ではなく白黒方向へ振るので、ダーク・ライトとも「薄い＝少ない / 濃い＝多い」で
+     同じ向きに読める。テーマ別の差し替えは不要。 */
+  --seq-good:      #22c55e;  /* = --win */
+  --seq-bad:       #ef4444;  /* = --lose */
+  --seq-neutral:   #fb923c;  /* = 勝率グラフの中間色 */
   /* カウント系 (バトル数): 低カウント側は白寄り → 高カウント側はエメラルドグリーンへグラデ。
      カレンダー専用の accent 変数で棒グラフや他 UI には影響なし。 */
   --cell-count-accent: #10b981;
@@ -35,12 +52,25 @@
   --cell-count-c3:     color-mix(in srgb, var(--cell-count-accent) 58%, white);
   --cell-count-c4:     color-mix(in srgb, var(--cell-count-accent) 80%, white);
   --cell-count-c5:     var(--cell-count-accent);
-  /* 率系 (勝率) divergent: 強い赤 ← 白 → 強い青 */
-  --cell-r1:       #b22f3f;  /* 強い赤 */
-  --cell-r2:       #e89e9e;  /* 薄い赤 */
-  --cell-r3:       #eeeef0;  /* 中央 = 白 (text 色と整合) */
-  --cell-r4:       #a4d2dd;  /* 薄い青 */
-  --cell-r5:       #2998ad;  /* 強い青 */
+  /* 率系 (勝率) divergent: 濃いピンク ← 淡い中立 → 濃い青 の 11 段階（#351）。
+     勝率だけ 2 色相を使うぶん段を細かく取れるので、7 段ではなく 11 段（各アーム 5 段 + 中央）。
+     「薄い＝中立 / 濃い＝極端」の濃淡モデル。中央は無彩色なので、明るくても
+     「色としては何も言っていない」＝中立として読める。
+     ダッシュボードの勝率グラフの色（WIN_RATE_LO #f472b6 / WIN_RATE_HI #38bdf8）を
+     途中の段に含めつつ、極はさらに濃くして変化の幅を出している。
+     白黒方向へ振るので背景に依存せず、ダーク・ライトとも同じ向きで読める
+     （dark 2.2 → 11.7(中央) → 2.3 ／ light 7.3 → 1.4(中央) → 7.0）。 */
+  --cell-r1:        #9d174d;  /* 〜9%   濃いピンク・極 */
+  --cell-r2:        #db2777;  /* 9-18% */
+  --cell-r3:        #f472b6;  /* 18-27% 勝率グラフの低勝率と同色 */
+  --cell-r4:        #f68fc5;  /* 27-36% */
+  --cell-r5:        #f9a8d4;  /* 36-45% */
+  --cell-r6:        #d0d3d8;  /* 45-55% 中立（無彩色） */
+  --cell-r7:        #7dd3fc;  /* 55-64% */
+  --cell-r8:        #57c8fa;  /* 64-73% */
+  --cell-r9:        #38bdf8;  /* 73-82% 勝率グラフの高勝率と同色 */
+  --cell-r10:       #0284c7;  /* 82-91% */
+  --cell-r11:       #075985;  /* 91%〜  濃い青・極 */
 }
 
 /* カレンダーセルのツールチップ */
@@ -81,9 +111,20 @@
   border-radius: 2px;
   box-shadow: 0 0 0 0.5px var(--surface);
 }
-.cal-legend-swatch--sparse { background: var(--cell-sparse); }
+/* サンプル不足は色ではなくハッチ（斜線）で示す（#351）。グレー地に濃い線＝データなしの反転。
+   SVG 側は <pattern> で同じ見た目を作っており、こちらは凡例スウォッチ用の CSS 版。 */
+.cal-legend-swatch--sparse {
+  /* 角度は -45deg。CSS のグラデーション角度は「軸」の向きで、縞はそれと直交するため、
+     45deg だと縞が SVG 側の rotate(45) と逆向き（\ と /）になってしまう。 */
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 3px,
+      color-mix(in srgb, var(--cell-sparse-line) 75%, transparent) 3px 4.5px
+    ),
+    var(--cell-sparse-bg);
+}
 .cal-legend-end { color: var(--text); font-weight: 600; }
-.cal-legend-mid { color: var(--text); font-weight: 600; }
 .cal-legend-sparse {
   display: inline-flex;
   align-items: center;

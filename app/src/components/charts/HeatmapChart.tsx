@@ -1,6 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import type { GroupedStatsRow2D, MetricKey } from '../../types'
 import { METRIC_LABELS, getMetric2D, formatMetric, metricGroup } from '../../types'
+import {
+  rateCellColor, RATE_LEGEND_COLORS, sequentialCellColor, seqLegendColors,
+  integerRange, SparseHatchPattern, EmptyHatchPattern, hatchFill,
+} from '../../utils/heatmapColors'
 
 /**
  * 2 軸ヒートマップ。X 軸・Y 軸ともにカテゴリ系（武器・ステージ・モード・ルール・サブ・SP）。
@@ -32,36 +36,21 @@ function nawabariLast(keys: string[]): string[] {
   ]
 }
 
-function cellColor(value: number | null, group: ReturnType<typeof metricGroup>, min: number, max: number, total: number, minSampleSize: number): string {
-  if (value === null || total === 0) return 'var(--cell-empty)'
+function cellColor(value: number | null, group: ReturnType<typeof metricGroup>, min: number, max: number, total: number, minSampleSize: number, sparseId: string, emptyId: string, metric: MetricKey): string {
+  // 値が無いセルは色ではなくハッチで示す（中立グレーの中央と紛れさせないため・#351）。
+  // データなしはサンプル不足より強い（詰まった）ハッチ。
+  if (value === null || total === 0) return hatchFill(emptyId)
   if ((group === 'rate' || group === 'average') && total < minSampleSize) {
-    return 'var(--cell-sparse)'
+    return hatchFill(sparseId)
   }
   if (group === 'count') {
-    if (max <= 0) return 'var(--cell-empty)'
-    const t = value / max
-    if (t <= 0.2) return 'var(--cell-c1)'
-    if (t <= 0.4) return 'var(--cell-c2)'
-    if (t <= 0.6) return 'var(--cell-c3)'
-    if (t <= 0.8) return 'var(--cell-c4)'
-    return 'var(--cell-c5)'
+    if (max <= 0) return hatchFill(emptyId)
+    return sequentialCellColor(value / max, metric)
   }
-  if (group === 'rate') {
-    const t = (value - 0.5) * 2
-    if (t < -0.4) return 'var(--cell-r1)'
-    if (t < -0.1) return 'var(--cell-r2)'
-    if (t <=  0.1) return 'var(--cell-r3)'
-    if (t <=  0.4) return 'var(--cell-r4)'
-    return 'var(--cell-r5)'
-  }
+  if (group === 'rate') return rateCellColor(value)
   // average
-  if (max <= min) return 'var(--cell-c3)'
-  const t = (value - min) / (max - min)
-  if (t <= 0.2) return 'var(--cell-c1)'
-  if (t <= 0.4) return 'var(--cell-c2)'
-  if (t <= 0.6) return 'var(--cell-c3)'
-  if (t <= 0.8) return 'var(--cell-c4)'
-  return 'var(--cell-c5)'
+  if (max <= min) return sequentialCellColor(0.5, metric)
+  return sequentialCellColor((value - min) / (max - min), metric)
 }
 
 export function HeatmapChart({
@@ -85,6 +74,10 @@ export function HeatmapChart({
   const PAD_TOP  = PAD_TOP_BASE  + (xTitle ? TITLE_PAD : 0)
   // ツールチップ位置はマウスの clientX / clientY (viewport 基準)。
   // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
+  // ハッチ（サンプル不足 / データなし）用。同一ページに複数チャートが載るので id は一意にする（#351）。
+  const uid = useId()
+  const sparseId = `sparse-${uid}`
+  const emptyId  = `empty-${uid}`
   const [hover, setHover] = useState<{
     mx: number; my: number; xKey: string; yKey: string; value: number | null
     total: number; wins: number; draws: number
@@ -128,12 +121,18 @@ export function HeatmapChart({
       if (v > mx) mx = v
     }
 
+    const rawMin = mn === Number.POSITIVE_INFINITY ? 0 : mn
+    const rawMax = mx === Number.NEGATIVE_INFINITY ? 0 : mx
+    // 勝数・平均系は範囲を整数に丸める（凡例が「3.2 – 7.8」ではなく「3 – 8」に・#351）。
+    // 勝率は 0–100% 固定なのでそのまま。
+    const r = group === 'rate' ? { min: rawMin, max: rawMax } : integerRange(rawMin, rawMax)
+
     return {
       xKeys, yKeys,
       cells: cellMap,
       nameMap,
-      minVal: mn === Number.POSITIVE_INFINITY ? 0 : mn,
-      maxVal: mx === Number.NEGATIVE_INFINITY ? 0 : mx,
+      minVal: r.min,
+      maxVal: r.max,
     }
   }, [data, metric, group, minSampleSize, xNumeric, yNumeric])
 
@@ -142,17 +141,17 @@ export function HeatmapChart({
   const height = PAD_TOP + GRID_H + 8
 
   /** カラーバー（凡例）用の色順・ラベル */
-  const LEGEND_COUNT  = ['var(--cell-c1)', 'var(--cell-c2)', 'var(--cell-c3)', 'var(--cell-c4)', 'var(--cell-c5)']
-  const LEGEND_RATE   = ['var(--cell-r1)', 'var(--cell-r2)', 'var(--cell-r3)', 'var(--cell-r4)', 'var(--cell-r5)']
-  const legendColors = group === 'rate' ? LEGEND_RATE : LEGEND_COUNT
+  const legendColors = group === 'rate' ? RATE_LEGEND_COLORS : seqLegendColors(metric)
   const fmtLegend = (v: number): string => {
     if (metric === 'win_rate') return `${Math.round(v * 100)}%`
     if (metric === 'avg_duration') return `${Math.round(v)}s`
     if (metric === 'total' || metric === 'wins') return Math.round(v).toString()
-    return v.toFixed(1)
+    // 範囲は integerRange で整数化済み
+    return Math.round(v).toString()
   }
+  // 勝率は 0% / 100% の両端のみ。中央の 50% はバーの右に並んで出てしまい
+  // 中央ラベルとして機能していなかったため廃止（#351）。
   const legendLeft  = group === 'rate' ? '0%'  : group === 'count' ? '0' : fmtLegend(minVal)
-  const legendMid   = group === 'rate' ? '50%' : null
   const legendRight = group === 'rate' ? '100%' : fmtLegend(maxVal)
 
   // 表示ラベル: nameMap (BE が返す display name) を引いてから、必要ならカテゴリ別に整形。
@@ -168,6 +167,10 @@ export function HeatmapChart({
   return (
     <div className="chart-hover-area" style={{ position: 'relative', overflow: 'auto' }}>
       <svg width={width} height={height} role="img" aria-label="ヒートマップ">
+        <defs>
+          <SparseHatchPattern id={sparseId} />
+          <EmptyHatchPattern id={emptyId} />
+        </defs>
         {/* 軸タイトル（#145）。tick ラベルの上 / 左に表示。 */}
         {xTitle && (
           <text
@@ -227,7 +230,7 @@ export function HeatmapChart({
             const row = cells.get(`${xk}|${yk}`)
             const v = row ? getMetric2D(row, metric) : null
             const total = row?.total ?? 0
-            const fill = cellColor(v, group, minVal, maxVal, total, minSampleSize)
+            const fill = cellColor(v, group, minVal, maxVal, total, minSampleSize, sparseId, emptyId, metric)
             const x = PAD_LEFT + xi * (CELL_W + GAP)
             const y = PAD_TOP  + yi * (CELL_H + GAP)
             return (
@@ -261,7 +264,6 @@ export function HeatmapChart({
             <span key={i} className="cal-legend-swatch" style={{ background: c }} />
           ))}
         </span>
-        {legendMid && <span className="cal-legend-mid">{legendMid}</span>}
         <span className="cal-legend-end">{legendRight}</span>
         {(group === 'rate' || group === 'average') && (
           <span className="cal-legend-sparse">

@@ -14,6 +14,7 @@ import { LineChart } from './charts/LineChart'
 import { CalendarHeatmapChart } from './charts/CalendarHeatmapChart'
 import { HeatmapChart } from './charts/HeatmapChart'
 import { ScatterChart, type ScatterPoint } from './charts/ScatterChart'
+import { rateCellColor, sequentialCellColor } from '../utils/heatmapColors'
 
 /** 1 バトル単位の散布図メトリクス値を BattleRow から計算する。 */
 function getBattleMetric(b: BattleRow, k: BattleMetricKey): number | null {
@@ -36,23 +37,13 @@ function metricLabelOf(k: string): string {
 }
 
 /** 値の色マッピング。勝率は divergent、その他は accent 濃淡。 */
-function colorOfValue(value: number | null, isRate: boolean, min: number, max: number): string {
+function colorOfValue(value: number | null, isRate: boolean, min: number, max: number, metric: MetricKey): string {
   if (value === null) return 'var(--cell-empty)'
-  if (isRate) {
-    const t = (value - 0.5) * 2
-    if (t < -0.4) return 'var(--cell-r1)'
-    if (t < -0.1) return 'var(--cell-r2)'
-    if (t <=  0.1) return 'var(--cell-r3)'
-    if (t <=  0.4) return 'var(--cell-r4)'
-    return 'var(--cell-r5)'
-  }
-  if (max <= min) return 'var(--cell-c3)'
-  const t = (value - min) / (max - min)
-  if (t <= 0.2) return 'var(--cell-c1)'
-  if (t <= 0.4) return 'var(--cell-c2)'
-  if (t <= 0.6) return 'var(--cell-c3)'
-  if (t <= 0.8) return 'var(--cell-c4)'
-  return 'var(--cell-c5)'
+  // 勝率(発散)の色はヒートマップ・カレンダーと共通のスケールを使う（#351）
+  if (isRate) return rateCellColor(value)
+  // 勝数・平均系もヒートマップ・カレンダーと共通の 7 段スケール（#351）
+  if (max <= min) return sequentialCellColor(0.5, metric)
+  return sequentialCellColor((value - min) / (max - min), metric)
 }
 
 /** カテゴリ単位 (武器/ステージ) の散布図ポイントを作る。 */
@@ -82,7 +73,7 @@ function buildAggScatterPoints(
       x,
       y,
       size,
-      color: colorKey ? colorOfValue(colorVal, colorIsRate, cmin, cmax) : 'var(--accent)',
+      color: colorKey ? colorOfValue(colorVal, colorIsRate, cmin, cmax, colorKey as MetricKey) : 'var(--accent)',
       tooltipRows: [
         { label: metricLabelOf(xKey), value: formatMetric(x, xKey as MetricKey) },
         { label: metricLabelOf(yKey), value: formatMetric(y, yKey as MetricKey) },
