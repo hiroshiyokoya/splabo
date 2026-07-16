@@ -86,7 +86,8 @@ export function HeatmapChart({
   // ツールチップ位置はマウスの clientX / clientY (viewport 基準)。
   // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
   const [hover, setHover] = useState<{
-    mx: number; my: number; xKey: string; yKey: string; value: number | null; total: number
+    mx: number; my: number; xKey: string; yKey: string; value: number | null
+    total: number; wins: number; draws: number
   } | null>(null)
 
   const group = metricGroup(metric)
@@ -240,7 +241,10 @@ export function HeatmapChart({
                 fill={fill}
                 stroke="var(--surface)"
                 strokeWidth={0.5}
-                onMouseEnter={(e) => setHover({ mx: e.clientX, my: e.clientY, xKey: xk, yKey: yk, value: v, total })}
+                onMouseEnter={(e) => setHover({
+                  mx: e.clientX, my: e.clientY, xKey: xk, yKey: yk, value: v,
+                  total, wins: row?.wins ?? 0, draws: row?.draws ?? 0,
+                })}
                 onMouseMove={(e) => setHover(prev => prev ? { ...prev, mx: e.clientX, my: e.clientY } : prev)}
                 onMouseLeave={() => setHover(null)}
               />
@@ -279,7 +283,16 @@ export function HeatmapChart({
         >
           <div className="hover-tt-title">{xLabel(hover.xKey)} × {yLabel(hover.yKey)}</div>
           <div className="hover-tt-row">{METRIC_LABELS[metric]}: {formatMetric(hover.value, metric)}</div>
-          <div className="hover-tt-row hover-tt-row--muted">バトル数: {hover.total}</div>
+          {/* バトル数の右に勝敗の内訳を並べる。引き分けは発生したときだけ出す。 */}
+          <div className="hover-tt-row hover-tt-row--muted">
+            バトル数: {hover.total}
+            {hover.total > 0 && (
+              <>
+                {' '}（{hover.wins} 勝 {hover.total - hover.wins - hover.draws} 敗
+                {hover.draws > 0 && ` ${hover.draws} 分`}）
+              </>
+            )}
+          </div>
           {(group === 'rate' || group === 'average') && hover.value !== null && hover.total < minSampleSize && (
             <div className="hover-tt-row hover-tt-row--muted">サンプル不足 (&lt; {minSampleSize})</div>
           )}
