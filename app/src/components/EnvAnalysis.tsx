@@ -84,10 +84,10 @@ const STAGE_METRICS: ScatterMetric[] = [
 // ヒートマップのセル指標
 type CellMetricKey =
   | 'win_rate' | 'pick_rate' | 'ko_rate' | 'battles'
-  | 'avg_kill' | 'avg_death' | 'kill_ratio' | 'avg_assist' | 'contrib_ratio'
+  | 'avg_kill' | 'avg_death' | 'kill_ratio' | 'avg_assist' | 'contrib_ratio' | 'avg_inked'
 // キル系（a1/b1 のみ母数・専用しきい値）。注記・母数表示の切り替えに使う。
-// ※平均塗りP(avg_inked)は元データ(a1_inked)が塗りP でないため別 Issue に分離（backend は対応済み）。
-const KDA_CELL_KEYS: CellMetricKey[] = ['avg_kill', 'avg_death', 'kill_ratio', 'avg_assist', 'contrib_ratio']
+// 平均塗りP(avg_inked)も a1/b1 母数なのでここに含める（#336 で元データの列マッピングを修正済み）。
+const KDA_CELL_KEYS: CellMetricKey[] = ['avg_kill', 'avg_death', 'kill_ratio', 'avg_assist', 'contrib_ratio', 'avg_inked']
 interface CellMetric {
   key:    CellMetricKey
   label:  string
@@ -105,7 +105,7 @@ const CELL_METRICS: CellMetric[] = [
   { key: 'kill_ratio',    label: 'キルレ',     fmt: num2, scale: 'diverging',  weapon: true, mid: 1.0 },
   { key: 'avg_assist',    label: '平均アシスト', fmt: num2, scale: 'sequential', weapon: true },
   { key: 'contrib_ratio', label: '貢献キルレ', fmt: num2, scale: 'diverging',  weapon: true, mid: 1.0 },
-  // 平均塗りP は元データ不備のため保留（別 Issue）。
+  { key: 'avg_inked',     label: '平均塗りP',   fmt: pint, scale: 'sequential', weapon: true },
   { key: 'ko_rate',       label: 'KO率',       fmt: pct,  scale: 'sequential', weapon: false },
   { key: 'battles',       label: 'バトル数',   fmt: pint, scale: 'sequential', weapon: false },
 ]
@@ -342,6 +342,20 @@ export function EnvAnalysis() {
     finally { setImporting(false); setProgress(null) }
   }
 
+  // 全期間の再取得。既存 env_battles を削除して stat.ink から取り込み直す。
+  // #336 で per-player 列（kill/assist/death/inked）の取り込み位置を修正したため、
+  // それ以前に取り込んだデータを正すには全期間の再取得が必要になる。
+  async function handleRefetchFull() {
+    if (importing) return
+    const ok = window.confirm(
+      '全期間データを削除して stat.ink から取り込み直します（約 944 MiB・10〜15 分）。\n\n' +
+      'このバージョンでキル・デス・アシスト・塗りポイントの取り込み位置を修正しました。' +
+      'それ以前に取得したデータを正しい値に直すには、全期間の再取得が必要です。実行しますか？'
+    )
+    if (!ok) return
+    await handleDownloadFull()
+  }
+
   // 散布図ポイント生成
   const metrics = groupBy === 'weapon' ? WEAPON_METRICS : STAGE_METRICS
   const xM = metrics.find(m => m.key === xKey) ?? metrics[0]
@@ -402,6 +416,10 @@ export function EnvAnalysis() {
             <button className="btn-secondary" onClick={handleDelta} disabled={importing}
                     title="最終取得日の翌日から昨日分を差分取得します">
               {importing ? '更新中...' : '差分更新'}
+            </button>
+            <button className="btn-secondary" onClick={handleRefetchFull} disabled={importing}
+                    title="全期間データを削除して stat.ink から取り込み直します（約 944 MiB・10〜15 分）">
+              全期間再取得
             </button>
             {error && <span className="env-error">{error}</span>}
           </div>
