@@ -90,14 +90,16 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   }, [dotUnit, shape])
 
   // dotUnit を切り替えたとき X / Y / size / color の選択肢系統が変わるのでデフォルトに戻す。
-  // ただし **編集モードで開いたときの初回マウントでは保存値を保持** したいので、
-  // ref で 1 回目をスキップする（#143）。
-  const dotUnitSkipFirstRef = useRef(true)
+  // ただし **編集モードで開いたときの初回マウントでは保存値を保持** したい（#143）。
+  //
+  // 以前は「ref で 1 回目をスキップ」していたが、StrictMode は effect を
+  // setup → cleanup → setup と 2 回走らせるため、2 回目でスキップが外れて
+  // 保存値が既定値に上書きされていた（編集を開くと設定が違って見えるバグ）。
+  // 「実際に dotUnit が変わったときだけ反応する」形にして、何回走っても安全にする。
+  const prevDotUnitRef = useRef(dotUnit)
   useEffect(() => {
-    if (dotUnitSkipFirstRef.current) {
-      dotUnitSkipFirstRef.current = false
-      return
-    }
+    if (prevDotUnitRef.current === dotUnit) return  // 初回マウント・再実行では発火しない
+    prevDotUnitRef.current = dotUnit
     if (shape !== 'scatter') return
     if (dotUnit === 'battle') {
       setXMetric('kill')
