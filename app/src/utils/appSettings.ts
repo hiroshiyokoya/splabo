@@ -92,15 +92,16 @@ const BASE_VARS: Record<string, string> = {
   '--stat-item-bg':          'rgba(255, 255, 255, 0.04)',
   '--stage-img-filter':      'brightness(0.42) saturate(0.75)',
   '--panel-label-tint':      '#ffffff',                   // パネルラベルの混色相手
-  // 勝率(発散) 7 段のダーク版 V 字（中央を背景へ沈める）。#351
-  // ライトへ切り替えると THEMES 側の Λ 字で上書きされ、戻すとここへ戻る。
-  '--cell-r1':               '#e88490',
-  '--cell-r2':               '#c25462',
-  '--cell-r3':               '#96414f',
-  '--cell-r4':               '#58585f',
-  '--cell-r5':               '#2f7387',
-  '--cell-r6':               '#3a9db4',
-  '--cell-r7':               '#6ecadd',
+  // 勝率(発散) 7 段。dark / solarized-dark が使う（#351）。
+  // 極は濃い（高彩度・暗め）色、中央は明るい無彩色。極端さを彩度で、中立を無彩色で読ませる。
+  // 中央の明るさはカレンダーのバトル数ゼロ (#d0d3d8) に合わせた。
+  '--cell-r1':               '#a82a3c',
+  '--cell-r2':               '#c05a68',
+  '--cell-r3':               '#d99aa2',
+  '--cell-r4':               '#d0d3d8',
+  '--cell-r5':               '#92c2ce',
+  '--cell-r6':               '#4e93a6',
+  '--cell-r7':               '#1c7182',
 }
 
 export function applyTheme(themeId: string): void {

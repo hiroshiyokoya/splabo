@@ -79,38 +79,36 @@ export function integerRange(min: number, max: number): { min: number; max: numb
  * 色ではなく塗りの質（ハッチ / べた塗り）で区別することで、中立グレーの中央と紛れなくなる。
  * 線色は --cell-sparse-line（テーマ追従）。
  *
- * 2 種類を「線の向き」で描き分ける（密度・濃さは揃える）:
- *  - サンプル不足（データはあるが信頼できない）… 斜線
- *  - データなし（そもそもバトルが無い）      … クロス（斜線 + 直交線）
+ * 2 種類とも同じ斜線で、「地と線の明暗を反転」させて描き分ける:
+ *  - データなし（そもそもバトルが無い）      … 薄い地に薄い線（控えめ）
+ *  - サンプル不足（データはあるが信頼できない）… グレー地に濃い線（反転・存在感がある）
+ *
+ * 「データはあるが足りない」方が「そもそも無い」より存在感がある、という順序づけ。
  *
  * `id` は useId() などで要素ごとに一意にすること（同一ページに複数チャートが載るため）。
  */
-const HATCH_PITCH   = 6
-const HATCH_OPACITY = 0.55
+const HATCH_PITCH = 6
 
-function HatchPattern({ id, cross = false }: { id: string; cross?: boolean }) {
+function HatchPattern({ id, bg, line, opacity }: {
+  id: string; bg: string; line: string; opacity: number
+}) {
   const p = HATCH_PITCH
   return (
     <pattern id={id} width={p} height={p} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <rect width={p} height={p} fill="var(--cell-empty)" />
-      <line x1={0} y1={0} x2={0} y2={p} stroke="var(--cell-sparse-line)" strokeWidth={1.5} opacity={HATCH_OPACITY} />
-      {/* クロスは直交する線を重ねるだけ。pattern 全体が 45° 回転しているので、
-          この 2 本で 45° / 135° の格子になる。 */}
-      {cross && (
-        <line x1={0} y1={0} x2={p} y2={0} stroke="var(--cell-sparse-line)" strokeWidth={1.5} opacity={HATCH_OPACITY} />
-      )}
+      <rect width={p} height={p} fill={bg} />
+      <line x1={0} y1={0} x2={0} y2={p} stroke={line} strokeWidth={1.5} opacity={opacity} />
     </pattern>
   )
 }
 
-/** サンプル不足（データはあるが N が足りない）。斜線ハッチ。 */
+/** サンプル不足（データはあるが N が足りない）。グレー地に濃い線＝データなしの反転。 */
 export function SparseHatchPattern({ id }: { id: string }) {
-  return <HatchPattern id={id} />
+  return <HatchPattern id={id} bg="var(--cell-sparse-bg)" line="var(--cell-sparse-line)" opacity={0.75} />
 }
 
-/** データなし（バトルが無い）。サンプル不足と同じ密度・濃さで、クロス（格子）にする。 */
+/** データなし（バトルが無い）。薄い地に薄い線で控えめに。 */
 export function EmptyHatchPattern({ id }: { id: string }) {
-  return <HatchPattern id={id} cross />
+  return <HatchPattern id={id} bg="var(--cell-empty)" line="var(--cell-empty-line)" opacity={0.55} />
 }
 
 /** ハッチセルの fill 値。対応する Pattern に渡した id と同じものを渡す。 */

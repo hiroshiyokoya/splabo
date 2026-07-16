@@ -19,11 +19,19 @@
      sequential は「ほぼ白 → accent (ライム)」、
      divergent (勝率) は「赤 ← 中立 → 青」の 7 段階（#351）。 */
 
-  /* 欠損は「値」ではないので色スケール上の色を持たせない（#351）。
-     text からの混色で導出するため、テーマを問わず「背景のすぐ上」に居続ける。
-     旧実装は明るいグレー固定で、ダーク背景だと実データより目立っていた。 */
-  --cell-empty:      color-mix(in srgb, var(--text) 6%, transparent);  /* 空 (バトル無し) */
-  --cell-sparse-line: var(--text-muted);  /* サンプル不足を示すハッチの線色 */
+  /* 欠損は「値」ではないので色スケール上の色を持たせず、斜線ハッチで示す（#351）。
+     データなしとサンプル不足は「地と線の明暗を反転」させて区別する。
+     いずれも text / bg からの混色なので、テーマを問わず正しい向きになる。
+       - データなし  : 薄い地に薄い線（控えめ）
+       - サンプル不足: グレー地に濃い線（反転・存在感がある）
+     「データはあるが足りない」方が「そもそも無い」より存在感がある、という順序づけ。 */
+  --cell-empty:       color-mix(in srgb, var(--text) 6%, transparent);  /* データなしの地 */
+  --cell-empty-line:  var(--text-muted);                                /* データなしの線 */
+  --cell-sparse-bg:   color-mix(in srgb, var(--text) 45%, var(--bg));   /* サンプル不足の地（グレー） */
+  /* サンプル不足の線は「グレー地に黒」。地はどのテーマでも中間グレーになるため、
+     線は var(--bg) ではなく黒固定にする（ライトでは bg がクリーム色で、
+     地より明るくなって反転しなくなるため）。 */
+  --cell-sparse-line: #14141c;
   /* 勝数・平均系 sequential: 背景 → accent の 7 段（#351）。
      大きさは「明度」で表す。背景と混ぜるので、ダークでは暗→明、ライトでは淡→濃と
      テーマに応じて自動で正しい向きになり、アクセント色にも追従する。
@@ -45,18 +53,18 @@
   --cell-count-c3:     color-mix(in srgb, var(--cell-count-accent) 58%, white);
   --cell-count-c4:     color-mix(in srgb, var(--cell-count-accent) 80%, white);
   --cell-count-c5:     var(--cell-count-accent);
-  /* 率系 (勝率) divergent: 赤 ← 中立 → 青 の 7 段階（#351）。
-     ここはダーク（既定テーマ）用の V 字＝中央を背景側へ沈め、極を光らせる。
-     ライトテーマでは明暗が反転するため THEMES 側で Λ 字に差し替える。
-     旧実装は中央が白 (#eeeef0) で、ダーク背景に対して 15.20:1 と画面上で最も目立ち、
-     「最も情報の無い 50% が最も目立つ」逆転が起きていた。 */
-  --cell-r1:       #e88490;  /* 〜20%  赤・極 */
-  --cell-r2:       #c25462;  /* 20-35% */
-  --cell-r3:       #96414f;  /* 35-45% */
-  --cell-r4:       #58585f;  /* 45-55% 中立（背景比 2.50:1／見えるが目立たない） */
-  --cell-r5:       #2f7387;  /* 55-65% */
-  --cell-r6:       #3a9db4;  /* 65-80% */
-  --cell-r7:       #6ecadd;  /* 80%〜  青・極 */
+  /* 率系 (勝率) divergent: 濃い赤 ← 明るい中立グレー → 濃い青 の 7 段階（#351）。
+     極を「濃い（高彩度・暗め）」色、中央を「明るい無彩色」にして、
+     極端さは彩度で、中立は無彩色で読ませる。中央の明るさはカレンダーの
+     バトル数ゼロ (--cell-count-empty #d0d3d8) に合わせている。
+     ライトテーマでは THEMES 側で中央を背景寄りに差し替える。 */
+  --cell-r1:       #a82a3c;  /* 〜20%  赤・極（濃い） */
+  --cell-r2:       #c05a68;  /* 20-35% */
+  --cell-r3:       #d99aa2;  /* 35-45% */
+  --cell-r4:       #d0d3d8;  /* 45-55% 中立（明るい無彩色・背景比 11.73:1） */
+  --cell-r5:       #92c2ce;  /* 55-65% */
+  --cell-r6:       #4e93a6;  /* 65-80% */
+  --cell-r7:       #1c7182;  /* 80%〜  青・極（濃い） */
 }
 
 /* カレンダーセルのツールチップ */
@@ -97,16 +105,16 @@
   border-radius: 2px;
   box-shadow: 0 0 0 0.5px var(--surface);
 }
-/* サンプル不足は色ではなくハッチ（斜線）で示す（#351）。SVG 側は <pattern> で
-   同じ見た目を作っており、こちらは凡例スウォッチ用の CSS 版。 */
+/* サンプル不足は色ではなくハッチ（斜線）で示す（#351）。グレー地に濃い線＝データなしの反転。
+   SVG 側は <pattern> で同じ見た目を作っており、こちらは凡例スウォッチ用の CSS 版。 */
 .cal-legend-swatch--sparse {
   background:
     repeating-linear-gradient(
       45deg,
       transparent 0 3px,
-      color-mix(in srgb, var(--cell-sparse-line) 55%, transparent) 3px 4.5px
+      color-mix(in srgb, var(--cell-sparse-line) 75%, transparent) 3px 4.5px
     ),
-    var(--cell-empty);
+    var(--cell-sparse-bg);
 }
 .cal-legend-end { color: var(--text); font-weight: 600; }
 .cal-legend-sparse {
