@@ -245,7 +245,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
   }
 
   return (
-    <div className="weapon-book">
+    <div className={`weapon-book${view === 'list' ? ' book--fill' : ''}`}>
       <div className="weapon-book-header">
         <h2>武器図鑑</h2>
         <span className="total-count">{filtered.length} 種</span>
