@@ -1160,7 +1160,9 @@ body {
 
 /* クリック可能カード */
 .weapon-card--clickable { cursor: pointer; }
-.weapon-card--clickable:hover { border-color: var(--accent); }
+/* クリック可能の合図。--accent そのままだと明るすぎるので一段暗い --accent-hover を使い、
+   ステージ図鑑とも色を揃える（#348）。ギアカードは通常時クリック不可なので対象外。 */
+.weapon-card--clickable:hover { border-color: var(--accent-hover); }
 .weapon-card--clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* 武器カード内の 2 列ミニ統計（左: 公式統計、右: 平均統計） */
@@ -1394,7 +1396,8 @@ body {
 .stage-card-winrate { font-weight: 600; }
 
 .stage-card--clickable { cursor: pointer; }
-.stage-card--clickable:hover { border-color: var(--text); }
+/* クリック合図の枠色は武器図鑑と統一（#348）。 */
+.stage-card--clickable:hover { border-color: var(--accent-hover); }
 .stage-card--clickable:focus-visible {
   outline: 2px solid var(--text-muted);
   outline-offset: 2px;
