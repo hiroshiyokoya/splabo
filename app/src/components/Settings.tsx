@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { getVersion } from '@tauri-apps/api/app'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import { QRCodeSVG } from 'qrcode.react'
 import type { AppSettings } from '../types'
 import { THEMES, saveTheme, getThemeId } from '../utils/appSettings'
 import { AI_MODELS, PROVIDER_LABELS, modelDisplayLabel, defaultModelFor, type AiProvider } from '../utils/aiModels'
@@ -28,6 +29,27 @@ interface Props {
   loginVersion: number
 }
 
+/** companion_start の戻り値（Rust companion.rs::CompanionInfo に対応）。 */
+interface CompanionInfo {
+  host_ips: string[]
+  port: number
+  token: string
+}
+
+/** companion_status の戻り値。 */
+interface CompanionStatus {
+  running: boolean
+  port: number | null
+}
+
+/**
+ * ペアリング QR に載せるペイロード（viewer と共有する契約）。
+ * viewer は hosts を順に /ping して到達可能なホストを採用する。
+ */
+function pairingPayload(info: CompanionInfo): string {
+  return JSON.stringify({ v: 1, hosts: info.host_ips, port: info.port, token: info.token })
+}
+
 export function Settings({ settings, onSave, loginVersion }: Props) {
   const [loggedIn, setLoggedIn] = useState(false)
   const [authLoading, setAuthLoading] = useState(false)
@@ -52,9 +74,26 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   const [gearDeleting, setGearDeleting] = useState(false)
   const [gearDeleteResult, setGearDeleteResult] = useState<string | null>(null)
 
+  // ── モバイル同期（コンパニオン）──────────────────────────────
+  // Rust 側 CompanionState が真実。UI は companion_status / _start / _stop を叩くだけ。
+  const [companionInfo, setCompanionInfo] = useState<CompanionInfo | null>(null)
+  const [companionBusy, setCompanionBusy] = useState(false)
+  const [companionError, setCompanionError] = useState<string | null>(null)
+
   useEffect(() => {
     invoke<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
   }, [loginVersion])
+
+  // 起動時にサーバー稼働中なら QR を復元表示する（start は冪等＝稼働中は現行情報を返す）。
+  useEffect(() => {
+    invoke<CompanionStatus>('companion_status')
+      .then(st => {
+        if (st.running) {
+          return invoke<CompanionInfo>('companion_start').then(setCompanionInfo)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   // 起動時のスケジューラー / stat.ink 設定同期は App.tsx が担う（#322）。
   // 設定タブを開かなくても同期されるよう起動時 useEffect を App 側へ移設した。
@@ -189,6 +228,25 @@ async function handleUploadStatink() {
     }
   }
 
+  // ── モバイル同期ハンドラ ──────────────────────────────────
+  async function handleToggleCompanion(enabled: boolean) {
+    setCompanionBusy(true)
+    setCompanionError(null)
+    try {
+      if (enabled) {
+        const info = await invoke<CompanionInfo>('companion_start')
+        setCompanionInfo(info)
+      } else {
+        await invoke('companion_stop')
+        setCompanionInfo(null)
+      }
+    } catch (e) {
+      setCompanionError(String(e))
+    } finally {
+      setCompanionBusy(false)
+    }
+  }
+
   return (
     <div className="settings-panel">
       <h2>設定</h2>
@@ -241,6 +299,54 @@ async function handleUploadStatink() {
             <option value={1440}>24時間ごと</option>
           </select>
         </label>
+      </section>
+
+      <section className="settings-section">
+        <h3>モバイル同期（コンパニオン）</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+          同じ Wi-Fi のスマホアプリ「SpLabo」へ、取得済みのギア・直近バトルデータを配信します。
+          任天堂 API には一切アクセスしません。有効な間だけ配信し、アプリ終了で自動的に止まります。
+        </p>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={companionInfo !== null}
+            disabled={companionBusy}
+            onChange={(e) => handleToggleCompanion(e.target.checked)}
+          />
+          モバイル同期を有効にする
+        </label>
+        {companionError && (
+          <p style={{ color: 'var(--lose)', fontSize: 13, margin: '8px 0 0' }}>
+            エラー: {companionError}
+          </p>
+        )}
+        {companionInfo && (
+          <div style={{ marginTop: 14 }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+              スマホの「SpLabo」でこの QR コードを読み取ってペアリングしてください。
+            </p>
+            <div
+              style={{
+                display: 'inline-block',
+                padding: 12,
+                background: '#fff',
+                borderRadius: 8,
+              }}
+            >
+              <QRCodeSVG value={pairingPayload(companionInfo)} size={192} level="M" />
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '10px 0 0' }}>
+              接続先: {companionInfo.host_ips.length > 0 ? companionInfo.host_ips.join(', ') : '（IP 不明）'}
+              {' : '}{companionInfo.port}
+            </p>
+            {companionInfo.host_ips.length === 0 && (
+              <p style={{ color: 'var(--lose)', fontSize: 12, margin: '4px 0 0' }}>
+                ⚠ LAN の IP アドレスが取得できませんでした。Wi-Fi 接続を確認してください。
+              </p>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="settings-section">
