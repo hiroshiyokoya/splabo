@@ -79,29 +79,38 @@ export function integerRange(min: number, max: number): { min: number; max: numb
  * 色ではなく塗りの質（ハッチ / べた塗り）で区別することで、中立グレーの中央と紛れなくなる。
  * 線色は --cell-sparse-line（テーマ追従）。
  *
- * 2 種類を density で描き分ける:
- *  - サンプル不足（データはあるが信頼できない）… 粗いハッチ
- *  - データなし（そもそもバトルが無い）      … 詰まった強いハッチ
+ * 2 種類を「線の向き」で描き分ける（密度・濃さは揃える）:
+ *  - サンプル不足（データはあるが信頼できない）… 斜線
+ *  - データなし（そもそもバトルが無い）      … クロス（斜線 + 直交線）
  *
  * `id` は useId() などで要素ごとに一意にすること（同一ページに複数チャートが載るため）。
  */
-function HatchPattern({ id, pitch, opacity }: { id: string; pitch: number; opacity: number }) {
+const HATCH_PITCH   = 6
+const HATCH_OPACITY = 0.55
+
+function HatchPattern({ id, cross = false }: { id: string; cross?: boolean }) {
+  const p = HATCH_PITCH
   return (
-    <pattern id={id} width={pitch} height={pitch} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <rect width={pitch} height={pitch} fill="var(--cell-empty)" />
-      <line x1={0} y1={0} x2={0} y2={pitch} stroke="var(--cell-sparse-line)" strokeWidth={1.5} opacity={opacity} />
+    <pattern id={id} width={p} height={p} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width={p} height={p} fill="var(--cell-empty)" />
+      <line x1={0} y1={0} x2={0} y2={p} stroke="var(--cell-sparse-line)" strokeWidth={1.5} opacity={HATCH_OPACITY} />
+      {/* クロスは直交する線を重ねるだけ。pattern 全体が 45° 回転しているので、
+          この 2 本で 45° / 135° の格子になる。 */}
+      {cross && (
+        <line x1={0} y1={0} x2={p} y2={0} stroke="var(--cell-sparse-line)" strokeWidth={1.5} opacity={HATCH_OPACITY} />
+      )}
     </pattern>
   )
 }
 
-/** サンプル不足（データはあるが N が足りない）。粗いハッチ。 */
+/** サンプル不足（データはあるが N が足りない）。斜線ハッチ。 */
 export function SparseHatchPattern({ id }: { id: string }) {
-  return <HatchPattern id={id} pitch={6} opacity={0.55} />
+  return <HatchPattern id={id} />
 }
 
-/** データなし（バトルが無い）。サンプル不足より詰まった強いハッチ。 */
+/** データなし（バトルが無い）。サンプル不足と同じ密度・濃さで、クロス（格子）にする。 */
 export function EmptyHatchPattern({ id }: { id: string }) {
-  return <HatchPattern id={id} pitch={3.5} opacity={0.8} />
+  return <HatchPattern id={id} cross />
 }
 
 /** ハッチセルの fill 値。対応する Pattern に渡した id と同じものを渡す。 */
