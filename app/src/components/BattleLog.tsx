@@ -134,7 +134,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
   }
 
   return (
-    <div className="battle-log">
+    <div className="battle-log book--fill">
       <div className="log-header">
         <h2>バトルログ</h2>
       </div>
@@ -158,7 +158,8 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
         <div className="empty">該当するバトルデータがありません。</div>
       ) : (
         <>
-          <table className="battle-table">
+          <div className="book-table-wrap">
+            <table className="battle-table">
             <thead>
               <tr>
                 <th className="team-color-th"></th>
@@ -220,6 +221,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
               })}
             </tbody>
           </table>
+          </div>
 
           <div className="pagination">
             <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>前へ</button>

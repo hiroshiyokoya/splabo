@@ -148,7 +148,7 @@ export function StageBook({ filters }: { filters: Filters }) {
   }, [filtered, sort, reversed])
 
   return (
-    <div className="stage-book">
+    <div className={`stage-book${view === 'list' ? ' book--fill' : ''}`}>
       <div className="stage-book-header">
         <h2>ステージ図鑑</h2>
         <span className="total-count">{filtered.length} ステージ</span>
