@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from 'react'
 import type { GroupedStatsRow2D, MetricKey } from '../../types'
 import { METRIC_LABELS, getMetric2D, formatMetric, metricGroup } from '../../types'
-import { rateCellColor, RATE_LEGEND_COLORS, SparseHatchPattern, sparseFill } from '../../utils/heatmapColors'
+import { rateCellColor, RATE_LEGEND_COLORS, SparseHatchPattern, EmptyHatchPattern, hatchFill } from '../../utils/heatmapColors'
 
 /**
  * 2 軸ヒートマップ。X 軸・Y 軸ともにカテゴリ系（武器・ステージ・モード・ルール・サブ・SP）。
@@ -33,14 +33,15 @@ function nawabariLast(keys: string[]): string[] {
   ]
 }
 
-function cellColor(value: number | null, group: ReturnType<typeof metricGroup>, min: number, max: number, total: number, minSampleSize: number, sparseId: string): string {
-  if (value === null || total === 0) return 'var(--cell-empty)'
-  // サンプル不足は色ではなくハッチで示す（中立グレーの中央と紛れさせないため・#351）
+function cellColor(value: number | null, group: ReturnType<typeof metricGroup>, min: number, max: number, total: number, minSampleSize: number, sparseId: string, emptyId: string): string {
+  // 値が無いセルは色ではなくハッチで示す（中立グレーの中央と紛れさせないため・#351）。
+  // データなしはサンプル不足より強い（詰まった）ハッチ。
+  if (value === null || total === 0) return hatchFill(emptyId)
   if ((group === 'rate' || group === 'average') && total < minSampleSize) {
-    return sparseFill(sparseId)
+    return hatchFill(sparseId)
   }
   if (group === 'count') {
-    if (max <= 0) return 'var(--cell-empty)'
+    if (max <= 0) return hatchFill(emptyId)
     const t = value / max
     if (t <= 0.2) return 'var(--cell-c1)'
     if (t <= 0.4) return 'var(--cell-c2)'
@@ -80,8 +81,10 @@ export function HeatmapChart({
   const PAD_TOP  = PAD_TOP_BASE  + (xTitle ? TITLE_PAD : 0)
   // ツールチップ位置はマウスの clientX / clientY (viewport 基準)。
   // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
-  // サンプル不足セルのハッチ用。同一ページに複数チャートが載るので id は一意にする（#351）。
-  const sparseId = `sparse-${useId()}`
+  // ハッチ（サンプル不足 / データなし）用。同一ページに複数チャートが載るので id は一意にする（#351）。
+  const uid = useId()
+  const sparseId = `sparse-${uid}`
+  const emptyId  = `empty-${uid}`
   const [hover, setHover] = useState<{
     mx: number; my: number; xKey: string; yKey: string; value: number | null
     total: number; wins: number; draws: number
@@ -165,7 +168,10 @@ export function HeatmapChart({
   return (
     <div className="chart-hover-area" style={{ position: 'relative', overflow: 'auto' }}>
       <svg width={width} height={height} role="img" aria-label="ヒートマップ">
-        <defs><SparseHatchPattern id={sparseId} /></defs>
+        <defs>
+          <SparseHatchPattern id={sparseId} />
+          <EmptyHatchPattern id={emptyId} />
+        </defs>
         {/* 軸タイトル（#145）。tick ラベルの上 / 左に表示。 */}
         {xTitle && (
           <text
@@ -225,7 +231,7 @@ export function HeatmapChart({
             const row = cells.get(`${xk}|${yk}`)
             const v = row ? getMetric2D(row, metric) : null
             const total = row?.total ?? 0
-            const fill = cellColor(v, group, minVal, maxVal, total, minSampleSize, sparseId)
+            const fill = cellColor(v, group, minVal, maxVal, total, minSampleSize, sparseId, emptyId)
             const x = PAD_LEFT + xi * (CELL_W + GAP)
             const y = PAD_TOP  + yi * (CELL_H + GAP)
             return (

@@ -37,22 +37,36 @@ export const RATE_LEGEND_COLORS = [
 ]
 
 /**
- * 「サンプル不足」を示す SVG ハッチ（斜線）パターン。
+ * 「値が無い」セルを示す SVG ハッチ（斜線）パターン。
  *
  * 欠損・サンプル不足は「値」ではないため、色スケール上の色を占有させない。
- * 色ではなく塗りの質（無塗り / ハッチ / べた塗り）で区別することで、
- * 中立グレーの中央と紛れなくなる。線色は --cell-sparse-line（テーマ追従）。
+ * 色ではなく塗りの質（ハッチ / べた塗り）で区別することで、中立グレーの中央と紛れなくなる。
+ * 線色は --cell-sparse-line（テーマ追従）。
+ *
+ * 2 種類を density で描き分ける:
+ *  - サンプル不足（データはあるが信頼できない）… 粗いハッチ
+ *  - データなし（そもそもバトルが無い）      … 詰まった強いハッチ
  *
  * `id` は useId() などで要素ごとに一意にすること（同一ページに複数チャートが載るため）。
  */
-export function SparseHatchPattern({ id }: { id: string }) {
+function HatchPattern({ id, pitch, opacity }: { id: string; pitch: number; opacity: number }) {
   return (
-    <pattern id={id} width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <rect width={6} height={6} fill="var(--cell-empty)" />
-      <line x1={0} y1={0} x2={0} y2={6} stroke="var(--cell-sparse-line)" strokeWidth={1.5} opacity={0.55} />
+    <pattern id={id} width={pitch} height={pitch} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width={pitch} height={pitch} fill="var(--cell-empty)" />
+      <line x1={0} y1={0} x2={0} y2={pitch} stroke="var(--cell-sparse-line)" strokeWidth={1.5} opacity={opacity} />
     </pattern>
   )
 }
 
-/** サンプル不足セルの fill 値。`SparseHatchPattern` に渡した id と同じものを渡す。 */
-export const sparseFill = (id: string) => `url(#${id})`
+/** サンプル不足（データはあるが N が足りない）。粗いハッチ。 */
+export function SparseHatchPattern({ id }: { id: string }) {
+  return <HatchPattern id={id} pitch={6} opacity={0.55} />
+}
+
+/** データなし（バトルが無い）。サンプル不足より詰まった強いハッチ。 */
+export function EmptyHatchPattern({ id }: { id: string }) {
+  return <HatchPattern id={id} pitch={3.5} opacity={0.8} />
+}
+
+/** ハッチセルの fill 値。対応する Pattern に渡した id と同じものを渡す。 */
+export const hatchFill = (id: string) => `url(#${id})`

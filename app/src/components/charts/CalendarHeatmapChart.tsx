@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { GroupedStatsRow, MetricKey } from '../../types'
 import { METRIC_LABELS, getMetric, metricGroup } from '../../types'
-import { rateCellColor, RATE_LEGEND_COLORS, SparseHatchPattern, sparseFill } from '../../utils/heatmapColors'
+import { rateCellColor, RATE_LEGEND_COLORS, SparseHatchPattern, hatchFill } from '../../utils/heatmapColors'
 
 /**
  * GitHub contribution graph 風のカレンダーヒートマップ。
@@ -174,10 +174,12 @@ export function CalendarHeatmapChart({
   }, [data, metric, group, minSampleSize])
 
   function cellFill(_date: string, value: number | null, total: number): string {
+    // カレンダーは「バトルの無い日」が大半なので、データなしはハッチにせず静かなべた塗りのまま。
+    // ヒートマップの空セル（その組み合わせを一度も使っていない）とは意味も頻度も違う。
     if (value === null) return group === 'count' ? 'var(--cell-count-empty)' : 'var(--cell-empty)'
     // 率・平均系はサンプル不足ならハッチ（色ではなく塗りの質で示す・#351）
     if ((group === 'rate' || group === 'average') && total < minSampleSize) {
-      return sparseFill(sparseId)
+      return hatchFill(sparseId)
     }
     if (group === 'count')   return countColor(value, maxVal)
     if (group === 'rate')    return rateCellColor(value)

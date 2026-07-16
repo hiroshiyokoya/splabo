@@ -97,7 +97,7 @@ const BASE_VARS: Record<string, string> = {
   '--cell-r1':               '#e88490',
   '--cell-r2':               '#c25462',
   '--cell-r3':               '#96414f',
-  '--cell-r4':               '#4a4a5c',
+  '--cell-r4':               '#58585f',
   '--cell-r5':               '#2f7387',
   '--cell-r6':               '#3a9db4',
   '--cell-r7':               '#6ecadd',
