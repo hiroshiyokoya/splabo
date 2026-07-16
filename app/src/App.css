@@ -1094,14 +1094,14 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  transition: background 0.15s, border-color 0.12s, transform 0.1s;
+  transition: background 0.15s, transform 0.1s;
 }
 /* ホバーで一段明るくして浮かせる（ギアコーデの .gear-card と同じ挙動・#346）。
    --surface2 はギア側の --surface-hover と全テーマで同値。
-   枠色は下の --clickable 側が後勝ちで上書きするが、背景と浮き上がりはここが効く。 */
+   枠色は変えない: ギアカードもクリック可能だが背景＋浮き上がりだけで合図として
+   成立しているため、図鑑側でも枠色は動かさず 3 タブで揃える（#348）。 */
 .weapon-card:hover {
   background: var(--surface2);
-  border-color: var(--text-muted);
   transform: translateY(-2px);
 }
 
@@ -1158,9 +1158,9 @@ body {
 .weapon-card-stat { font-size: 11px; color: var(--text-muted); }
 .weapon-card-winrate { font-weight: 600; }
 
-/* クリック可能カード */
+/* クリック可能カード。ホバーの見た目は土台の .weapon-card:hover（背景＋浮き上がり）に
+   任せ、枠色は変えない（#348）。focus-visible のアウトラインはキーボード操作用に維持。 */
 .weapon-card--clickable { cursor: pointer; }
-.weapon-card--clickable:hover { border-color: var(--accent); }
 .weapon-card--clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* 武器カード内の 2 列ミニ統計（左: 公式統計、右: 平均統計） */
@@ -1336,12 +1336,11 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: background 0.15s, border-color 0.12s, transform 0.1s;
+  transition: background 0.15s, transform 0.1s;
 }
-/* ホバーの挙動は .weapon-card と同じ（ギアコーデ由来・#346）。 */
+/* ホバーの挙動は .weapon-card と同じ（ギアコーデ由来・#346 / 枠色を変えないのは #348）。 */
 .stage-card:hover {
   background: var(--surface2);
-  border-color: var(--text-muted);
   transform: translateY(-2px);
 }
 
@@ -1393,8 +1392,8 @@ body {
 }
 .stage-card-winrate { font-weight: 600; }
 
+/* ホバーの見た目は土台の .stage-card:hover に任せ、枠色は変えない（#348）。 */
 .stage-card--clickable { cursor: pointer; }
-.stage-card--clickable:hover { border-color: var(--text); }
 .stage-card--clickable:focus-visible {
   outline: 2px solid var(--text-muted);
   outline-offset: 2px;
