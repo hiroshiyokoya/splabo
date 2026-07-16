@@ -7,12 +7,13 @@ import type { MetricKey } from '../types'
  * 重複していたため、ここへ集約する。勝率のスケールはアプリ全体で 1 つに保つ。
  *
  * 配色の考え方:
- *  - 発散スケールなので「2 色相（赤=負け越し / 青=勝ち越し）+ 中立の中央」。
- *    中央（50% 付近）は「情報が無い」ので、最も視覚的に静かでなければならない。
+ *  - 発散スケールなので「2 色相（ピンク=負け越し / 青=勝ち越し）+ 中立の中央」。
+ *  - 「薄い＝中立 / 濃い＝極端」の濃淡モデル。中央は無彩色なので、明るくても
+ *    「色としては何も言っていない」＝中立として読める。
  *  - 中央に色相（黄・緑など）を置くと「無」ではなく独立したカテゴリに読めてしまい、
  *    発散スケールが 3 カテゴリの虹に見えるため使わない。
- *  - 実際の色は CSS 変数側（--cell-r1..r7）が持ち、テーマごとに明暗を反転させる。
- *    ダークは中央を背景へ沈める V 字、ライトは中央を明るくする Λ 字。
+ *  - 実際の色は CSS 変数側（--cell-r1..r7）が持つ。白黒方向へ振る濃淡なので
+ *    背景に依存せず、ダーク・ライトとも同じ向きで読める。
  */
 
 /** 勝率 0..1 を 7 段階のセル色へ。50% を中心に、±5% を「引き分け帯」として中立に置く。 */
@@ -46,8 +47,8 @@ export const RATE_LEGEND_COLORS = [
  *  - 赤（--lose 系） … 多いほど悪い（デス）
  *  - 橙            … 良し悪しの無い量（バトル数・アシスト・SP・塗り・時間）
  *
- * 実際の色は CSS 変数（--seq-good / --seq-bad / --seq-neutral）が持ち、
- * ライトテーマでは濃いベースに差し替わる（明るい原色はクリーム背景で弱いため）。
+ * 実際の色は CSS 変数（--seq-good / --seq-bad / --seq-neutral）が持つ。
+ * 段は白（淡く）・黒（濃く）との混色で作るので背景に依存せず、テーマ別の差し替えは不要。
  */
 function seqBase(metric: MetricKey): string {
   switch (metric) {
@@ -62,11 +63,26 @@ function seqBase(metric: MetricKey): string {
   }
 }
 
-/** 7 段の混色比。下限は 45%（それ以下だと背景に沈んで読めない）。 */
-const SEQ_MIX = [45, 54, 63, 72, 81, 90, 100]
+/**
+ * 7 段の作り方。ベース色を白と混ぜて淡く（tint）、黒と混ぜて濃く（shade）する。
+ * 「薄い＝少ない / 濃い＝多い」の濃淡モデル。白黒と混ぜるので背景に依存せず、
+ * ダークでもライトでも同じ向き（淡→濃）で正しく読める。
+ * 背景と混ぜる方式は、ダークで「低い値ほど暗い」という逆転になるため使わない。
+ */
+const SEQ_STEPS: { mix: 'white' | 'black'; pct: number }[] = [
+  { mix: 'white', pct: 16 },  // 最小 = 最も淡い
+  { mix: 'white', pct: 36 },
+  { mix: 'white', pct: 62 },
+  { mix: 'white', pct: 100 }, // ベース色そのまま
+  { mix: 'black', pct: 82 },
+  { mix: 'black', pct: 62 },
+  { mix: 'black', pct: 52 },  // 最大 = 最も濃い
+]
 
-/** ベース色を背景と混ぜて「濃さ」で段を作る。ダークは暗→濃、ライトは淡→濃と自動で正しい向きになる。 */
-const seqStep = (base: string, i: number) => `color-mix(in srgb, ${base} ${SEQ_MIX[i]}%, var(--bg))`
+const seqStep = (base: string, i: number) => {
+  const { mix, pct } = SEQ_STEPS[i]
+  return pct === 100 ? base : `color-mix(in srgb, ${base} ${pct}%, ${mix})`
+}
 
 /**
  * 勝数・平均系のセル色。正規化済みの 0..1 を 7 段階へ（#351）。
@@ -82,7 +98,7 @@ export function sequentialCellColor(t: number, metric: MetricKey): string {
 /** 勝数・平均系凡例のカラーバー（sequentialCellColor と同じ 7 段・同じ並び）。 */
 export function seqLegendColors(metric: MetricKey): string[] {
   const base = seqBase(metric)
-  return SEQ_MIX.map((_, i) => seqStep(base, i))
+  return SEQ_STEPS.map((_, i) => seqStep(base, i))
 }
 
 /**

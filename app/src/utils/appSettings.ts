@@ -41,20 +41,6 @@ export const THEMES: Theme[] = [
       '--stat-item-bg':          'rgba(0, 0, 0, 0.04)',
       '--stage-img-filter':      'brightness(0.92) saturate(0.85)',
       '--panel-label-tint':      '#1a1a1e',         // パネルラベルは暗い文字寄り
-      // 勝率(発散)はライト背景では明暗が反転する（中央を明るくする Λ 字）。#351
-      // ダーク側の V 字を流用すると、中央の暗いグレーが明るい背景で最も目立ってしまう。
-      '--cell-r1':               '#a82a3c',  // 〜20%  赤・極
-      '--cell-r2':               '#c05a68',
-      '--cell-r3':               '#d59099',
-      '--cell-r4':               '#c8c1a8',  // 45-55% 中立（背景比 1.67:1）
-      '--cell-r5':               '#7fb0c2',
-      '--cell-r6':               '#4e93a6',
-      '--cell-r7':               '#1c7182',  // 80%〜  青・極
-      // 勝数・平均系のベース色。ライト背景では明るい原色（#22c55e 等）が弱く、
-      // 最大段でも 2.1:1 程度にしかならないため、濃いベースに差し替える。
-      '--seq-good':              '#15803d',
-      '--seq-bad':               '#b91c1c',
-      '--seq-neutral':           '#c2410c',
     },
   },
   {
@@ -97,16 +83,15 @@ const BASE_VARS: Record<string, string> = {
   '--stat-item-bg':          'rgba(255, 255, 255, 0.04)',
   '--stage-img-filter':      'brightness(0.42) saturate(0.75)',
   '--panel-label-tint':      '#ffffff',                   // パネルラベルの混色相手
-  // 勝率(発散) 7 段。dark / solarized-dark が使う（#351）。
-  // 極は勝率グラフと同色（低 #f472b6 ピンク / 高 #38bdf8 青）。中立は明るい無彩色。
-  '--cell-r1':               '#f472b6',
-  '--cell-r2':               '#ee9dcb',
-  '--cell-r3':               '#e0c2d5',
+  // 勝率(発散) 7 段（#351）。淡い中立 → 濃い極。白黒方向へ振るので全テーマ共通。
+  '--cell-r1':               '#be185d',
+  '--cell-r2':               '#f472b6',
+  '--cell-r3':               '#f9a8d4',
   '--cell-r4':               '#d0d3d8',
-  '--cell-r5':               '#a8cfe4',
-  '--cell-r6':               '#6fc6ee',
-  '--cell-r7':               '#38bdf8',
-  // 勝数・平均系のベース色（濃さでグラデーションを作る元）。dark / solarized-dark 用。
+  '--cell-r5':               '#7dd3fc',
+  '--cell-r6':               '#38bdf8',
+  '--cell-r7':               '#0369a1',
+  // 勝数・平均系のベース色。段は白/黒との混色で作るため全テーマ共通（#351）。
   '--seq-good':              '#22c55e',
   '--seq-bad':               '#ef4444',
   '--seq-neutral':           '#fb923c',
