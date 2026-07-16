@@ -13,6 +13,7 @@ pub mod db;
 pub mod env_import;
 pub mod gear;
 pub mod gear_crypto;
+pub mod icon_manifest;
 pub mod images;
 pub mod migration;
 pub mod nxapi;
