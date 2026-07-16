@@ -1,7 +1,10 @@
 import { useId, useMemo, useState } from 'react'
 import type { GroupedStatsRow2D, MetricKey } from '../../types'
 import { METRIC_LABELS, getMetric2D, formatMetric, metricGroup } from '../../types'
-import { rateCellColor, RATE_LEGEND_COLORS, SparseHatchPattern, EmptyHatchPattern, hatchFill } from '../../utils/heatmapColors'
+import {
+  rateCellColor, RATE_LEGEND_COLORS, sequentialCellColor, SEQ_LEGEND_COLORS,
+  integerRange, SparseHatchPattern, EmptyHatchPattern, hatchFill,
+} from '../../utils/heatmapColors'
 
 /**
  * 2 軸ヒートマップ。X 軸・Y 軸ともにカテゴリ系（武器・ステージ・モード・ルール・サブ・SP）。
@@ -42,22 +45,12 @@ function cellColor(value: number | null, group: ReturnType<typeof metricGroup>, 
   }
   if (group === 'count') {
     if (max <= 0) return hatchFill(emptyId)
-    const t = value / max
-    if (t <= 0.2) return 'var(--cell-c1)'
-    if (t <= 0.4) return 'var(--cell-c2)'
-    if (t <= 0.6) return 'var(--cell-c3)'
-    if (t <= 0.8) return 'var(--cell-c4)'
-    return 'var(--cell-c5)'
+    return sequentialCellColor(value / max)
   }
   if (group === 'rate') return rateCellColor(value)
   // average
-  if (max <= min) return 'var(--cell-c3)'
-  const t = (value - min) / (max - min)
-  if (t <= 0.2) return 'var(--cell-c1)'
-  if (t <= 0.4) return 'var(--cell-c2)'
-  if (t <= 0.6) return 'var(--cell-c3)'
-  if (t <= 0.8) return 'var(--cell-c4)'
-  return 'var(--cell-c5)'
+  if (max <= min) return 'var(--cell-c4)'
+  return sequentialCellColor((value - min) / (max - min))
 }
 
 export function HeatmapChart({
@@ -128,12 +121,18 @@ export function HeatmapChart({
       if (v > mx) mx = v
     }
 
+    const rawMin = mn === Number.POSITIVE_INFINITY ? 0 : mn
+    const rawMax = mx === Number.NEGATIVE_INFINITY ? 0 : mx
+    // 勝数・平均系は範囲を整数に丸める（凡例が「3.2 – 7.8」ではなく「3 – 8」に・#351）。
+    // 勝率は 0–100% 固定なのでそのまま。
+    const r = group === 'rate' ? { min: rawMin, max: rawMax } : integerRange(rawMin, rawMax)
+
     return {
       xKeys, yKeys,
       cells: cellMap,
       nameMap,
-      minVal: mn === Number.POSITIVE_INFINITY ? 0 : mn,
-      maxVal: mx === Number.NEGATIVE_INFINITY ? 0 : mx,
+      minVal: r.min,
+      maxVal: r.max,
     }
   }, [data, metric, group, minSampleSize, xNumeric, yNumeric])
 
@@ -142,13 +141,13 @@ export function HeatmapChart({
   const height = PAD_TOP + GRID_H + 8
 
   /** カラーバー（凡例）用の色順・ラベル */
-  const LEGEND_COUNT  = ['var(--cell-c1)', 'var(--cell-c2)', 'var(--cell-c3)', 'var(--cell-c4)', 'var(--cell-c5)']
-  const legendColors = group === 'rate' ? RATE_LEGEND_COLORS : LEGEND_COUNT
+  const legendColors = group === 'rate' ? RATE_LEGEND_COLORS : SEQ_LEGEND_COLORS
   const fmtLegend = (v: number): string => {
     if (metric === 'win_rate') return `${Math.round(v * 100)}%`
     if (metric === 'avg_duration') return `${Math.round(v)}s`
     if (metric === 'total' || metric === 'wins') return Math.round(v).toString()
-    return v.toFixed(1)
+    // 範囲は integerRange で整数化済み
+    return Math.round(v).toString()
   }
   // 勝率は 0% / 100% の両端のみ。中央の 50% はバーの右に並んで出てしまい
   // 中央ラベルとして機能していなかったため廃止（#351）。

@@ -37,6 +37,42 @@ export const RATE_LEGEND_COLORS = [
 ]
 
 /**
+ * 勝数・平均系（シーケンシャル）のセル色。正規化済みの 0..1 を 7 段階へ（#351）。
+ *
+ * 大きさは明度で表す。実際の色は --cell-c1..c7 が持ち、背景と accent の混色なので
+ * ダークでは暗→明、ライトでは淡→濃と、テーマに応じて自動で正しい向きになる。
+ */
+export function sequentialCellColor(t: number): string {
+  if (t <= 1 / 7) return 'var(--cell-c1)'
+  if (t <= 2 / 7) return 'var(--cell-c2)'
+  if (t <= 3 / 7) return 'var(--cell-c3)'
+  if (t <= 4 / 7) return 'var(--cell-c4)'
+  if (t <= 5 / 7) return 'var(--cell-c5)'
+  if (t <= 6 / 7) return 'var(--cell-c6)'
+  return 'var(--cell-c7)'
+}
+
+/** 勝数・平均系凡例のカラーバー（sequentialCellColor と同じ 7 段・同じ並び）。 */
+export const SEQ_LEGEND_COLORS = [
+  'var(--cell-c1)',
+  'var(--cell-c2)',
+  'var(--cell-c3)',
+  'var(--cell-c4)',
+  'var(--cell-c5)',
+  'var(--cell-c6)',
+  'var(--cell-c7)',
+]
+
+/**
+ * 勝数・平均系のスケール範囲を整数へ丸める（#351）。
+ * 凡例が「3.2 – 7.8」ではなく「3 – 8」になるよう、下限は floor・上限は ceil を取る。
+ * セル色も同じ範囲で正規化するため、凡例のラベルと色が食い違わない。
+ */
+export function integerRange(min: number, max: number): { min: number; max: number } {
+  return { min: Math.floor(min), max: Math.ceil(max) }
+}
+
+/**
  * 「値が無い」セルを示す SVG ハッチ（斜線）パターン。
  *
  * 欠損・サンプル不足は「値」ではないため、色スケール上の色を占有させない。

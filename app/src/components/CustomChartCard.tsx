@@ -14,7 +14,7 @@ import { LineChart } from './charts/LineChart'
 import { CalendarHeatmapChart } from './charts/CalendarHeatmapChart'
 import { HeatmapChart } from './charts/HeatmapChart'
 import { ScatterChart, type ScatterPoint } from './charts/ScatterChart'
-import { rateCellColor } from '../utils/heatmapColors'
+import { rateCellColor, sequentialCellColor } from '../utils/heatmapColors'
 
 /** 1 バトル単位の散布図メトリクス値を BattleRow から計算する。 */
 function getBattleMetric(b: BattleRow, k: BattleMetricKey): number | null {
@@ -41,13 +41,9 @@ function colorOfValue(value: number | null, isRate: boolean, min: number, max: n
   if (value === null) return 'var(--cell-empty)'
   // 勝率(発散)の色はヒートマップ・カレンダーと共通のスケールを使う（#351）
   if (isRate) return rateCellColor(value)
-  if (max <= min) return 'var(--cell-c3)'
-  const t = (value - min) / (max - min)
-  if (t <= 0.2) return 'var(--cell-c1)'
-  if (t <= 0.4) return 'var(--cell-c2)'
-  if (t <= 0.6) return 'var(--cell-c3)'
-  if (t <= 0.8) return 'var(--cell-c4)'
-  return 'var(--cell-c5)'
+  // 勝数・平均系もヒートマップ・カレンダーと共通の 7 段スケール（#351）
+  if (max <= min) return 'var(--cell-c4)'
+  return sequentialCellColor((value - min) / (max - min))
 }
 
 /** カテゴリ単位 (武器/ステージ) の散布図ポイントを作る。 */

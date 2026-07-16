@@ -24,12 +24,18 @@
      旧実装は明るいグレー固定で、ダーク背景だと実データより目立っていた。 */
   --cell-empty:      color-mix(in srgb, var(--text) 6%, transparent);  /* 空 (バトル無し) */
   --cell-sparse-line: var(--text-muted);  /* サンプル不足を示すハッチの線色 */
-  /* 平均系 sequential: ほぼ白 → accent (ライム) */
-  --cell-c1:       #f3f6e6;  /* 最薄 = ほぼ白 */
-  --cell-c2:       #e2efb6;
-  --cell-c3:       #d6ea7d;
-  --cell-c4:       #cce155;
-  --cell-c5:       #c8f030;  /* 最濃 = accent */
+  /* 勝数・平均系 sequential: 背景 → accent の 7 段（#351）。
+     大きさは「明度」で表す。背景と混ぜるので、ダークでは暗→明、ライトでは淡→濃と
+     テーマに応じて自動で正しい向きになり、アクセント色にも追従する。
+     旧実装は白と混ぜており（白→ライム固定）、ダークでは全段 12〜16:1 でほとんど差が無く
+     最小値が最も明るいという逆転、ライトでは全段 1.0〜1.3:1 で背景に溶けていた。 */
+  --cell-c1:       color-mix(in srgb, var(--accent) 20%, var(--bg));
+  --cell-c2:       color-mix(in srgb, var(--accent) 33%, var(--bg));
+  --cell-c3:       color-mix(in srgb, var(--accent) 46%, var(--bg));
+  --cell-c4:       color-mix(in srgb, var(--accent) 60%, var(--bg));
+  --cell-c5:       color-mix(in srgb, var(--accent) 73%, var(--bg));
+  --cell-c6:       color-mix(in srgb, var(--accent) 86%, var(--bg));
+  --cell-c7:       var(--accent);
   /* カウント系 (バトル数): 低カウント側は白寄り → 高カウント側はエメラルドグリーンへグラデ。
      カレンダー専用の accent 変数で棒グラフや他 UI には影響なし。 */
   --cell-count-accent: #10b981;

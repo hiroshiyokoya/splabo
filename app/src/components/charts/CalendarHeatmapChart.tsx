@@ -1,7 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { GroupedStatsRow, MetricKey } from '../../types'
 import { METRIC_LABELS, getMetric, metricGroup } from '../../types'
-import { rateCellColor, RATE_LEGEND_COLORS, SparseHatchPattern, hatchFill } from '../../utils/heatmapColors'
+import {
+  rateCellColor, RATE_LEGEND_COLORS, sequentialCellColor, SEQ_LEGEND_COLORS,
+  integerRange, SparseHatchPattern, hatchFill,
+} from '../../utils/heatmapColors'
 
 /**
  * GitHub contribution graph 風のカレンダーヒートマップ。
@@ -30,7 +33,7 @@ const DOW_LABELS = ['月', '火', '水', '木', '金', '土', '日']
 /** カラーバー (凡例) を描画するための、メトリクスグループごとの色順序。
  *  count / average は 5 段階 (薄い→濃い)、rate は 5 段階 (赤→青) divergent。 */
 const COUNT_COLORS  = ['var(--cell-count-c1)', 'var(--cell-count-c2)', 'var(--cell-count-c3)', 'var(--cell-count-c4)', 'var(--cell-count-c5)']
-const AVG_COLORS    = ['var(--cell-c1)', 'var(--cell-c2)', 'var(--cell-c3)', 'var(--cell-c4)', 'var(--cell-c5)']
+// 平均系(シーケンシャル)の 7 段は utils/heatmapColors の SEQ_LEGEND_COLORS を共用する（#351）
 // 勝率(発散)の 7 段は utils/heatmapColors の RATE_LEGEND_COLORS を共用する（#351）
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -81,15 +84,10 @@ function countColor(value: number, max: number): string {
   return 'var(--cell-count-c5)'
 }
 
-/** 平均系: min–max を 5 段階に正規化。 */
+/** 平均系: min–max を 7 段階に正規化（#351）。 */
 function averageColor(value: number, min: number, max: number): string {
-  if (max <= min) return 'var(--cell-c3)'
-  const t = (value - min) / (max - min)
-  if (t <= 0.2) return 'var(--cell-c1)'
-  if (t <= 0.4) return 'var(--cell-c2)'
-  if (t <= 0.6) return 'var(--cell-c3)'
-  if (t <= 0.8) return 'var(--cell-c4)'
-  return 'var(--cell-c5)'
+  if (max <= min) return 'var(--cell-c4)'
+  return sequentialCellColor((value - min) / (max - min))
 }
 
 export function CalendarHeatmapChart({
@@ -160,13 +158,16 @@ export function CalendarHeatmapChart({
       prevMonth = m
     }
 
+    const rawMin = mn === Number.POSITIVE_INFINITY ? 0 : mn
     const rawMax = mx === Number.NEGATIVE_INFINITY ? 0 : mx
     // カウント系は色スケール上限を 10 単位で切り上げると凡例が読みやすい (52 → 60 等)
+    // 平均系は範囲を整数に丸める（凡例が「3.2 – 7.8」ではなく「3 – 8」に・#351）
     const finalMax = group === 'count' && rawMax > 0 ? Math.ceil(rawMax / 10) * 10 : rawMax
+    const r = group === 'average' ? integerRange(rawMin, finalMax) : { min: rawMin, max: finalMax }
     return {
       dataMap: map,
-      minVal:  mn === Number.POSITIVE_INFINITY ? 0 : mn,
-      maxVal:  finalMax,
+      minVal:  r.min,
+      maxVal:  r.max,
       cells,
       monthLabels: labels,
       maxCol: col,
@@ -207,7 +208,7 @@ export function CalendarHeatmapChart({
   const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
 
   /** 凡例ラベル: 左端値・右端値（勝率の中央 50% は廃止・#351） */
-  const legendColors = group === 'rate' ? RATE_LEGEND_COLORS : group === 'count' ? COUNT_COLORS : AVG_COLORS
+  const legendColors = group === 'rate' ? RATE_LEGEND_COLORS : group === 'count' ? COUNT_COLORS : SEQ_LEGEND_COLORS
   const legendLeft   = group === 'rate' ? '0%'  : group === 'count' ? '0' : fmtLegend(minVal, metric)
   const legendRight  = group === 'rate' ? '100%' : fmtLegend(maxVal, metric)
 
