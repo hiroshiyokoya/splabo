@@ -83,14 +83,18 @@ const BASE_VARS: Record<string, string> = {
   '--stat-item-bg':          'rgba(255, 255, 255, 0.04)',
   '--stage-img-filter':      'brightness(0.42) saturate(0.75)',
   '--panel-label-tint':      '#ffffff',                   // パネルラベルの混色相手
-  // 勝率(発散) 7 段（#351）。淡い中立 → 濃い極。白黒方向へ振るので全テーマ共通。
-  '--cell-r1':               '#be185d',
-  '--cell-r2':               '#f472b6',
-  '--cell-r3':               '#f9a8d4',
-  '--cell-r4':               '#d0d3d8',
-  '--cell-r5':               '#7dd3fc',
-  '--cell-r6':               '#38bdf8',
-  '--cell-r7':               '#0369a1',
+  // 勝率(発散) 11 段（#351）。淡い中立 → 濃い極。白黒方向へ振るので全テーマ共通。
+  '--cell-r1':               '#9d174d',
+  '--cell-r2':               '#db2777',
+  '--cell-r3':               '#f472b6',
+  '--cell-r4':               '#f68fc5',
+  '--cell-r5':               '#f9a8d4',
+  '--cell-r6':               '#d0d3d8',
+  '--cell-r7':               '#7dd3fc',
+  '--cell-r8':               '#57c8fa',
+  '--cell-r9':               '#38bdf8',
+  '--cell-r10':              '#0284c7',
+  '--cell-r11':              '#075985',
   // 勝数・平均系のベース色。段は白/黒との混色で作るため全テーマ共通（#351）。
   '--seq-good':              '#22c55e',
   '--seq-bad':               '#ef4444',

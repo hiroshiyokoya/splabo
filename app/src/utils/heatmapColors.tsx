@@ -12,31 +12,34 @@ import type { MetricKey } from '../types'
  *    「色としては何も言っていない」＝中立として読める。
  *  - 中央に色相（黄・緑など）を置くと「無」ではなく独立したカテゴリに読めてしまい、
  *    発散スケールが 3 カテゴリの虹に見えるため使わない。
- *  - 実際の色は CSS 変数側（--cell-r1..r7）が持つ。白黒方向へ振る濃淡なので
+ *  - 実際の色は CSS 変数側（--cell-r1..r11）が持つ。白黒方向へ振る濃淡なので
  *    背景に依存せず、ダーク・ライトとも同じ向きで読める。
  */
 
-/** 勝率 0..1 を 7 段階のセル色へ。50% を中心に、±5% を「引き分け帯」として中立に置く。 */
+/**
+ * 勝率 0..1 を 11 段階のセル色へ（#351）。
+ * 中央の 45-55%（±5%）を「引き分け帯」として中立に置き、その外側を各 9% 刻みで 5 段ずつ。
+ * 勝率は 2 色相を使うぶん段を細かく取れるので、他のメトリクス（7 段）より多い。
+ */
 export function rateCellColor(value: number): string {
-  const t = (value - 0.5) * 2 // 0..1 → -1..+1
-  if (t < -0.6) return 'var(--cell-r1)' // 〜20%   赤・極
-  if (t < -0.3) return 'var(--cell-r2)' // 20-35%
-  if (t < -0.1) return 'var(--cell-r3)' // 35-45%
-  if (t <= 0.1) return 'var(--cell-r4)' // 45-55%  中立
-  if (t <= 0.3) return 'var(--cell-r5)' // 55-65%
-  if (t <= 0.6) return 'var(--cell-r6)' // 65-80%
-  return 'var(--cell-r7)' //               80%〜   青・極
+  if (value < 0.09) return 'var(--cell-r1)'  // 〜9%   ピンク・極
+  if (value < 0.18) return 'var(--cell-r2)'  // 9-18%
+  if (value < 0.27) return 'var(--cell-r3)'  // 18-27%
+  if (value < 0.36) return 'var(--cell-r4)'  // 27-36%
+  if (value < 0.45) return 'var(--cell-r5)'  // 36-45%
+  if (value <= 0.55) return 'var(--cell-r6)' // 45-55% 中立
+  if (value <= 0.64) return 'var(--cell-r7)' // 55-64%
+  if (value <= 0.73) return 'var(--cell-r8)' // 64-73%
+  if (value <= 0.82) return 'var(--cell-r9)' // 73-82%
+  if (value <= 0.91) return 'var(--cell-r10)'// 82-91%
+  return 'var(--cell-r11)'                   // 91%〜  青・極
 }
 
-/** 勝率凡例のカラーバー（rateCellColor と同じ 7 段・同じ並び）。 */
+/** 勝率凡例のカラーバー（rateCellColor と同じ 11 段・同じ並び）。 */
 export const RATE_LEGEND_COLORS = [
-  'var(--cell-r1)',
-  'var(--cell-r2)',
-  'var(--cell-r3)',
-  'var(--cell-r4)',
-  'var(--cell-r5)',
+  'var(--cell-r1)', 'var(--cell-r2)', 'var(--cell-r3)', 'var(--cell-r4)', 'var(--cell-r5)',
   'var(--cell-r6)',
-  'var(--cell-r7)',
+  'var(--cell-r7)', 'var(--cell-r8)', 'var(--cell-r9)', 'var(--cell-r10)', 'var(--cell-r11)',
 ]
 
 /**
