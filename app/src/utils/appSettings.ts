@@ -102,24 +102,25 @@ const BASE_VARS: Record<string, string> = {
   '--stage-img-filter':      'brightness(0.42) saturate(0.75)',
   '--panel-label-tint':      '#ffffff',                   // パネルラベルの混色相手
   // 勝率(発散) 7 段。dark / solarized-dark が使う（#351）。
-  // 極は濃い（高彩度・暗め）色、中央は明るい無彩色。極端さを彩度で、中立を無彩色で読ませる。
-  // 中央の明るさはカレンダーのバトル数ゼロ (#d0d3d8) に合わせた。
-  '--cell-r1':               '#a82a3c',
-  '--cell-r2':               '#c05a68',
-  '--cell-r3':               '#d99aa2',
+  // 極は棒グラフの勝率バーと同色（低 #f472b6 / 高 #34d399）。中立は明るい無彩色で、
+  // 明るさはカレンダーのバトル数ゼロ (#d0d3d8) に合わせた。
+  '--cell-r1':               '#f472b6',
+  '--cell-r2':               '#eb9cc9',
+  '--cell-r3':               '#dfc0d3',
   '--cell-r4':               '#d0d3d8',
-  '--cell-r5':               '#92c2ce',
-  '--cell-r6':               '#4e93a6',
-  '--cell-r7':               '#1c7182',
-  // 勝数・平均系(シーケンシャル) 7 段: 黄 → 緑。dark / solarized-dark が使う（#351）。
-  // 黄と緑は隣接色相なので sequential の例外として許容。全段を明るく保ち、暗く沈む段を作らない。
-  '--cell-c1':               '#f7ee5e',
-  '--cell-c2':               '#dfe84f',
-  '--cell-c3':               '#bfdf49',
-  '--cell-c4':               '#96d24c',
-  '--cell-c5':               '#66c254',
-  '--cell-c6':               '#35ae5c',
-  '--cell-c7':               '#0d8f52',
+  '--cell-r5':               '#8ee0c4',
+  '--cell-r6':               '#5cd9ab',
+  '--cell-r7':               '#34d399',
+  // 勝数・平均系(シーケンシャル) 7 段: 赤 → 緑。dark / solarized-dark が使う（#351）。
+  // 棒グラフの勝敗色（--lose / --win）の系統。両色をそのまま端に置くと明度差が足りず
+  // 大小が読めないため、赤を深く・緑を明るく延長して明度を単調にしている。
+  '--cell-c1':               '#a82323',
+  '--cell-c2':               '#c93b2f',
+  '--cell-c3':               '#d9622f',
+  '--cell-c4':               '#cf8b39',
+  '--cell-c5':               '#a8ad48',
+  '--cell-c6':               '#63c65c',
+  '--cell-c7':               '#86efac',
 }
 
 export function applyTheme(themeId: string): void {
