@@ -1094,9 +1094,16 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  transition: border-color 0.12s;
+  transition: background 0.15s, border-color 0.12s, transform 0.1s;
 }
-.weapon-card:hover { border-color: var(--text-muted); }
+/* ホバーで一段明るくして浮かせる（ギアコーデの .gear-card と同じ挙動・#346）。
+   --surface2 はギア側の --surface-hover と全テーマで同値。
+   枠色は下の --clickable 側が後勝ちで上書きするが、背景と浮き上がりはここが効く。 */
+.weapon-card:hover {
+  background: var(--surface2);
+  border-color: var(--text-muted);
+  transform: translateY(-2px);
+}
 
 .weapon-card-icon-wrap {
   position: relative;
@@ -1329,9 +1336,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: border-color 0.12s;
+  transition: background 0.15s, border-color 0.12s, transform 0.1s;
 }
-.stage-card:hover { border-color: var(--text-muted); }
+/* ホバーの挙動は .weapon-card と同じ（ギアコーデ由来・#346）。 */
+.stage-card:hover {
+  background: var(--surface2);
+  border-color: var(--text-muted);
+  transform: translateY(-2px);
+}
 
 .stage-card-image-wrap {
   width: 100%;
