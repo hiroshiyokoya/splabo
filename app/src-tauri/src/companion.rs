@@ -11,6 +11,8 @@
 //!   - `GET /ping`         … トークン検証のみの疎通確認。
 //!   - `GET /gear_db.bin`  … `app_data_dir()/data/gear_db.bin` を配信（不在は 404）。
 //!   - `GET /battle_db.bin`… `app_data_dir()/data/battle_db.bin` を配信（不在は 404）。
+//!   - `GET /images/...`   … `app_data_dir()/data/images/` 配下のギア画像（.gti）を相対パスで配信。
+//!                           gear_db の画像パス（`images/...`）をそのまま GET できる。`..` 等は 403。
 //!   - いずれも `Authorization: Bearer <token>` 検証必須。不一致・欠落は 401。
 //! - mDNS 広告: `mdns-sd` でサービス型 `_splabo._tcp.local.` を LAN に告知（viewer の NSD 発見用）。
 //!   - **ベストエフォート**。失敗しても HTTP サーバーは動かし続ける（TXT にトークンは載せない）。
@@ -118,6 +120,27 @@ fn respond_file(request: tiny_http::Request, path: &std::path::Path) {
     }
 }
 
+/// `data_dir/images/` 配下の相対パスを安全に解決する（パストラバーサル拒否）。
+///
+/// リクエストパス（先頭 `/` 込み）を受け取り、`images/` 以下の実ファイルパスを返す。
+/// `images/` 始まりでない・`..` を含む・親を辿るものは `None`（＝配信拒否）。
+fn resolve_image_path(req_path: &str, data_dir: &std::path::Path) -> Option<PathBuf> {
+    let rel = req_path.trim_start_matches('/');
+    // gear_db が参照する画像パスは必ず `images/` 始まり。それ以外は拒否。
+    if !rel.starts_with("images/") {
+        return None;
+    }
+    // `..` や絶対パス・ルート要素を一切許さない（通常要素のみ許可）。
+    let mut safe = PathBuf::new();
+    for comp in std::path::Path::new(rel).components() {
+        match comp {
+            std::path::Component::Normal(c) => safe.push(c),
+            _ => return None,
+        }
+    }
+    Some(data_dir.join(safe))
+}
+
 /// 1 リクエストを捌く。
 fn handle_request(request: tiny_http::Request, token: &str, data_dir: &std::path::Path) {
     // 疎通・認証チェック（全エンドポイント共通で Bearer 検証）。
@@ -135,6 +158,14 @@ fn handle_request(request: tiny_http::Request, token: &str, data_dir: &std::path
         }
         "/gear_db.bin" => respond_file(request, &data_dir.join("gear_db.bin")),
         "/battle_db.bin" => respond_file(request, &data_dir.join("battle_db.bin")),
+        // ギア画像（.gti）を相対パスで配信。viewer は gear_db の画像パスをそのまま GET する。
+        p if p.starts_with("/images/") => match resolve_image_path(p, data_dir) {
+            Some(file) => respond_file(request, &file),
+            None => {
+                let _ = request
+                    .respond(tiny_http::Response::from_string("forbidden").with_status_code(403));
+            }
+        },
         _ => {
             let _ = request.respond(tiny_http::Response::from_string("not found").with_status_code(404));
         }
@@ -296,4 +327,32 @@ pub fn companion_status(state: State<'_, CompanionState>) -> Result<CompanionSta
             port: None,
         },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_image_path;
+    use std::path::Path;
+
+    #[test]
+    fn resolves_valid_image_path() {
+        let data = Path::new("/data");
+        let got = resolve_image_path("/images/gear/head/abc.gti", data);
+        assert_eq!(got, Some(data.join("images/gear/head/abc.gti")));
+    }
+
+    #[test]
+    fn rejects_non_images_prefix() {
+        let data = Path::new("/data");
+        // gear_db.bin 等の直接パスや任意ファイルは画像エンドポイントでは配信しない。
+        assert_eq!(resolve_image_path("/gear_db.bin", data), None);
+        assert_eq!(resolve_image_path("/secrets.txt", data), None);
+    }
+
+    #[test]
+    fn rejects_path_traversal() {
+        let data = Path::new("/data");
+        assert_eq!(resolve_image_path("/images/../../etc/passwd", data), None);
+        assert_eq!(resolve_image_path("/images/../gear_db.bin", data), None);
+    }
 }
