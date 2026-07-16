@@ -1,0 +1,115 @@
+{
+  "aggregates": {
+    "by_lobby": [
+      {
+        "draws": 0,
+        "key": "bankara",
+        "total": 1,
+        "win_rate": 1.0,
+        "wins": 1
+      },
+      {
+        "draws": 0,
+        "key": "regular",
+        "total": 1,
+        "win_rate": 0.0,
+        "wins": 0
+      }
+    ],
+    "by_rule": [
+      {
+        "draws": 0,
+        "key": "area",
+        "total": 1,
+        "win_rate": 1.0,
+        "wins": 1
+      },
+      {
+        "draws": 0,
+        "key": "turf_war",
+        "total": 1,
+        "win_rate": 0.0,
+        "wins": 0
+      }
+    ],
+    "by_weapon": [
+      {
+        "draws": 0,
+        "key": "splattershot",
+        "total": 1,
+        "win_rate": 1.0,
+        "wins": 1
+      },
+      {
+        "draws": 0,
+        "key": "wakaba",
+        "total": 1,
+        "win_rate": 0.0,
+        "wins": 0
+      }
+    ],
+    "overall": {
+      "avg_death": 6.0,
+      "avg_kill": 7.0,
+      "draws": 0,
+      "losses": 1,
+      "total": 2,
+      "win_rate": 0.5,
+      "wins": 1
+    }
+  },
+  "battles": [
+    {
+      "assist": 2,
+      "death": 4,
+      "detail_fetched": 1,
+      "duration": 300,
+      "id": "b1",
+      "inked": 1200,
+      "kill": 9,
+      "knockout": null,
+      "mode": "bankara_challenge",
+      "played_at": "2026-07-15T11:30:00Z",
+      "rank_after": "S+0",
+      "rank_before": "S+0",
+      "result": "win",
+      "rule": "area",
+      "special": 3,
+      "special_weapon": "trizooka",
+      "stage": "yunohana",
+      "stage_name": "ユノハナ大渓谷",
+      "sub_weapon": "splat_bomb",
+      "weapon": "splattershot",
+      "weapon_name": "スプラシューター",
+      "x_power": null
+    },
+    {
+      "assist": 1,
+      "death": 8,
+      "detail_fetched": 1,
+      "duration": 180,
+      "id": "b2",
+      "inked": 900,
+      "kill": 5,
+      "knockout": null,
+      "mode": "regular",
+      "played_at": "2026-07-15T11:10:00Z",
+      "rank_after": null,
+      "rank_before": null,
+      "result": "lose",
+      "rule": "turf_war",
+      "special": 2,
+      "special_weapon": "big_bubbler",
+      "stage": "gonzui",
+      "stage_name": "ゴンズイ地区",
+      "sub_weapon": "splash_wall",
+      "weapon": "wakaba",
+      "weapon_name": "わかばシューター",
+      "x_power": null
+    }
+  ],
+  "generated_at": "2026-07-15T12:00:00Z",
+  "schema": "battle-export-v1",
+  "source_db_user_version": 19,
+  "version": 1
+}
