@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey, BattleNumericMetric } from '../types'
 import {
-  GROUP_BY_LABELS, METRIC_LABELS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
+  GROUP_BY_LABELS, METRIC_LABELS, HEATMAP_METRICS, SUM_METRICS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
   IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, scatterMetricOptions,
   BATTLE_NUMERIC_METRIC_LABELS, BATTLE_NUMERIC_DEFAULT_BIN,
 } from '../types'
@@ -65,6 +65,9 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       if (isTimeBucketGroupBy(groupBy)) setGroupBy('weapon')
       if (isTimeBucketGroupBy(groupBy2)) setGroupBy2('stage')
       if (yComposition !== 'single_metric') setYComposition('single_metric')
+      // 合計系はヒートマップでは全セル空になるので、選ばれていたら勝率へ退避（#351）。
+      // 既存の保存済みグラフを開いた場合の救済も兼ねる。
+      if (SUM_METRICS.includes(metric)) setMetric('win_rate')
     } else if (shape === 'scatter') {
       // groupBy はデータプリフェッチに使う。battle は db_list_battles で別取得するので
       // 任意の値で OK だが、weapon/stage と整合させておく。
@@ -348,8 +351,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
           {shape !== 'scatter' && shape !== 'bar' && yComposition === 'single_metric' && (
             <div className="form-field">
               <label className="form-label">メトリクス</label>
+              {/* ヒートマップは合計系を出さない。2D クロス集計に列が無く、
+                  選んでも全セルが空になるため（#351）。 */}
               <select className="form-input" value={metric} onChange={e => setMetric(e.target.value as MetricKey)}>
-                {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
+                {(shape === 'heatmap' ? HEATMAP_METRICS : (Object.keys(METRIC_LABELS) as MetricKey[])).map(m => (
                   <option key={m} value={m}>{METRIC_LABELS[m]}</option>
                 ))}
               </select>

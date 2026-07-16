@@ -50,15 +50,11 @@ export const THEMES: Theme[] = [
       '--cell-r5':               '#7fb0c2',
       '--cell-r6':               '#4e93a6',
       '--cell-r7':               '#1c7182',  // 80%〜  青・極
-      // 勝数・平均系はライト背景ではアクセント混色（淡→濃）。dark 系の黄→緑を
-      // そのまま使うと、黄がクリーム背景に溶けて最小段が読めなくなる。
-      '--cell-c1':               'color-mix(in srgb, var(--accent) 20%, var(--bg))',
-      '--cell-c2':               'color-mix(in srgb, var(--accent) 33%, var(--bg))',
-      '--cell-c3':               'color-mix(in srgb, var(--accent) 46%, var(--bg))',
-      '--cell-c4':               'color-mix(in srgb, var(--accent) 60%, var(--bg))',
-      '--cell-c5':               'color-mix(in srgb, var(--accent) 73%, var(--bg))',
-      '--cell-c6':               'color-mix(in srgb, var(--accent) 86%, var(--bg))',
-      '--cell-c7':               'var(--accent)',
+      // 勝数・平均系のベース色。ライト背景では明るい原色（#22c55e 等）が弱く、
+      // 最大段でも 2.1:1 程度にしかならないため、濃いベースに差し替える。
+      '--seq-good':              '#15803d',
+      '--seq-bad':               '#b91c1c',
+      '--seq-neutral':           '#c2410c',
     },
   },
   {
@@ -102,25 +98,18 @@ const BASE_VARS: Record<string, string> = {
   '--stage-img-filter':      'brightness(0.42) saturate(0.75)',
   '--panel-label-tint':      '#ffffff',                   // パネルラベルの混色相手
   // 勝率(発散) 7 段。dark / solarized-dark が使う（#351）。
-  // 極は棒グラフの勝率バーと同色（低 #f472b6 / 高 #34d399）。中立は明るい無彩色で、
-  // 明るさはカレンダーのバトル数ゼロ (#d0d3d8) に合わせた。
+  // 極は勝率グラフと同色（低 #f472b6 ピンク / 高 #38bdf8 青）。中立は明るい無彩色。
   '--cell-r1':               '#f472b6',
-  '--cell-r2':               '#eb9cc9',
-  '--cell-r3':               '#dfc0d3',
+  '--cell-r2':               '#ee9dcb',
+  '--cell-r3':               '#e0c2d5',
   '--cell-r4':               '#d0d3d8',
-  '--cell-r5':               '#8ee0c4',
-  '--cell-r6':               '#5cd9ab',
-  '--cell-r7':               '#34d399',
-  // 勝数・平均系(シーケンシャル) 7 段: 赤 → 緑。dark / solarized-dark が使う（#351）。
-  // 棒グラフの勝敗色（--lose / --win）の系統。両色をそのまま端に置くと明度差が足りず
-  // 大小が読めないため、赤を深く・緑を明るく延長して明度を単調にしている。
-  '--cell-c1':               '#a82323',
-  '--cell-c2':               '#c93b2f',
-  '--cell-c3':               '#d9622f',
-  '--cell-c4':               '#cf8b39',
-  '--cell-c5':               '#a8ad48',
-  '--cell-c6':               '#63c65c',
-  '--cell-c7':               '#86efac',
+  '--cell-r5':               '#a8cfe4',
+  '--cell-r6':               '#6fc6ee',
+  '--cell-r7':               '#38bdf8',
+  // 勝数・平均系のベース色（濃さでグラデーションを作る元）。dark / solarized-dark 用。
+  '--seq-good':              '#22c55e',
+  '--seq-bad':               '#ef4444',
+  '--seq-neutral':           '#fb923c',
 }
 
 export function applyTheme(themeId: string): void {

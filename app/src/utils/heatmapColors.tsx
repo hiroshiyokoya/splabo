@@ -1,3 +1,5 @@
+import type { MetricKey } from '../types'
+
 /**
  * 勝率（発散スケール）の色マッピング（#351）。
  *
@@ -37,31 +39,51 @@ export const RATE_LEGEND_COLORS = [
 ]
 
 /**
- * 勝数・平均系（シーケンシャル）のセル色。正規化済みの 0..1 を 7 段階へ（#351）。
+ * 勝数・平均系（シーケンシャル）のベース色をメトリクスごとに決める（#351）。
  *
- * 大きさは明度で表す。実際の色は --cell-c1..c7 が持ち、背景と accent の混色なので
- * ダークでは暗→明、ライトでは淡→濃と、テーマに応じて自動で正しい向きになる。
+ * 棒グラフの勝敗色を流用し、意味で色を割り当てる:
+ *  - 緑（--win 系）  … 多いほど良い（勝数・キル・キルレ）
+ *  - 赤（--lose 系） … 多いほど悪い（デス）
+ *  - 橙            … 良し悪しの無い量（バトル数・アシスト・SP・塗り・時間）
+ *
+ * 実際の色は CSS 変数（--seq-good / --seq-bad / --seq-neutral）が持ち、
+ * ライトテーマでは濃いベースに差し替わる（明るい原色はクリーム背景で弱いため）。
  */
-export function sequentialCellColor(t: number): string {
-  if (t <= 1 / 7) return 'var(--cell-c1)'
-  if (t <= 2 / 7) return 'var(--cell-c2)'
-  if (t <= 3 / 7) return 'var(--cell-c3)'
-  if (t <= 4 / 7) return 'var(--cell-c4)'
-  if (t <= 5 / 7) return 'var(--cell-c5)'
-  if (t <= 6 / 7) return 'var(--cell-c6)'
-  return 'var(--cell-c7)'
+function seqBase(metric: MetricKey): string {
+  switch (metric) {
+    case 'wins':
+    case 'avg_kill':
+    case 'avg_kd':
+      return 'var(--seq-good)'
+    case 'avg_death':
+      return 'var(--seq-bad)'
+    default:
+      return 'var(--seq-neutral)'
+  }
+}
+
+/** 7 段の混色比。下限は 45%（それ以下だと背景に沈んで読めない）。 */
+const SEQ_MIX = [45, 54, 63, 72, 81, 90, 100]
+
+/** ベース色を背景と混ぜて「濃さ」で段を作る。ダークは暗→濃、ライトは淡→濃と自動で正しい向きになる。 */
+const seqStep = (base: string, i: number) => `color-mix(in srgb, ${base} ${SEQ_MIX[i]}%, var(--bg))`
+
+/**
+ * 勝数・平均系のセル色。正規化済みの 0..1 を 7 段階へ（#351）。
+ * 大きさは同一色相の「濃さ」で表す（色相はメトリクスの意味を表す）。
+ */
+export function sequentialCellColor(t: number, metric: MetricKey): string {
+  const base = seqBase(metric)
+  const i = t <= 1 / 7 ? 0 : t <= 2 / 7 ? 1 : t <= 3 / 7 ? 2 : t <= 4 / 7 ? 3
+          : t <= 5 / 7 ? 4 : t <= 6 / 7 ? 5 : 6
+  return seqStep(base, i)
 }
 
 /** 勝数・平均系凡例のカラーバー（sequentialCellColor と同じ 7 段・同じ並び）。 */
-export const SEQ_LEGEND_COLORS = [
-  'var(--cell-c1)',
-  'var(--cell-c2)',
-  'var(--cell-c3)',
-  'var(--cell-c4)',
-  'var(--cell-c5)',
-  'var(--cell-c6)',
-  'var(--cell-c7)',
-]
+export function seqLegendColors(metric: MetricKey): string[] {
+  const base = seqBase(metric)
+  return SEQ_MIX.map((_, i) => seqStep(base, i))
+}
 
 /**
  * 勝数・平均系のスケール範囲を整数へ丸める（#351）。

@@ -2,7 +2,7 @@ import { useId, useMemo, useState } from 'react'
 import type { GroupedStatsRow2D, MetricKey } from '../../types'
 import { METRIC_LABELS, getMetric2D, formatMetric, metricGroup } from '../../types'
 import {
-  rateCellColor, RATE_LEGEND_COLORS, sequentialCellColor, SEQ_LEGEND_COLORS,
+  rateCellColor, RATE_LEGEND_COLORS, sequentialCellColor, seqLegendColors,
   integerRange, SparseHatchPattern, EmptyHatchPattern, hatchFill,
 } from '../../utils/heatmapColors'
 
@@ -36,7 +36,7 @@ function nawabariLast(keys: string[]): string[] {
   ]
 }
 
-function cellColor(value: number | null, group: ReturnType<typeof metricGroup>, min: number, max: number, total: number, minSampleSize: number, sparseId: string, emptyId: string): string {
+function cellColor(value: number | null, group: ReturnType<typeof metricGroup>, min: number, max: number, total: number, minSampleSize: number, sparseId: string, emptyId: string, metric: MetricKey): string {
   // 値が無いセルは色ではなくハッチで示す（中立グレーの中央と紛れさせないため・#351）。
   // データなしはサンプル不足より強い（詰まった）ハッチ。
   if (value === null || total === 0) return hatchFill(emptyId)
@@ -45,12 +45,12 @@ function cellColor(value: number | null, group: ReturnType<typeof metricGroup>, 
   }
   if (group === 'count') {
     if (max <= 0) return hatchFill(emptyId)
-    return sequentialCellColor(value / max)
+    return sequentialCellColor(value / max, metric)
   }
   if (group === 'rate') return rateCellColor(value)
   // average
-  if (max <= min) return 'var(--cell-c4)'
-  return sequentialCellColor((value - min) / (max - min))
+  if (max <= min) return sequentialCellColor(0.5, metric)
+  return sequentialCellColor((value - min) / (max - min), metric)
 }
 
 export function HeatmapChart({
@@ -141,7 +141,7 @@ export function HeatmapChart({
   const height = PAD_TOP + GRID_H + 8
 
   /** カラーバー（凡例）用の色順・ラベル */
-  const legendColors = group === 'rate' ? RATE_LEGEND_COLORS : SEQ_LEGEND_COLORS
+  const legendColors = group === 'rate' ? RATE_LEGEND_COLORS : seqLegendColors(metric)
   const fmtLegend = (v: number): string => {
     if (metric === 'win_rate') return `${Math.round(v * 100)}%`
     if (metric === 'avg_duration') return `${Math.round(v)}s`
@@ -230,7 +230,7 @@ export function HeatmapChart({
             const row = cells.get(`${xk}|${yk}`)
             const v = row ? getMetric2D(row, metric) : null
             const total = row?.total ?? 0
-            const fill = cellColor(v, group, minVal, maxVal, total, minSampleSize, sparseId, emptyId)
+            const fill = cellColor(v, group, minVal, maxVal, total, minSampleSize, sparseId, emptyId, metric)
             const x = PAD_LEFT + xi * (CELL_W + GAP)
             const y = PAD_TOP  + yi * (CELL_H + GAP)
             return (

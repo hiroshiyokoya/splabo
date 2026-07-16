@@ -37,13 +37,13 @@ function metricLabelOf(k: string): string {
 }
 
 /** 値の色マッピング。勝率は divergent、その他は accent 濃淡。 */
-function colorOfValue(value: number | null, isRate: boolean, min: number, max: number): string {
+function colorOfValue(value: number | null, isRate: boolean, min: number, max: number, metric: MetricKey): string {
   if (value === null) return 'var(--cell-empty)'
   // 勝率(発散)の色はヒートマップ・カレンダーと共通のスケールを使う（#351）
   if (isRate) return rateCellColor(value)
   // 勝数・平均系もヒートマップ・カレンダーと共通の 7 段スケール（#351）
-  if (max <= min) return 'var(--cell-c4)'
-  return sequentialCellColor((value - min) / (max - min))
+  if (max <= min) return sequentialCellColor(0.5, metric)
+  return sequentialCellColor((value - min) / (max - min), metric)
 }
 
 /** カテゴリ単位 (武器/ステージ) の散布図ポイントを作る。 */
@@ -73,7 +73,7 @@ function buildAggScatterPoints(
       x,
       y,
       size,
-      color: colorKey ? colorOfValue(colorVal, colorIsRate, cmin, cmax) : 'var(--accent)',
+      color: colorKey ? colorOfValue(colorVal, colorIsRate, cmin, cmax, colorKey as MetricKey) : 'var(--accent)',
       tooltipRows: [
         { label: metricLabelOf(xKey), value: formatMetric(x, xKey as MetricKey) },
         { label: metricLabelOf(yKey), value: formatMetric(y, yKey as MetricKey) },

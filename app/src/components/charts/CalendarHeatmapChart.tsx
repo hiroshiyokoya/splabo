@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { GroupedStatsRow, MetricKey } from '../../types'
 import { METRIC_LABELS, getMetric, metricGroup } from '../../types'
 import {
-  rateCellColor, RATE_LEGEND_COLORS, sequentialCellColor, SEQ_LEGEND_COLORS,
+  rateCellColor, RATE_LEGEND_COLORS, sequentialCellColor, seqLegendColors,
   integerRange, SparseHatchPattern, hatchFill,
 } from '../../utils/heatmapColors'
 
@@ -85,9 +85,9 @@ function countColor(value: number, max: number): string {
 }
 
 /** 平均系: min–max を 7 段階に正規化（#351）。 */
-function averageColor(value: number, min: number, max: number): string {
-  if (max <= min) return 'var(--cell-c4)'
-  return sequentialCellColor((value - min) / (max - min))
+function averageColor(value: number, min: number, max: number, metric: MetricKey): string {
+  if (max <= min) return sequentialCellColor(0.5, metric)
+  return sequentialCellColor((value - min) / (max - min), metric)
 }
 
 export function CalendarHeatmapChart({
@@ -184,7 +184,7 @@ export function CalendarHeatmapChart({
     }
     if (group === 'count')   return countColor(value, maxVal)
     if (group === 'rate')    return rateCellColor(value)
-    return averageColor(value, minVal, maxVal)
+    return averageColor(value, minVal, maxVal, metric)
   }
 
   const GRID_TOP = 32
@@ -208,7 +208,7 @@ export function CalendarHeatmapChart({
   const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
 
   /** 凡例ラベル: 左端値・右端値（勝率の中央 50% は廃止・#351） */
-  const legendColors = group === 'rate' ? RATE_LEGEND_COLORS : group === 'count' ? COUNT_COLORS : SEQ_LEGEND_COLORS
+  const legendColors = group === 'rate' ? RATE_LEGEND_COLORS : group === 'count' ? COUNT_COLORS : seqLegendColors(metric)
   const legendLeft   = group === 'rate' ? '0%'  : group === 'count' ? '0' : fmtLegend(minVal, metric)
   const legendRight  = group === 'rate' ? '100%' : fmtLegend(maxVal, metric)
 
