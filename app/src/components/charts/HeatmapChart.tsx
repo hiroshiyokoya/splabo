@@ -21,6 +21,17 @@ const PAD_LEFT_BASE = 110  // Y 軸 tick ラベルスペース
 const PAD_TOP_BASE  = 80   // X 軸 tick ラベルスペース
 const TITLE_PAD     = 22   // 軸タイトル（xTitle / yTitle）がある場合の追加スペース
 
+// ナワバリ（ルール軸）はバトル数が多く先頭に来がちだが、慣例的に最後に置く
+// （EnvAnalysis の RULE_HEATMAP_ORDER と揃える）。キーは FE スラッグ 'turf_war'
+// （旧マスターの 'nawabari' も一応拾う）。ルール軸にしか現れないため軸種別は不要。
+const NAWABARI_KEYS = new Set(['turf_war', 'nawabari'])
+function nawabariLast(keys: string[]): string[] {
+  return [
+    ...keys.filter(k => !NAWABARI_KEYS.has(k)),
+    ...keys.filter(k =>  NAWABARI_KEYS.has(k)),
+  ]
+}
+
 function cellColor(value: number | null, group: ReturnType<typeof metricGroup>, min: number, max: number, total: number, minSampleSize: number): string {
   if (value === null || total === 0) return 'var(--cell-empty)'
   if ((group === 'rate' || group === 'average') && total < minSampleSize) {
@@ -97,12 +108,13 @@ export function HeatmapChart({
     }
 
     // 数値軸（#134）は bin 値の数値昇順、それ以外はバトル数の多い順。
-    const xKeys = xNumeric
+    // カテゴリ軸は最後に nawabariLast でナワバリ（ルール軸のみ該当）を末尾へ寄せる。
+    const xKeys = nawabariLast(xNumeric
       ? Array.from(xTotals.keys()).sort((a, b) => Number(a) - Number(b))
-      : Array.from(xTotals.entries()).sort((a, b) => b[1] - a[1]).map(e => e[0])
-    const yKeys = yNumeric
+      : Array.from(xTotals.entries()).sort((a, b) => b[1] - a[1]).map(e => e[0]))
+    const yKeys = nawabariLast(yNumeric
       ? Array.from(yTotals.keys()).sort((a, b) => Number(a) - Number(b))
-      : Array.from(yTotals.entries()).sort((a, b) => b[1] - a[1]).map(e => e[0])
+      : Array.from(yTotals.entries()).sort((a, b) => b[1] - a[1]).map(e => e[0]))
 
     let mn = Number.POSITIVE_INFINITY
     let mx = Number.NEGATIVE_INFINITY

@@ -301,6 +301,10 @@ async function handleUploadStatink() {
         </label>
       </section>
 
+      {/* モバイル同期（コンパニオン）UI は接続先モバイルアプリ（splabo-viewer）公開まで
+          リリースビルドでは隠す（行き止まり導線を出さない）。バックエンドは opt-in で
+          自動起動しないため同梱のまま。開発ビルド（0.0.0-dev）では表示して開発可能にする。#339 */}
+      {isDevBuild && (
       <section className="settings-section">
         <h3>モバイル同期（コンパニオン）</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
@@ -348,6 +352,7 @@ async function handleUploadStatink() {
           </div>
         )}
       </section>
+      )}
 
       <section className="settings-section">
         <h3>stat.ink 連携</h3>
