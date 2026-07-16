@@ -55,21 +55,27 @@ const COL_BRAVO_INKED:       usize = 16;
 const COL_BRAVO_INK_PERCENT: usize = 17;
 const COL_BRAVO_COUNT:       usize = 18;
 // 19-20: 未使用
+// per-player ブロックは 8 列: weapon, kill-assist, kill, assist, death, special, inked, abilities。
+// 旧コードは kill-assist(offset1) と special(offset5) の存在を見落とし、
+// kill/assist/death/inked を 1 列ずつ手前に読んでいた（#336）。CSV ヘッダで確定した正値に修正。
 const COL_A1_WEAPON: usize = 21;
-const COL_A1_KILL:   usize = 22;
-const COL_A1_ASSIST: usize = 23;
-const COL_A1_DEATH:  usize = 24;
-// 25: 未使用
-const COL_A1_INKED: usize = 26;
+// 22: A1-kill-assist（kill+assist 合算・未使用）
+const COL_A1_KILL:   usize = 23;
+const COL_A1_ASSIST: usize = 24;
+const COL_A1_DEATH:  usize = 25;
+// 26: A1-special（SP 発動回数・未使用）
+const COL_A1_INKED: usize = 27;
+// 28: A1-abilities（未使用）
 const COL_A2_WEAPON: usize = 29;
 const COL_A3_WEAPON: usize = 37;
 const COL_A4_WEAPON: usize = 45;
 const COL_B1_WEAPON: usize = 53;
-const COL_B1_KILL:   usize = 54;
-const COL_B1_ASSIST: usize = 55;
-const COL_B1_DEATH:  usize = 56;
-// 57: 未使用
-const COL_B1_INKED: usize = 58;
+// 54: B1-kill-assist（未使用）
+const COL_B1_KILL:   usize = 55;
+const COL_B1_ASSIST: usize = 56;
+const COL_B1_DEATH:  usize = 57;
+// 58: B1-special（未使用）
+const COL_B1_INKED: usize = 59;
 const COL_B2_WEAPON: usize = 61;
 const COL_B3_WEAPON: usize = 69;
 const COL_B4_WEAPON: usize = 77;
@@ -298,6 +304,34 @@ async fn sync_stage_masters(pool: &DbPool, client: &Client) -> Result<usize, Str
 // CSV 1 行パース
 // ---------------------------------------------------------------------------
 
+/// stat.ink CSV のカラム位置が想定とズレていないかをヘッダ名で検証する（#336 再発防止）。
+/// 位置がズレたまま取り込むと kill / death / inked などが静かに壊れるため、
+/// 主要カラムの名前が一致しなければ Err を返す（呼び出し元はその CSV をスキップする）。
+fn validate_env_csv_header(headers: &csv::StringRecord) -> Result<(), String> {
+    const EXPECT: &[(usize, &str)] = &[
+        (COL_MODE,        "mode"),
+        (COL_STAGE,       "stage"),
+        (COL_WIN,         "win"),
+        (COL_ALPHA_INKED, "alpha-inked"),
+        (COL_A1_WEAPON,   "A1-weapon"),
+        (COL_A1_KILL,     "A1-kill"),
+        (COL_A1_ASSIST,   "A1-assist"),
+        (COL_A1_DEATH,    "A1-death"),
+        (COL_A1_INKED,    "A1-inked"),
+        (COL_B1_KILL,     "B1-kill"),
+        (COL_B1_INKED,    "B1-inked"),
+    ];
+    for &(idx, name) in EXPECT {
+        let got = headers.get(idx).unwrap_or("");
+        if got != name {
+            return Err(format!(
+                "カラム構成が想定と異なります（列 {idx} は \"{name}\" のはずが \"{got}\"）。アプリの更新が必要な可能性があります"
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn opt_str<'a>(fields: &'a [&'a str], idx: usize) -> Option<&'a str> {
     let s = fields.get(idx).copied().unwrap_or("").trim();
     if s.is_empty() { None } else { Some(s) }
@@ -333,6 +367,15 @@ async fn import_csv_bytes(
     let mut rdr = csv::ReaderBuilder::new()
         .flexible(true)
         .from_reader(Cursor::new(bytes));
+
+    // カラム位置がズレていないかヘッダ名で検証する（#336 再発防止）。
+    // ズレていれば「静かに壊れたデータを入れる」より、その CSV を丸ごとスキップする方が安全。
+    if let Ok(headers) = rdr.headers() {
+        if let Err(msg) = validate_env_csv_header(headers) {
+            log::warn!("[env_import] {source_date} スキップ: {msg}");
+            return Ok(0);
+        }
+    }
 
     let mut batch: Vec<EnvBattleRow> = Vec::with_capacity(BATCH_SIZE);
     let mut inserted = 0usize;
