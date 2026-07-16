@@ -50,6 +50,15 @@ export const THEMES: Theme[] = [
       '--cell-r5':               '#7fb0c2',
       '--cell-r6':               '#4e93a6',
       '--cell-r7':               '#1c7182',  // 80%〜  青・極
+      // 勝数・平均系はライト背景ではアクセント混色（淡→濃）。dark 系の黄→緑を
+      // そのまま使うと、黄がクリーム背景に溶けて最小段が読めなくなる。
+      '--cell-c1':               'color-mix(in srgb, var(--accent) 20%, var(--bg))',
+      '--cell-c2':               'color-mix(in srgb, var(--accent) 33%, var(--bg))',
+      '--cell-c3':               'color-mix(in srgb, var(--accent) 46%, var(--bg))',
+      '--cell-c4':               'color-mix(in srgb, var(--accent) 60%, var(--bg))',
+      '--cell-c5':               'color-mix(in srgb, var(--accent) 73%, var(--bg))',
+      '--cell-c6':               'color-mix(in srgb, var(--accent) 86%, var(--bg))',
+      '--cell-c7':               'var(--accent)',
     },
   },
   {
@@ -102,6 +111,15 @@ const BASE_VARS: Record<string, string> = {
   '--cell-r5':               '#92c2ce',
   '--cell-r6':               '#4e93a6',
   '--cell-r7':               '#1c7182',
+  // 勝数・平均系(シーケンシャル) 7 段: 黄 → 緑。dark / solarized-dark が使う（#351）。
+  // 黄と緑は隣接色相なので sequential の例外として許容。全段を明るく保ち、暗く沈む段を作らない。
+  '--cell-c1':               '#f7ee5e',
+  '--cell-c2':               '#dfe84f',
+  '--cell-c3':               '#bfdf49',
+  '--cell-c4':               '#96d24c',
+  '--cell-c5':               '#66c254',
+  '--cell-c6':               '#35ae5c',
+  '--cell-c7':               '#0d8f52',
 }
 
 export function applyTheme(themeId: string): void {

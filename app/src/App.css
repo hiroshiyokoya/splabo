@@ -32,18 +32,20 @@
      線は var(--bg) ではなく黒固定にする（ライトでは bg がクリーム色で、
      地より明るくなって反転しなくなるため）。 */
   --cell-sparse-line: #14141c;
-  /* 勝数・平均系 sequential: 背景 → accent の 7 段（#351）。
-     大きさは「明度」で表す。背景と混ぜるので、ダークでは暗→明、ライトでは淡→濃と
-     テーマに応じて自動で正しい向きになり、アクセント色にも追従する。
-     旧実装は白と混ぜており（白→ライム固定）、ダークでは全段 12〜16:1 でほとんど差が無く
-     最小値が最も明るいという逆転、ライトでは全段 1.0〜1.3:1 で背景に溶けていた。 */
-  --cell-c1:       color-mix(in srgb, var(--accent) 20%, var(--bg));
-  --cell-c2:       color-mix(in srgb, var(--accent) 33%, var(--bg));
-  --cell-c3:       color-mix(in srgb, var(--accent) 46%, var(--bg));
-  --cell-c4:       color-mix(in srgb, var(--accent) 60%, var(--bg));
-  --cell-c5:       color-mix(in srgb, var(--accent) 73%, var(--bg));
-  --cell-c6:       color-mix(in srgb, var(--accent) 86%, var(--bg));
-  --cell-c7:       var(--accent);
+  /* 勝数・平均系 sequential: 黄 → 緑 の 7 段（#351）。
+     黄と緑は隣接色相なので、多色相でも sequential として許される例外
+     （配色ガイド: analogous neighbors。必ずスケール凡例と併用する）。
+     背景と混ぜる方式（暗→明）は最小段が 1.49:1 まで沈んで読めなかったため、
+     全段を明るいまま保ち、大きさは主に色相で読ませる。最小段でも 4.25:1。
+     ライトテーマでは黄がクリーム背景に溶けるため、THEMES 側で
+     アクセント混色（淡→濃）に差し替える。 */
+  --cell-c1:       #f7ee5e;  /* 最小 = 黄 (14.55:1) */
+  --cell-c2:       #dfe84f;
+  --cell-c3:       #bfdf49;
+  --cell-c4:       #96d24c;
+  --cell-c5:       #66c254;
+  --cell-c6:       #35ae5c;
+  --cell-c7:       #0d8f52;  /* 最大 = 緑 (4.25:1) */
   /* カウント系 (バトル数): 低カウント側は白寄り → 高カウント側はエメラルドグリーンへグラデ。
      カレンダー専用の accent 変数で棒グラフや他 UI には影響なし。 */
   --cell-count-accent: #10b981;
@@ -108,9 +110,11 @@
 /* サンプル不足は色ではなくハッチ（斜線）で示す（#351）。グレー地に濃い線＝データなしの反転。
    SVG 側は <pattern> で同じ見た目を作っており、こちらは凡例スウォッチ用の CSS 版。 */
 .cal-legend-swatch--sparse {
+  /* 角度は -45deg。CSS のグラデーション角度は「軸」の向きで、縞はそれと直交するため、
+     45deg だと縞が SVG 側の rotate(45) と逆向き（\ と /）になってしまう。 */
   background:
     repeating-linear-gradient(
-      45deg,
+      -45deg,
       transparent 0 3px,
       color-mix(in srgb, var(--cell-sparse-line) 75%, transparent) 3px 4.5px
     ),
