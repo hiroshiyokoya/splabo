@@ -430,7 +430,8 @@ export function GearSection() {
         <div ref={appTopRef} className="app-top app-top--sticky">
           <header className="app-header">
             <div className="app-header__left">
-              <p className="app-subtitle">Splatoon 3 Gear Wardrobe</p>
+              {/* 旧アプリ名（geartoon）の名残としてサブタイトルに残す。 */}
+              <p className="app-subtitle">Geartoon</p>
             </div>
             <div className="app-header__right">
               <div className="app-header__toolbar">

@@ -533,6 +533,12 @@ body {
   border: 1px solid var(--border);
   border-radius: 8px;
 }
+/* .content は縦フローの flex（#334）なので、その直下に置く戦績の切替は
+   既定の align-items:stretch で右端まで引き伸ばされてしまう。中身幅に留める。
+   図鑑タブの切替は図鑑ヘッダ内にネストしているため、この指定の対象外。 */
+.content > .view-toggle {
+  align-self: flex-start;
+}
 .view-toggle__btn {
   display: inline-flex;
   align-items: center;
