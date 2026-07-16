@@ -46,7 +46,11 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   const [dotUnit,      setDotUnit]      = useState<'battle' | 'weapon' | 'stage'>(initial?.dotUnit ?? 'weapon')
   const [xMetric,      setXMetric]      = useState<string>(initial?.xMetric ?? 'avg_kill')
   const [yMetric,      setYMetric]      = useState<string>(initial?.yMetric ?? 'win_rate')
-  const [sizeMetric,   setSizeMetric]   = useState<string>(initial?.sizeMetric ?? 'total')
+  // サイズは「（一定サイズ）」が '' で、保存時に undefined へ落ちる（handleSave 参照）。
+  // そのため `initial?.sizeMetric ?? 'total'` にすると、一定サイズで保存したグラフを
+  // 編集で開いたとき「バトル数」に化けてしまう。編集時は保存値をそのまま（undefined は
+  // 一定サイズ = ''）復元し、新規作成のときだけ既定値 'total' を使う。
+  const [sizeMetric,   setSizeMetric]   = useState<string>(initial ? (initial.sizeMetric ?? '') : 'total')
   const [colorMetric,  setColorMetric]  = useState<string>(initial?.colorMetric ?? '')
 
   // shape ごとに groupBy / yComposition を適切に補正する：
