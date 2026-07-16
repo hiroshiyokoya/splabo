@@ -10,3 +10,7 @@ members = [
 [workspace.dependencies]
 tauri = { version = "2.11.1" }
 tauri-build = { version = "2.6.1" }
+# コンパニオン同期サーバー（#324）: LAN HTTP 配信 + mDNS 広告 + ホスト IP 列挙
+tiny_http = { version = "0.12" }
+mdns-sd = { version = "0.20" }
+if-addrs = { version = "0.15" }

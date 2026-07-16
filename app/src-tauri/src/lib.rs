@@ -7,6 +7,7 @@ use tauri::{
 pub mod abilities;
 pub mod auth;
 pub mod battle_export;
+pub mod companion;
 pub mod crypto;
 pub mod db;
 pub mod env_import;
@@ -82,6 +83,7 @@ pub fn run() {
         .manage(SchedulerConfig::default())
         .manage(StatinkConfig::default())
         .manage(FetchInProgress::default())
+        .manage(companion::CompanionState::default())
         .invoke_handler(tauri::generate_handler![
             auth::start_login,
             auth::handle_auth_redirect,
@@ -126,6 +128,10 @@ pub fn run() {
             gear::fetch_gear_full,
             // battle_db エクスポート（モバイルコンパニオン・#325・battle_export.rs）
             battle_export::export_battle_db,
+            // コンパニオン同期サーバー（モバイルコンパニオン・#324・companion.rs）
+            companion::companion_start,
+            companion::companion_stop,
+            companion::companion_status,
             // データ移行（Phase C・migration.rs）
             migration::get_migration_report,
         ])
