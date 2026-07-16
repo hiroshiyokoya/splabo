@@ -82,20 +82,35 @@ const STAGE_METRICS: ScatterMetric[] = [
 ]
 
 // ヒートマップのセル指標
-type CellMetricKey = 'win_rate' | 'pick_rate' | 'ko_rate' | 'battles'
+type CellMetricKey =
+  | 'win_rate' | 'pick_rate' | 'ko_rate' | 'battles'
+  | 'avg_kill' | 'avg_death' | 'kill_ratio' | 'avg_assist' | 'contrib_ratio'
+// キル系（a1/b1 のみ母数・専用しきい値）。注記・母数表示の切り替えに使う。
+// ※平均塗りP(avg_inked)は元データ(a1_inked)が塗りP でないため別 Issue に分離（backend は対応済み）。
+const KDA_CELL_KEYS: CellMetricKey[] = ['avg_kill', 'avg_death', 'kill_ratio', 'avg_assist', 'contrib_ratio']
 interface CellMetric {
   key:    CellMetricKey
   label:  string
   fmt:    (v: number) => string
   scale:  'sequential' | 'diverging'
   weapon: boolean   // weapon 次元が必要か
+  mid?:   number    // diverging の中心値（既定 0.5）
+  hue?:   number    // sequential の色相（既定 210=青）。デスは 8=赤（高いほど悪い）
 }
 const CELL_METRICS: CellMetric[] = [
-  { key: 'win_rate',  label: '勝率',     fmt: pct,  scale: 'diverging',  weapon: true },
-  { key: 'pick_rate', label: 'ピック率', fmt: pct,  scale: 'sequential', weapon: true },
-  { key: 'ko_rate',   label: 'KO率',     fmt: pct,  scale: 'sequential', weapon: false },
-  { key: 'battles',   label: 'バトル数', fmt: pint, scale: 'sequential', weapon: false },
+  { key: 'win_rate',      label: '勝率',       fmt: pct,  scale: 'diverging',  weapon: true, mid: 0.5 },
+  { key: 'pick_rate',     label: 'ピック率',   fmt: pct,  scale: 'sequential', weapon: true },
+  { key: 'avg_kill',      label: '平均キル',   fmt: num2, scale: 'sequential', weapon: true },
+  { key: 'avg_death',     label: '平均デス',   fmt: num2, scale: 'sequential', weapon: true, hue: 8 },
+  { key: 'kill_ratio',    label: 'キルレ',     fmt: num2, scale: 'diverging',  weapon: true, mid: 1.0 },
+  { key: 'avg_assist',    label: '平均アシスト', fmt: num2, scale: 'sequential', weapon: true },
+  { key: 'contrib_ratio', label: '貢献キルレ', fmt: num2, scale: 'diverging',  weapon: true, mid: 1.0 },
+  // 平均塗りP は元データ不備のため保留（別 Issue）。
+  { key: 'ko_rate',       label: 'KO率',       fmt: pct,  scale: 'sequential', weapon: false },
+  { key: 'battles',       label: 'バトル数',   fmt: pint, scale: 'sequential', weapon: false },
 ]
+// ルールを次元にしたときの並び順（ガチ系を先・ナワバリを最後）。
+const RULE_HEATMAP_ORDER = ['area', 'yagura', 'hoko', 'asari', 'nawabari']
 
 const DIM_OPTIONS = [
   { key: 'weapon', label: '武器' },
@@ -554,17 +569,23 @@ export function EnvAnalysis() {
                     cells={matrixData}
                     valueLabel={cm.fmt}
                     scale={cm.scale}
-                    mid={0.5}
+                    mid={cm.mid ?? 0.5}
+                    sequentialHue={cm.hue ?? 210}
                     rowAxis={dimLabel(rowDim)}
                     colAxis={dimLabel(colDim)}
                     rowLabel={dimKeyLabeller(rowDim)}
                     colLabel={dimKeyLabeller(colDim)}
                     diagonalCols={colDim === 'stage'}
+                    rowOrder={rowDim === 'rule' ? RULE_HEATMAP_ORDER : undefined}
+                    colOrder={colDim === 'rule' ? RULE_HEATMAP_ORDER : undefined}
                   />
                 )}
                 <p className="env-chart-note">
-                  30 サンプル未満のセルは非表示。セルにマウスオーバーで件数を表示。
+                  {KDA_CELL_KEYS.includes(cellMetric) ? '20' : '30'} サンプル未満のセルは非表示。セルにマウスオーバーで件数を表示。
                   {cellMetric === 'win_rate' && ' 勝率は 50% を中心に赤(低)〜青(高)。'}
+                  {cellMetric === 'avg_death' && ' デスは多いほど濃い赤（少ないほど良い）。'}
+                  {(cellMetric === 'kill_ratio' || cellMetric === 'contrib_ratio') && ' 1.0 を中心に赤(低)〜青(高)。'}
+                  {KDA_CELL_KEYS.includes(cellMetric) && ' ※キル系は記録のある A1・B1 のみを母数にしています。'}
                 </p>
               </div>
             </>
