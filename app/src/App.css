@@ -15,11 +15,15 @@
   --draw:          #f59e0b;
   --sidebar-w:     180px;
 
-  /* カレンダーヒートマップ用のセル色 (5 段階)
+  /* ヒートマップ用のセル色。
      sequential は「ほぼ白 → accent (ライム)」、
-     divergent は「青 ← 白 → 赤」で、中央が暗くならないように白を通す */
-  --cell-empty:    #9c9caa;  /* 空 (バトル無し)。明るめのグレー */
-  --cell-sparse:   #c8c8d2;  /* サンプル不足。空より更に薄いグレー */
+     divergent (勝率) は「赤 ← 中立 → 青」の 7 段階（#351）。 */
+
+  /* 欠損は「値」ではないので色スケール上の色を持たせない（#351）。
+     text からの混色で導出するため、テーマを問わず「背景のすぐ上」に居続ける。
+     旧実装は明るいグレー固定で、ダーク背景だと実データより目立っていた。 */
+  --cell-empty:      color-mix(in srgb, var(--text) 6%, transparent);  /* 空 (バトル無し) */
+  --cell-sparse-line: var(--text-muted);  /* サンプル不足を示すハッチの線色 */
   /* 平均系 sequential: ほぼ白 → accent (ライム) */
   --cell-c1:       #f3f6e6;  /* 最薄 = ほぼ白 */
   --cell-c2:       #e2efb6;
@@ -35,12 +39,18 @@
   --cell-count-c3:     color-mix(in srgb, var(--cell-count-accent) 58%, white);
   --cell-count-c4:     color-mix(in srgb, var(--cell-count-accent) 80%, white);
   --cell-count-c5:     var(--cell-count-accent);
-  /* 率系 (勝率) divergent: 強い赤 ← 白 → 強い青 */
-  --cell-r1:       #b22f3f;  /* 強い赤 */
-  --cell-r2:       #e89e9e;  /* 薄い赤 */
-  --cell-r3:       #eeeef0;  /* 中央 = 白 (text 色と整合) */
-  --cell-r4:       #a4d2dd;  /* 薄い青 */
-  --cell-r5:       #2998ad;  /* 強い青 */
+  /* 率系 (勝率) divergent: 赤 ← 中立 → 青 の 7 段階（#351）。
+     ここはダーク（既定テーマ）用の V 字＝中央を背景側へ沈め、極を光らせる。
+     ライトテーマでは明暗が反転するため THEMES 側で Λ 字に差し替える。
+     旧実装は中央が白 (#eeeef0) で、ダーク背景に対して 15.20:1 と画面上で最も目立ち、
+     「最も情報の無い 50% が最も目立つ」逆転が起きていた。 */
+  --cell-r1:       #e88490;  /* 〜20%  赤・極 */
+  --cell-r2:       #c25462;  /* 20-35% */
+  --cell-r3:       #96414f;  /* 35-45% */
+  --cell-r4:       #4a4a5c;  /* 45-55% 中立（背景比 2.03:1／見えるが目立たない） */
+  --cell-r5:       #2f7387;  /* 55-65% */
+  --cell-r6:       #3a9db4;  /* 65-80% */
+  --cell-r7:       #6ecadd;  /* 80%〜  青・極 */
 }
 
 /* カレンダーセルのツールチップ */
@@ -81,9 +91,18 @@
   border-radius: 2px;
   box-shadow: 0 0 0 0.5px var(--surface);
 }
-.cal-legend-swatch--sparse { background: var(--cell-sparse); }
+/* サンプル不足は色ではなくハッチ（斜線）で示す（#351）。SVG 側は <pattern> で
+   同じ見た目を作っており、こちらは凡例スウォッチ用の CSS 版。 */
+.cal-legend-swatch--sparse {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      transparent 0 3px,
+      color-mix(in srgb, var(--cell-sparse-line) 55%, transparent) 3px 4.5px
+    ),
+    var(--cell-empty);
+}
 .cal-legend-end { color: var(--text); font-weight: 600; }
-.cal-legend-mid { color: var(--text); font-weight: 600; }
 .cal-legend-sparse {
   display: inline-flex;
   align-items: center;

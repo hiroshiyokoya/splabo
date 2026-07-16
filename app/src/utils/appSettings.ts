@@ -41,6 +41,15 @@ export const THEMES: Theme[] = [
       '--stat-item-bg':          'rgba(0, 0, 0, 0.04)',
       '--stage-img-filter':      'brightness(0.92) saturate(0.85)',
       '--panel-label-tint':      '#1a1a1e',         // パネルラベルは暗い文字寄り
+      // 勝率(発散)はライト背景では明暗が反転する（中央を明るくする Λ 字）。#351
+      // ダーク側の V 字を流用すると、中央の暗いグレーが明るい背景で最も目立ってしまう。
+      '--cell-r1':               '#a82a3c',  // 〜20%  赤・極
+      '--cell-r2':               '#c05a68',
+      '--cell-r3':               '#d59099',
+      '--cell-r4':               '#c8c1a8',  // 45-55% 中立（背景比 1.67:1）
+      '--cell-r5':               '#7fb0c2',
+      '--cell-r6':               '#4e93a6',
+      '--cell-r7':               '#1c7182',  // 80%〜  青・極
     },
   },
   {
@@ -83,6 +92,15 @@ const BASE_VARS: Record<string, string> = {
   '--stat-item-bg':          'rgba(255, 255, 255, 0.04)',
   '--stage-img-filter':      'brightness(0.42) saturate(0.75)',
   '--panel-label-tint':      '#ffffff',                   // パネルラベルの混色相手
+  // 勝率(発散) 7 段のダーク版 V 字（中央を背景へ沈める）。#351
+  // ライトへ切り替えると THEMES 側の Λ 字で上書きされ、戻すとここへ戻る。
+  '--cell-r1':               '#e88490',
+  '--cell-r2':               '#c25462',
+  '--cell-r3':               '#96414f',
+  '--cell-r4':               '#4a4a5c',
+  '--cell-r5':               '#2f7387',
+  '--cell-r6':               '#3a9db4',
+  '--cell-r7':               '#6ecadd',
 }
 
 export function applyTheme(themeId: string): void {
