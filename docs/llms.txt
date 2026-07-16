@@ -36,3 +36,4 @@
 - [stat.ink](https://github.com/fetus-hina/stat.ink): Splatoon シリーズのバトル統計共有プラットフォーム。splabo はこの API にバトルをアップロードできる。
 - [s3s](https://github.com/frozenpandaman/s3s): SplatNet 3 から stat.ink へバトルデータを送る Python ツール。splabo の stat.ink アップロード機能はこのリポジトリのペイロード構築ロジックを Rust で再実装したもの。
 - [geartoon](https://github.com/hiroshiyokoya/geartoon): 旧・Splatoon 3 所持ギア表示アプリ。splabo に統合済み（「ギア」タブ）。
+- [splabo-viewer](https://github.com/hiroshiyokoya/splabo-viewer): splabo のモバイル・コンパニオン（Android）。同一 LAN でペアリングし、ギア・直近バトルを持ち出して閲覧する。任天堂 API には触れず、通信相手は splabo デスクトップのみ。

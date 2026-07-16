@@ -3,6 +3,8 @@
 このファイルは **splabo リポジトリの作業ルール** を記述する。個人全体の共通ルール（実装前の構想確認・ブランチ/PR フロー・コミット前確認・イシューラベル付け・`cd && git` 回避・ファイル操作・git 安全則）は `~/.claude/CLAUDE.md` を参照。
 
 > **v0.8 統合済み:** 旧 chartoon（戦績）と geartoon（ギア）は 1 バイナリ **splabo**（識別子 `com.splabo.app`・単一リポ）に統合済み。ギア機能は「ギア」タブとして取り込み済み。旧 2 識別子（`com.chartoon.app` / `com.geartoon.app`）のデータは起動時に非破壊コピーで移行される（`app/src-tauri/src/migration.rs`）。`gh -R` はすべて `hiroshiyokoya/splabo`。
+>
+> **モバイルコンパニオン対応:** 同一 LAN のモバイルアプリ [splabo-viewer](https://github.com/hiroshiyokoya/splabo-viewer)（別リポ・Android/Kotlin）へギア・直近バトルを配信する。コンパニオン同期サーバー（`app/src-tauri/src/companion.rs`）と battle_db エクスポート（`app/src-tauri/src/battle_export.rs`）を担当。連携はエクスポート契約（gear-export-v1 / battle-export-v1）＋共有フィクスチャのみで、コードは統合しない。設計の正典は `splabo-viewer-design.md`、トラッキングは #15 の「モバイルコンパニオン対応」節。
 
 ---
 
