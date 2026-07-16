@@ -3737,8 +3737,9 @@ fn matrix_dim(dim: &str) -> Option<(&'static str, &'static str, &'static str)> {
 
 /// 環境データのマトリクス（ヒートマップ）集計。
 ///
-/// - `cell_metric` = "win_rate" | "pick_rate" … 行/列の **一方が weapon** であること
-///   （武器のそのカテゴリでの勝率 / ピック率）
+/// - `cell_metric` = "win_rate" | "pick_rate" | "avg_kill" | "avg_death" | "avg_assist"
+///   | "avg_inked" | "kill_ratio" | "contrib_ratio" … 行/列の **一方が weapon** であること
+///   （武器のそのカテゴリでの勝率 / ピック率 / KDA 系）。KDA 系は a1/b1 のみ母数。
 /// - `cell_metric` = "ko_rate" | "battles"   … 行/列とも **weapon 以外**（バトルレベル指標）
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -3766,27 +3767,39 @@ pub async fn env_matrix_stats(
         power_min, power_max,
     };
     let where_clause = build_env_where(&f);
-    let weapon_centric = cell_metric == "win_rate" || cell_metric == "pick_rate";
+    // KDA 系（キル/デス/アシスト/塗り＋派生比）は a1/b1 の 2 スロットしか記録が無く、
+    // 他スロットは NULL。勝率/ピック率は 8 スロット全員が母数なのと非対称になる。
+    let kda_based = matches!(
+        cell_metric.as_str(),
+        "avg_kill" | "avg_death" | "avg_assist" | "avg_inked" | "kill_ratio" | "contrib_ratio"
+    );
+    let weapon_centric = cell_metric == "win_rate" || cell_metric == "pick_rate" || kda_based;
 
     if weapon_centric {
         // 行・列のうち厳密に一方が weapon であること。
         let weapon_is_row = row_dim == "weapon";
         let weapon_is_col = col_dim == "weapon";
         if weapon_is_row == weapon_is_col {
-            return Err("win_rate/pick_rate は行・列の一方を weapon にしてください".to_string());
+            return Err("この指標は行・列の一方を weapon にしてください".to_string());
         }
         let other_dim = if weapon_is_row { &col_dim } else { &row_dim };
         let (oid_col, omaster, olabel) = matrix_dim(other_dim)
             .ok_or_else(|| format!("未知の集計次元: {other_dim}"))?;
 
         // 8 スロット（A1–A4 alpha / B1–B4 bravo）を UNION ALL。
+        // k/d/a/ink は a1/b1 のみ実値で他は NULL。KDA 母数 = 非 NULL 件数（COUNT(app.k)）。
         let slots: Vec<&ScatterSlot> = SELF_SLOTS.iter().chain(OPP_SLOTS.iter()).collect();
         let selects: Vec<String> = slots.iter().map(|s| format!(
             "SELECT {wid} AS wid, CASE WHEN win_team = '{team}' THEN 1 ELSE 0 END AS won, \
+             {k} AS k, {d} AS d, {a} AS a, {ink} AS ink, \
              eb.{oid} AS oid FROM env_battles eb {where}",
-            wid = s.wid, team = s.team, oid = oid_col, where = where_clause,
+            wid = s.wid, team = s.team, k = s.k, d = s.d, a = s.a, ink = s.ink,
+            oid = oid_col, where = where_clause,
         )).collect();
         let app = selects.join("\n            UNION ALL ");
+
+        // KDA 系はキル母数（a1/b1 の非 NULL 件数）で足切り。勝率/ピック率は 8 スロット合算。
+        let having = if kda_based { "HAVING n_kda >= 20" } else { "HAVING n >= 30" };
 
         let sql = format!(
             r#"
@@ -3797,17 +3810,23 @@ pub async fn env_matrix_stats(
             SELECT w.key  AS weapon_key,
                    om.{olabel} AS other_key,
                    COUNT(*) AS n,
+                   COUNT(app.k) AS n_kda,
                    AVG(app.won) AS win_rate,
-                   CAST(COUNT(*) AS REAL) / (otot.c * 8) AS pick_rate
+                   CAST(COUNT(*) AS REAL) / (otot.c * 8) AS pick_rate,
+                   AVG(app.k)   AS avg_kill,
+                   AVG(app.d)   AS avg_death,
+                   AVG(app.a)   AS avg_assist,
+                   AVG(app.ink) AS avg_inked
             FROM app
             JOIN weapon w  ON w.id  = app.wid
             JOIN {omaster} om ON om.id = app.oid
             JOIN otot ON otot.oid = app.oid
             WHERE app.wid IS NOT NULL AND app.oid IS NOT NULL
             GROUP BY app.wid, app.oid
-            HAVING n >= 30
+            {having}
             "#,
-            app = app, oid = oid_col, omaster = omaster, olabel = olabel, where = where_clause,
+            app = app, oid = oid_col, omaster = omaster, olabel = olabel,
+            where = where_clause, having = having,
         );
 
         // バインド: スロット 8 回 + otot 1 回。
@@ -3821,8 +3840,23 @@ pub async fn env_matrix_stats(
         for row in rows {
             let weapon_key: String = row.get("weapon_key");
             let other_key:  String = row.get("other_key");
-            let value = row.try_get::<Option<f64>, _>(cell_metric.as_str()).unwrap_or(None);
-            let n: i64 = row.get("n");
+            let avg_kill   = row.try_get::<Option<f64>, _>("avg_kill").unwrap_or(None);
+            let avg_death  = row.try_get::<Option<f64>, _>("avg_death").unwrap_or(None);
+            let avg_assist = row.try_get::<Option<f64>, _>("avg_assist").unwrap_or(None);
+            // キルレ / 貢献キルレは平均値から算出（デス 0 は不定として非表示）。
+            let value = match cell_metric.as_str() {
+                "kill_ratio" => match (avg_kill, avg_death) {
+                    (Some(k), Some(d)) if d > 0.0 => Some(k / d),
+                    _ => None,
+                },
+                "contrib_ratio" => match (avg_kill, avg_assist, avg_death) {
+                    (Some(k), Some(a), Some(d)) if d > 0.0 => Some((k + a) / d),
+                    _ => None,
+                },
+                other => row.try_get::<Option<f64>, _>(other).unwrap_or(None),
+            };
+            // KDA 系はキル母数、それ以外は 8 スロット合算を件数として返す。
+            let n: i64 = if kda_based { row.get("n_kda") } else { row.get("n") };
             let (row_key, col_key) = if weapon_is_row {
                 (weapon_key, other_key)
             } else {
