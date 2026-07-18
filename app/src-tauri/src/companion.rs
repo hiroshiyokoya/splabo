@@ -4,15 +4,23 @@
 //! 配信するオプトイン式 HTTP サーバー。デフォルトは停止。設定トグルで起動する。
 //!
 //! 担うのは「起動 / 停止・ペアリング情報発行・ファイル配信・mDNS 広告」（#324）に加えて、
-//! **②更新命令（任天堂から取り直せ）の受付（#326・設計書 §4②）**。
+//! **②更新命令（任天堂から取り直せ）の受付（#326・設計書 §4②）** と
+//! **ブキ / ステージアイコンの同期供給・差分配信（#327・設計書 §6）**。
 //!
 //! ## 構成
 //! - HTTP サーバー: `tiny_http`（同期・軽量）を専用スレッドで駆動。tokio ランタイムと独立。
 //!   - `GET /ping`         … トークン検証のみの疎通確認。
 //!   - `GET /gear_db.bin`  … `app_data_dir()/data/gear_db.bin` を配信（不在は 404）。
 //!   - `GET /battle_db.bin`… `app_data_dir()/data/battle_db.bin` を配信（不在は 404）。
-//!   - `GET /images/...`   … `app_data_dir()/data/images/` 配下のギア画像（.gti）を相対パスで配信。
-//!                           gear_db の画像パス（`images/...`）をそのまま GET できる。`..` 等は 403。
+//!   - `GET /images/...`   … 画像（.gti）を相対パスで配信。`..` 等は 403。**2 系統を振り分ける**:
+//!                           - `images/{weapon,sub_weapon,special_weapon,stage,ability}/...`
+//!                             → `app_data_dir()/images/`（バトルアイコン・`images.rs` が書く／#327）
+//!                           - それ以外（`images/{gear,brand,skill}/...`）
+//!                             → `app_data_dir()/data/images/`（ギア画像・`gear.rs` が書く／#324）
+//!                           gear_db / battle_db の画像パスをそのまま GET できる。
+//!                           ETag（内容 sha256）対応。`If-None-Match` 一致なら 304（再転送しない）。
+//!   - `GET /icons/manifest` … バトルアイコンの差分同期マニフェスト（#327・設計書 §6）。
+//!                           viewer は hash を突き合わせ、変わったものだけ `/images/...` を引く。
 //!   - `POST /update`      … ②更新命令の受付。**受付のみで即応答**（202）し、実処理は裏で走る。
 //!   - `GET /update_status`… ②更新命令の進捗・完了・失敗を問い合わせる（ポーリング用）。
 //!   - いずれも `Authorization: Bearer <token>` 検証必須。不一致・欠落は 401。
@@ -60,7 +68,11 @@ struct RunningServer {
 /// リクエスト処理に必要な一式（HTTP スレッドが保持する）。
 struct ServerCtx {
     token: String,
+    /// ギア画像（`gear.rs` が書く）・`gear_db.bin` / `battle_db.bin` の置き場（`app_data_dir()/data`）。
     data_dir: PathBuf,
+    /// バトルアイコン（`images.rs` が書く）のキャッシュルート（`app_data_dir()/images`・#327）。
+    /// `data_dir` とは別系統。`/images/...` の kind で振り分ける（`resolve_image_path`）。
+    images_root: PathBuf,
     app: AppHandle,
     /// ②更新命令のジョブ状態（サーバー稼働中のみ保持。停止で捨てる）。
     job: Arc<Mutex<UpdateStatus>>,
@@ -427,13 +439,54 @@ fn respond_file(request: tiny_http::Request, path: &std::path::Path) {
     }
 }
 
-/// `data_dir/images/` 配下の相対パスを安全に解決する（パストラバーサル拒否）。
+/// 画像を ETag つきで配信する（不在は 404・`If-None-Match` 一致なら 304）。
 ///
-/// リクエストパス（先頭 `/` 込み）を受け取り、`images/` 以下の実ファイルパスを返す。
+/// ETag はファイル内容の sha256（= マニフェストの `hash` と同値）。マニフェストで差分を判断した
+/// あとの取りこぼし対策（設計書 §6「変わったものだけ転送」の HTTP レイヤでの担保）。
+fn respond_image(request: tiny_http::Request, path: &std::path::Path) {
+    let Ok(bytes) = std::fs::read(path) else {
+        let _ = request.respond(tiny_http::Response::from_string("not found").with_status_code(404));
+        return;
+    };
+    let etag = crate::icon_manifest::hash_bytes(&bytes);
+
+    let if_none_match = request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("If-None-Match"))
+        .map(|h| h.value.as_str().to_string());
+    if crate::icon_manifest::etag_matches(if_none_match.as_deref(), &etag) {
+        let _ = request.respond(tiny_http::Response::empty(304));
+        return;
+    }
+
+    let ctype =
+        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/octet-stream"[..]).unwrap();
+    let etag_header =
+        tiny_http::Header::from_bytes(&b"ETag"[..], format!("\"{etag}\"").as_bytes()).unwrap();
+    let response = tiny_http::Response::from_data(bytes)
+        .with_header(ctype)
+        .with_header(etag_header);
+    let _ = request.respond(response);
+}
+
+/// `images/` 配下の相対パスを安全に解決する（パストラバーサル拒否）。
+///
+/// リクエストパス（先頭 `/` 込み）を受け取り、実ファイルパスを返す。
 /// `images/` 始まりでない・`..` を含む・親を辿るものは `None`（＝配信拒否）。
-fn resolve_image_path(req_path: &str, data_dir: &std::path::Path) -> Option<PathBuf> {
+///
+/// 画像キャッシュは 2 系統に分かれているため、**先頭 kind セグメントで振り分ける**:
+/// - バトルアイコン（`images.rs` が書く）: `images_root`（= `app_data_dir()/images`）
+/// - ギア画像（`gear.rs` が書く）: `data_dir/images`（= `app_data_dir()/data/images`）
+///
+/// 両者はディレクトリ名が重複しない（weapon/stage… と gear/brand/skill）ので衝突しない。
+fn resolve_image_path(
+    req_path: &str,
+    data_dir: &std::path::Path,
+    images_root: &std::path::Path,
+) -> Option<PathBuf> {
     let rel = req_path.trim_start_matches('/');
-    // gear_db が参照する画像パスは必ず `images/` 始まり。それ以外は拒否。
+    // gear_db / battle_db が参照する画像パスは必ず `images/` 始まり。それ以外は拒否。
     if !rel.starts_with("images/") {
         return None;
     }
@@ -445,10 +498,39 @@ fn resolve_image_path(req_path: &str, data_dir: &std::path::Path) -> Option<Path
             _ => return None,
         }
     }
+    // `images/<kind>/...` の kind を見て、バトルアイコンなら images_root 側へ回す。
+    let kind = safe.iter().nth(1).and_then(|c| c.to_str()).unwrap_or("");
+    if crate::icon_manifest::BATTLE_ICON_KINDS.contains(&kind) || kind == "ability" {
+        // images_root は既に `images` を含むので、先頭の `images` セグメントを外して join する。
+        let stripped: PathBuf = safe.iter().skip(1).collect();
+        return Some(images_root.join(stripped));
+    }
     Some(data_dir.join(safe))
 }
 
+/// バトルアイコンの差分同期マニフェストを返す（#327・設計書 §6）。
+fn respond_icon_manifest(request: tiny_http::Request, images_root: &std::path::Path) {
+    let generated_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let manifest = crate::icon_manifest::build_manifest(images_root, generated_at);
+    let json = match serde_json::to_string(&manifest) {
+        Ok(j) => j,
+        Err(e) => {
+            log::warn!("[companion] アイコンマニフェスト生成失敗: {e}");
+            let _ = request
+                .respond(tiny_http::Response::from_string("manifest error").with_status_code(500));
+            return;
+        }
+    };
+    let header =
+        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap();
+    let _ = request.respond(tiny_http::Response::from_string(json).with_header(header));
+}
+
 /// 1 リクエストを捌く。
+///
+/// 認証（Bearer）を通したうえで、状態を要する②更新命令系（`/update`・`/update_status`／#326）は
+/// `ServerCtx`（`AppHandle` / ジョブ状態）を使って捌き、残りの静的配信ルート（ping / DB / 画像 /
+/// アイコンマニフェスト）は `AppHandle` 非依存の `serve_asset` へ委譲する。
 fn handle_request(request: tiny_http::Request, ctx: &ServerCtx) {
     // 疎通・認証チェック（全エンドポイント共通で Bearer 検証。②更新命令も同じ検証を通す）。
     if !authorized(&request, &ctx.token) {
@@ -456,19 +538,11 @@ fn handle_request(request: tiny_http::Request, ctx: &ServerCtx) {
         return;
     }
 
-    let data_dir = ctx.data_dir.as_path();
     // クエリを除いたパス部分で分岐。
     let url = request.url().to_string();
     let path = url.split('?').next().unwrap_or("").to_string();
     let method = request.method().clone();
     match (&method, path.as_str()) {
-        (tiny_http::Method::Get, "/ping") => {
-            let _ = request.respond(tiny_http::Response::from_string("pong"));
-        }
-        (tiny_http::Method::Get, "/gear_db.bin") => respond_file(request, &data_dir.join("gear_db.bin")),
-        (tiny_http::Method::Get, "/battle_db.bin") => {
-            respond_file(request, &data_dir.join("battle_db.bin"))
-        }
         // ②更新命令の受付（#326）。受付可否を即返し、実処理は裏で走る。
         (tiny_http::Method::Post, "/update") => handle_update_command(request, ctx),
         // ②更新命令の進捗・完了・失敗の問い合わせ（viewer はこれをポーリングする）。
@@ -480,10 +554,39 @@ fn handle_request(request: tiny_http::Request, ctx: &ServerCtx) {
                 .unwrap_or_else(|e| UpdateStatus::failed("FETCH_FAILED", format!("状態ロック失敗: {e}"), None));
             respond_json(request, 200, &status);
         }
-        // ギア画像（.gti）を相対パスで配信。viewer は gear_db の画像パスをそのまま GET する。
+        // 静的配信（ping / DB / 画像 / アイコンマニフェスト）は AppHandle 非依存の経路へ。
+        _ => serve_asset(request, &method, &path, &ctx.data_dir, &ctx.images_root),
+    }
+}
+
+/// 認証済みリクエストを静的配信ルートで捌く（#324 / #327・`AppHandle` 非依存）。
+///
+/// ここに来るのは Bearer 検証済みで、②更新命令系（`/update`・`/update_status`）ではないリクエスト。
+/// `AppHandle` を要さないため、#327 の HTTP テストは `authorized` と本関数を直接駆動して
+/// 画像振り分け・ETag/304・アイコンマニフェストを検証する。
+fn serve_asset(
+    request: tiny_http::Request,
+    method: &tiny_http::Method,
+    path: &str,
+    data_dir: &std::path::Path,
+    images_root: &std::path::Path,
+) {
+    match (method, path) {
+        (tiny_http::Method::Get, "/ping") => {
+            let _ = request.respond(tiny_http::Response::from_string("pong"));
+        }
+        (tiny_http::Method::Get, "/gear_db.bin") => {
+            respond_file(request, &data_dir.join("gear_db.bin"))
+        }
+        (tiny_http::Method::Get, "/battle_db.bin") => {
+            respond_file(request, &data_dir.join("battle_db.bin"))
+        }
+        // バトルアイコンの差分同期マニフェスト（#327）。
+        (tiny_http::Method::Get, "/icons/manifest") => respond_icon_manifest(request, images_root),
+        // 画像（.gti）を相対パスで配信。viewer は gear_db / battle_db の画像パスをそのまま GET する。
         (tiny_http::Method::Get, p) if p.starts_with("/images/") => {
-            match resolve_image_path(p, data_dir) {
-                Some(file) => respond_file(request, &file),
+            match resolve_image_path(p, data_dir, images_root) {
+                Some(file) => respond_image(request, &file),
                 None => {
                     let _ = request
                         .respond(tiny_http::Response::from_string("forbidden").with_status_code(403));
@@ -566,6 +669,9 @@ pub fn companion_start(
     }
 
     let data_dir = resolve_data_dir(&app)?;
+    // バトルアイコンのキャッシュルート（`app_data_dir()/images`・data_dir とは別系統／#327）。
+    // 未キャッシュでも起動を妨げない（マニフェストが空になるだけ）。
+    let images_root = crate::icon_manifest::resolve_images_root(&app)?;
 
     // 空きポートで全インターフェースにバインド（LAN の viewer から到達可能に）。
     let server = tiny_http::Server::http("0.0.0.0:0")
@@ -587,6 +693,7 @@ pub fn companion_start(
         let ctx = ServerCtx {
             token: token.clone(),
             data_dir: data_dir.clone(),
+            images_root: images_root.clone(),
             app: app.clone(),
             job: Arc::new(Mutex::new(UpdateStatus::default())),
         };
@@ -660,28 +767,179 @@ pub fn companion_status(state: State<'_, CompanionState>) -> Result<CompanionSta
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
+    use std::io::{Read, Write};
+    use std::path::{Path, PathBuf};
+
+    /// バトルアイコンのキャッシュルート（`app_data_dir()/images`）。
+    fn images_root() -> &'static Path {
+        Path::new("/app/images")
+    }
 
     #[test]
     fn resolves_valid_image_path() {
         let data = Path::new("/data");
-        let got = resolve_image_path("/images/gear/head/abc.gti", data);
+        // ギア画像は従来どおり data_dir 側（#324 の挙動を変えない）。
+        let got = resolve_image_path("/images/gear/head/abc.gti", data, images_root());
         assert_eq!(got, Some(data.join("images/gear/head/abc.gti")));
+    }
+
+    #[test]
+    fn routes_gear_kinds_to_data_dir() {
+        let data = Path::new("/data");
+        for kind in ["gear", "brand", "skill"] {
+            let got = resolve_image_path(&format!("/images/{kind}/x.gti"), data, images_root());
+            assert_eq!(got, Some(data.join(format!("images/{kind}/x.gti"))));
+        }
+    }
+
+    #[test]
+    fn routes_battle_icon_kinds_to_images_root() {
+        // #327: バトルアイコンは `app_data_dir()/images/<kind>/<sha256(name)>.gti` にある。
+        // battle_db の name から解決した `images/weapon/<hash>.gti` がそのまま引けること。
+        let data = Path::new("/data");
+        for kind in ["weapon", "sub_weapon", "special_weapon", "stage", "ability"] {
+            let got = resolve_image_path(&format!("/images/{kind}/abc.gti"), data, images_root());
+            assert_eq!(got, Some(images_root().join(format!("{kind}/abc.gti"))));
+        }
     }
 
     #[test]
     fn rejects_non_images_prefix() {
         let data = Path::new("/data");
         // gear_db.bin 等の直接パスや任意ファイルは画像エンドポイントでは配信しない。
-        assert_eq!(resolve_image_path("/gear_db.bin", data), None);
-        assert_eq!(resolve_image_path("/secrets.txt", data), None);
+        assert_eq!(resolve_image_path("/gear_db.bin", data, images_root()), None);
+        assert_eq!(resolve_image_path("/secrets.txt", data, images_root()), None);
     }
 
     #[test]
     fn rejects_path_traversal() {
         let data = Path::new("/data");
-        assert_eq!(resolve_image_path("/images/../../etc/passwd", data), None);
-        assert_eq!(resolve_image_path("/images/../gear_db.bin", data), None);
+        assert_eq!(
+            resolve_image_path("/images/../../etc/passwd", data, images_root()),
+            None
+        );
+        assert_eq!(
+            resolve_image_path("/images/../gear_db.bin", data, images_root()),
+            None
+        );
+        // バトルアイコン側へ振り分けられる kind でも脱出は許さない。
+        assert_eq!(
+            resolve_image_path("/images/weapon/../../secrets.txt", data, images_root()),
+            None
+        );
+    }
+
+    // --- HTTP レイヤ（実ソケットで handle_request を駆動する） ---
+
+    fn temp_root(tag: &str) -> PathBuf {
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!(
+            "splabo_companion_test_{}_{}_{}",
+            std::process::id(),
+            tag,
+            n
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// テスト用サーバーを立て、1 リクエストだけ捌いて生レスポンスを返す。
+    ///
+    /// 静的配信ルート（#324 / #327）は `AppHandle` 非依存なので、本番と同じ `authorized` で
+    /// Bearer を検証し `serve_asset` へ委譲する（②更新命令系は `AppHandle` を要すため対象外）。
+    fn serve_once(raw_request: &str, data_dir: PathBuf, images_root: PathBuf) -> String {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let addr = server.server_addr().to_ip().unwrap();
+        let handle = std::thread::spawn(move || {
+            let request = server.recv().unwrap();
+            if !authorized(&request, "tok") {
+                let _ = request
+                    .respond(tiny_http::Response::from_string("unauthorized").with_status_code(401));
+                return;
+            }
+            let url = request.url().to_string();
+            let path = url.split('?').next().unwrap_or("").to_string();
+            let method = request.method().clone();
+            serve_asset(request, &method, &path, &data_dir, &images_root);
+        });
+
+        let mut stream = std::net::TcpStream::connect(addr).unwrap();
+        stream.write_all(raw_request.as_bytes()).unwrap();
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).unwrap();
+        handle.join().unwrap();
+        String::from_utf8_lossy(&response).into_owned()
+    }
+
+    fn get(path: &str, extra_headers: &str, data_dir: PathBuf, images_root: PathBuf) -> String {
+        let raw = format!(
+            "GET {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer tok\r\n{extra_headers}Connection: close\r\n\r\n"
+        );
+        serve_once(&raw, data_dir, images_root)
+    }
+
+    #[test]
+    fn serves_battle_icon_from_images_root() {
+        let data_dir = temp_root("http_data");
+        let images_root = temp_root("http_images");
+        std::fs::create_dir_all(images_root.join("weapon")).unwrap();
+        std::fs::write(images_root.join("weapon").join("abc.gti"), b"WEAPON-BYTES").unwrap();
+
+        let res = get("/images/weapon/abc.gti", "", data_dir, images_root);
+        assert!(res.starts_with("HTTP/1.1 200 OK"), "unexpected: {res}");
+        assert!(res.contains("WEAPON-BYTES"), "body missing: {res}");
+        // ETag は内容の sha256（マニフェストの hash と同値）。
+        let etag = crate::icon_manifest::hash_bytes(b"WEAPON-BYTES");
+        assert!(res.contains(&format!("ETag: \"{etag}\"")), "etag missing: {res}");
+    }
+
+    #[test]
+    fn returns_304_when_etag_matches() {
+        let data_dir = temp_root("http_data");
+        let images_root = temp_root("http_images");
+        std::fs::create_dir_all(images_root.join("stage")).unwrap();
+        std::fs::write(images_root.join("stage").join("s1.gti"), b"STAGE-BYTES").unwrap();
+
+        let etag = crate::icon_manifest::hash_bytes(b"STAGE-BYTES");
+        let res = get(
+            "/images/stage/s1.gti",
+            &format!("If-None-Match: \"{etag}\"\r\n"),
+            data_dir,
+            images_root,
+        );
+        // 変わっていないので再転送しない（設計書 §6）。
+        assert!(res.starts_with("HTTP/1.1 304"), "unexpected: {res}");
+        assert!(!res.contains("STAGE-BYTES"), "body should not be sent: {res}");
+    }
+
+    #[test]
+    fn serves_icon_manifest() {
+        let data_dir = temp_root("http_data");
+        let images_root = temp_root("http_images");
+        std::fs::create_dir_all(images_root.join("weapon")).unwrap();
+        std::fs::write(images_root.join("weapon").join("abc.gti"), b"W").unwrap();
+
+        let res = get("/icons/manifest", "", data_dir, images_root);
+        assert!(res.starts_with("HTTP/1.1 200 OK"), "unexpected: {res}");
+        assert!(res.contains("application/json"), "content-type: {res}");
+        assert!(res.contains("icon-manifest-v1"), "schema: {res}");
+        assert!(res.contains("images/weapon/abc.gti"), "path: {res}");
+        assert!(
+            res.contains(&crate::icon_manifest::hash_bytes(b"W")),
+            "hash: {res}"
+        );
+    }
+
+    #[test]
+    fn requires_token_for_icon_endpoints() {
+        let data_dir = temp_root("http_data");
+        let images_root = temp_root("http_images");
+        let raw = "GET /icons/manifest HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+        let res = serve_once(raw, data_dir, images_root);
+        // 未ペア端末にはアイコンもマニフェストも渡さない。
+        assert!(res.starts_with("HTTP/1.1 401"), "unexpected: {res}");
     }
 
     // --- トークン検証（②更新命令も同じ検証を通る） ---
