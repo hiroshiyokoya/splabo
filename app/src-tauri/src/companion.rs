@@ -486,7 +486,8 @@ fn resolve_image_path(
     }
     // `images/<kind>/...` の kind を見て、バトルアイコンなら images_root 側へ回す。
     let kind = safe.iter().nth(1).and_then(|c| c.to_str()).unwrap_or("");
-    if crate::icon_manifest::BATTLE_ICON_KINDS.contains(&kind) || kind == "ability" {
+    // #360 で `ability` が BATTLE_ICON_KINDS に入ったので、個別の特別扱いは不要になった。
+    if crate::icon_manifest::BATTLE_ICON_KINDS.contains(&kind) {
         // images_root は既に `images` を含むので、先頭の `images` セグメントを外して join する。
         let stripped: PathBuf = safe.iter().skip(1).collect();
         return Some(images_root.join(stripped));
