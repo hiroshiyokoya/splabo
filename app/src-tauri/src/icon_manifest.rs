@@ -1,4 +1,5 @@
-//! バトルアイコン（ブキ / サブ / スペシャル / ステージ）の同期マニフェスト（#327・設計書 §6）。
+//! バトルアイコン（ブキ / サブ / スペシャル / ステージ / ギアパワー）の同期マニフェスト
+//! （#327・#360・設計書 §6）。
 //!
 //! viewer のバトル行アイコン表示用に、デスクトップのキャッシュ画像を**同期ペイロードで供給**する。
 //! アプリバイナリには任天堂資産を一切含めない（設計書 §6「バイナリはクリーン維持」）。画像は
@@ -17,6 +18,18 @@
 //!   （`gear.rs` が書く。ファイル名は URL 由来でハッシュではない）
 //!
 //! 両者はディレクトリ名が重ならないため、`/images/<先頭セグメント>` で振り分けられる。
+//!
+//! ## ギアパワーアイコンの網羅性について（#360 調査結果）
+//! マニフェストに載るのは **実際にキャッシュ済みのファイルだけ**。ギアパワーは
+//! `splatnet3.rs::cache_ability_images` が「保存済みバトルに登場したもの」だけをキャッシュするため、
+//! `abilities.rs::ABILITY_HASHES` の全 26 種 + `empty` が最初から揃うとは限らない。
+//!
+//! 登場に依存しない先回りキャッシュ（全種一括取得）は **現状の情報では実装できない**。
+//! 実データ（`battles.my_team` JSON）の画像 URL は
+//! `https://api.lp1.av5ja.srv.nintendo.net/resources/prod/v3/skill_img/<hash>_0.png`
+//! に `?Expires=...&Signature=...&Key-Pair-Id=...` が付いた **CloudFront の署名付き URL** で、
+//! 署名はレスポンス由来。クライアント側でハッシュから URL を組み立てても署名が無く取得できない。
+//! 未署名で配信されるか / 署名を生成できるかが確認できれば実装可能（別途調査）。
 //!
 //! ## ルールアイコンについて（#327 調査結果）
 //! **ルール（ナワバリ / エリア / ヤグラ / ホコ / アサリ）のアイコンは供給元が存在しない。**
@@ -41,17 +54,25 @@ pub const SCHEMA_VERSION: i64 = 1;
 
 /// マニフェストに載せるバトルアイコンの kind（`images.rs` の kind と一致させる）。
 ///
-/// `ability`（ギアスキル）は gear_db 側の表示経路が別にあるため含めない。
+/// `ability`（ギアパワー / スキル）は #360 で追加。`splatnet3.rs::cache_ability_images` が
+/// `app_data_dir()/images/ability/<sha256(stat.ink キー)>.gti` に書いており、配信側
+/// （`companion.rs::resolve_image_path`）も元から許可済みだったが、マニフェストに
+/// 載っていなかったため viewer から**発見・差分同期できなかった**。
+/// `name_hash` は他の kind と同じく `sha256(名前)` で、ここでの「名前」は
+/// stat.ink のアビリティキー（`ink_saver_main` 等・空スロットは `empty`）。
+///
 /// **`rule` は供給元が無いため存在しない**（モジュール冒頭の調査結果参照）。
-pub const BATTLE_ICON_KINDS: [&str; 4] = ["weapon", "sub_weapon", "special_weapon", "stage"];
+pub const BATTLE_ICON_KINDS: [&str; 5] =
+    ["weapon", "sub_weapon", "special_weapon", "stage", "ability"];
 
 /// マニフェスト 1 件（= キャッシュ画像 1 ファイル）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct IconEntry {
-    /// weapon / sub_weapon / special_weapon / stage。
+    /// weapon / sub_weapon / special_weapon / stage / ability。
     pub kind: String,
-    /// ファイル名から拡張子を除いたもの ＝ `sha256(name_ja)` の hex。
+    /// ファイル名から拡張子を除いたもの ＝ `sha256(name)` の hex。
     /// viewer は battle_db の `weapon_name` / `stage_name` を sha256 して突き合わせる。
+    /// `ability` のみ「名前」は stat.ink キー（`ink_saver_main` / `empty` 等）。
     pub name_hash: String,
     /// `GET /images/<kind>/<name_hash>.gti` でそのまま引ける相対パス。
     pub path: String,
@@ -296,8 +317,10 @@ mod tests {
         // .png（scramble 前の残骸）や一時ファイルは載せない。
         fs::write(root.join("weapon").join("raw.png"), b"PNG").unwrap();
         // gear 系や未知の kind は本マニフェストの対象外（別経路で配信済み）。
+        // ※ `skill` は gear.rs 側のギア画像（`data/images/skill`）で、ここの `ability` とは別物。
         write_icon(&root, "gear", "ggg", b"G");
         write_icon(&root, "brand", "bbb", b"B");
+        write_icon(&root, "skill", "sss", b"S");
         // ルールアイコンは供給元が無いので、仮に置かれても kind 一覧に無く載らない。
         write_icon(&root, "rule", "rrr", b"R");
 
@@ -310,7 +333,86 @@ mod tests {
     fn rule_is_not_a_supplied_kind() {
         // #327 調査結果の回帰テスト: ルールアイコンは供給元が無いため kind に含めない。
         assert!(!BATTLE_ICON_KINDS.contains(&"rule"));
-        assert_eq!(BATTLE_ICON_KINDS.len(), 4);
+        assert_eq!(BATTLE_ICON_KINDS.len(), 5);
+    }
+
+    // --- ギアパワー（ability）#360 ---
+
+    #[test]
+    fn ability_is_a_supplied_kind() {
+        // #360: `images.rs` が `ability` kind を書いており配信側も許可済みなので、
+        // マニフェストにも載せて viewer が発見できるようにする。
+        assert!(BATTLE_ICON_KINDS.contains(&"ability"));
+    }
+
+    #[test]
+    fn includes_ability_icons_in_manifest() {
+        let root = temp_root("ability");
+        // ability のファイル名は sha256(stat.ink キー)。実際の書き手（images.rs）と同じ規則。
+        let key_hash = hash_bytes(b"ink_saver_main");
+        let empty_hash = hash_bytes(b"empty");
+        write_icon(&root, "ability", &key_hash, b"ABILITY-A");
+        write_icon(&root, "ability", &empty_hash, b"ABILITY-EMPTY");
+        write_icon(&root, "weapon", "aaa", b"W");
+
+        let m = manifest_of(&root);
+        let abilities: Vec<&IconEntry> = m.icons.iter().filter(|i| i.kind == "ability").collect();
+        assert_eq!(abilities.len(), 2);
+
+        // kind 昇順（ability < weapon）＋ name_hash 昇順で安定ソートされる。
+        assert_eq!(m.icons[0].kind, "ability");
+        assert_eq!(m.icons.last().unwrap().kind, "weapon");
+
+        // 他 kind と同じ経路・同じ形（ability 専用の特別扱いを増やさない）。
+        let entry = abilities
+            .iter()
+            .find(|i| i.name_hash == key_hash)
+            .expect("ink_saver_main のエントリが載ること");
+        assert_eq!(entry.path, format!("images/ability/{key_hash}.gti"));
+        assert_eq!(entry.hash, hash_bytes(b"ABILITY-A"));
+        assert_eq!(entry.size, 9);
+        assert!(entry.modified_at.is_some());
+
+        // 空スロット（`empty`）も 1 種として供給される。
+        assert!(abilities.iter().any(|i| i.name_hash == empty_hash));
+    }
+
+    #[test]
+    fn ability_names_come_from_statink_keys() {
+        // viewer は stat.ink キーを sha256 して突き合わせる、という契約の固定。
+        // `abilities.rs` の canonical な全種が同じ規則で引けること（キャッシュ済みなら載る）。
+        let root = temp_root("ability_keys");
+        let keys: Vec<&str> = crate::abilities::ABILITY_HASHES
+            .iter()
+            .map(|(_, key)| key.unwrap_or(crate::abilities::EMPTY_SLOT_KEY))
+            .collect();
+        for key in &keys {
+            write_icon(&root, "ability", &hash_bytes(key.as_bytes()), b"IMG");
+        }
+
+        let m = manifest_of(&root);
+        // 26 種 + 空スロット = 27 エントリ。
+        assert_eq!(m.icons.len(), keys.len());
+        for key in &keys {
+            let path = format!("images/ability/{}.gti", hash_bytes(key.as_bytes()));
+            assert!(
+                m.icons.iter().any(|i| i.path == path),
+                "{key} のエントリが見つからない"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_ability_cache_does_not_break_manifest() {
+        // ギアパワーが 1 件もキャッシュされていない環境（初回起動 / バトル未取得）でも、
+        // 他 kind のマニフェスト生成が壊れない（例外にせず ability を単に空扱いにする）。
+        let root = temp_root("ability_absent");
+        write_icon(&root, "weapon", "aaa", b"W");
+
+        let m = manifest_of(&root);
+        assert_eq!(m.schema, "icon-manifest-v1");
+        assert_eq!(m.icons.len(), 1);
+        assert!(!m.icons.iter().any(|i| i.kind == "ability"));
     }
 
     // --- 差分検出（設計書 §6「変わったものだけ転送」） ---
