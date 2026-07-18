@@ -3,8 +3,9 @@
 //! 同一 LAN 上のペア済みモバイルクライアント（splabo-viewer）へエクスポートファイルを
 //! 配信するオプトイン式 HTTP サーバー。デフォルトは停止。設定トグルで起動する。
 //!
-//! この第一版が担うのは「起動 / 停止・ペアリング情報発行・ファイル配信・mDNS 広告」まで。
-//! **②更新命令（任天堂から取り直せ）の受付は範囲外（#326）。**
+//! 担うのは「起動 / 停止・ペアリング情報発行・ファイル配信・mDNS 広告」（#324）に加えて、
+//! **②更新命令（任天堂から取り直せ）の受付（#326・設計書 §4②）** と
+//! **ブキ / ステージアイコンの同期供給・差分配信（#327・設計書 §6）**。
 //!
 //! ## 構成
 //! - HTTP サーバー: `tiny_http`（同期・軽量）を専用スレッドで駆動。tokio ランタイムと独立。
@@ -20,7 +21,18 @@
 //!                           ETag（内容 sha256）対応。`If-None-Match` 一致なら 304（再転送しない）。
 //!   - `GET /icons/manifest` … バトルアイコンの差分同期マニフェスト（#327・設計書 §6）。
 //!                           viewer は hash を突き合わせ、変わったものだけ `/images/...` を引く。
+//!   - `POST /update`      … ②更新命令の受付。**受付のみで即応答**（202）し、実処理は裏で走る。
+//!   - `GET /update_status`… ②更新命令の進捗・完了・失敗を問い合わせる（ポーリング用）。
 //!   - いずれも `Authorization: Bearer <token>` 検証必須。不一致・欠落は 401。
+//!
+//! ## ②更新命令（設計書 §4②）
+//! - 「重い・数十秒」処理なので HTTP を掴んだまま待たせない。`POST /update` は受付可否だけを
+//!   即返し、viewer は `GET /update_status` をポーリングして完了を待ち、完了後に①プルする。
+//! - **認証済みトークン前提**。未ログインなら任天堂 API を一切叩かず `NOT_LOGGED_IN` を返す。
+//! - **多重起動しない**。実行中の更新ジョブ、およびデスクトップ側のバトル取得
+//!   （`FetchInProgress`・手動/起動時/スケジューラー共通）と重なる場合は新規に走らせず、
+//!   進行中である旨を返す。
+//! - モバイルは任天堂 API に触れない。再フェッチはこのデスクトップ側だけで完結する。
 //! - mDNS 広告: `mdns-sd` でサービス型 `_splabo._tcp.local.` を LAN に告知（viewer の NSD 発見用）。
 //!   - **ベストエフォート**。失敗しても HTTP サーバーは動かし続ける（TXT にトークンは載せない）。
 //!
@@ -53,6 +65,19 @@ struct RunningServer {
     mdns: Option<ServiceDaemon>,
 }
 
+/// リクエスト処理に必要な一式（HTTP スレッドが保持する）。
+struct ServerCtx {
+    token: String,
+    /// ギア画像（`gear.rs` が書く）・`gear_db.bin` / `battle_db.bin` の置き場（`app_data_dir()/data`）。
+    data_dir: PathBuf,
+    /// バトルアイコン（`images.rs` が書く）のキャッシュルート（`app_data_dir()/images`・#327）。
+    /// `data_dir` とは別系統。`/images/...` の kind で振り分ける（`resolve_image_path`）。
+    images_root: PathBuf,
+    app: AppHandle,
+    /// ②更新命令のジョブ状態（サーバー稼働中のみ保持。停止で捨てる）。
+    job: Arc<Mutex<UpdateStatus>>,
+}
+
 /// コンパニオンサーバーの状態。デフォルト停止（オプトイン）。
 #[derive(Default)]
 pub struct CompanionState(Mutex<Option<RunningServer>>);
@@ -71,6 +96,272 @@ pub struct CompanionInfo {
 pub struct CompanionStatus {
     pub running: bool,
     pub port: Option<u16>,
+}
+
+// ---------------------------------------------------------------------------
+// ②更新命令（#326・設計書 §4②）
+// ---------------------------------------------------------------------------
+
+/// 更新ジョブの状態。viewer は `state` で分岐する。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateState {
+    /// 一度も命令を受けていない（サーバー起動直後）。
+    Idle,
+    /// 実行中（`step` に現在フェーズ）。
+    Running,
+    /// 正常終了（`result` に件数）。
+    Done,
+    /// 失敗（`error_code` / `error_message`）。
+    Failed,
+}
+
+/// 更新ジョブのフェーズ。viewer の進捗表示用。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateStep {
+    /// SplatNet3 からバトル再フェッチ中。
+    Battles,
+    /// SplatNet3 からギア再フェッチ中（gear_db.bin / .gti 再生成を含む）。
+    Gear,
+    /// battle_db.bin エクスポート再生成中。
+    Export,
+}
+
+/// 更新ジョブの結果件数。
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct UpdateResult {
+    /// 新規に取り込んだバトル数。
+    pub battles: usize,
+    /// 詳細を補完したバトル数。
+    pub details: usize,
+    /// gear_db.bin に載ったギア数（頭 + 服 + 靴）。
+    pub gear: usize,
+    /// battle_db.bin に載ったバトル行数。
+    pub exported_battles: usize,
+}
+
+/// `POST /update` / `GET /update_status` が返す状態。
+#[derive(Debug, Clone, Serialize)]
+pub struct UpdateStatus {
+    pub state: UpdateState,
+    /// `state == running` のときの現在フェーズ。それ以外は null。
+    pub step: Option<UpdateStep>,
+    /// 受付時刻（UNIX 秒）。
+    pub started_at: Option<i64>,
+    /// 完了・失敗時刻（UNIX 秒）。
+    pub finished_at: Option<i64>,
+    /// `state == failed` のときのみ。viewer はこれで UX を分岐する。
+    pub error_code: Option<&'static str>,
+    /// 人間可読の失敗理由（そのまま表示せずログ向け）。
+    pub error_message: Option<String>,
+    /// `state == done` のときのみ。
+    pub result: Option<UpdateResult>,
+}
+
+impl Default for UpdateStatus {
+    fn default() -> Self {
+        Self {
+            state: UpdateState::Idle,
+            step: None,
+            started_at: None,
+            finished_at: None,
+            error_code: None,
+            error_message: None,
+            result: None,
+        }
+    }
+}
+
+impl UpdateStatus {
+    fn running(started_at: i64) -> Self {
+        Self {
+            state: UpdateState::Running,
+            step: Some(UpdateStep::Battles),
+            started_at: Some(started_at),
+            ..Self::default()
+        }
+    }
+
+    fn failed(code: &'static str, message: impl Into<String>, started_at: Option<i64>) -> Self {
+        Self {
+            state: UpdateState::Failed,
+            step: None,
+            started_at,
+            finished_at: Some(now_unix()),
+            error_code: Some(code),
+            error_message: Some(message.into()),
+            result: None,
+        }
+    }
+}
+
+fn now_unix() -> i64 {
+    chrono::Utc::now().timestamp()
+}
+
+/// エラーメッセージを viewer が分岐できる error_code に写像する。
+///
+/// 既存コードのエラーは `NOT_LOGGED_IN:` / `FETCH_IN_PROGRESS:` プリフィクス方針
+/// （lib.rs `run_fetch_full` / gear.rs `fetch_gear_full`）に従うため、それを尊重する。
+/// bullet_token の取得失敗は **トークン失効が最有力**だが、ネットワーク断や nxapi サイドカーの
+/// 不調でも同じ経路に落ちるためベストエフォート分類（viewer は「再ログインが必要かも」と促す）。
+fn classify_error(message: &str) -> &'static str {
+    if message.starts_with("NOT_LOGGED_IN") {
+        "NOT_LOGGED_IN"
+    } else if message.starts_with("FETCH_IN_PROGRESS") {
+        "FETCH_IN_PROGRESS"
+    } else if message.contains("bullet token 取得失敗") {
+        "TOKEN_EXPIRED"
+    } else {
+        "FETCH_FAILED"
+    }
+}
+
+/// デスクトップ側のバトル取得（手動 / 起動時 / スケジューラー）が進行中か。
+///
+/// 既存の `FetchInProgress` をそのまま参照する（新しい並走フラグを作らない）。
+fn desktop_fetch_in_progress(app: &AppHandle) -> bool {
+    app.try_state::<crate::FetchInProgress>()
+        .map(|f| f.0.load(Ordering::SeqCst))
+        .unwrap_or(false)
+}
+
+/// 現在の状態から新規ジョブを開始してよいかを判定し、可なら `running` に遷移させる。
+///
+/// 実行中（`Running`）なら遷移せず false。`Idle` / `Done` / `Failed` からは再実行できる。
+/// HTTP/Tauri に依存しない純粋関数として切り出し、多重起動防止をユニットテストする。
+fn try_begin(status: &mut UpdateStatus, started_at: i64) -> bool {
+    if status.state == UpdateState::Running {
+        return false;
+    }
+    *status = UpdateStatus::running(started_at);
+    true
+}
+
+/// 更新ジョブ本体: SplatNet3 再フェッチ → gear / battle エクスポート再生成。
+///
+/// モバイルからは触れないデスクトップ側の既存経路をそのまま呼ぶ:
+/// - バトル: `crate::run_fetch_full`（`FetchInProgress` による多重起動防止つき）
+/// - ギア  : `crate::gear::fetch_gear_full`（gear_db.bin / .gti を再生成）
+/// - エクスポート: `crate::battle_export::export_battle_db`（battle_db.bin を再生成）
+async fn run_update_job(app: &AppHandle, job: &Arc<Mutex<UpdateStatus>>) -> Result<UpdateResult, String> {
+    let set_step = |step: UpdateStep| {
+        if let Ok(mut s) = job.lock() {
+            s.step = Some(step);
+        }
+    };
+
+    // --- バトル再フェッチ ---
+    set_step(UpdateStep::Battles);
+    let (battles, details, _uploaded) = {
+        let pool = app
+            .try_state::<crate::db::DbPool>()
+            .ok_or_else(|| "DB がまだ初期化されていません。少し待って再試行してください。".to_string())?;
+        crate::run_fetch_full(app, &pool).await?
+    };
+
+    // --- ギア再フェッチ（gear_db.bin / .gti 再生成まで含む） ---
+    set_step(UpdateStep::Gear);
+    let gear = crate::gear::fetch_gear_full(app.clone()).await?;
+
+    // --- battle_db.bin エクスポート再生成 ---
+    set_step(UpdateStep::Export);
+    let export = {
+        let pool = app
+            .try_state::<crate::db::DbPool>()
+            .ok_or_else(|| "DB がまだ初期化されていません。".to_string())?;
+        crate::battle_export::export_battle_db(app.clone(), pool, None).await?
+    };
+
+    Ok(UpdateResult {
+        battles,
+        details,
+        gear: gear.head + gear.clothing + gear.shoes,
+        exported_battles: export.battles,
+    })
+}
+
+/// `POST /update` を捌く。受付判定のみ同期で行い、実処理は裏で走らせて即応答する。
+///
+/// - 202: 受付（`state = running`）
+/// - 409: 実行中 / 未ログイン / デスクトップ側取得と衝突（本文の `error_code` で分岐）
+fn handle_update_command(request: tiny_http::Request, ctx: &ServerCtx) {
+    // 未ログインなら任天堂 API を一切叩かずに返す（viewer は「デスクトップでログインして」を表示）。
+    if !crate::auth::is_logged_in(&ctx.app) {
+        let status = UpdateStatus::failed(
+            "NOT_LOGGED_IN",
+            "Nintendo アカウントでログインしていません。デスクトップの設定からログインしてください。",
+            None,
+        );
+        if let Ok(mut s) = ctx.job.lock() {
+            *s = status.clone();
+        }
+        respond_json(request, 409, &status);
+        return;
+    }
+
+    // デスクトップ側で取得が走っているなら並走させない（既存 FetchInProgress を尊重）。
+    if desktop_fetch_in_progress(&ctx.app) {
+        let status = UpdateStatus::failed(
+            "FETCH_IN_PROGRESS",
+            "デスクトップ側でバトル取得が進行中です。完了後に再試行してください。",
+            None,
+        );
+        respond_json(request, 409, &status);
+        return;
+    }
+
+    let started_at = now_unix();
+    let accepted = {
+        let mut guard = match ctx.job.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                let status = UpdateStatus::failed("FETCH_FAILED", format!("状態ロック失敗: {e}"), None);
+                respond_json(request, 500, &status);
+                return;
+            }
+        };
+        let ok = try_begin(&mut guard, started_at);
+        let snapshot = guard.clone();
+        (ok, snapshot)
+    };
+
+    match accepted {
+        (false, snapshot) => {
+            // 既に更新ジョブ実行中: 新たに走らせず「進行中」を返す。
+            respond_json(request, 409, &snapshot);
+        }
+        (true, snapshot) => {
+            respond_json(request, 202, &snapshot);
+            log::info!("[companion] ②更新命令を受付。再フェッチ開始");
+            let app = ctx.app.clone();
+            let job = Arc::clone(&ctx.job);
+            tauri::async_runtime::spawn(async move {
+                let outcome = run_update_job(&app, &job).await;
+                if let Ok(mut s) = job.lock() {
+                    match outcome {
+                        Ok(result) => {
+                            log::info!(
+                                "[companion] ②更新命令 完了 バトル+{} 詳細+{} ギア{} エクスポート{}行",
+                                result.battles, result.details, result.gear, result.exported_battles
+                            );
+                            s.state = UpdateState::Done;
+                            s.step = None;
+                            s.finished_at = Some(now_unix());
+                            s.result = Some(result);
+                        }
+                        Err(e) => {
+                            let code = classify_error(&e);
+                            log::error!("[companion] ②更新命令 失敗 [{code}]: {e}");
+                            let started_at = s.started_at;
+                            *s = UpdateStatus::failed(code, e, started_at);
+                        }
+                    }
+                }
+            });
+        }
+    }
 }
 
 /// ランダムな共有トークン（16 バイト → 32 hex 文字）を生成する。
@@ -98,15 +389,36 @@ fn host_ipv4s() -> Vec<IpAddr> {
     }
 }
 
+/// `Authorization` ヘッダ値（無ければ None）が共有トークンと一致するかを判定する。
+///
+/// HTTP に依存しない純粋関数として切り出し、トークン検証をユニットテストする。
+fn token_matches(auth_header: Option<&str>, token: &str) -> bool {
+    match auth_header {
+        Some(value) => value == format!("Bearer {token}"),
+        None => false,
+    }
+}
+
 /// `Authorization: Bearer <token>` を検証する。
 fn authorized(request: &tiny_http::Request, token: &str) -> bool {
-    let expected = format!("Bearer {token}");
-    request
+    let header = request
         .headers()
         .iter()
         .find(|h| h.field.equiv("Authorization"))
-        .map(|h| h.value.as_str() == expected)
-        .unwrap_or(false)
+        .map(|h| h.value.as_str().to_string());
+    token_matches(header.as_deref(), token)
+}
+
+/// JSON を指定ステータスコードで返す。
+fn respond_json<T: Serialize>(request: tiny_http::Request, status: u16, body: &T) {
+    let json = serde_json::to_string(body).unwrap_or_else(|e| {
+        format!(r#"{{"state":"failed","error_code":"FETCH_FAILED","error_message":"JSON 生成失敗: {e}"}}"#)
+    });
+    let header = tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap();
+    let response = tiny_http::Response::from_string(json)
+        .with_header(header)
+        .with_status_code(status);
+    let _ = request.respond(response);
 }
 
 /// 指定ファイルを `application/octet-stream` で配信する（不在は 404）。
@@ -215,37 +527,72 @@ fn respond_icon_manifest(request: tiny_http::Request, images_root: &std::path::P
 }
 
 /// 1 リクエストを捌く。
-fn handle_request(
-    request: tiny_http::Request,
-    token: &str,
-    data_dir: &std::path::Path,
-    images_root: &std::path::Path,
-) {
-    // 疎通・認証チェック（全エンドポイント共通で Bearer 検証）。
-    if !authorized(&request, token) {
+///
+/// 認証（Bearer）を通したうえで、状態を要する②更新命令系（`/update`・`/update_status`／#326）は
+/// `ServerCtx`（`AppHandle` / ジョブ状態）を使って捌き、残りの静的配信ルート（ping / DB / 画像 /
+/// アイコンマニフェスト）は `AppHandle` 非依存の `serve_asset` へ委譲する。
+fn handle_request(request: tiny_http::Request, ctx: &ServerCtx) {
+    // 疎通・認証チェック（全エンドポイント共通で Bearer 検証。②更新命令も同じ検証を通す）。
+    if !authorized(&request, &ctx.token) {
         let _ = request.respond(tiny_http::Response::from_string("unauthorized").with_status_code(401));
         return;
     }
 
     // クエリを除いたパス部分で分岐。
     let url = request.url().to_string();
-    let path = url.split('?').next().unwrap_or("");
-    match path {
-        "/ping" => {
+    let path = url.split('?').next().unwrap_or("").to_string();
+    let method = request.method().clone();
+    match (&method, path.as_str()) {
+        // ②更新命令の受付（#326）。受付可否を即返し、実処理は裏で走る。
+        (tiny_http::Method::Post, "/update") => handle_update_command(request, ctx),
+        // ②更新命令の進捗・完了・失敗の問い合わせ（viewer はこれをポーリングする）。
+        (tiny_http::Method::Get, "/update_status") => {
+            let status = ctx
+                .job
+                .lock()
+                .map(|s| s.clone())
+                .unwrap_or_else(|e| UpdateStatus::failed("FETCH_FAILED", format!("状態ロック失敗: {e}"), None));
+            respond_json(request, 200, &status);
+        }
+        // 静的配信（ping / DB / 画像 / アイコンマニフェスト）は AppHandle 非依存の経路へ。
+        _ => serve_asset(request, &method, &path, &ctx.data_dir, &ctx.images_root),
+    }
+}
+
+/// 認証済みリクエストを静的配信ルートで捌く（#324 / #327・`AppHandle` 非依存）。
+///
+/// ここに来るのは Bearer 検証済みで、②更新命令系（`/update`・`/update_status`）ではないリクエスト。
+/// `AppHandle` を要さないため、#327 の HTTP テストは `authorized` と本関数を直接駆動して
+/// 画像振り分け・ETag/304・アイコンマニフェストを検証する。
+fn serve_asset(
+    request: tiny_http::Request,
+    method: &tiny_http::Method,
+    path: &str,
+    data_dir: &std::path::Path,
+    images_root: &std::path::Path,
+) {
+    match (method, path) {
+        (tiny_http::Method::Get, "/ping") => {
             let _ = request.respond(tiny_http::Response::from_string("pong"));
         }
-        "/gear_db.bin" => respond_file(request, &data_dir.join("gear_db.bin")),
-        "/battle_db.bin" => respond_file(request, &data_dir.join("battle_db.bin")),
+        (tiny_http::Method::Get, "/gear_db.bin") => {
+            respond_file(request, &data_dir.join("gear_db.bin"))
+        }
+        (tiny_http::Method::Get, "/battle_db.bin") => {
+            respond_file(request, &data_dir.join("battle_db.bin"))
+        }
         // バトルアイコンの差分同期マニフェスト（#327）。
-        "/icons/manifest" => respond_icon_manifest(request, images_root),
+        (tiny_http::Method::Get, "/icons/manifest") => respond_icon_manifest(request, images_root),
         // 画像（.gti）を相対パスで配信。viewer は gear_db / battle_db の画像パスをそのまま GET する。
-        p if p.starts_with("/images/") => match resolve_image_path(p, data_dir, images_root) {
-            Some(file) => respond_image(request, &file),
-            None => {
-                let _ = request
-                    .respond(tiny_http::Response::from_string("forbidden").with_status_code(403));
+        (tiny_http::Method::Get, p) if p.starts_with("/images/") => {
+            match resolve_image_path(p, data_dir, images_root) {
+                Some(file) => respond_image(request, &file),
+                None => {
+                    let _ = request
+                        .respond(tiny_http::Response::from_string("forbidden").with_status_code(403));
+                }
             }
-        },
+        }
         _ => {
             let _ = request.respond(tiny_http::Response::from_string("not found").with_status_code(404));
         }
@@ -343,14 +690,18 @@ pub fn companion_start(
     let handle = {
         let server = Arc::clone(&server);
         let stop = Arc::clone(&stop);
-        let token = token.clone();
-        let data_dir = data_dir.clone();
-        let images_root = images_root.clone();
+        let ctx = ServerCtx {
+            token: token.clone(),
+            data_dir: data_dir.clone(),
+            images_root: images_root.clone(),
+            app: app.clone(),
+            job: Arc::new(Mutex::new(UpdateStatus::default())),
+        };
         std::thread::spawn(move || {
             log::info!("[companion] HTTP サーバー稼働 0.0.0.0:{port}");
             while !stop.load(Ordering::SeqCst) {
                 match server.recv_timeout(Duration::from_millis(500)) {
-                    Ok(Some(request)) => handle_request(request, &token, &data_dir, &images_root),
+                    Ok(Some(request)) => handle_request(request, &ctx),
                     Ok(None) => {} // タイムアウト: stop フラグを再チェック
                     Err(e) => {
                         log::warn!("[companion] リクエスト受信エラー: {e}");
@@ -415,7 +766,7 @@ pub fn companion_status(state: State<'_, CompanionState>) -> Result<CompanionSta
 
 #[cfg(test)]
 mod tests {
-    use super::{handle_request, resolve_image_path};
+    use super::*;
     use std::io::{Read, Write};
     use std::path::{Path, PathBuf};
 
@@ -495,12 +846,23 @@ mod tests {
     }
 
     /// テスト用サーバーを立て、1 リクエストだけ捌いて生レスポンスを返す。
+    ///
+    /// 静的配信ルート（#324 / #327）は `AppHandle` 非依存なので、本番と同じ `authorized` で
+    /// Bearer を検証し `serve_asset` へ委譲する（②更新命令系は `AppHandle` を要すため対象外）。
     fn serve_once(raw_request: &str, data_dir: PathBuf, images_root: PathBuf) -> String {
         let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
         let addr = server.server_addr().to_ip().unwrap();
         let handle = std::thread::spawn(move || {
             let request = server.recv().unwrap();
-            handle_request(request, "tok", &data_dir, &images_root);
+            if !authorized(&request, "tok") {
+                let _ = request
+                    .respond(tiny_http::Response::from_string("unauthorized").with_status_code(401));
+                return;
+            }
+            let url = request.url().to_string();
+            let path = url.split('?').next().unwrap_or("").to_string();
+            let method = request.method().clone();
+            serve_asset(request, &method, &path, &data_dir, &images_root);
         });
 
         let mut stream = std::net::TcpStream::connect(addr).unwrap();
@@ -578,5 +940,109 @@ mod tests {
         let res = serve_once(raw, data_dir, images_root);
         // 未ペア端末にはアイコンもマニフェストも渡さない。
         assert!(res.starts_with("HTTP/1.1 401"), "unexpected: {res}");
+    }
+
+    // --- トークン検証（②更新命令も同じ検証を通る） ---
+
+    #[test]
+    fn accepts_matching_bearer_token() {
+        assert!(token_matches(Some("Bearer abc123"), "abc123"));
+    }
+
+    #[test]
+    fn rejects_wrong_or_missing_token() {
+        assert!(!token_matches(Some("Bearer wrong"), "abc123"));
+        assert!(!token_matches(None, "abc123"));
+        // スキームなし・小文字スキーム・前後の差異は許さない。
+        assert!(!token_matches(Some("abc123"), "abc123"));
+        assert!(!token_matches(Some("bearer abc123"), "abc123"));
+        assert!(!token_matches(Some("Bearer abc123 "), "abc123"));
+        // 空トークン設定でも「Bearer 」だけで通ってしまわないこと。
+        assert!(!token_matches(Some("Bearer"), ""));
+    }
+
+    // --- 多重起動防止 ---
+
+    #[test]
+    fn begins_job_from_idle() {
+        let mut status = UpdateStatus::default();
+        assert!(try_begin(&mut status, 100));
+        assert_eq!(status.state, UpdateState::Running);
+        assert_eq!(status.step, Some(UpdateStep::Battles));
+        assert_eq!(status.started_at, Some(100));
+    }
+
+    #[test]
+    fn rejects_second_job_while_running() {
+        let mut status = UpdateStatus::default();
+        assert!(try_begin(&mut status, 100));
+        // 実行中に再度命令が来ても走らせない（進行中の状態を保つ）。
+        assert!(!try_begin(&mut status, 200));
+        assert_eq!(status.state, UpdateState::Running);
+        assert_eq!(status.started_at, Some(100));
+    }
+
+    #[test]
+    fn allows_rerun_after_done_or_failed() {
+        let mut status = UpdateStatus::default();
+        assert!(try_begin(&mut status, 100));
+        status.state = UpdateState::Done;
+        assert!(try_begin(&mut status, 200));
+        assert_eq!(status.started_at, Some(200));
+
+        let mut failed = UpdateStatus::failed("NOT_LOGGED_IN", "未ログイン", None);
+        assert!(try_begin(&mut failed, 300));
+        assert_eq!(failed.state, UpdateState::Running);
+        // 前回の失敗情報は引きずらない。
+        assert_eq!(failed.error_code, None);
+    }
+
+    // --- エラー分類（viewer の異常系 UX 分岐） ---
+
+    #[test]
+    fn classifies_errors_for_viewer() {
+        assert_eq!(
+            classify_error("NOT_LOGGED_IN: Nintendo アカウントでログインしていません。"),
+            "NOT_LOGGED_IN"
+        );
+        assert_eq!(
+            classify_error("FETCH_IN_PROGRESS: 既にバトル取得が進行中です。"),
+            "FETCH_IN_PROGRESS"
+        );
+        assert_eq!(classify_error("bullet token 取得失敗: invalid_grant"), "TOKEN_EXPIRED");
+        assert_eq!(classify_error("HTTP クライアント構築失敗: dns"), "FETCH_FAILED");
+    }
+
+    // --- JSON 形（viewer #34 が読む契約） ---
+
+    #[test]
+    fn serializes_status_shape() {
+        let mut status = UpdateStatus::running(1700000000);
+        status.state = UpdateState::Done;
+        status.step = None;
+        status.finished_at = Some(1700000042);
+        status.result = Some(UpdateResult {
+            battles: 3,
+            details: 2,
+            gear: 10,
+            exported_battles: 50,
+        });
+        let json = serde_json::to_value(&status).unwrap();
+        assert_eq!(json["state"], "done");
+        assert_eq!(json["step"], serde_json::Value::Null);
+        assert_eq!(json["started_at"], 1700000000_i64);
+        assert_eq!(json["finished_at"], 1700000042_i64);
+        assert_eq!(json["result"]["battles"], 3);
+        assert_eq!(json["result"]["exported_battles"], 50);
+
+        let failed = UpdateStatus::failed("NOT_LOGGED_IN", "未ログイン", None);
+        let json = serde_json::to_value(&failed).unwrap();
+        assert_eq!(json["state"], "failed");
+        assert_eq!(json["error_code"], "NOT_LOGGED_IN");
+
+        let running = UpdateStatus::running(1);
+        let json = serde_json::to_value(&running).unwrap();
+        assert_eq!(json["state"], "running");
+        assert_eq!(json["step"], "battles");
     }
 }
