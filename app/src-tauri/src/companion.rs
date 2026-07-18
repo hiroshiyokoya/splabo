@@ -11,7 +11,9 @@
 //! - HTTP サーバー: `tiny_http`（同期・軽量）を専用スレッドで駆動。tokio ランタイムと独立。
 //!   - `GET /ping`         … トークン検証のみの疎通確認。
 //!   - `GET /gear_db.bin`  … `app_data_dir()/data/gear_db.bin` を配信（不在は 404）。
+//!                           ETag（内容 sha256）対応。`If-None-Match` 一致なら 304（#356）。
 //!   - `GET /battle_db.bin`… `app_data_dir()/data/battle_db.bin` を配信（不在は 404）。
+//!                           ETag（内容 sha256）対応。`If-None-Match` 一致なら 304（#356）。
 //!   - `GET /images/...`   … 画像（.gti）を相対パスで配信。`..` 等は 403。**2 系統を振り分ける**:
 //!                           - `images/{weapon,sub_weapon,special_weapon,stage,ability}/...`
 //!                             → `app_data_dir()/images/`（バトルアイコン・`images.rs` が書く／#327）
@@ -421,29 +423,13 @@ fn respond_json<T: Serialize>(request: tiny_http::Request, status: u16, body: &T
     let _ = request.respond(response);
 }
 
-/// 指定ファイルを `application/octet-stream` で配信する（不在は 404）。
-fn respond_file(request: tiny_http::Request, path: &std::path::Path) {
-    match std::fs::read(path) {
-        Ok(bytes) => {
-            let header = tiny_http::Header::from_bytes(
-                &b"Content-Type"[..],
-                &b"application/octet-stream"[..],
-            )
-            .unwrap();
-            let response = tiny_http::Response::from_data(bytes).with_header(header);
-            let _ = request.respond(response);
-        }
-        Err(_) => {
-            let _ = request.respond(tiny_http::Response::from_string("not found").with_status_code(404));
-        }
-    }
-}
-
-/// 画像を ETag つきで配信する（不在は 404・`If-None-Match` 一致なら 304）。
+/// ファイルを ETag つきで `application/octet-stream` 配信する（不在は 404・`If-None-Match` 一致なら 304）。
 ///
-/// ETag はファイル内容の sha256（= マニフェストの `hash` と同値）。マニフェストで差分を判断した
-/// あとの取りこぼし対策（設計書 §6「変わったものだけ転送」の HTTP レイヤでの担保）。
-fn respond_image(request: tiny_http::Request, path: &std::path::Path) {
+/// ETag はファイル内容の sha256（= アイコンマニフェストの `hash` と同値）。この 1 関数で
+/// **gear_db.bin / battle_db.bin（#356）と画像（.gti・#327）を共通に配信する**。viewer は保存済み
+/// ハッシュを `If-None-Match` で送り、内容が変わっていなければ 304 を受けて再転送を省ける
+/// （設計書 §6「変わったものだけ転送」の HTTP レイヤでの担保）。
+fn respond_file(request: tiny_http::Request, path: &std::path::Path) {
     let Ok(bytes) = std::fs::read(path) else {
         let _ = request.respond(tiny_http::Response::from_string("not found").with_status_code(404));
         return;
@@ -586,7 +572,7 @@ fn serve_asset(
         // 画像（.gti）を相対パスで配信。viewer は gear_db / battle_db の画像パスをそのまま GET する。
         (tiny_http::Method::Get, p) if p.starts_with("/images/") => {
             match resolve_image_path(p, data_dir, images_root) {
-                Some(file) => respond_image(request, &file),
+                Some(file) => respond_file(request, &file),
                 None => {
                     let _ = request
                         .respond(tiny_http::Response::from_string("forbidden").with_status_code(403));
@@ -912,6 +898,60 @@ mod tests {
         // 変わっていないので再転送しない（設計書 §6）。
         assert!(res.starts_with("HTTP/1.1 304"), "unexpected: {res}");
         assert!(!res.contains("STAGE-BYTES"), "body should not be sent: {res}");
+    }
+
+    #[test]
+    fn serves_gear_db_with_etag() {
+        // #356: gear_db.bin もアイコンと同じく内容 sha256 の ETag を付けて配信する。
+        let data_dir = temp_root("http_data");
+        let images_root = temp_root("http_images");
+        std::fs::write(data_dir.join("gear_db.bin"), b"GEAR-DB-BYTES").unwrap();
+
+        let res = get("/gear_db.bin", "", data_dir, images_root);
+        assert!(res.starts_with("HTTP/1.1 200 OK"), "unexpected: {res}");
+        assert!(res.contains("GEAR-DB-BYTES"), "body missing: {res}");
+        assert!(res.contains("application/octet-stream"), "content-type: {res}");
+        // ETag は内容の sha256（画像・マニフェストの hash と同じ算出）。
+        let etag = crate::icon_manifest::hash_bytes(b"GEAR-DB-BYTES");
+        assert!(res.contains(&format!("ETag: \"{etag}\"")), "etag missing: {res}");
+    }
+
+    #[test]
+    fn returns_304_when_db_etag_matches() {
+        // #356: viewer が保存済みハッシュを If-None-Match で送り、内容が同じなら 304・本文なし。
+        let data_dir = temp_root("http_data");
+        let images_root = temp_root("http_images");
+        std::fs::write(data_dir.join("battle_db.bin"), b"BATTLE-DB-BYTES").unwrap();
+
+        let etag = crate::icon_manifest::hash_bytes(b"BATTLE-DB-BYTES");
+        let res = get(
+            "/battle_db.bin",
+            &format!("If-None-Match: \"{etag}\"\r\n"),
+            data_dir,
+            images_root,
+        );
+        // 変わっていないので再転送しない（DB ファイルの転送そのものを省く・viewer #47）。
+        assert!(res.starts_with("HTTP/1.1 304"), "unexpected: {res}");
+        assert!(!res.contains("BATTLE-DB-BYTES"), "body should not be sent: {res}");
+    }
+
+    #[test]
+    fn serves_db_when_etag_differs() {
+        // If-None-Match が古い（不一致）なら通常どおり 200 + 本文 + 現行 ETag。
+        let data_dir = temp_root("http_data");
+        let images_root = temp_root("http_images");
+        std::fs::write(data_dir.join("gear_db.bin"), b"GEAR-DB-V2").unwrap();
+
+        let res = get(
+            "/gear_db.bin",
+            "If-None-Match: \"stale-hash\"\r\n",
+            data_dir,
+            images_root,
+        );
+        assert!(res.starts_with("HTTP/1.1 200 OK"), "unexpected: {res}");
+        assert!(res.contains("GEAR-DB-V2"), "body missing: {res}");
+        let etag = crate::icon_manifest::hash_bytes(b"GEAR-DB-V2");
+        assert!(res.contains(&format!("ETag: \"{etag}\"")), "etag missing: {res}");
     }
 
     #[test]
