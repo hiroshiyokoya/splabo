@@ -259,7 +259,8 @@ pub fn run() {
 ///
 /// 未ログイン時はサイドカー呼び出しの前に明示的に `NOT_LOGGED_IN:` プリフィクス付き
 /// エラーを返し、フロントが「設定からログインしてください」UI を出せるようにする。
-async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usize, usize), String> {
+/// `companion.rs` の②更新命令（#326）からも同じ経路で呼ぶため `pub(crate)`。
+pub(crate) async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usize, usize), String> {
     use std::sync::atomic::Ordering;
     let flag = app.state::<FetchInProgress>();
     // 既に取得中なら多重起動を防ぐ
