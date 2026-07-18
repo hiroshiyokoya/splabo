@@ -218,6 +218,19 @@ pub async fn export_battle_db(
     ))
     .await?;
 
+    let by_stage = grouped(pool, &format!(
+        "SELECT m.key AS name,
+                COUNT(*) AS total,
+                SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END) AS wins,
+                SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END) AS draws
+         FROM battle b
+         JOIN map    m   ON m.id   = b.map_id
+         JOIN result res ON res.id = b.result_id
+         WHERE {TRIKOLOR_EXCLUDE}
+         GROUP BY m.id ORDER BY total DESC"
+    ))
+    .await?;
+
     // --- メタ（生成時刻 UTC ISO8601・スキーマバージョン） ---
     let generated_at: String =
         sqlx::query("SELECT strftime('%Y-%m-%dT%H:%M:%SZ','now') AS now")
@@ -245,6 +258,7 @@ pub async fn export_battle_db(
             "by_rule": by_rule,
             "by_lobby": by_lobby,
             "by_weapon": by_weapon,
+            "by_stage": by_stage,
         },
     });
 
@@ -318,6 +332,10 @@ mod tests {
                 "by_weapon": [
                     { "key": "splattershot", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
                     { "key": "wakaba", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                ],
+                "by_stage": [
+                    { "key": "yunohana", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                    { "key": "gonzui", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
                 ]
             }
         })
@@ -338,6 +356,13 @@ mod tests {
         assert_eq!(parsed["battles"].as_array().unwrap().len(), 2);
         assert_eq!(parsed["battles"][0]["result"], "win");
         assert_eq!(parsed["aggregates"]["overall"]["win_rate"], 0.5);
+        // by_stage は by_rule 等と同じ GroupStat 形（key/total/wins/draws/win_rate）で入る。
+        let by_stage = parsed["aggregates"]["by_stage"].as_array().unwrap();
+        assert_eq!(by_stage.len(), 2);
+        assert_eq!(by_stage[0]["key"], "yunohana");
+        assert_eq!(by_stage[0]["win_rate"], 1.0);
+        assert_eq!(by_stage[1]["key"], "gonzui");
+        assert_eq!(by_stage[1]["win_rate"], 0.0);
 
         // 共有フィクスチャ生成（平文は決定的なので毎回上書き・暗号は nonce が乱数なので未存在時のみ）。
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -353,5 +378,89 @@ mod tests {
         if !bin.exists() {
             std::fs::write(&bin, &encrypted).unwrap();
         }
+    }
+
+    /// 合成データを in-memory SQLite に投入し、by_stage 集計 SQL が
+    /// ステージ別の total / wins / draws / win_rate を正しく出すことを検証する。
+    /// - win_rate の分母は decisive = total − draws（overall と揃える）。
+    /// - TRI_COLOR のバトルは TRIKOLOR_EXCLUDE で除外されることも確認する。
+    #[tokio::test]
+    async fn by_stage_win_rates() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+
+        // 集計 SQL が参照する最小スキーマ（map / result / battle）。
+        sqlx::query(
+            "CREATE TABLE map    (id INTEGER PRIMARY KEY, key TEXT);
+             CREATE TABLE result (id INTEGER PRIMARY KEY, key TEXT);
+             CREATE TABLE battle (id TEXT PRIMARY KEY, map_id INTEGER, result_id INTEGER, raw_json TEXT);
+             INSERT INTO map    (id, key) VALUES (1,'yunohana'), (2,'gonzui');
+             INSERT INTO result (id, key) VALUES (1,'win'), (2,'lose'), (3,'draw');",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // yunohana: win, win, lose        → total 3, wins 2, draws 0, decisive 3, win_rate 2/3
+        // gonzui:   win, draw             → total 2, wins 1, draws 1, decisive 1, win_rate 1.0
+        // yunohana の TRI_COLOR 1 件は除外され、上記の集計に影響しない。
+        let non_tri = "{}"; // json_extract('$.vsRule.rule') = NULL → 対象
+        let tri = r#"{"vsRule":{"rule":"TRI_COLOR"}}"#; // 除外対象
+        let rows: &[(&str, i64, i64, &str)] = &[
+            ("y1", 1, 1, non_tri),
+            ("y2", 1, 1, non_tri),
+            ("y3", 1, 2, non_tri),
+            ("g1", 2, 1, non_tri),
+            ("g2", 2, 3, non_tri),
+            ("t1", 1, 1, tri),
+        ];
+        for (id, map_id, result_id, raw) in rows {
+            sqlx::query("INSERT INTO battle (id, map_id, result_id, raw_json) VALUES (?,?,?,?)")
+                .bind(id)
+                .bind(map_id)
+                .bind(result_id)
+                .bind(raw)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+
+        // 本番と同一の by_stage SQL。
+        let by_stage = grouped(
+            &pool,
+            &format!(
+                "SELECT m.key AS name,
+                        COUNT(*) AS total,
+                        SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END) AS wins,
+                        SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END) AS draws
+                 FROM battle b
+                 JOIN map    m   ON m.id   = b.map_id
+                 JOIN result res ON res.id = b.result_id
+                 WHERE {TRIKOLOR_EXCLUDE}
+                 GROUP BY m.id ORDER BY total DESC"
+            ),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(by_stage.len(), 2);
+
+        let yunohana = &by_stage[0];
+        assert_eq!(yunohana["key"], "yunohana");
+        assert_eq!(yunohana["total"], 3);
+        assert_eq!(yunohana["wins"], 2);
+        assert_eq!(yunohana["draws"], 0);
+        assert!((yunohana["win_rate"].as_f64().unwrap() - 2.0 / 3.0).abs() < 1e-9);
+
+        let gonzui = &by_stage[1];
+        assert_eq!(gonzui["key"], "gonzui");
+        assert_eq!(gonzui["total"], 2);
+        assert_eq!(gonzui["wins"], 1);
+        assert_eq!(gonzui["draws"], 1);
+        // 分母は decisive = total − draws = 1 なので win_rate = 1.0（引き分けを除外）。
+        assert_eq!(gonzui["win_rate"], 1.0);
     }
 }

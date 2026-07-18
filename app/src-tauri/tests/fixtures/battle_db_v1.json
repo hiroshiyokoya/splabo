@@ -32,6 +32,22 @@
         "wins": 0
       }
     ],
+    "by_stage": [
+      {
+        "draws": 0,
+        "key": "yunohana",
+        "total": 1,
+        "win_rate": 1.0,
+        "wins": 1
+      },
+      {
+        "draws": 0,
+        "key": "gonzui",
+        "total": 1,
+        "win_rate": 0.0,
+        "wins": 0
+      }
+    ],
     "by_weapon": [
       {
         "draws": 0,
