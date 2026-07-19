@@ -1127,6 +1127,57 @@ pub async fn cache_ability_images(
     Ok(())
 }
 
+/// ギアパワー画像ハッシュから SplatNet3 のスキル画像 URL を組み立てる（#360）。
+///
+/// 観測された実データの URL は `.../resources/prod/v3/skill_img/<hash>_0.png`
+/// （`icon_manifest.rs` 冒頭の調査結果）。`/image/url` 経由で得られる URL は
+/// CloudFront の署名付きだが、`resources/prod` 配下は署名なしで配信される想定でこの形を使う。
+fn ability_image_url(hash: &str) -> String {
+    format!("https://api.lp1.av5ja.srv.nintendo.net/resources/prod/v3/skill_img/{hash}_0.png")
+}
+
+/// `abilities::ABILITY_HASHES` の全 26 種 + 空スロットを **登場に依存せず先回りキャッシュ**する（#360）。
+///
+/// `cache_ability_images` は「保存済みバトルに登場したギアパワー」しかキャッシュしないため、
+/// viewer #24 の目標スキル選択チップ（所持に関係なく全スキルを出す）や #35 のアイコン表示で
+/// アイコン欠け（テキストフォールバック混在）が起きる。これを埋めるため全種を取得する。
+/// `download_and_cache` は既存ファイルを短絡するので、登場済みのものは再取得されない。
+///
+/// ⚠️ **未署名 URL（`ability_image_url`）で 200 が返るかは実機未検証**。開発環境からは
+/// 任天堂ホストへ到達できないため確認できていない（`icon_manifest.rs` 冒頭の調査結果参照）。
+/// 万一 `resources/prod` が署名必須だと全 27 件が失敗するので、**最初の実リクエストが失敗したら
+/// 以降を試さず 1 警告で打ち切る**（毎回の取得フローで 27 連続失敗が出るのを避ける）。
+/// 失敗してもメインの取得フローは止めない（呼び出し側で `?` を使わず握りつぶす前提の `Ok` を返す）。
+pub async fn cache_all_ability_images(
+    app: &tauri::AppHandle,
+    client: &reqwest::Client,
+) -> Result<(), String> {
+    let mut cached = 0usize;
+    let mut attempted = 0usize;
+    for (hash, key_opt) in crate::abilities::ABILITY_HASHES {
+        let key = key_opt.unwrap_or(crate::abilities::EMPTY_SLOT_KEY);
+        let url = ability_image_url(hash);
+        attempted += 1;
+        match crate::images::download_and_cache(app, client, "ability", key, &url).await {
+            Ok(()) => cached += 1,
+            Err(e) => {
+                log::warn!(
+                    "[ability-image] 先回りキャッシュ失敗 ({key}): {e}。\
+                     未署名配信に非対応の可能性があるため以降の先回り取得をスキップします。"
+                );
+                break;
+            }
+        }
+    }
+    log::info!(
+        "[ability-image] 先回りキャッシュ {}/{} 件（全 {} 種対象）",
+        cached,
+        attempted,
+        crate::abilities::ABILITY_HASHES.len()
+    );
+    Ok(())
+}
+
 /// バトルノード一覧から武器・ステージの画像 URL を収集する（重複なし）。
 fn collect_image_targets<'a>(
     nodes: impl Iterator<Item = &'a serde_json::Value>,
@@ -1151,4 +1202,52 @@ fn collect_image_targets<'a>(
         }
     }
     targets
+}
+
+#[cfg(test)]
+mod ability_image_tests {
+    use super::*;
+
+    #[test]
+    fn builds_v3_skill_img_url_from_hash() {
+        let hash = "5c98cc37d2ce56291a7e430459dc9c44d53ca98b8426c5192f4a53e6dd6e4293";
+        let url = ability_image_url(hash);
+        assert_eq!(
+            url,
+            "https://api.lp1.av5ja.srv.nintendo.net/resources/prod/v3/skill_img/\
+             5c98cc37d2ce56291a7e430459dc9c44d53ca98b8426c5192f4a53e6dd6e4293_0.png"
+        );
+    }
+
+    #[test]
+    fn every_ability_hash_yields_a_url_and_cache_key() {
+        // 先回りキャッシュ（#360）が全 26 種 + 空スロットを漏れなく対象にすることを固定する。
+        // URL は必ずそのハッシュを含み、キャッシュキー（画像名）は
+        // Some(key) はそのキー、None（空スロット）は EMPTY_SLOT_KEY に正規化される。
+        assert_eq!(crate::abilities::ABILITY_HASHES.len(), 27);
+        for (hash, key_opt) in crate::abilities::ABILITY_HASHES {
+            let url = ability_image_url(hash);
+            assert!(url.contains(hash), "URL に {hash} が含まれること");
+            assert!(url.ends_with("_0.png"));
+
+            let key = key_opt.unwrap_or(crate::abilities::EMPTY_SLOT_KEY);
+            // 逆引き（cache_key_from_url）と往復で一致すること＝キャッシュ名が契約どおり。
+            assert_eq!(crate::abilities::cache_key_from_url(&url), Some(key));
+        }
+    }
+
+    #[test]
+    fn empty_slot_maps_to_empty_key() {
+        let (empty_hash, key_opt) = crate::abilities::ABILITY_HASHES
+            .iter()
+            .find(|(_, k)| k.is_none())
+            .expect("空スロットのエントリが存在すること");
+        assert!(key_opt.is_none());
+        let key = key_opt.unwrap_or(crate::abilities::EMPTY_SLOT_KEY);
+        assert_eq!(key, crate::abilities::EMPTY_SLOT_KEY);
+        assert_eq!(
+            crate::abilities::cache_key_from_url(&ability_image_url(empty_hash)),
+            Some(crate::abilities::EMPTY_SLOT_KEY)
+        );
+    }
 }
