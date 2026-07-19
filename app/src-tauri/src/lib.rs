@@ -295,6 +295,8 @@ async fn run_fetch_full_inner(app: &AppHandle, db: &db::DbPool) -> Result<(usize
     db::populate_weapons_from_battles(db).await?;
     splatnet3::cache_sub_special_images(db, app, &client).await?;
     splatnet3::cache_ability_images(db, app, &client).await?;
+    // 全ギアパワーを登場依存なしで先回りキャッシュ（viewer の全スキル表示のアイコン欠け対策・#360）
+    splatnet3::cache_all_ability_images(app, &client).await?;
     // 全プレイヤー（味方・相手）のメイン武器画像もキャッシュ（#136）
     splatnet3::cache_all_weapon_images(db, app, &client).await?;
 
@@ -445,6 +447,7 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
     db::populate_weapons_from_battles(&db).await?;
     splatnet3::cache_sub_special_images(&db, &app, &client).await?;
     splatnet3::cache_ability_images(&db, &app, &client).await?;
+    splatnet3::cache_all_ability_images(&app, &client).await?;
     splatnet3::cache_all_weapon_images(&db, &app, &client).await?;
 
     // WeaponRecordQuery (#49) も同じ「武器データを更新」フローで取得する。
