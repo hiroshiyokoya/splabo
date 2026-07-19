@@ -42,6 +42,20 @@ interface CompanionStatus {
   port: number | null
 }
 
+/** companion_diagnostics の戻り値（Rust companion.rs::CompanionDiagnostics に対応・#363）。 */
+interface CompanionDiagnostics {
+  /** 実行 OS（"windows" のときだけ network_category を判定）。 */
+  os: string
+  /** "public" | "private" | "domain" | "unknown" | "unsupported"。 */
+  network_category: string
+  /** LAN 側 IPv4 が 1 つでも見えているか。 */
+  has_lan_ip: boolean
+}
+
+/** ファイアウォール / プロファイルのトラブルシュート手順（README の該当節）。 */
+const FIREWALL_HELP_URL =
+  'https://github.com/hiroshiyokoya/splabo/blob/develop/README.md#モバイル同期がつながらないとき'
+
 /**
  * ペアリング QR に載せるペイロード（viewer と共有する契約）。
  * viewer は hosts を順に /ping して到達可能なホストを採用する。
@@ -79,6 +93,18 @@ export function Settings({ settings, onSave, loginVersion }: Props) {
   const [companionInfo, setCompanionInfo] = useState<CompanionInfo | null>(null)
   const [companionBusy, setCompanionBusy] = useState(false)
   const [companionError, setCompanionError] = useState<string | null>(null)
+  // 接続トラブルの自己診断（#363）。有効化中のみ取得する。
+  const [companionDiag, setCompanionDiag] = useState<CompanionDiagnostics | null>(null)
+
+  useEffect(() => {
+    if (companionInfo) {
+      invoke<CompanionDiagnostics>('companion_diagnostics')
+        .then(setCompanionDiag)
+        .catch(() => setCompanionDiag(null))
+    } else {
+      setCompanionDiag(null)
+    }
+  }, [companionInfo])
 
   useEffect(() => {
     invoke<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
@@ -349,6 +375,31 @@ async function handleUploadStatink() {
                 ⚠ LAN の IP アドレスが取得できませんでした。Wi-Fi 接続を確認してください。
               </p>
             )}
+            {companionDiag?.network_category === 'public' && (
+              <div
+                style={{
+                  color: 'var(--lose)',
+                  fontSize: 12,
+                  margin: '8px 0 0',
+                  lineHeight: 1.6,
+                }}
+              >
+                ⚠ このネットワークが Windows で「パブリック」に設定されています。
+                この状態だと Windows ファイアウォールがスマホからの接続を遮断し、QR を読んでも
+                つながりません。<strong>「プライベート ネットワーク」に変更</strong>してください
+                （設定 → ネットワークとインターネット → 現在の接続 → ネットワーク プロファイルの種類）。
+                初回接続時に許可ダイアログが出たら、<strong>プライベートにチェックして許可</strong>します。
+              </div>
+            )}
+            <p style={{ fontSize: 12, margin: '8px 0 0' }}>
+              <a
+                href={FIREWALL_HELP_URL}
+                onClick={e => { e.preventDefault(); openUrl(FIREWALL_HELP_URL).catch(console.error) }}
+                style={{ color: 'var(--accent)', cursor: 'pointer' }}
+              >
+                つながらないときは（ファイアウォール / ネットワークの確認）
+              </a>
+            </p>
           </div>
         )}
       </section>

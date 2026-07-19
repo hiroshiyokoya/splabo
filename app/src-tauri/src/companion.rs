@@ -391,6 +391,89 @@ fn host_ipv4s() -> Vec<IpAddr> {
     }
 }
 
+/// 接続トラブルの自己診断（#363）。コンパニオンが有効なのに viewer から到達できない
+/// 典型要因を、フロントが具体的に案内するための材料を返す。**判定のみ**で、ファイアウォール
+/// 規則の変更は一切しない（管理者権限が要る／ユーザーのセキュリティ設定を勝手に変えない）。
+#[derive(Debug, Serialize)]
+pub struct CompanionDiagnostics {
+    /// 実行 OS（`std::env::consts::OS`）。`network_category` を判定できるのは "windows" のときだけ。
+    pub os: String,
+    /// ネットワークプロファイル種別（Windows のみ判定）:
+    /// "public"（受信ブロックの主因）/ "private" / "domain" / "unknown"、非 Windows は "unsupported"。
+    pub network_category: String,
+    /// LAN 側 IPv4 が 1 つでも見えているか（false なら Wi-Fi 未接続などで到達以前の問題）。
+    pub has_lan_ip: bool,
+}
+
+/// 現在のネットワークプロファイル種別を返す（#363）。
+///
+/// Windows は Network List Manager（COM・`INetworkListManager`）で接続中ネットワークの
+/// カテゴリを問い合わせる。Public が 1 つでもあれば受信ブロックの主因なので "public" を優先で返す。
+/// PowerShell 等の外部プロセスは起動しない。Windows 以外は判定手段が無いため "unsupported"。
+///
+/// 返す値: "public" / "private" / "domain" / "unknown" / "unsupported"。
+#[cfg(target_os = "windows")]
+fn detect_network_category() -> String {
+    use windows::Win32::Networking::NetworkListManager::{
+        INetwork, INetworkListManager, NetworkListManager, NLM_ENUM_NETWORK_CONNECTED,
+        NLM_NETWORK_CATEGORY_DOMAIN_AUTHENTICATED, NLM_NETWORK_CATEGORY_PRIVATE,
+        NLM_NETWORK_CATEGORY_PUBLIC,
+    };
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    };
+
+    unsafe {
+        // 既に別モードで初期化済みでも致命ではない（RPC_E_CHANGED_MODE 等は無視）。
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+
+        let manager: INetworkListManager =
+            match CoCreateInstance(&NetworkListManager, None, CLSCTX_ALL) {
+                Ok(m) => m,
+                Err(e) => {
+                    log::warn!("[companion] NetworkListManager 生成失敗: {e}");
+                    return "unknown".to_string();
+                }
+            };
+
+        let networks = match manager.GetNetworks(NLM_ENUM_NETWORK_CONNECTED) {
+            Ok(n) => n,
+            Err(e) => {
+                log::warn!("[companion] 接続中ネットワークの列挙失敗: {e}");
+                return "unknown".to_string();
+            }
+        };
+
+        // Public を最優先で返す（到達不能の主因）。Private / Domain は fallback。
+        let mut fallback: Option<&str> = None;
+        loop {
+            let mut item: [Option<INetwork>; 1] = [None];
+            let mut fetched = 0u32;
+            if networks.Next(&mut item, Some(&mut fetched)).is_err() || fetched == 0 {
+                break;
+            }
+            let Some(network) = item[0].take() else { break };
+            let cat = match network.GetCategory() {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            if cat == NLM_NETWORK_CATEGORY_PUBLIC {
+                return "public".to_string();
+            } else if cat == NLM_NETWORK_CATEGORY_PRIVATE {
+                fallback = Some("private");
+            } else if cat == NLM_NETWORK_CATEGORY_DOMAIN_AUTHENTICATED {
+                fallback = fallback.or(Some("domain"));
+            }
+        }
+        fallback.unwrap_or("unknown").to_string()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn detect_network_category() -> String {
+    "unsupported".to_string()
+}
+
 /// `Authorization` ヘッダ値（無ければ None）が共有トークンと一致するかを判定する。
 ///
 /// HTTP に依存しない純粋関数として切り出し、トークン検証をユニットテストする。
@@ -751,6 +834,17 @@ pub fn companion_status(state: State<'_, CompanionState>) -> Result<CompanionSta
     })
 }
 
+/// 接続トラブルの自己診断材料を返す（#363）。フロントはこれを見て、Windows の
+/// ネットワークプロファイルが Public のとき「プライベートに変更してください」等を案内する。
+#[tauri::command]
+pub fn companion_diagnostics() -> CompanionDiagnostics {
+    CompanionDiagnostics {
+        os: std::env::consts::OS.to_string(),
+        network_category: detect_network_category(),
+        has_lan_ip: !host_ipv4s().is_empty(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1085,5 +1179,28 @@ mod tests {
         let json = serde_json::to_value(&running).unwrap();
         assert_eq!(json["state"], "running");
         assert_eq!(json["step"], "battles");
+    }
+
+    // --- #363: 接続トラブルの自己診断 ---
+
+    #[test]
+    fn diagnostics_reports_os_and_nonempty_category() {
+        // フロント（#363）が読む JSON 契約の固定。os は実行 OS、network_category は
+        // どの OS でも空文字にはならない（非 Windows は "unsupported"）。
+        let d = companion_diagnostics();
+        assert_eq!(d.os, std::env::consts::OS);
+        assert!(!d.network_category.is_empty());
+
+        let json = serde_json::to_value(&d).unwrap();
+        assert!(json.get("os").is_some());
+        assert!(json.get("network_category").is_some());
+        assert!(json.get("has_lan_ip").is_some());
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn network_category_is_unsupported_off_windows() {
+        // 判定は Windows(NLM) 専用。非 Windows は誤判定せず "unsupported" を返す。
+        assert_eq!(detect_network_category(), "unsupported");
     }
 }
