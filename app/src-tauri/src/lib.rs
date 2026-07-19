@@ -133,6 +133,8 @@ pub fn run() {
             companion::companion_start,
             companion::companion_stop,
             companion::companion_status,
+            // 接続トラブルの自己診断（Windows ファイアウォール / プロファイル案内・#363）
+            companion::companion_diagnostics,
             // データ移行（Phase C・migration.rs）
             migration::get_migration_report,
         ])

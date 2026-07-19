@@ -42,3 +42,11 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 tiny_http = { workspace = true }
 mdns-sd = { workspace = true }
 if-addrs = { workspace = true }
+
+# Windows のみ: コンパニオン接続の自己診断（#363・companion.rs の detect_network_category）。
+# Network List Manager（COM）でネットワークプロファイル（Public/Private/Domain）を判定する。
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true, features = [
+    "Win32_Networking_NetworkListManager",
+    "Win32_System_Com",
+] }

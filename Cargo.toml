@@ -14,3 +14,7 @@ tauri-build = { version = "2.6.1" }
 tiny_http = { version = "0.12" }
 mdns-sd = { version = "0.20" }
 if-addrs = { version = "0.15" }
+# コンパニオン接続の自己診断（#363）: Windows のネットワークプロファイル判定（NLM/COM）。
+# 実際に使うのは Windows ターゲットのみ（crate 側で target 限定＋feature 指定）。
+# tauri が使う windows と同じメジャー（0.61）に揃えて重複バージョンを避ける。
+windows = { version = "0.61" }
