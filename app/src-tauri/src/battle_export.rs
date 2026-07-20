@@ -25,6 +25,53 @@ const DEFAULT_LIMIT: i64 = 50;
 const TRIKOLOR_EXCLUDE: &str = "(json_extract(b.raw_json, '$.vsRule.rule') IS NULL \
      OR json_extract(b.raw_json, '$.vsRule.rule') <> 'TRI_COLOR')";
 
+/// ステージ正式名 → コミュニティ通称（短縮名）。狭い viewer 画面で行が窮屈に
+/// ならないよう、本体側で短縮名を解決して配信する（#368）。
+///
+/// 出典はフロントの `app/src/components/EnvAnalysis.tsx` の `STAGE_SHORT`。
+/// **Phase 1 では TypeScript 側と同じ表を意図的に二重に持つ**（フロントを Rust 由来へ
+/// 一本化するのは Phase 2 / 別 Issue）。値を変える場合は必ず両方揃えること。
+const STAGE_SHORT: &[(&str, &str)] = &[
+    ("ユノハナ大渓谷", "ユノハナ"),
+    ("ゴンズイ地区", "ゴンズイ"),
+    ("ヤガラ市場", "ヤガラ"),
+    ("マテガイ放水路", "マテガイ"),
+    ("ナメロウ金属", "ナメロウ"),
+    ("マサバ海峡大橋", "マサバ"),
+    ("キンメダイ美術館", "キンメ"),
+    ("マヒマヒリゾート＆スパ", "マヒマヒ"),
+    ("海女美術大学", "海女"),
+    ("チョウザメ造船", "チョウザメ"),
+    ("ザトウマーケット", "ザトウ"),
+    ("スメーシーワールド", "スメーシー"),
+    ("タラポートショッピングパーク", "タラポート"),
+    ("コンブトラック", "コンブ"),
+    ("マンタマリア号", "マンタ"),
+    ("タカアシ経済特区", "タカアシ"),
+    ("オヒョウ海運", "オヒョウ"),
+    ("バイガイ亭", "バイガイ"),
+    ("ネギトロ炭鉱", "ネギトロ"),
+    ("カジキ空港", "カジキ"),
+    ("リュウグウターミナル", "リュウグウ"),
+    ("グランドバンカラアリーナ", "バンカラ"),
+    ("ナンプラー遺跡", "ナンプラー"),
+    ("クサヤ温泉", "クサヤ"),
+    ("ヒラメが丘団地", "ヒラメ"),
+    ("デカライン高架下", "デカライン"),
+    ("タチウオパーキング", "タチウオ"),
+];
+
+/// ステージ正式名から短縮名を引く。**未知のステージは `None`**（空文字にしない）。
+///
+/// viewer 側は `null` を見て正式名（`stage_name`）へフォールバックする。新ステージ追加時に
+/// 表の更新が漏れても、正式名で表示されるだけで壊れない。
+fn stage_short_name(name: &str) -> Option<&'static str> {
+    STAGE_SHORT
+        .iter()
+        .find(|(full, _)| *full == name)
+        .map(|(_, short)| *short)
+}
+
 /// 直近バトルのサマリ行（viewer 表示用の軽量サブセット）。
 /// `db_list_battles` の SELECT から重い列（raw_json / team / awards 等）を落としたもの。
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -36,7 +83,14 @@ pub struct BattleExportRow {
     /// rule の旧 slug（area / hoko / yagura / turf_war …）。null は '' に畳む。
     pub rule: String,
     pub stage: String,
+    /// ステージ正式名。**アイコン解決鍵（`sha256(表示名)`）に使うので絶対に落とさない**
+    /// （splabo-viewer#35）。`stage_short_name` は置換ではなく追加。
     pub stage_name: Option<String>,
+    /// ステージ短縮名（`ユノハナ大渓谷` → `ユノハナ`・#368）。
+    /// SQL では引かず、取得後に `stage_name` から解決して詰める（`#[sqlx(default)]` で None 初期化）。
+    /// 未知のステージ・`stage_name` が NULL の行はどちらも `null`。
+    #[sqlx(default)]
+    pub stage_short_name: Option<String>,
     pub weapon: String,
     /// アイコン解決鍵（`images/weapon/<sha256(name)>.gti`）に使うため name を必ず含める。
     pub weapon_name: Option<String>,
@@ -221,6 +275,20 @@ fn by_stage_sql() -> String {
     )
 }
 
+/// 取得済みのサマリ行に短縮名を詰める（#368）。
+///
+/// `stage_name`（正式名）は**残したまま**の追加。`stage_name` が NULL の行、および
+/// `STAGE_SHORT` に無いステージは `None` のままにする（viewer が正式名へフォールバックする）。
+fn fill_stage_short_names(battles: &mut [BattleExportRow]) {
+    for b in battles.iter_mut() {
+        b.stage_short_name = b
+            .stage_name
+            .as_deref()
+            .and_then(stage_short_name)
+            .map(str::to_string);
+    }
+}
+
 /// グループ集計 SQL を実行し `[{key,total,wins,draws,win_rate}]` を返す。
 /// `limit` は `recent` CTE の `LIMIT ?` に bind される。
 async fn grouped(
@@ -265,11 +333,13 @@ pub async fn export_battle_db(
     let limit = limit.unwrap_or(DEFAULT_LIMIT);
 
     // --- 直近サマリ行（母集団 = recent CTE） ---
-    let battles = sqlx::query_as::<_, BattleExportRow>(&battles_sql())
+    let mut battles = sqlx::query_as::<_, BattleExportRow>(&battles_sql())
         .bind(limit)
         .fetch_all(pool)
         .await
         .map_err(|e| e.to_string())?;
+
+    fill_stage_short_names(&mut battles);
 
     // --- 集計（母集団は battles[] と同一の直近 N 戦・トリカラ除外） ---
     let overall_row = sqlx::query(&overall_sql())
@@ -368,6 +438,7 @@ mod tests {
                 {
                     "id": "b1", "played_at": "2026-07-15T11:30:00Z", "mode": "bankara_challenge",
                     "rule": "area", "stage": "yunohana", "stage_name": "ユノハナ大渓谷",
+                    "stage_short_name": "ユノハナ",
                     "weapon": "splattershot", "weapon_name": "スプラシューター", "result": "win",
                     "knockout": null, "kill": 9, "assist": 2, "death": 4, "special": 3,
                     "inked": 1200, "duration": 300, "x_power": null,
@@ -377,6 +448,7 @@ mod tests {
                 {
                     "id": "b2", "played_at": "2026-07-15T11:10:00Z", "mode": "regular",
                     "rule": "turf_war", "stage": "gonzui", "stage_name": "ゴンズイ地区",
+                    "stage_short_name": "ゴンズイ",
                     "weapon": "wakaba", "weapon_name": "わかばシューター", "result": "lose",
                     "knockout": null, "kill": 5, "assist": 1, "death": 8, "special": 2,
                     "inked": 900, "duration": 180, "x_power": null,
@@ -421,6 +493,9 @@ mod tests {
         assert_eq!(parsed["version"], 1);
         assert_eq!(parsed["battles"].as_array().unwrap().len(), 2);
         assert_eq!(parsed["battles"][0]["result"], "win");
+        // #368: 短縮名は正式名と**併存**する（置換ではない）。
+        assert_eq!(parsed["battles"][0]["stage_name"], "ユノハナ大渓谷");
+        assert_eq!(parsed["battles"][0]["stage_short_name"], "ユノハナ");
         assert_eq!(parsed["aggregates"]["overall"]["win_rate"], 0.5);
         // by_stage は by_rule 等と同じ GroupStat 形（key/total/wins/draws/win_rate）で入る。
         let by_stage = parsed["aggregates"]["by_stage"].as_array().unwrap();
@@ -695,5 +770,159 @@ mod tests {
             by_rule.iter().any(|g| g["key"] == ""),
             "rule 未設定は '' グループになる"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // #368: ステージ短縮名
+    // -----------------------------------------------------------------------
+
+    /// 既知のステージが正しく短縮名に写ること（代表数件）。
+    #[test]
+    fn stage_short_name_maps_known_stages() {
+        assert_eq!(stage_short_name("ユノハナ大渓谷"), Some("ユノハナ"));
+        assert_eq!(stage_short_name("マヒマヒリゾート＆スパ"), Some("マヒマヒ"));
+        assert_eq!(stage_short_name("グランドバンカラアリーナ"), Some("バンカラ"));
+        assert_eq!(stage_short_name("海女美術大学"), Some("海女"));
+        assert_eq!(stage_short_name("タチウオパーキング"), Some("タチウオ"));
+    }
+
+    /// 未知のステージ名は `None`（panic もデフォルト文字列も返さない）。
+    #[test]
+    fn stage_short_name_unknown_is_none() {
+        assert_eq!(stage_short_name("まだ無いステージ"), None);
+        assert_eq!(stage_short_name(""), None);
+        // 部分一致で誤ヒットしない（完全一致のみ）。
+        assert_eq!(stage_short_name("ユノハナ"), None);
+        assert_eq!(stage_short_name("ユノハナ大渓谷 "), None);
+    }
+
+    /// フロント（EnvAnalysis.tsx の STAGE_SHORT）から移植した 27 エントリが全て引けること。
+    /// 移植漏れ・キー重複を検出する。
+    #[test]
+    fn stage_short_table_is_complete() {
+        assert_eq!(STAGE_SHORT.len(), 27, "移植元 STAGE_SHORT は 27 エントリ");
+
+        let keys: std::collections::HashSet<&str> = STAGE_SHORT.iter().map(|(k, _)| *k).collect();
+        assert_eq!(keys.len(), 27, "正式名キーに重複が無い");
+
+        for (full, short) in STAGE_SHORT {
+            assert_eq!(stage_short_name(full), Some(*short), "{full} が引けない");
+            assert!(!short.is_empty(), "{full} の短縮名が空");
+        }
+    }
+
+    /// 実際の battles[] パイプラインで、
+    /// - 既知ステージに短縮名が入る
+    /// - 未知ステージは `stage_short_name` が None
+    /// - **全行で `stage_name`（正式名）が従来どおり保持される**（アイコン解決の回帰防止）
+    /// - `stage_name` が NULL の行でも壊れない
+    #[tokio::test]
+    async fn battles_carry_stage_short_name_without_losing_stage_name() {
+        let pool = test_pool().await;
+
+        // test_pool の map は短縮対象外の name_ja（'ユノハナ' 等）なので、
+        // 正式名 / 未知名 / NULL の 3 パターンを足す。
+        sqlx::query(
+            "UPDATE map SET name_ja = 'ユノハナ大渓谷' WHERE id = 1;
+             UPDATE map SET name_ja = 'マヒマヒリゾート＆スパ' WHERE id = 2;
+             INSERT INTO map (id, key, name_ja) VALUES (3,'mirai','未来ステージ'), (4,'noname', NULL);",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        for (i, map_id) in [1i64, 2, 3, 4].iter().enumerate() {
+            insert_battle(
+                &pool,
+                &format!("s{i}"),
+                i as i64,
+                *map_id,
+                1,
+                1,
+                1,
+                Some(1),
+                NON_TRI,
+            )
+            .await;
+        }
+
+        let mut battles = sqlx::query_as::<_, BattleExportRow>(&battles_sql())
+            .bind(DEFAULT_LIMIT)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        // SQL 段階では未設定（#[sqlx(default)] で None）。
+        assert!(battles.iter().all(|b| b.stage_short_name.is_none()));
+
+        fill_stage_short_names(&mut battles);
+        assert_eq!(battles.len(), 4);
+
+        let by_id = |id: &str| battles.iter().find(|b| b.id == id).unwrap();
+
+        // 既知ステージ → 短縮名が入り、正式名もそのまま残る。
+        let s0 = by_id("s0");
+        assert_eq!(s0.stage_name.as_deref(), Some("ユノハナ大渓谷"));
+        assert_eq!(s0.stage_short_name.as_deref(), Some("ユノハナ"));
+
+        let s1 = by_id("s1");
+        assert_eq!(s1.stage_name.as_deref(), Some("マヒマヒリゾート＆スパ"));
+        assert_eq!(s1.stage_short_name.as_deref(), Some("マヒマヒ"));
+
+        // 未知ステージ → 短縮名は None。正式名は保持（viewer が正式名で表示できる）。
+        let s2 = by_id("s2");
+        assert_eq!(s2.stage_name.as_deref(), Some("未来ステージ"));
+        assert_eq!(s2.stage_short_name, None, "未知ステージは null");
+
+        // stage_name が NULL の行でも panic せず、短縮名も None。
+        let s3 = by_id("s3");
+        assert_eq!(s3.stage_name, None);
+        assert_eq!(s3.stage_short_name, None);
+
+        // アイコン解決（sha256(stage_name)）の回帰防止:
+        // name_ja がある行では stage_name が必ず非 None かつ非空で残っていること。
+        for b in battles.iter().filter(|b| b.id != "s3") {
+            let name = b
+                .stage_name
+                .as_deref()
+                .unwrap_or_else(|| panic!("{}: stage_name が落ちている", b.id));
+            assert!(!name.is_empty(), "{}: stage_name が空", b.id);
+        }
+    }
+
+    /// 短縮名の追加は JSON 上でも **`stage_name` の置換にならない**こと
+    /// （viewer のアイコン解決は sha256(stage_name) に依存する・splabo-viewer#35）。
+    #[test]
+    fn serialized_row_keeps_both_stage_fields() {
+        let mut battles = vec![BattleExportRow {
+            id: "x".into(),
+            played_at: "2026-07-15T00:00:00Z".into(),
+            mode: "regular".into(),
+            rule: "turf_war".into(),
+            stage: "yunohana".into(),
+            stage_name: Some("ユノハナ大渓谷".into()),
+            stage_short_name: None,
+            weapon: "splattershot".into(),
+            weapon_name: Some("スプラシューター".into()),
+            result: "win".into(),
+            knockout: None,
+            kill: 0,
+            assist: 0,
+            death: 0,
+            special: 0,
+            inked: 0,
+            duration: 0,
+            x_power: None,
+            rank_before: None,
+            rank_after: None,
+            sub_weapon: None,
+            special_weapon: None,
+            detail_fetched: 1,
+        }];
+        fill_stage_short_names(&mut battles);
+
+        let v = serde_json::to_value(&battles[0]).unwrap();
+        assert_eq!(v["stage_name"], "ユノハナ大渓谷", "正式名は必ず残る");
+        assert_eq!(v["stage_short_name"], "ユノハナ");
+        assert_eq!(v["stage"], "yunohana", "slug も従来どおり");
     }
 }
