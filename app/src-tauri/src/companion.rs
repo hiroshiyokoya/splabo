@@ -42,7 +42,7 @@
 //! - トークンは起動ごとにランダム（16 バイト = 32 hex）。未ペア端末（トークン不一致）は 401。
 //! - LAN 想定。バインドは `0.0.0.0:<空きポート>`（同一 LAN の viewer から到達可能にするため）。
 
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -375,15 +375,104 @@ fn generate_token() -> String {
         .collect()
 }
 
-/// LAN 側の IPv4・非ループバックアドレスを列挙する。
+/// 仮想 NIC（WSL / Hyper-V / Docker / VirtualBox / VMware 等）らしいインターフェース名か。
+///
+/// **除外の判定には使わない。並べ替え（優先度を下げる）だけに使う。**
+/// 名前は OS 依存で当てにならない（ユーザーがアダプタ名を変更できる／ローカライズされる）ため、
+/// これで弾くと本命を消してしまう恐れがある。誤検出しても「順番が後ろになるだけ」で済む用途に限る。
+fn looks_virtual_iface(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    [
+        "vethernet", // Windows: vEthernet (WSL (Hyper-V firewall)) / vEthernet (Default Switch)
+        "wsl",
+        "hyper-v",
+        "docker",
+        "virtualbox",
+        "vmware",
+        "vmnet",
+        "vboxnet",
+        "tailscale",
+        "zerotier",
+        "utun",
+        "tun",
+        "tap",
+    ]
+    .iter()
+    .any(|kw| n.contains(kw))
+}
+
+/// ペアリング QR に載せる IPv4 候補を絞り込み・並べ替える純ロジック（#369）。
+///
+/// 入力は `(インターフェース名, IPv4)` の列（`if_addrs` が返した順）。
+///
+/// ## 除外するもの（APIPA のみ）
+/// - **リンクローカル 169.254.0.0/16（APIPA）**。DHCP に失敗した／未接続のアダプタが付ける
+///   アドレスで、原理的に LAN の別端末からは到達できない。載せる意味が無い。
+///
+/// **除外はこれだけ**。「仮想 NIC らしい」「レンジが怪しい」は一切除外しない。誤除外は
+/// 「繋がらない」に直結するのに対し、余分な候補は viewer 側の `/ping` で落ちるだけだからである。
+///
+/// ## 並べ替え（安定ソート・同点は `if_addrs` の順を保つ）
+/// 0. 家庭用 LAN で最も一般的な 192.168.0.0/16 / 10.0.0.0/8 で、仮想 NIC 名でないもの
+/// 1. 上記以外（グローバル IP 等）で仮想 NIC 名でないもの
+/// 2. 172.16.0.0/12 で仮想 NIC 名でないもの
+/// 3. 仮想 NIC らしい名前のインターフェース（レンジを問わず最後）
+///
+/// ### 172.16.0.0/12 を「除外」しない理由
+/// WSL / Hyper-V の仮想スイッチはこのレンジを使うが、**172.16-31.x.x は正当なプライベート
+/// アドレスでもあり、実際にこのレンジを使う LAN が存在する**。レンジだけで弾くとその環境では
+/// 本命が消えて一切ペアリングできなくなる。よってここでは**順位を下げるだけ**にとどめ、
+/// 候補としては必ず残す。仮想スイッチであれば実際にはインターフェース名でも後ろへ回るため、
+/// 名前判定が効く環境では二重に沈む。
+pub(crate) fn filter_host_ipv4s(candidates: Vec<(String, Ipv4Addr)>) -> Vec<IpAddr> {
+    let mut kept: Vec<(u8, Ipv4Addr)> = candidates
+        .into_iter()
+        // 除外は APIPA だけ。
+        .filter(|(_, ip)| !ip.is_link_local())
+        .map(|(name, ip)| {
+            let rank = if looks_virtual_iface(&name) {
+                3
+            } else if is_common_lan(&ip) {
+                0
+            } else if is_shared_private_172(&ip) {
+                2
+            } else {
+                1
+            };
+            (rank, ip)
+        })
+        .collect();
+    // sort_by_key は安定ソートなので、同ランク内の並びは if_addrs の列挙順のまま。
+    kept.sort_by_key(|(rank, _)| *rank);
+    kept.into_iter().map(|(_, ip)| IpAddr::V4(ip)).collect()
+}
+
+/// 家庭用 LAN で最も一般的なレンジ（192.168.0.0/16 / 10.0.0.0/8）か。
+fn is_common_lan(ip: &Ipv4Addr) -> bool {
+    let o = ip.octets();
+    (o[0] == 192 && o[1] == 168) || o[0] == 10
+}
+
+/// 172.16.0.0/12（正当なプライベートでもあり、仮想スイッチも好んで使うレンジ）か。
+fn is_shared_private_172(ip: &Ipv4Addr) -> bool {
+    let o = ip.octets();
+    o[0] == 172 && (16..=31).contains(&o[1])
+}
+
+/// LAN 側の IPv4・非ループバックアドレスを列挙する（APIPA 除外・到達しやすい順／#369）。
 fn host_ipv4s() -> Vec<IpAddr> {
     match if_addrs::get_if_addrs() {
-        Ok(ifaces) => ifaces
-            .into_iter()
-            .filter(|i| !i.is_loopback())
-            .map(|i| i.ip())
-            .filter(|ip| ip.is_ipv4())
-            .collect(),
+        Ok(ifaces) => {
+            let candidates = ifaces
+                .into_iter()
+                .filter(|i| !i.is_loopback())
+                .filter_map(|i| match i.ip() {
+                    IpAddr::V4(v4) => Some((i.name, v4)),
+                    IpAddr::V6(_) => None,
+                })
+                .collect();
+            filter_host_ipv4s(candidates)
+        }
         Err(e) => {
             log::warn!("[companion] ホスト IP 列挙に失敗: {e}");
             Vec::new()
@@ -854,6 +943,107 @@ mod tests {
     /// バトルアイコンのキャッシュルート（`app_data_dir()/images`）。
     fn images_root() -> &'static Path {
         Path::new("/app/images")
+    }
+
+    /// テスト用: `(iface 名, "a.b.c.d")` の列を `filter_host_ipv4s` に渡し、文字列で受け取る。
+    fn filtered(pairs: &[(&str, &str)]) -> Vec<String> {
+        let input = pairs
+            .iter()
+            .map(|(name, ip)| (name.to_string(), ip.parse::<Ipv4Addr>().unwrap()))
+            .collect();
+        filter_host_ipv4s(input)
+            .iter()
+            .map(|ip| ip.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn drops_apipa_link_local() {
+        // #369: 169.254.0.0/16 は原理的に LAN の別端末から到達できないので載せない。
+        let got = filtered(&[
+            ("イーサネット", "192.168.3.8"),
+            ("Wi-Fi", "169.254.121.53"),
+            ("Bluetooth ネットワーク接続", "169.254.65.55"),
+        ]);
+        assert_eq!(got, vec!["192.168.3.8"]);
+    }
+
+    #[test]
+    fn keeps_all_ordinary_private_ranges() {
+        // #369 の最重要事項: 172.16-31.x.x を含む正当なプライベート IP を絶対に除外しない。
+        for ip in [
+            "192.168.3.8",
+            "192.168.0.1",
+            "10.0.0.5",
+            "10.255.255.254",
+            "172.16.0.1",
+            "172.20.10.1",
+            "172.31.255.254",
+        ] {
+            assert_eq!(filtered(&[("イーサネット", ip)]), vec![ip], "{ip} が消えた");
+        }
+    }
+
+    #[test]
+    fn keeps_172_even_on_virtual_iface() {
+        // 仮想 NIC 名でも「除外」はしない（後ろに回すだけ）。誤除外で繋がらなくなるのを防ぐ。
+        let got = filtered(&[("vEthernet (WSL (Hyper-V firewall))", "172.31.144.1")]);
+        assert_eq!(got, vec!["172.31.144.1"]);
+    }
+
+    #[test]
+    fn ranks_common_lan_before_172_and_virtual() {
+        // 実機（#369 の実測）に近い並び。本命 192.168.3.8 が先頭に来ること。
+        let got = filtered(&[
+            ("vEthernet (WSL (Hyper-V firewall))", "172.31.144.1"),
+            ("vEthernet (Default Switch)", "172.23.32.1"),
+            ("Wi-Fi", "169.254.88.185"),
+            ("イーサネット", "192.168.3.8"),
+        ]);
+        assert_eq!(got, vec!["192.168.3.8", "172.31.144.1", "172.23.32.1"]);
+    }
+
+    #[test]
+    fn ranks_physical_172_before_virtual_ifaces() {
+        // 172 系を使う実 LAN の環境: 物理 NIC の 172 が仮想 NIC より前に来る。
+        let got = filtered(&[
+            ("vEthernet (Default Switch)", "172.23.32.1"),
+            ("イーサネット", "172.20.10.9"),
+        ]);
+        assert_eq!(got, vec!["172.20.10.9", "172.23.32.1"]);
+    }
+
+    #[test]
+    fn keeps_global_ip_without_panicking() {
+        // グローバル IP が混ざっていても落ちない。192.168 / 10 系より後ろ、172 系より前。
+        let got = filtered(&[
+            ("イーサネット", "172.16.5.5"),
+            ("ppp0", "203.0.113.7"),
+            ("Wi-Fi", "192.168.1.2"),
+        ]);
+        assert_eq!(got, vec!["192.168.1.2", "203.0.113.7", "172.16.5.5"]);
+    }
+
+    #[test]
+    fn stable_within_same_rank() {
+        // 同ランクなら if_addrs の列挙順を保つ（無用な並び替えをしない）。
+        let got = filtered(&[
+            ("イーサネット", "192.168.3.8"),
+            ("Wi-Fi", "10.0.0.5"),
+            ("イーサネット 2", "192.168.4.9"),
+        ]);
+        assert_eq!(got, vec!["192.168.3.8", "10.0.0.5", "192.168.4.9"]);
+    }
+
+    #[test]
+    fn empty_input_yields_empty() {
+        // 候補ゼロでも panic しない。has_lan_ip=false の既存警告経路がそのまま働く。
+        assert!(filtered(&[]).is_empty());
+    }
+
+    #[test]
+    fn all_apipa_yields_empty_not_panic() {
+        assert!(filtered(&[("Wi-Fi", "169.254.1.2"), ("イーサネット", "169.254.9.9")]).is_empty());
     }
 
     #[test]
