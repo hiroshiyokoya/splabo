@@ -391,13 +391,22 @@ async function handleUploadStatink() {
                 初回接続時に許可ダイアログが出たら、<strong>プライベートにチェックして許可</strong>します。
               </div>
             )}
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '8px 0 0', lineHeight: 1.6 }}>
+              QR を読んでもつながらない場合、ネットワークが「プライベート」でも
+              Windows ファイアウォールの<strong>受信許可がパブリック用にしか無い</strong>ことがあります
+              （以前パブリックの状態で許可したまま、あとからプライベートに変更した場合）。
+              許可規則はプロファイルごとに効くため引き継がれません。
+              <code>wf.msc</code> →「受信の規則」→ <strong>splabo</strong> → プロパティ → 詳細設定タブ →
+              プロファイルで<strong>プライベートにチェック</strong>してください。
+              <strong>splabo の規則は通常 2 つ（TCP / UDP）あるので、すべて確認</strong>します。
+            </p>
             <p style={{ fontSize: 12, margin: '8px 0 0' }}>
               <a
                 href={FIREWALL_HELP_URL}
                 onClick={e => { e.preventDefault(); openUrl(FIREWALL_HELP_URL).catch(console.error) }}
                 style={{ color: 'var(--accent)', cursor: 'pointer' }}
               >
-                つながらないときは（ファイアウォール / ネットワークの確認）
+                つながらないときは（ファイアウォール / ネットワークの確認・詳しい手順）
               </a>
             </p>
           </div>
