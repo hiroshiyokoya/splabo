@@ -272,9 +272,52 @@ pub(crate) async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(
     }
     let _ = app.emit("fetch_start", ());
     let result = run_fetch_full_inner(app, db).await;
+    // 取得が成功したら battle_db.bin を再生成する（#367）。
+    // ここに置くのは手動取得・起動時取得・スケジューラーの共通経路だから。
+    // FetchInProgress を握ったまま実行し、「取得完了 = エクスポート済み」の状態で
+    // フラグを解放する（コンパニオンの更新命令が中途半端な状態に割り込まないように）。
+    if result.is_ok() {
+        export_battle_db_best_effort(app).await;
+    }
     flag.0.store(false, Ordering::SeqCst);
     let _ = app.emit("fetch_finish", ());
     result
+}
+
+/// `battle_db.bin` の再生成を **best-effort** で実行する（#367）。
+///
+/// エクスポートはあくまで viewer 連携のための副次処理なので、失敗しても
+/// 呼び出し元（バトル取得）を失敗させない。警告ログだけ出して続行する。
+/// DB がまだ初期化されていない場合（コンパニオン未使用でも同様）は何もしない。
+async fn export_battle_db_best_effort(app: &AppHandle) {
+    let Some(pool) = app.try_state::<db::DbPool>() else {
+        log::warn!("[battle_export] DB 未初期化のため battle_db.bin の再生成をスキップしました");
+        return;
+    };
+    let started = std::time::Instant::now();
+    let outcome = battle_export::export_battle_db(app.clone(), pool, None).await;
+    absorb_export_error(outcome, started.elapsed());
+}
+
+/// エクスポート結果を best-effort として畳み込む。
+///
+/// 成否にかかわらず所要時間をログに出し、失敗は `warn` に落として `None` を返す
+/// （呼び出し元へ `Err` を伝播させない）。副作用がログだけの純粋関数なので、
+/// `AppHandle` 抜きで「失敗が伝播しないこと」をユニットテストできる。
+fn absorb_export_error<T>(result: Result<T, String>, elapsed: std::time::Duration) -> Option<T> {
+    match result {
+        Ok(v) => {
+            log::info!("[battle_export] battle_db.bin 再生成 完了 ({} ms)", elapsed.as_millis());
+            Some(v)
+        }
+        Err(e) => {
+            log::warn!(
+                "[battle_export] battle_db.bin 再生成に失敗しました（バトル取得は成功扱いで続行）: {e} ({} ms)",
+                elapsed.as_millis()
+            );
+            None
+        }
+    }
 }
 
 async fn run_fetch_full_inner(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usize, usize), String> {
@@ -536,4 +579,61 @@ fn send_notification_error(app: &AppHandle) {
         .title("splabo")
         .body("バトルデータの取得に失敗しました")
         .show();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    /// エクスポート失敗が `Err` として伝播せず `None` に畳み込まれること（#367 の肝）。
+    #[test]
+    fn absorb_export_error_swallows_failure() {
+        let r: Option<u32> = absorb_export_error(Err("書き込み失敗".to_string()), Duration::from_millis(3));
+        assert!(r.is_none());
+    }
+
+    /// 成功時は値がそのまま取り出せること。
+    #[test]
+    fn absorb_export_error_passes_through_success() {
+        let r = absorb_export_error(Ok(42u32), Duration::from_millis(1));
+        assert_eq!(r, Some(42));
+    }
+
+    /// `run_fetch_full` の制御フロー（取得結果 → best-effort エクスポート → 戻り値）を模した検証。
+    /// エクスポートがどう転んでも取得件数はそのまま返ること。
+    #[test]
+    fn fetch_result_is_unaffected_by_export_outcome() {
+        fn simulate(
+            fetch: Result<(usize, usize, usize), String>,
+            export: Result<(), String>,
+        ) -> Result<(usize, usize, usize), String> {
+            if fetch.is_ok() {
+                absorb_export_error(export, Duration::from_millis(0));
+            }
+            fetch
+        }
+
+        let ok = (7usize, 3usize, 0usize);
+        assert_eq!(simulate(Ok(ok), Err("boom".into())), Ok(ok));
+        assert_eq!(simulate(Ok(ok), Ok(())), Ok(ok));
+        // 取得自体が失敗した場合はそのエラーがそのまま返る（エクスポートで塗り潰さない）。
+        assert_eq!(
+            simulate(Err("NOT_LOGGED_IN: ...".into()), Ok(())),
+            Err("NOT_LOGGED_IN: ...".to_string())
+        );
+    }
+
+    /// 多重起動防止フラグの挙動: 取得中フラグが立っている間は再入できず、
+    /// エクスポートを内包しても解放後は再び取得できること。
+    #[test]
+    fn fetch_in_progress_flag_round_trip() {
+        use std::sync::atomic::Ordering;
+        let flag = FetchInProgress::default();
+        assert!(!flag.0.swap(true, Ordering::SeqCst), "最初の取得は開始できる");
+        assert!(flag.0.swap(true, Ordering::SeqCst), "取得中は再入できない");
+        // エクスポートはフラグを握ったまま走り、その後に解放される
+        flag.0.store(false, Ordering::SeqCst);
+        assert!(!flag.0.swap(true, Ordering::SeqCst), "解放後は再び取得できる");
+    }
 }
