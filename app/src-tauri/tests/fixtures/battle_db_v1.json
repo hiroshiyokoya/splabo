@@ -74,6 +74,316 @@
       "wins": 1
     }
   },
+  "aggregates_by_period": {
+    "all_time": {
+      "by_lobby": [
+        {
+          "draws": 0,
+          "key": "bankara",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "regular",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_rule": [
+        {
+          "draws": 0,
+          "key": "area",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "turf_war",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_stage": [
+        {
+          "draws": 0,
+          "key": "yunohana",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "gonzui",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_weapon": [
+        {
+          "draws": 0,
+          "key": "splattershot",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "wakaba",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "overall": {
+        "avg_death": 6.0,
+        "avg_kill": 7.0,
+        "draws": 0,
+        "losses": 1,
+        "total": 2,
+        "win_rate": 0.5,
+        "wins": 1
+      },
+      "since": "2026-07-15T11:10:00Z",
+      "until": "2026-07-15T12:00:00Z"
+    },
+    "recent": {
+      "by_lobby": [
+        {
+          "draws": 0,
+          "key": "bankara",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "regular",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_rule": [
+        {
+          "draws": 0,
+          "key": "area",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "turf_war",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_stage": [
+        {
+          "draws": 0,
+          "key": "yunohana",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "gonzui",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_weapon": [
+        {
+          "draws": 0,
+          "key": "splattershot",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "wakaba",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "overall": {
+        "avg_death": 6.0,
+        "avg_kill": 7.0,
+        "draws": 0,
+        "losses": 1,
+        "total": 2,
+        "win_rate": 0.5,
+        "wins": 1
+      },
+      "since": "2026-07-15T11:10:00Z",
+      "until": "2026-07-15T12:00:00Z"
+    },
+    "season": {
+      "by_lobby": [
+        {
+          "draws": 0,
+          "key": "bankara",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "regular",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_rule": [
+        {
+          "draws": 0,
+          "key": "area",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "turf_war",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_stage": [
+        {
+          "draws": 0,
+          "key": "yunohana",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "gonzui",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_weapon": [
+        {
+          "draws": 0,
+          "key": "splattershot",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "wakaba",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "overall": {
+        "avg_death": 6.0,
+        "avg_kill": 7.0,
+        "draws": 0,
+        "losses": 1,
+        "total": 2,
+        "win_rate": 0.5,
+        "wins": 1
+      },
+      "since": "2026-06-01T00:00:00Z",
+      "until": "2026-09-01T00:00:00Z"
+    },
+    "week": {
+      "by_lobby": [
+        {
+          "draws": 0,
+          "key": "bankara",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "regular",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_rule": [
+        {
+          "draws": 0,
+          "key": "area",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "turf_war",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_stage": [
+        {
+          "draws": 0,
+          "key": "yunohana",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "gonzui",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_weapon": [
+        {
+          "draws": 0,
+          "key": "splattershot",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "wakaba",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "overall": {
+        "avg_death": 6.0,
+        "avg_kill": 7.0,
+        "draws": 0,
+        "losses": 1,
+        "total": 2,
+        "win_rate": 0.5,
+        "wins": 1
+      },
+      "since": "2026-07-12T15:00:00Z",
+      "until": "2026-07-19T15:00:00Z"
+    }
+  },
   "battles": [
     {
       "assist": 2,

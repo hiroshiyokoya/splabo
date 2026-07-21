@@ -6,10 +6,13 @@
 //! - トリカラは一覧・集計とも除外（chartoon フロントと整合・#293）。
 //! - win_rate の分母は decisive = total − draws（`db.rs` の定義に合わせる）。
 //! - `battles[]` と `aggregates` は **同一の母集団（直近 N 戦）**（#361）。
-//!   母集団は `recent_cte()` の 1 箇所だけで定義し、一覧・集計とも同じ CTE に JOIN する。
+//!   母集団は `scoped_cte()` の 1 箇所だけで定義し、一覧・集計とも同じ CTE に JOIN する。
+//! - `aggregates_by_period` は **全期間 / 今シーズン / 今週 / 直近 N 戦** の 4 期間分の集計（#375）。
+//!   既存の `aggregates`（直近 N 戦）は**そのまま残す**（古い viewer のフォールバック先）。
 //!
 //! 詳細契約: `D:\develop\splatoon-gear\splabo-viewer-battle-db-contract.md`（viewer #30 と対）。
 
+use chrono::{DateTime, Datelike, Days, FixedOffset, NaiveTime, TimeZone, Utc};
 use serde::Serialize;
 use sqlx::Row;
 use tauri::{AppHandle, Manager};
@@ -24,6 +27,23 @@ const DEFAULT_LIMIT: i64 = 50;
 /// トリカラマッチ除外条件（`db_list_battles` と揃える）。
 const TRIKOLOR_EXCLUDE: &str = "(json_extract(b.raw_json, '$.vsRule.rule') IS NULL \
      OR json_extract(b.raw_json, '$.vsRule.rule') <> 'TRI_COLOR')";
+
+/// 「このバトルはトリカラではありえない」と **`raw_json` を読まずに** 判定できる条件（#375）。
+///
+/// `TRIKOLOR_EXCLUDE` は 1 行あたり平均 190KB の `raw_json` を `json_extract` で
+/// 舐めるため、全期間ぶんの母集団を作るとこれだけで 200ms 前後かかる（実測）。
+/// 下記の**事前ゲート**を OR で前置すると、大半の行で `raw_json` に触らずに済み
+/// 実測 211ms → 13ms になる（同一結果）。
+///
+/// 根拠（トリカラ戦は必ずどちらかに当たる）:
+/// - SplatNet3 取り込みではトリカラの lobby は `splatfest_open` 固定
+///   （`splatnet3.rs` の FEST 分岐・移行 v18 も同じ扱い）。
+/// - stat.ink 取り込みでは rule が `tricolor`（`statink.rs` の `TRI_COLOR` → `tricolor`）。
+///
+/// ゲートを通った行には従来どおり `TRIKOLOR_EXCLUDE` を適用するので、
+/// 「フェスロビー or rule=tricolor」の行は今までと完全に同じ判定になる。
+const TRIKOLOR_IMPOSSIBLE: &str =
+    "(l.key NOT LIKE 'splatfest%' AND (r.key IS NULL OR r.key <> 'tricolor'))";
 
 /// ステージ正式名 → コミュニティ通称（短縮名）。狭い viewer 画面で行が窮屈に
 /// ならないよう、本体側で短縮名を解決して配信する（#368）。
@@ -125,27 +145,202 @@ fn path_to_slash(p: &std::path::Path) -> String {
     s.replace('\\', "/")
 }
 
-/// `battles[]` と `aggregates` が共有する「直近 N 戦」の母集団（CTE）。
+// ---------------------------------------------------------------------------
+// 期間（#375）: シーズン / 週の境界計算
+// ---------------------------------------------------------------------------
+
+/// 日本時間のオフセット（+09:00）。シーズン境界・週境界の基準。
+const JST_OFFSET_SECONDS: i32 = 9 * 3600;
+
+/// UTC の ISO8601（`generated_at` / `played_at` と同じ書式）に整形する。
+fn iso_z(at: DateTime<Utc>) -> String {
+    at.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
+/// `generated_at` 等の UTC ISO8601 をパースする（失敗時 None）。
+fn parse_iso_z(s: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|d| d.with_timezone(&Utc))
+}
+
+/// `at` が属するスプラトゥーン3シーズンの開始時刻（UTC・inclusive）。
 ///
-/// `battles[]` の抽出条件（トリカラ除外・必須 JOIN・`played_at` 降順・件数上限）を
-/// **ここ 1 箇所だけ**で定義する。集計側は独自に 50 件を取り直さず、この CTE に
-/// JOIN するだけなので、一覧と集計で母集団がズレようがない。
+/// シーズンは **12月 / 3月 / 6月 / 9月 の各 1 日 09:00 JST** 開始の 3ヶ月区切り。
+/// 09:00 JST = **00:00 UTC**（同日）なので、UTC で見ると境界はちょうど
+/// 「開始月 1 日 00:00:00Z」になり、**UTC の年月だけで判定できる**（JST への変換が不要）。
 ///
-/// バインドは `LIMIT ?` の 1 個。この CTE を使う各クエリは先頭で `limit` を 1 回 bind する。
-fn recent_cte() -> String {
-    format!(
-        "WITH recent AS (
+/// 🔴 `battle` テーブルに `season` 列は無く、`env_battles.season`（stat.ink 由来）も
+/// 自分のバトルには使えないため、`played_at` から計算する（#375）。
+fn season_start_utc(at: DateTime<Utc>) -> DateTime<Utc> {
+    // 1〜2 月は前年 12 月開始シーズンの続き（年跨ぎ）。
+    let (year, month) = match at.month() {
+        1 | 2 => (at.year() - 1, 12),
+        3..=5 => (at.year(), 3),
+        6..=8 => (at.year(), 6),
+        9..=11 => (at.year(), 9),
+        _ => (at.year(), 12),
+    };
+    Utc.with_ymd_and_hms(year, month, 1, 0, 0, 0).unwrap()
+}
+
+/// `at` が属するシーズンの終了時刻（= 次シーズンの開始時刻・UTC・**exclusive**）。
+fn season_end_utc(at: DateTime<Utc>) -> DateTime<Utc> {
+    let start = season_start_utc(at);
+    let (year, month) = if start.month() == 12 {
+        (start.year() + 1, 3)
+    } else {
+        (start.year(), start.month() + 3)
+    };
+    Utc.with_ymd_and_hms(year, month, 1, 0, 0, 0).unwrap()
+}
+
+/// `at` が属する「今週」の開始時刻（UTC・inclusive）。
+///
+/// **週の起点は月曜 00:00 JST**（= 日曜 15:00 UTC）。根拠:
+/// - 利用者は日本のプレイヤーで、週の感覚は JST の暦週。UTC 週だと日曜の夜のプレイが
+///   翌週に落ちて体感とズレる。
+/// - ISO 8601 の週も月曜起点で、`chrono` の `num_days_from_monday()` とも自然に一致する。
+/// - シーズン境界（09:00 JST）に合わせる案もあるが、シーズンは「月初の 1 回」なのに対し
+///   週は毎週来るので、日付が変わる 00:00 に揃えるほうが説明しやすい。
+fn week_start_utc(at: DateTime<Utc>) -> DateTime<Utc> {
+    let jst = FixedOffset::east_opt(JST_OFFSET_SECONDS).unwrap();
+    let local = at.with_timezone(&jst);
+    let back = u64::from(local.weekday().num_days_from_monday());
+    let monday = local.date_naive() - Days::new(back);
+    jst.from_local_datetime(&monday.and_time(NaiveTime::MIN))
+        .unwrap()
+        .with_timezone(&Utc)
+}
+
+/// `at` が属する週の終了時刻（= 翌週月曜 00:00 JST・UTC・**exclusive**）。
+fn week_end_utc(at: DateTime<Utc>) -> DateTime<Utc> {
+    week_start_utc(at)
+        .checked_add_days(Days::new(7))
+        .expect("週末の算出でオーバーフローすることは無い")
+}
+
+// ---------------------------------------------------------------------------
+// 母集団スコープ
+// ---------------------------------------------------------------------------
+
+/// 期間下限の番兵（実データの `played_at` より必ず小さい ISO8601）。
+/// NULL 判定の分岐を SQL から消すために使う（`played_at` は NOT NULL）。
+const RANGE_MIN: &str = "0000-01-01T00:00:00Z";
+/// 期間上限の番兵（実データの `played_at` より必ず大きい ISO8601）。
+const RANGE_MAX: &str = "9999-12-31T23:59:59Z";
+
+/// 集計対象になり得る全バトルの id（= トリカラ以外）を JSON 配列で保持する。
+///
+/// 🔴 **トリカラ判定は `raw_json` への `json_extract` で、1 行あたり平均 190KB を読む**。
+/// 全期間の集計をそのまま SQL で回すとこのフルスキャンが期間 × 軸の回数だけ走り、
+/// 実測で 2〜4 秒かかった（#375 の実測）。そこで **1 エクスポートにつき 1 回だけ**
+/// 走査して id 集合を作り、以降の期間別クエリは `json_each()` でこの集合を使い回す
+/// （`raw_json` に触らないので 1 クエリ数 ms）。
+#[derive(Debug, Clone)]
+struct Population(std::sync::Arc<String>);
+
+/// トリカラ以外の全バトル id を 1 回だけ引く（`raw_json` を読むのは**ここだけ**）。
+async fn population(pool: &sqlx::SqlitePool) -> Result<Population, String> {
+    let sql = format!(
+        "SELECT b.id AS id
+         FROM battle b
+         JOIN      lobby  l   ON l.id   = b.lobby_id
+         JOIN      result res ON res.id = b.result_id
+         JOIN      weapon w   ON w.id   = b.weapon_id
+         JOIN      map    m   ON m.id   = b.map_id
+         LEFT JOIN rule   r   ON r.id   = b.rule_id
+         WHERE {TRIKOLOR_IMPOSSIBLE} OR {TRIKOLOR_EXCLUDE}"
+    );
+    let ids: Vec<String> = sqlx::query(&sql)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|r| r.try_get::<String, _>("id").unwrap_or_default())
+        .collect();
+    let json = serde_json::to_string(&ids).map_err(|e| e.to_string())?;
+    Ok(Population(std::sync::Arc::new(json)))
+}
+
+/// 集計母集団の絞り込み条件（`scoped_cte()` の 4 バインドと 1:1）。
+///
+/// - 時間で切る期間（今シーズン・今週）は `since`/`until` を実際の境界にし、`limit` は無制限。
+/// - 件数で切る期間（直近 N 戦）は `since`/`until` を番兵にし、`limit` に N を入れる。
+/// - 全期間は両方とも無制限。
+#[derive(Debug, Clone)]
+struct Scope {
+    /// トリカラ除外済みの id 集合（期間をまたいで共有する）。
+    pop: Population,
+    /// 下限（inclusive・UTC ISO8601）。
+    since: String,
+    /// 上限（exclusive・UTC ISO8601）。
+    until: String,
+    /// 件数上限。**-1 は SQLite の `LIMIT -1` = 無制限**。
+    limit: i64,
+}
+
+impl Scope {
+    /// 直近 N 戦（従来の `aggregates` / `battles[]` の母集団・#361）。
+    fn recent(pop: &Population, limit: i64) -> Self {
+        Self {
+            pop: pop.clone(),
+            since: RANGE_MIN.to_string(),
+            until: RANGE_MAX.to_string(),
+            limit,
+        }
+    }
+
+    /// 全期間（時間・件数とも無制限）。
+    fn all_time(pop: &Population) -> Self {
+        Self::recent(pop, -1)
+    }
+
+    /// 時間で切る期間（`since` 以上 `until` 未満・件数無制限）。
+    fn range(pop: &Population, since: &str, until: &str) -> Self {
+        Self {
+            pop: pop.clone(),
+            since: since.to_string(),
+            until: until.to_string(),
+            limit: -1,
+        }
+    }
+}
+
+/// `battles[]` と各集計が共有する母集団（CTE）。
+///
+/// 抽出条件（トリカラ除外済み id 集合・必須 JOIN・期間・`played_at` 降順・件数上限）を
+/// **ここ 1 箇所だけ**で定義する。集計側は独自に取り直さず、この CTE に JOIN するだけなので、
+/// 一覧と集計、あるいは期間別集計どうしで母集団がズレようがない（#361 / #375）。
+///
+/// バインドは **ids → since → until → limit の 4 個**。この CTE を使う各クエリは
+/// 先頭でこの順に 4 回 bind する（`bind_scope` を経由すること）。
+fn scoped_cte() -> String {
+    "WITH recent AS (
              SELECT b.id AS id
              FROM battle b
              JOIN lobby  l   ON l.id   = b.lobby_id
              JOIN result res ON res.id = b.result_id
              JOIN weapon w   ON w.id   = b.weapon_id
              JOIN map    m   ON m.id   = b.map_id
-             WHERE {TRIKOLOR_EXCLUDE}
+             WHERE b.id IN (SELECT value FROM json_each(?))
+               AND b.played_at >= ?
+               AND b.played_at <  ?
              ORDER BY b.played_at DESC
              LIMIT ?
          )"
-    )
+    .to_string()
+}
+
+/// `scoped_cte()` の 4 バインドを正しい順で詰める（呼び出し側の bind 漏れ・順序違いを防ぐ）。
+fn bind_scope<'q>(
+    q: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
+    scope: &'q Scope,
+) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
+    q.bind(scope.pop.0.as_str())
+        .bind(&scope.since)
+        .bind(&scope.until)
+        .bind(scope.limit)
 }
 
 /// 直近 N 戦のサマリ行を引く SQL（`recent` CTE の集合そのもの）。
@@ -183,7 +378,7 @@ fn battles_sql() -> String {
          JOIN      weapon w   ON w.id   = b.weapon_id
          JOIN      map    m   ON m.id   = b.map_id
          ORDER BY b.played_at DESC",
-        cte = recent_cte()
+        cte = scoped_cte()
     )
 }
 
@@ -199,7 +394,7 @@ fn overall_sql() -> String {
          FROM battle b
          JOIN recent rc  ON rc.id  = b.id
          JOIN result res ON res.id = b.result_id",
-        cte = recent_cte()
+        cte = scoped_cte()
     )
 }
 
@@ -218,7 +413,7 @@ fn by_rule_sql() -> String {
          LEFT JOIN rule   r   ON r.id   = b.rule_id
          JOIN      result res ON res.id = b.result_id
          GROUP BY name ORDER BY total DESC",
-        cte = recent_cte()
+        cte = scoped_cte()
     )
 }
 
@@ -237,7 +432,7 @@ fn by_lobby_sql() -> String {
          JOIN lobby  l   ON l.id   = b.lobby_id
          JOIN result res ON res.id = b.result_id
          GROUP BY name ORDER BY total DESC",
-        cte = recent_cte()
+        cte = scoped_cte()
     )
 }
 
@@ -254,7 +449,7 @@ fn by_weapon_sql() -> String {
          JOIN weapon w   ON w.id   = b.weapon_id
          JOIN result res ON res.id = b.result_id
          GROUP BY w.id ORDER BY total DESC",
-        cte = recent_cte()
+        cte = scoped_cte()
     )
 }
 
@@ -271,7 +466,7 @@ fn by_stage_sql() -> String {
          JOIN map    m   ON m.id   = b.map_id
          JOIN result res ON res.id = b.result_id
          GROUP BY m.id ORDER BY total DESC",
-        cte = recent_cte()
+        cte = scoped_cte()
     )
 }
 
@@ -290,14 +485,13 @@ fn fill_stage_short_names(battles: &mut [BattleExportRow]) {
 }
 
 /// グループ集計 SQL を実行し `[{key,total,wins,draws,win_rate}]` を返す。
-/// `limit` は `recent` CTE の `LIMIT ?` に bind される。
+/// `scope` は `recent` CTE の 3 バインド（since / until / limit）に bind される。
 async fn grouped(
     pool: &sqlx::SqlitePool,
     sql: &str,
-    limit: i64,
+    scope: &Scope,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let rows = sqlx::query(sql)
-        .bind(limit)
+    let rows = bind_scope(sqlx::query(sql), scope)
         .fetch_all(pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -320,6 +514,135 @@ async fn grouped(
         .collect())
 }
 
+/// overall 集計を実行して `{total,wins,losses,draws,win_rate,avg_kill,avg_death}` を返す。
+/// 0 件の期間でも `total=0 / win_rate=0.0 / avg_* = null` が返るだけで壊れない。
+async fn overall(pool: &sqlx::SqlitePool, scope: &Scope) -> Result<serde_json::Value, String> {
+    let row = bind_scope(sqlx::query(&overall_sql()), scope)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let total: i64 = row.try_get("total").unwrap_or(0);
+    let wins: i64 = row.try_get("wins").unwrap_or(0);
+    let draws: i64 = row.try_get("draws").unwrap_or(0);
+    let avg_kill: Option<f64> = row.try_get("avg_kill").ok();
+    let avg_death: Option<f64> = row.try_get("avg_death").ok();
+    let decisive = total - draws;
+    Ok(serde_json::json!({
+        "total": total,
+        "wins": wins,
+        "losses": decisive - wins,
+        "draws": draws,
+        "win_rate": if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 },
+        "avg_kill": avg_kill,
+        "avg_death": avg_death,
+    }))
+}
+
+/// 1 期間分の集計（`overall` + 4 軸のグループ集計）を組み立てる。
+/// 形は既存 `aggregates` と完全に同じ（viewer は同じ描画コードを使い回せる）。
+async fn aggregates_for(
+    pool: &sqlx::SqlitePool,
+    scope: &Scope,
+) -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({
+        "overall":   overall(pool, scope).await?,
+        "by_rule":   grouped(pool, &by_rule_sql(),   scope).await?,
+        "by_lobby":  grouped(pool, &by_lobby_sql(),  scope).await?,
+        "by_weapon": grouped(pool, &by_weapon_sql(), scope).await?,
+        "by_stage":  grouped(pool, &by_stage_sql(),  scope).await?,
+    }))
+}
+
+/// 母集団に含まれる最古の `played_at`（0 件なら None）。
+/// カレンダー由来でない期間（全期間・直近 N 戦）の `since` に使う。
+async fn population_since(
+    pool: &sqlx::SqlitePool,
+    scope: &Scope,
+) -> Result<Option<String>, String> {
+    let sql = format!(
+        "{cte}
+         SELECT MIN(b.played_at) AS since
+         FROM battle b
+         JOIN recent rc ON rc.id = b.id",
+        cte = scoped_cte()
+    );
+    let row = bind_scope(sqlx::query(&sql), scope)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.try_get::<Option<String>, _>("since").unwrap_or(None))
+}
+
+/// 期間別集計 1 件分の「配信する絶対範囲」の決め方（#375）。
+enum PeriodRange {
+    /// 暦で決まる範囲（今週・今シーズン）。**スコープの境界をそのまま**配信する。
+    /// `until` は未来時刻になり得る。viewer は `now >= until` を見て
+    /// 「この集計はもう『今週 / 今シーズン』ではない」と判定できる（#367 の再生成タイミング問題対策）。
+    Calendar,
+    /// データで決まる範囲（全期間・直近 N 戦）。暦の境界が無いので
+    /// `since` = 母集団の最古 `played_at`（0 件なら null）、`until` = 生成時刻とする。
+    Data,
+}
+
+/// 期間別集計（`aggregates_by_period`）を組み立てる。
+///
+/// `recent` は既存 `aggregates` と同一母集団なので、計算済みの値を渡して**使い回す**
+/// （二重計算を避けつつ、既存 `aggregates` と数値が一致することを構造的に保証する）。
+async fn aggregates_by_period(
+    pool: &sqlx::SqlitePool,
+    pop: &Population,
+    limit: i64,
+    now: DateTime<Utc>,
+    generated_at: &str,
+    recent_aggregates: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let specs: Vec<(&str, Scope, PeriodRange)> = vec![
+        ("all_time", Scope::all_time(pop), PeriodRange::Data),
+        (
+            "season",
+            Scope::range(
+                pop,
+                &iso_z(season_start_utc(now)),
+                &iso_z(season_end_utc(now)),
+            ),
+            PeriodRange::Calendar,
+        ),
+        (
+            "week",
+            Scope::range(pop, &iso_z(week_start_utc(now)), &iso_z(week_end_utc(now))),
+            PeriodRange::Calendar,
+        ),
+        ("recent", Scope::recent(pop, limit), PeriodRange::Data),
+    ];
+
+    let mut out = serde_json::Map::new();
+    for (key, scope, range) in specs {
+        // recent は既存 aggregates の使い回し（同一母集団なので必ず一致する）。
+        let stats = if key == "recent" {
+            recent_aggregates.clone()
+        } else {
+            aggregates_for(pool, &scope).await?
+        };
+        let (since, until) = match range {
+            PeriodRange::Calendar => (Some(scope.since.clone()), scope.until.clone()),
+            PeriodRange::Data => (
+                population_since(pool, &scope).await?,
+                generated_at.to_string(),
+            ),
+        };
+        let mut entry = serde_json::Map::new();
+        entry.insert("since".into(), serde_json::json!(since));
+        entry.insert("until".into(), serde_json::json!(until));
+        if let Some(obj) = stats.as_object() {
+            for (k, v) in obj {
+                entry.insert(k.clone(), v.clone());
+            }
+        }
+        out.insert(key.to_string(), serde_json::Value::Object(entry));
+    }
+    Ok(serde_json::Value::Object(out))
+}
+
 /// 直近バトルのサマリ行 + 集計を暗号化して `battle_db.bin` に書き出す。
 ///
 /// viewer は同期でこのファイルを引き、`gear_crypto` と同一方式で復号する。
@@ -332,9 +655,17 @@ pub async fn export_battle_db(
     let pool = db.as_ref();
     let limit = limit.unwrap_or(DEFAULT_LIMIT);
 
-    // --- 直近サマリ行（母集団 = recent CTE） ---
+    // --- 母集団（トリカラ除外）を 1 回だけ確定させる ---
+    // raw_json を読むのはここだけ。以降の一覧・集計は全期間ぶんでもこの id 集合を使い回す。
+    let pop = population(pool).await?;
+    let recent = Scope::recent(&pop, limit);
+
+    // --- 直近サマリ行（母集団 = recent CTE。#375 でも件数は据え置き） ---
     let mut battles = sqlx::query_as::<_, BattleExportRow>(&battles_sql())
-        .bind(limit)
+        .bind(recent.pop.0.as_str())
+        .bind(&recent.since)
+        .bind(&recent.until)
+        .bind(recent.limit)
         .fetch_all(pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -342,31 +673,7 @@ pub async fn export_battle_db(
     fill_stage_short_names(&mut battles);
 
     // --- 集計（母集団は battles[] と同一の直近 N 戦・トリカラ除外） ---
-    let overall_row = sqlx::query(&overall_sql())
-        .bind(limit)
-        .fetch_one(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    let total: i64 = overall_row.try_get("total").unwrap_or(0);
-    let wins: i64 = overall_row.try_get("wins").unwrap_or(0);
-    let draws: i64 = overall_row.try_get("draws").unwrap_or(0);
-    let avg_kill: Option<f64> = overall_row.try_get("avg_kill").ok();
-    let avg_death: Option<f64> = overall_row.try_get("avg_death").ok();
-    let decisive = total - draws;
-    let overall = serde_json::json!({
-        "total": total,
-        "wins": wins,
-        "losses": decisive - wins,
-        "draws": draws,
-        "win_rate": if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 },
-        "avg_kill": avg_kill,
-        "avg_death": avg_death,
-    });
-
-    let by_rule = grouped(pool, &by_rule_sql(), limit).await?;
-    let by_lobby = grouped(pool, &by_lobby_sql(), limit).await?;
-    let by_weapon = grouped(pool, &by_weapon_sql(), limit).await?;
-    let by_stage = grouped(pool, &by_stage_sql(), limit).await?;
+    let aggregates = aggregates_for(pool, &recent).await?;
 
     // --- メタ（生成時刻 UTC ISO8601・スキーマバージョン） ---
     let generated_at: String = sqlx::query("SELECT strftime('%Y-%m-%dT%H:%M:%SZ','now') AS now")
@@ -382,6 +689,12 @@ pub async fn export_battle_db(
         .try_get(0)
         .unwrap_or(0);
 
+    // --- 期間別集計（#375・全期間 / 今シーズン / 今週 / 直近 N 戦） ---
+    // 「今」は generated_at と同じ時刻を使う（配信する範囲とメタがズレないように）。
+    let now = parse_iso_z(&generated_at).unwrap_or_else(Utc::now);
+    let by_period =
+        aggregates_by_period(pool, &pop, limit, now, &generated_at, &aggregates).await?;
+
     // --- エンベロープ構築 → 暗号化 → 書き出し ---
     let envelope = serde_json::json!({
         "schema": SCHEMA,
@@ -389,13 +702,10 @@ pub async fn export_battle_db(
         "generated_at": generated_at,
         "source_db_user_version": user_version,
         "battles": battles,
-        "aggregates": {
-            "overall": overall,
-            "by_rule": by_rule,
-            "by_lobby": by_lobby,
-            "by_weapon": by_weapon,
-            "by_stage": by_stage,
-        },
+        // 既存フィールド（直近 N 戦）。**後方互換のため形も値もそのまま維持する**。
+        "aggregates": aggregates,
+        // 追加フィールド（#375）。各期間に since / until（絶対時刻）を含む。
+        "aggregates_by_period": by_period,
     });
 
     let json = serde_json::to_vec(&envelope).map_err(|e| e.to_string())?;
@@ -475,6 +785,95 @@ mod tests {
                     { "key": "yunohana", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
                     { "key": "gonzui", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
                 ]
+            },
+            // #375: 期間別集計。既存 `aggregates` と同じ形 + since/until（絶対時刻）。
+            // - all_time / recent … since = 母集団の最古 played_at（0 件なら null）、until = generated_at
+            // - season / week     … その期間の暦上の境界（until は未来時刻になり得る）
+            "aggregates_by_period": {
+                "all_time": {
+                    "since": "2026-07-15T11:10:00Z", "until": "2026-07-15T12:00:00Z",
+                    "overall": { "total": 2, "wins": 1, "losses": 1, "draws": 0,
+                                 "win_rate": 0.5, "avg_kill": 7.0, "avg_death": 6.0 },
+                    "by_rule": [
+                        { "key": "area", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "turf_war", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ],
+                    "by_lobby": [
+                        { "key": "bankara", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "regular", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ],
+                    "by_weapon": [
+                        { "key": "splattershot", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "wakaba", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ],
+                    "by_stage": [
+                        { "key": "yunohana", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "gonzui", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ]
+                },
+                "season": {
+                    "since": "2026-06-01T00:00:00Z", "until": "2026-09-01T00:00:00Z",
+                    "overall": { "total": 2, "wins": 1, "losses": 1, "draws": 0,
+                                 "win_rate": 0.5, "avg_kill": 7.0, "avg_death": 6.0 },
+                    "by_rule": [
+                        { "key": "area", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "turf_war", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ],
+                    "by_lobby": [
+                        { "key": "bankara", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "regular", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ],
+                    "by_weapon": [
+                        { "key": "splattershot", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "wakaba", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ],
+                    "by_stage": [
+                        { "key": "yunohana", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "gonzui", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ]
+                },
+                "week": {
+                    "since": "2026-07-12T15:00:00Z", "until": "2026-07-19T15:00:00Z",
+                    "overall": { "total": 2, "wins": 1, "losses": 1, "draws": 0,
+                                 "win_rate": 0.5, "avg_kill": 7.0, "avg_death": 6.0 },
+                    "by_rule": [
+                        { "key": "area", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "turf_war", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ],
+                    "by_lobby": [
+                        { "key": "bankara", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "regular", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ],
+                    "by_weapon": [
+                        { "key": "splattershot", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "wakaba", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ],
+                    "by_stage": [
+                        { "key": "yunohana", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "gonzui", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ]
+                },
+                "recent": {
+                    "since": "2026-07-15T11:10:00Z", "until": "2026-07-15T12:00:00Z",
+                    "overall": { "total": 2, "wins": 1, "losses": 1, "draws": 0,
+                                 "win_rate": 0.5, "avg_kill": 7.0, "avg_death": 6.0 },
+                    "by_rule": [
+                        { "key": "area", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "turf_war", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ],
+                    "by_lobby": [
+                        { "key": "bankara", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "regular", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ],
+                    "by_weapon": [
+                        { "key": "splattershot", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "wakaba", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ],
+                    "by_stage": [
+                        { "key": "yunohana", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                        { "key": "gonzui", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+                    ]
+                }
             }
         })
     }
@@ -504,6 +903,30 @@ mod tests {
         assert_eq!(by_stage[0]["win_rate"], 1.0);
         assert_eq!(by_stage[1]["key"], "gonzui");
         assert_eq!(by_stage[1]["win_rate"], 0.0);
+
+        // #375: 期間別集計。4 期間が揃い、各期間が既存 aggregates と同じ形 + since/until を持つ。
+        let periods = parsed["aggregates_by_period"].as_object().unwrap();
+        assert_eq!(periods.len(), 4);
+        for key in ["all_time", "season", "week", "recent"] {
+            let p = &parsed["aggregates_by_period"][key];
+            assert!(p["since"].is_string() || p["since"].is_null(), "{key}.since");
+            assert!(p["until"].is_string(), "{key}.until は必ず入る");
+            assert!(p["overall"]["total"].is_i64(), "{key}.overall");
+            for axis in ["by_rule", "by_lobby", "by_weapon", "by_stage"] {
+                assert!(p[axis].is_array(), "{key}.{axis}");
+            }
+        }
+        // 暦で決まる期間は since < until（半開区間）。
+        assert_eq!(
+            parsed["aggregates_by_period"]["season"]["since"],
+            "2026-06-01T00:00:00Z"
+        );
+        assert_eq!(
+            parsed["aggregates_by_period"]["week"]["until"],
+            "2026-07-19T15:00:00Z"
+        );
+        // 既存 aggregates は従来どおり since/until を持たない（後方互換）。
+        assert!(parsed["aggregates"].get("since").is_none());
 
         // 共有フィクスチャ生成（平文は決定的なので毎回上書き・暗号は nonce が乱数なので未存在時のみ）。
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -553,9 +976,9 @@ mod tests {
                  detail_fetched INTEGER DEFAULT 1, raw_json TEXT);
              INSERT INTO map    (id, key, name_ja) VALUES (1,'yunohana','ユノハナ'), (2,'gonzui','ゴンズイ');
              INSERT INTO result (id, key) VALUES (1,'win'), (2,'lose'), (3,'draw');
-             INSERT INTO lobby  (id, key) VALUES (1,'regular'), (2,'bankara_challenge');
+             INSERT INTO lobby  (id, key) VALUES (1,'regular'), (2,'bankara_challenge'), (3,'splatfest_open');
              INSERT INTO weapon (id, key, name_ja) VALUES (1,'splattershot','スシ'), (2,'wakaba','わかば');
-             INSERT INTO rule   (id, key) VALUES (1,'area'), (2,'nawabari');",
+             INSERT INTO rule   (id, key) VALUES (1,'area'), (2,'nawabari'), (3,'tricolor');",
         )
         .execute(&pool)
         .await
@@ -577,12 +1000,32 @@ mod tests {
         rule_id: Option<i64>,
         raw: &str,
     ) {
+        let played_at = format!("2026-07-15T{:02}:{:02}:00Z", seq / 60, seq % 60);
+        insert_battle_at(
+            pool, id, &played_at, map_id, result_id, lobby_id, weapon_id, rule_id, raw,
+        )
+        .await;
+    }
+
+    /// バトルを 1 件挿入する（`played_at` を明示・#375 の期間テスト用）。
+    #[allow(clippy::too_many_arguments)]
+    async fn insert_battle_at(
+        pool: &sqlx::SqlitePool,
+        id: &str,
+        played_at: &str,
+        map_id: i64,
+        result_id: i64,
+        lobby_id: i64,
+        weapon_id: i64,
+        rule_id: Option<i64>,
+        raw: &str,
+    ) {
         sqlx::query(
             "INSERT INTO battle (id, played_at, map_id, result_id, lobby_id, weapon_id, rule_id, kill, death, detail_fetched, raw_json)
              VALUES (?,?,?,?,?,?,?,3,2,1,?)",
         )
         .bind(id)
-        .bind(format!("2026-07-15T{:02}:{:02}:00Z", seq / 60, seq % 60))
+        .bind(played_at)
         .bind(map_id)
         .bind(result_id)
         .bind(lobby_id)
@@ -596,15 +1039,12 @@ mod tests {
 
     /// overall 集計を実行して (total, wins, draws) を返す。
     async fn overall_totals(pool: &sqlx::SqlitePool, limit: i64) -> (i64, i64, i64) {
-        let row = sqlx::query(&overall_sql())
-            .bind(limit)
-            .fetch_one(pool)
-            .await
-            .unwrap();
+        let pop = population(pool).await.unwrap();
+        let v = overall(pool, &Scope::recent(&pop, limit)).await.unwrap();
         (
-            row.try_get("total").unwrap_or(0),
-            row.try_get("wins").unwrap_or(0),
-            row.try_get("draws").unwrap_or(0),
+            v["total"].as_i64().unwrap(),
+            v["wins"].as_i64().unwrap(),
+            v["draws"].as_i64().unwrap(),
         )
     }
 
@@ -633,11 +1073,16 @@ mod tests {
             ("t1", 1, 1, TRI),
         ];
         for (i, (id, map_id, result_id, raw)) in rows.iter().enumerate() {
-            insert_battle(&pool, id, i as i64, *map_id, *result_id, 1, 1, Some(1), raw).await;
+            // トリカラは実データ同様フェスロビー（splatfest_open）に置く。
+            let lobby = if *raw == TRI { 3 } else { 1 };
+            insert_battle(&pool, id, i as i64, *map_id, *result_id, lobby, 1, Some(1), raw).await;
         }
 
         // 本番と同一の by_stage SQL（母集団は十分大きい limit なので全 5 件が対象）。
-        let by_stage = grouped(&pool, &by_stage_sql(), 100).await.unwrap();
+        let pop = population(&pool).await.unwrap();
+        let by_stage = grouped(&pool, &by_stage_sql(), &Scope::recent(&pop, 100))
+            .await
+            .unwrap();
 
         assert_eq!(by_stage.len(), 2);
 
@@ -682,12 +1127,15 @@ mod tests {
         }
         for i in 0..5i64 {
             // played_at が最新側に来るトリカラ（除外されないと直近 50 に混入する）。
-            insert_battle(&pool, &format!("t{i}"), 200 + i, 1, 1, 1, 1, Some(1), TRI).await;
+            insert_battle(&pool, &format!("t{i}"), 200 + i, 1, 1, 3, 1, Some(1), TRI).await;
         }
 
         let limit = DEFAULT_LIMIT;
 
         let battles = sqlx::query_as::<_, BattleExportRow>(&battles_sql())
+            .bind(population(&pool).await.unwrap().0.as_str())
+            .bind(RANGE_MIN)
+            .bind(RANGE_MAX)
             .bind(limit)
             .fetch_all(&pool)
             .await
@@ -703,7 +1151,8 @@ mod tests {
             ("by_weapon", by_weapon_sql()),
             ("by_stage", by_stage_sql()),
         ] {
-            let groups = grouped(&pool, &sql, limit).await.unwrap();
+            let pop = population(&pool).await.unwrap();
+            let groups = grouped(&pool, &sql, &Scope::recent(&pop, limit)).await.unwrap();
             assert_eq!(
                 sum_total(&groups),
                 total,
@@ -746,7 +1195,8 @@ mod tests {
             ("by_weapon", by_weapon_sql()),
             ("by_stage", by_stage_sql()),
         ] {
-            let groups = grouped(&pool, &sql, limit).await.unwrap();
+            let pop = population(&pool).await.unwrap();
+            let groups = grouped(&pool, &sql, &Scope::recent(&pop, limit)).await.unwrap();
             assert_eq!(sum_total(&groups), 10, "{label} の total 合計");
         }
     }
@@ -764,7 +1214,10 @@ mod tests {
         let (total, _, _) = overall_totals(&pool, limit).await;
         assert_eq!(total, 2);
 
-        let by_rule = grouped(&pool, &by_rule_sql(), limit).await.unwrap();
+        let pop = population(&pool).await.unwrap();
+        let by_rule = grouped(&pool, &by_rule_sql(), &Scope::recent(&pop, limit))
+            .await
+            .unwrap();
         assert_eq!(sum_total(&by_rule), 2);
         assert!(
             by_rule.iter().any(|g| g["key"] == ""),
@@ -847,6 +1300,9 @@ mod tests {
         }
 
         let mut battles = sqlx::query_as::<_, BattleExportRow>(&battles_sql())
+            .bind(population(&pool).await.unwrap().0.as_str())
+            .bind(RANGE_MIN)
+            .bind(RANGE_MAX)
             .bind(DEFAULT_LIMIT)
             .fetch_all(&pool)
             .await
@@ -924,5 +1380,375 @@ mod tests {
         assert_eq!(v["stage_name"], "ユノハナ大渓谷", "正式名は必ず残る");
         assert_eq!(v["stage_short_name"], "ユノハナ");
         assert_eq!(v["stage"], "yunohana", "slug も従来どおり");
+    }
+
+    // -----------------------------------------------------------------------
+    // #375: 期間別集計（シーズン / 週の境界計算）
+    // -----------------------------------------------------------------------
+
+    /// #375: 母集団（`population`）は `TRIKOLOR_IMPOSSIBLE` の事前ゲートを挟んでも
+    /// トリカラを取りこぼさない。
+    /// - フェスロビー（SplatNet3 取り込みのトリカラ）→ 除外される
+    /// - rule = tricolor（stat.ink 取り込みのトリカラ）→ 除外される
+    /// - 非フェスロビーの通常バトルはゲートで `raw_json` を読まずに通す（従来どおり残る）
+    #[tokio::test]
+    async fn population_excludes_tricolor_through_the_fast_gate() {
+        let pool = test_pool().await;
+
+        // 通常バトル（ゲートで素通し）。
+        insert_battle(&pool, "n1", 1, 1, 1, 1, 1, Some(1), NON_TRI).await;
+        // フェスロビーのトリカラ（splatnet3.rs は lobby=splatfest_open で保存する）。
+        insert_battle(&pool, "t_fest", 2, 1, 1, 3, 1, Some(1), TRI).await;
+        // rule=tricolor のトリカラ（stat.ink 取り込み想定・ロビーはフェスでなくても拾う）。
+        insert_battle(&pool, "t_rule", 3, 1, 1, 1, 1, Some(3), TRI).await;
+        // フェスロビーだがトリカラではないバトル（ゲートは通るが除外されない）。
+        insert_battle(&pool, "fest_open", 4, 1, 1, 3, 1, Some(1), NON_TRI).await;
+
+        let pop = population(&pool).await.unwrap();
+        let ids: Vec<String> = serde_json::from_str(&pop.0).unwrap();
+
+        assert!(ids.contains(&"n1".to_string()));
+        assert!(ids.contains(&"fest_open".to_string()), "フェスの通常戦は残る");
+        assert!(!ids.contains(&"t_fest".to_string()), "フェスロビーのトリカラは除外");
+        assert!(!ids.contains(&"t_rule".to_string()), "rule=tricolor も除外");
+        assert_eq!(ids.len(), 2);
+    }
+
+    /// テスト用: UTC ISO8601 → DateTime<Utc>（不正な文字列は panic）。
+    fn utc(s: &str) -> DateTime<Utc> {
+        parse_iso_z(s).unwrap_or_else(|| panic!("パースできない: {s}"))
+    }
+
+    /// シーズン開始は 12/3/6/9 月 1 日 09:00 JST = **00:00 UTC**。
+    /// 境界の直前・直後・ちょうどを固定する。
+    #[test]
+    fn season_start_boundaries() {
+        // 6 月シーズン開始の 1 秒前（JST では 6/1 08:59:59 = まだ 3 月シーズン）。
+        assert_eq!(
+            season_start_utc(utc("2026-05-31T23:59:59Z")),
+            utc("2026-03-01T00:00:00Z")
+        );
+        // 開始ちょうど（= 6/1 09:00 JST）から新シーズン。
+        assert_eq!(
+            season_start_utc(utc("2026-06-01T00:00:00Z")),
+            utc("2026-06-01T00:00:00Z")
+        );
+        assert_eq!(
+            season_start_utc(utc("2026-06-01T00:00:01Z")),
+            utc("2026-06-01T00:00:00Z")
+        );
+        // 各シーズンの代表点。
+        assert_eq!(
+            season_start_utc(utc("2026-07-21T12:34:56Z")),
+            utc("2026-06-01T00:00:00Z")
+        );
+        assert_eq!(
+            season_start_utc(utc("2026-09-30T00:00:00Z")),
+            utc("2026-09-01T00:00:00Z")
+        );
+        assert_eq!(
+            season_start_utc(utc("2026-04-01T00:00:00Z")),
+            utc("2026-03-01T00:00:00Z")
+        );
+    }
+
+    /// 年跨ぎ（12 月開始シーズンは翌年 2 月末まで続く）。
+    #[test]
+    fn season_start_crosses_year_boundary() {
+        assert_eq!(
+            season_start_utc(utc("2025-12-01T00:00:00Z")),
+            utc("2025-12-01T00:00:00Z")
+        );
+        // 12 月シーズン中の年末年始・翌年 1〜2 月は前年 12 月が起点。
+        assert_eq!(
+            season_start_utc(utc("2025-12-31T23:59:59Z")),
+            utc("2025-12-01T00:00:00Z")
+        );
+        assert_eq!(
+            season_start_utc(utc("2026-01-01T00:00:00Z")),
+            utc("2025-12-01T00:00:00Z")
+        );
+        assert_eq!(
+            season_start_utc(utc("2026-02-28T23:59:59Z")),
+            utc("2025-12-01T00:00:00Z")
+        );
+        // 3/1 00:00Z（= 3/1 09:00 JST）で 3 月シーズンへ。
+        assert_eq!(
+            season_start_utc(utc("2026-03-01T00:00:00Z")),
+            utc("2026-03-01T00:00:00Z")
+        );
+        // 12 月開始の 1 秒前は 9 月シーズン。
+        assert_eq!(
+            season_start_utc(utc("2025-11-30T23:59:59Z")),
+            utc("2025-09-01T00:00:00Z")
+        );
+    }
+
+    /// シーズン終了は「次シーズンの開始」と一致する（12 月 → 翌年 3 月の年跨ぎを含む）。
+    #[test]
+    fn season_end_is_next_season_start() {
+        for (at, end) in [
+            ("2026-06-15T00:00:00Z", "2026-09-01T00:00:00Z"),
+            ("2026-09-15T00:00:00Z", "2026-12-01T00:00:00Z"),
+            ("2025-12-15T00:00:00Z", "2026-03-01T00:00:00Z"),
+            ("2026-01-15T00:00:00Z", "2026-03-01T00:00:00Z"),
+            ("2026-03-15T00:00:00Z", "2026-06-01T00:00:00Z"),
+        ] {
+            assert_eq!(season_end_utc(utc(at)), utc(end), "{at} のシーズン終了");
+            // 終了時刻ちょうどは次シーズンの開始（半開区間 [since, until)）。
+            assert_eq!(season_start_utc(utc(end)), utc(end));
+        }
+    }
+
+    /// 週の起点は **月曜 00:00 JST = 日曜 15:00 UTC**。
+    #[test]
+    fn week_start_is_monday_jst() {
+        // 2026-07-20 は月曜。JST 月曜 00:00 は UTC では日曜 15:00。
+        let monday_jst_start = utc("2026-07-19T15:00:00Z");
+
+        // 起点ちょうど。
+        assert_eq!(week_start_utc(monday_jst_start), monday_jst_start);
+        // 起点の 1 秒前（JST では日曜 23:59:59）は前の週。
+        assert_eq!(
+            week_start_utc(utc("2026-07-19T14:59:59Z")),
+            utc("2026-07-12T15:00:00Z")
+        );
+        // 週の途中（火曜 21:00 JST = 火曜 12:00 UTC）。
+        assert_eq!(week_start_utc(utc("2026-07-21T12:00:00Z")), monday_jst_start);
+        // 日曜 23:00 JST（= 日曜 14:00 UTC）はまだ同じ週。
+        assert_eq!(week_start_utc(utc("2026-07-26T14:00:00Z")), monday_jst_start);
+        // UTC では土曜でも JST では日曜（+9h）→ 同じ週に入る。
+        assert_eq!(week_start_utc(utc("2026-07-25T15:30:00Z")), monday_jst_start);
+
+        // 週末は 7 日後（半開区間 [since, until)）。
+        assert_eq!(week_end_utc(monday_jst_start), utc("2026-07-26T15:00:00Z"));
+        assert_eq!(
+            week_start_utc(week_end_utc(monday_jst_start)),
+            utc("2026-07-26T15:00:00Z"),
+            "週末ちょうどは次の週の起点"
+        );
+    }
+
+    /// 期間別集計の共通検証: 各グループ軸の total 合計が overall.total と一致すること（#364 の性質）。
+    fn assert_group_totals_match_overall(period: &serde_json::Value, label: &str) {
+        let total = period["overall"]["total"].as_i64().unwrap();
+        for axis in ["by_rule", "by_lobby", "by_weapon", "by_stage"] {
+            let groups = period[axis].as_array().unwrap();
+            assert_eq!(
+                sum_total(groups),
+                total,
+                "{label}.{axis} の total 合計は overall と一致する"
+            );
+        }
+    }
+
+    /// 期間別集計を組み立てるテスト用ヘルパ（本番と同じ経路）。
+    async fn build_periods(
+        pool: &sqlx::SqlitePool,
+        now: &str,
+        limit: i64,
+    ) -> (serde_json::Value, serde_json::Value) {
+        let pop = population(pool).await.unwrap();
+        let recent = Scope::recent(&pop, limit);
+        let aggregates = aggregates_for(pool, &recent).await.unwrap();
+        let by_period = aggregates_by_period(pool, &pop, limit, utc(now), now, &aggregates)
+            .await
+            .unwrap();
+        (aggregates, by_period)
+    }
+
+    /// #375: 全期間 / 今シーズン / 今週 / 直近 N 戦の 4 期間が正しい母集団で計算されること。
+    /// あわせて since/until と、既存 `aggregates`（直近 N 戦）の回帰防止を確認する。
+    #[tokio::test]
+    async fn aggregates_by_period_scopes_and_ranges() {
+        let pool = test_pool().await;
+
+        // now = 2026-07-21T12:00:00Z（火曜）
+        //   今シーズン: 2026-06-01T00:00:00Z 〜 2026-09-01T00:00:00Z
+        //   今週:       2026-07-19T15:00:00Z 〜 2026-07-26T15:00:00Z（月曜 00:00 JST 起点）
+        let now = "2026-07-21T12:00:00Z";
+
+        let rows: &[(&str, &str)] = &[
+            // 前シーズン（3 月シーズン）: 全期間のみに入る
+            ("o1", "2026-04-10T10:00:00Z"),
+            ("o2", "2026-05-31T23:59:59Z"), // シーズン開始の 1 秒前 → 今シーズンに入らない
+            // 今シーズン・今週より前
+            ("s1", "2026-06-01T00:00:00Z"), // シーズン開始ちょうど → 今シーズンに入る
+            ("s2", "2026-07-19T14:59:59Z"), // 週の開始 1 秒前 → 今週に入らない
+            // 今週
+            ("w1", "2026-07-19T15:00:00Z"), // 週の開始ちょうど → 今週に入る
+            ("w2", "2026-07-21T09:00:00Z"),
+        ];
+        for (i, (id, played_at)) in rows.iter().enumerate() {
+            insert_battle_at(
+                &pool,
+                id,
+                played_at,
+                (i as i64 % 2) + 1,
+                (i as i64 % 3) + 1,
+                (i as i64 % 2) + 1,
+                (i as i64 % 2) + 1,
+                Some((i as i64 % 2) + 1),
+                NON_TRI,
+            )
+            .await;
+        }
+        // トリカラは全期間でも除外される。
+        insert_battle_at(&pool, "t1", "2026-07-21T10:00:00Z", 1, 1, 3, 1, Some(1), TRI).await;
+
+        let (aggregates, periods) = build_periods(&pool, now, DEFAULT_LIMIT).await;
+
+        // --- 母集団の件数 ---
+        assert_eq!(
+            periods["all_time"]["overall"]["total"], 6,
+            "全期間（トリカラ除外）"
+        );
+        assert_eq!(
+            periods["season"]["overall"]["total"], 4,
+            "今シーズン（6/1 00:00Z 以降）"
+        );
+        assert_eq!(
+            periods["week"]["overall"]["total"], 2,
+            "今週（月曜 00:00 JST 以降）"
+        );
+        assert_eq!(
+            periods["recent"]["overall"]["total"], 6,
+            "直近 50 戦（6 戦しか無いので全件）"
+        );
+
+        // --- since / until ---
+        // 暦で決まる期間は境界そのもの（未来を含む until）。
+        assert_eq!(periods["season"]["since"], "2026-06-01T00:00:00Z");
+        assert_eq!(periods["season"]["until"], "2026-09-01T00:00:00Z");
+        assert_eq!(periods["week"]["since"], "2026-07-19T15:00:00Z");
+        assert_eq!(periods["week"]["until"], "2026-07-26T15:00:00Z");
+        // データで決まる期間は最古の played_at と生成時刻。
+        assert_eq!(periods["all_time"]["since"], "2026-04-10T10:00:00Z");
+        assert_eq!(periods["all_time"]["until"], now);
+        assert_eq!(periods["recent"]["since"], "2026-04-10T10:00:00Z");
+        assert_eq!(periods["recent"]["until"], now);
+
+        // --- グループ合計 == overall.total（全期間で成立） ---
+        for key in ["all_time", "season", "week", "recent"] {
+            assert_group_totals_match_overall(&periods[key], key);
+        }
+
+        // --- 既存 aggregates の回帰防止: recent 期間と数値が完全一致する ---
+        for axis in ["overall", "by_rule", "by_lobby", "by_weapon", "by_stage"] {
+            assert_eq!(
+                aggregates[axis], periods["recent"][axis],
+                "既存 aggregates と aggregates_by_period.recent の {axis} は一致する"
+            );
+        }
+        // 既存 aggregates 側に since/until は生えない（形は従来どおり）。
+        assert!(aggregates.get("since").is_none());
+        assert!(aggregates.get("until").is_none());
+    }
+
+    /// #375: 直近 50 戦を超えるデータでは recent だけが 50 件に制限され、
+    /// 全期間・今シーズンは制限されないこと。
+    #[tokio::test]
+    async fn aggregates_by_period_recent_is_limited_but_others_are_not() {
+        let pool = test_pool().await;
+
+        // 今週の中に 60 戦（月曜 00:00 JST 以降）。
+        for i in 0..60i64 {
+            insert_battle_at(
+                &pool,
+                &format!("w{i}"),
+                &format!("2026-07-20T{:02}:{:02}:00Z", i / 60, i % 60),
+                (i % 2) + 1,
+                (i % 3) + 1,
+                (i % 2) + 1,
+                (i % 2) + 1,
+                Some((i % 2) + 1),
+                NON_TRI,
+            )
+            .await;
+        }
+
+        let (_, periods) = build_periods(&pool, "2026-07-21T12:00:00Z", DEFAULT_LIMIT).await;
+
+        assert_eq!(periods["all_time"]["overall"]["total"], 60);
+        assert_eq!(periods["season"]["overall"]["total"], 60);
+        assert_eq!(periods["week"]["overall"]["total"], 60);
+        assert_eq!(
+            periods["recent"]["overall"]["total"], 50,
+            "recent だけ直近 50 戦に制限される"
+        );
+        for key in ["all_time", "season", "week", "recent"] {
+            assert_group_totals_match_overall(&periods[key], key);
+        }
+    }
+
+    /// #375: 該当バトルが 0 件の期間でも壊れない
+    /// （今週まだ遊んでいない / DB が空）。
+    #[tokio::test]
+    async fn aggregates_by_period_handles_empty_periods() {
+        let pool = test_pool().await;
+
+        // --- DB が完全に空 ---
+        let (_, periods) = build_periods(&pool, "2026-07-21T12:00:00Z", DEFAULT_LIMIT).await;
+        for key in ["all_time", "season", "week", "recent"] {
+            assert_eq!(periods[key]["overall"]["total"], 0, "{key} は 0 件");
+            assert_eq!(periods[key]["overall"]["wins"], 0);
+            assert_eq!(periods[key]["overall"]["losses"], 0);
+            assert_eq!(periods[key]["overall"]["win_rate"], 0.0, "0 除算しない");
+            // avg_kill は SQL 上 NULL だが、sqlx の f64 デコードが 0.0 に落とすため 0.0 になる。
+            // **既存 aggregates と同じ挙動**なのでここでは変えない（変更は別 Issue）。
+            assert_eq!(periods[key]["overall"]["avg_kill"], 0.0);
+            for axis in ["by_rule", "by_lobby", "by_weapon", "by_stage"] {
+                assert_eq!(periods[key][axis].as_array().unwrap().len(), 0);
+            }
+        }
+        // データ由来の since は 0 件なら null（until は生成時刻のまま）。
+        assert_eq!(periods["all_time"]["since"], serde_json::Value::Null);
+        assert_eq!(periods["recent"]["since"], serde_json::Value::Null);
+        // 暦由来の since/until は 0 件でも必ず入る（viewer が範囲を判定できる）。
+        assert_eq!(periods["week"]["since"], "2026-07-19T15:00:00Z");
+        assert_eq!(periods["week"]["until"], "2026-07-26T15:00:00Z");
+
+        // --- 今週だけ 0 件（先週までは遊んでいる） ---
+        insert_battle_at(&pool, "p1", "2026-07-10T10:00:00Z", 1, 1, 1, 1, Some(1), NON_TRI).await;
+        let (_, periods) = build_periods(&pool, "2026-07-21T12:00:00Z", DEFAULT_LIMIT).await;
+        assert_eq!(periods["all_time"]["overall"]["total"], 1);
+        assert_eq!(periods["season"]["overall"]["total"], 1);
+        assert_eq!(periods["week"]["overall"]["total"], 0, "今週は 0 件");
+        assert_eq!(periods["week"]["overall"]["win_rate"], 0.0);
+        assert_group_totals_match_overall(&periods["week"], "week");
+        assert_eq!(periods["all_time"]["since"], "2026-07-10T10:00:00Z");
+    }
+
+    /// #375: `battles[]` は期間別集計を足しても**従来どおり直近 N 戦のまま**（件数を増やさない）。
+    #[tokio::test]
+    async fn battles_list_is_unchanged_by_period_aggregates() {
+        let pool = test_pool().await;
+
+        for i in 0..70i64 {
+            insert_battle_at(
+                &pool,
+                &format!("b{i}"),
+                &format!("2026-07-20T{:02}:{:02}:00Z", i / 60, i % 60),
+                (i % 2) + 1,
+                (i % 3) + 1,
+                (i % 2) + 1,
+                (i % 2) + 1,
+                Some((i % 2) + 1),
+                NON_TRI,
+            )
+            .await;
+        }
+
+        let pop = population(&pool).await.unwrap();
+        let recent = Scope::recent(&pop, DEFAULT_LIMIT);
+        let battles = sqlx::query_as::<_, BattleExportRow>(&battles_sql())
+            .bind(recent.pop.0.as_str())
+            .bind(&recent.since)
+            .bind(&recent.until)
+            .bind(recent.limit)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        assert_eq!(battles.len(), 50, "battles[] は直近 50 戦のまま");
     }
 }
