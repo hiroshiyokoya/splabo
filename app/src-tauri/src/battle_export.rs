@@ -524,8 +524,13 @@ async fn overall(pool: &sqlx::SqlitePool, scope: &Scope) -> Result<serde_json::V
     let total: i64 = row.try_get("total").unwrap_or(0);
     let wins: i64 = row.try_get("wins").unwrap_or(0);
     let draws: i64 = row.try_get("draws").unwrap_or(0);
-    let avg_kill: Option<f64> = row.try_get("avg_kill").ok();
-    let avg_death: Option<f64> = row.try_get("avg_death").ok();
+    // #377: AVG() は対象行が 0 件のとき SQL の NULL を返す。
+    // `try_get::<f64, _>` で受けると sqlx の f64 デコードが NULL を 0.0 に落としてしまい、
+    // 「1 戦もしていない」と「本当に平均 0 キル」が区別できなくなる。
+    // 明示的に `Option<f64>` としてデコードして NULL を null のまま配信する。
+    // （detail_fetched=0 のバトルしか無い場合も AVG は NULL になるので同じ経路で救われる）
+    let avg_kill: Option<f64> = row.try_get::<Option<f64>, _>("avg_kill").unwrap_or(None);
+    let avg_death: Option<f64> = row.try_get::<Option<f64>, _>("avg_death").unwrap_or(None);
     let decisive = total - draws;
     Ok(serde_json::json!({
         "total": total,
@@ -1032,6 +1037,21 @@ mod tests {
         .bind(weapon_id)
         .bind(rule_id)
         .bind(raw)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    /// 詳細未取得（`detail_fetched=0`）のバトルを 1 件挿入する（#377）。
+    /// kill/death には値が入っているが AVG の母数からは除外される。
+    async fn insert_battle_undetailed(pool: &sqlx::SqlitePool, id: &str, played_at: &str) {
+        sqlx::query(
+            "INSERT INTO battle (id, played_at, map_id, result_id, lobby_id, weapon_id, rule_id, kill, death, detail_fetched, raw_json)
+             VALUES (?,?,1,1,1,1,1,9,9,0,?)",
+        )
+        .bind(id)
+        .bind(played_at)
+        .bind(NON_TRI)
         .execute(pool)
         .await
         .unwrap();
@@ -1694,9 +1714,18 @@ mod tests {
             assert_eq!(periods[key]["overall"]["wins"], 0);
             assert_eq!(periods[key]["overall"]["losses"], 0);
             assert_eq!(periods[key]["overall"]["win_rate"], 0.0, "0 除算しない");
-            // avg_kill は SQL 上 NULL だが、sqlx の f64 デコードが 0.0 に落とすため 0.0 になる。
-            // **既存 aggregates と同じ挙動**なのでここでは変えない（変更は別 Issue）。
-            assert_eq!(periods[key]["overall"]["avg_kill"], 0.0);
+            // #377: 対象バトルが 0 件なら avg_* は 0.0 ではなく null
+            //（「平均 0 キル」と「1 戦もしていない」を区別する）。
+            assert_eq!(
+                periods[key]["overall"]["avg_kill"],
+                serde_json::Value::Null,
+                "{key}.avg_kill は 0 件なら null"
+            );
+            assert_eq!(
+                periods[key]["overall"]["avg_death"],
+                serde_json::Value::Null,
+                "{key}.avg_death は 0 件なら null"
+            );
             for axis in ["by_rule", "by_lobby", "by_weapon", "by_stage"] {
                 assert_eq!(periods[key][axis].as_array().unwrap().len(), 0);
             }
@@ -1717,6 +1746,111 @@ mod tests {
         assert_eq!(periods["week"]["overall"]["win_rate"], 0.0);
         assert_group_totals_match_overall(&periods["week"], "week");
         assert_eq!(periods["all_time"]["since"], "2026-07-10T10:00:00Z");
+        // #377: 0 件の期間だけ null になり、データのある期間は従来どおり数値が入る。
+        assert_eq!(
+            periods["week"]["overall"]["avg_kill"],
+            serde_json::Value::Null,
+            "今週 0 件なら avg_kill は null"
+        );
+        assert_eq!(
+            periods["week"]["overall"]["avg_death"],
+            serde_json::Value::Null,
+            "今週 0 件なら avg_death は null"
+        );
+        assert_eq!(
+            periods["all_time"]["overall"]["avg_kill"], 3.0,
+            "データのある期間は従来どおり数値"
+        );
+        assert_eq!(periods["all_time"]["overall"]["avg_death"], 2.0);
+    }
+
+    /// #377: 既存 `aggregates`（直近 N 戦）でも、対象バトルが 0 件なら
+    /// avg_kill / avg_death は 0.0 ではなく null になる。
+    #[tokio::test]
+    async fn overall_avg_is_null_when_no_battles() {
+        let pool = test_pool().await;
+
+        let pop = population(&pool).await.unwrap();
+        let v = overall(&pool, &Scope::recent(&pop, DEFAULT_LIMIT))
+            .await
+            .unwrap();
+
+        assert_eq!(v["total"], 0);
+        assert_eq!(
+            v["avg_kill"],
+            serde_json::Value::Null,
+            "0 件なら avg_kill は null"
+        );
+        assert_eq!(
+            v["avg_death"],
+            serde_json::Value::Null,
+            "0 件なら avg_death は null"
+        );
+    }
+
+    /// #377: `detail_fetched=0` のバトルしか無い場合も AVG の母数は 0 件なので null。
+    /// （バトル自体は total に数えるが、平均は「データが無い」）
+    #[tokio::test]
+    async fn overall_avg_is_null_when_only_undetailed_battles() {
+        let pool = test_pool().await;
+        insert_battle_undetailed(&pool, "u1", "2026-07-20T10:00:00Z").await;
+        insert_battle_undetailed(&pool, "u2", "2026-07-20T11:00:00Z").await;
+
+        let pop = population(&pool).await.unwrap();
+        let v = overall(&pool, &Scope::recent(&pop, DEFAULT_LIMIT))
+            .await
+            .unwrap();
+
+        assert_eq!(v["total"], 2, "バトル自体は数える");
+        assert_eq!(v["avg_kill"], serde_json::Value::Null);
+        assert_eq!(v["avg_death"], serde_json::Value::Null);
+
+        // 期間別集計（#375）側も同じ（detail_fetched=0 しか無い期間は null）。
+        let (aggregates, periods) = build_periods(&pool, "2026-07-21T12:00:00Z", DEFAULT_LIMIT).await;
+        assert_eq!(aggregates["overall"]["avg_kill"], serde_json::Value::Null);
+        for key in ["all_time", "season", "week", "recent"] {
+            assert_eq!(
+                periods[key]["overall"]["avg_kill"],
+                serde_json::Value::Null,
+                "{key}.avg_kill"
+            );
+            assert_eq!(
+                periods[key]["overall"]["avg_death"],
+                serde_json::Value::Null,
+                "{key}.avg_death"
+            );
+        }
+    }
+
+    /// #377 回帰防止: データがある場合は従来どおり平均値が入る（null にしない）。
+    /// `detail_fetched=0` のバトルが混ざっても平均の母数からは外れるだけ。
+    #[tokio::test]
+    async fn overall_avg_has_values_when_battles_exist() {
+        let pool = test_pool().await;
+
+        // insert_battle_at は kill=3 / death=2 / detail_fetched=1 で入る。
+        insert_battle_at(&pool, "d1", "2026-07-20T10:00:00Z", 1, 1, 1, 1, Some(1), NON_TRI).await;
+        insert_battle_at(&pool, "d2", "2026-07-20T11:00:00Z", 1, 2, 1, 1, Some(1), NON_TRI).await;
+        // 詳細未取得（kill=9 / death=9）は平均に影響しない。
+        insert_battle_undetailed(&pool, "u1", "2026-07-20T12:00:00Z").await;
+
+        let pop = population(&pool).await.unwrap();
+        let v = overall(&pool, &Scope::recent(&pop, DEFAULT_LIMIT))
+            .await
+            .unwrap();
+
+        assert_eq!(v["total"], 3);
+        assert_eq!(v["avg_kill"], 3.0, "detail_fetched=1 のみの平均");
+        assert_eq!(v["avg_death"], 2.0);
+
+        // 期間別集計側も同じ値（母集団が同じ期間はすべて 3.0 / 2.0）。
+        let (aggregates, periods) = build_periods(&pool, "2026-07-21T12:00:00Z", DEFAULT_LIMIT).await;
+        assert_eq!(aggregates["overall"]["avg_kill"], 3.0);
+        assert_eq!(aggregates["overall"]["avg_death"], 2.0);
+        for key in ["all_time", "season", "week", "recent"] {
+            assert_eq!(periods[key]["overall"]["avg_kill"], 3.0, "{key}.avg_kill");
+            assert_eq!(periods[key]["overall"]["avg_death"], 2.0, "{key}.avg_death");
+        }
     }
 
     /// #375: `battles[]` は期間別集計を足しても**従来どおり直近 N 戦のまま**（件数を増やさない）。
