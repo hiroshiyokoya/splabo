@@ -6,6 +6,20 @@ import {
   BATTLE_NUMERIC_METRIC_LABELS, BATTLE_NUMERIC_DEFAULT_BIN,
 } from '../types'
 
+/**
+ * 比率メトリクスか (#381)。**ログスケールを無効化する判定**に使う。
+ *
+ * 0-1 に収まる値をログにしても読みやすくならないので、チェック自体を押せなくする。
+ * `ScatterChart` の `xIsRate` / `yIsRate` と同じ条件。
+ */
+const isRateMetric = (metric: string) => metric === 'win_rate'
+
+/** ログスケールのチェックボックスに添える説明 (#381)。 */
+function logScaleHint(metric: string): string {
+  if (isRateMetric(metric)) return '勝率は 0-100% に収まるのでログスケールは使えません。'
+  return 'ロングテールや比率（キルレ）を読みやすくします。0 以下・∞ の点は除外されます。'
+}
+
 /** 各 yComposition のヒント説明。 */
 const Y_COMPOSITION_DESCRIPTIONS: Record<YComposition, string> = {
   single_metric:   'Y 軸に好きな 1 メトリクス（勝率・バトル数・平均K/D など）を取る。',
@@ -52,6 +66,9 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   // 一定サイズ = ''）復元し、新規作成のときだけ既定値 'total' を使う。
   const [sizeMetric,   setSizeMetric]   = useState<string>(initial ? (initial.sizeMetric ?? '') : 'total')
   const [colorMetric,  setColorMetric]  = useState<string>(initial?.colorMetric ?? '')
+  // ログスケール (#381)。未設定は false（既存グラフはリニアのまま）。
+  const [xLogScale,    setXLogScale]    = useState<boolean>(initial?.xLogScale ?? false)
+  const [yLogScale,    setYLogScale]    = useState<boolean>(initial?.yLogScale ?? false)
 
   // shape ごとに groupBy / yComposition を適切に補正する：
   //   - line: 時系列バケット (day/three_day/week/month) + single_metric
@@ -139,6 +156,9 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       yMetric:      shape === 'scatter' ? yMetric : undefined,
       sizeMetric:   shape === 'scatter' && sizeMetric  ? sizeMetric  : undefined,
       colorMetric:  shape === 'scatter' && colorMetric ? colorMetric : undefined,
+      // 比率メトリクスにログは効かないので、選び直された場合は保存しない (#381)。
+      xLogScale:    shape === 'scatter' && xLogScale && !isRateMetric(xMetric) ? true : undefined,
+      yLogScale:    shape === 'scatter' && yLogScale && !isRateMetric(yMetric) ? true : undefined,
       // 数値メトリクス bin 軸（#134、ヒートマップ専用）
       xNumericMetric: shape === 'heatmap' && xNumericMetric ? xNumericMetric : undefined,
       xBinWidth:      shape === 'heatmap' && xNumericMetric ? xBinWidth : undefined,
@@ -385,6 +405,16 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                     <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
+                <label className="checkbox-label" style={{ marginTop: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={xLogScale && !isRateMetric(xMetric)}
+                    disabled={isRateMetric(xMetric)}
+                    onChange={e => setXLogScale(e.target.checked)}
+                  />
+                  ログスケール
+                </label>
+                <p className="form-hint">{logScaleHint(xMetric)}</p>
               </div>
               <div className="form-field">
                 <label className="form-label">Y 軸</label>
@@ -393,6 +423,16 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                     <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
+                <label className="checkbox-label" style={{ marginTop: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={yLogScale && !isRateMetric(yMetric)}
+                    disabled={isRateMetric(yMetric)}
+                    onChange={e => setYLogScale(e.target.checked)}
+                  />
+                  ログスケール
+                </label>
+                <p className="form-hint">{logScaleHint(yMetric)}</p>
               </div>
               <div className="form-field">
                 <label className="form-label">サイズ（任意）</label>

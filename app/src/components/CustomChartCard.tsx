@@ -307,6 +307,9 @@ function renderChartBody(
         yLabel={metricLabelOf(chart.yMetric)}
         xIsRate={chart.xMetric === 'win_rate'}
         yIsRate={chart.yMetric === 'win_rate'}
+        // 比率メトリクスはログにしても意味がないので、設定が残っていても効かせない (#381)。
+        xLogScale={chart.xLogScale && chart.xMetric !== 'win_rate'}
+        yLogScale={chart.yLogScale && chart.yMetric !== 'win_rate'}
         hasSize={!!chart.sizeMetric}
         // バトル単位は重なりが多いので透過を強める (ジッタと合わせて密度が見える)
         fillOpacity={isBattle ? 0.6 : 0.85}
