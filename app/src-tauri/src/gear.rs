@@ -12,7 +12,9 @@
 //! 取得系コマンド（Phase A2・splabo v0.8）:
 //! - `fetch_gear_full`  : bullet_token → GraphQL → 画像 DL → gear_db.json 構築 → 暗号化して
 //!                        gear_db.bin / .gti 化。geartoon サイドカー fetch_gear を Rust に置換。
-//!                        出力フォーマットは現行 geartoon 出力（gear-export-v1）と完全互換。
+//!                        出力フォーマットは現行 geartoon 出力（gear-export-v1）と互換。
+//!                        トップレベルに `generated_at`（UTC ISO8601）を持つ（#396・追加のみ。
+//!                        古い viewer は未知フィールドとして無視する）。
 
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -134,7 +136,9 @@ pub fn delete_gear_data(app: AppHandle) -> Result<(), String> {
 // geartoon サイドカー（tools/nxapi-wrapper/wrapper.js の fetch_gear）を Rust に置換する。
 // 出力フォーマット（gear_db.json のスキーマ・画像パス・.gti / gear_db.bin への暗号化）は
 // wrapper.js `buildGearDb` / `downloadGearImages` および geartoon nxapi.rs `encrypt_gear_data`
-// と**完全互換**（gear-export-v1 契約 = geartoon-viewer が読める形）。
+// と**互換**（gear-export-v1 契約 = geartoon-viewer が読める形）。
+// 差分は `generated_at` の追加のみ（#396）。フィールド追加なので古い viewer は無視でき、
+// 新しい viewer × 古いデスクトップでは欠落＝「未取得」表示にフォールバックできる。
 // ===========================================================================
 
 /// GraphQL レスポンス（`data.<section>.nodes`）のセクション定義。
@@ -175,15 +179,34 @@ pub struct GearFetchResult {
     pub db_path: String,
 }
 
+/// gear_db の生成時刻を UTC ISO8601（`%Y-%m-%dT%H:%M:%SZ`）で返す。
+///
+/// 書式は **battle_db（`battle_export.rs` の `generated_at`）と同一**にする（#396）。
+/// あちらは SQLite の `strftime('%Y-%m-%dT%H:%M:%SZ','now')` で作っているが、
+/// ギア経路は SQLite プールを持たないので `chrono::Utc`（`companion.rs` の
+/// アイコンマニフェストと同じ作り方）で同じ書式を作る。**秒精度・末尾 Z** まで揃える。
+fn generated_at_now() -> String {
+    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
 /// GraphQL の生レスポンス（equipment）から gear_db.json 相当の serde_json::Value を構築する。
 ///
 /// wrapper.js `buildGearDb` の Rust 移植。画像パスは **.png のまま**（後段の
 /// `encrypt_gear_data_at` が JSON 文字列レベルで `.png"` → `.gti"` に置換する）。
 /// トップレベル構造・フィールド名・順序は wrapper.js と一致させ、gear-export-v1 契約を守る。
-fn build_gear_db(equipment: &serde_json::Value) -> Result<serde_json::Value, String> {
+///
+/// 唯一 wrapper.js に無いのが `generated_at`（#396・**追加のみ**）。viewer 側で
+/// 「このギアがいつ時点のものか」を出すために必要で、端末の最終同期時刻では
+/// （バトルだけ引いても更新されてしまうので）ギアの鮮度にならない。
+/// 生成時刻は呼び出し側から渡す（テストで固定値を入れられるようにするため）。
+fn build_gear_db(
+    equipment: &serde_json::Value,
+    generated_at: &str,
+) -> Result<serde_json::Value, String> {
     use serde_json::{json, Map, Value};
 
     let mut db = Map::new();
+    db.insert("generated_at".to_string(), Value::String(generated_at.to_string()));
     // スキル辞書（id → { id, name, image }）。アキ枠を含む全スキルを収集する。
     let mut skills_map = Map::new();
 
@@ -417,7 +440,7 @@ fn resolve_gear_out_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 ///
 /// フロー: bullet_token 取得 → MyOutfitCommonDataEquipmentsQuery →
 /// gear_db.json 構築 → 画像 DL → 暗号化（gear_db.bin / .gti）。
-/// 出力は現行 geartoon 出力（gear-export-v1）と完全互換。
+/// 出力は現行 geartoon 出力（gear-export-v1）と互換（`generated_at` の追加のみ・#396）。
 #[tauri::command]
 pub async fn fetch_gear_full(app: AppHandle) -> Result<GearFetchResult, String> {
     if !crate::auth::is_logged_in(&app) {
@@ -456,7 +479,7 @@ async fn build_and_write_gear_data(
     equipment: &serde_json::Value,
     out_dir: &std::path::Path,
 ) -> Result<GearFetchResult, String> {
-    let db = build_gear_db(equipment)?;
+    let db = build_gear_db(equipment, &generated_at_now())?;
 
     let head = db.get("head").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
     let clothing = db.get("clothing").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
@@ -522,15 +545,20 @@ mod tests {
         })
     }
 
+    /// テストで使う固定の生成時刻（battle_db フィクスチャと同じ書式・同じ時刻）。
+    const FIXTURE_GENERATED_AT: &str = "2026-07-15T12:00:00Z";
+
     #[test]
     fn build_gear_db_matches_gear_export_v1_schema() {
         let eq = fixture_equipment();
-        let db = build_gear_db(&eq).expect("build_gear_db failed");
+        let db = build_gear_db(&eq, FIXTURE_GENERATED_AT).expect("build_gear_db failed");
 
-        // トップレベルは head / clothing / shoes / skills（gear-export-v1 契約）
-        for key in ["head", "clothing", "shoes", "skills"] {
+        // トップレベルは generated_at / head / clothing / shoes / skills（gear-export-v1 契約）
+        for key in ["generated_at", "head", "clothing", "shoes", "skills"] {
             assert!(db.get(key).is_some(), "top-level key {key} missing");
         }
+        // #396: 生成時刻は battle_db と同じ UTC ISO8601（秒精度・末尾 Z）
+        assert_eq!(db["generated_at"], FIXTURE_GENERATED_AT);
 
         // 各カテゴリ 1 件
         assert_eq!(db["head"].as_array().unwrap().len(), 1);
@@ -558,6 +586,22 @@ mod tests {
         assert_eq!(skills.len(), 5, "skills = {:?}", skills.keys().collect::<Vec<_>>());
         assert_eq!(skills["0"]["name"], "アキ枠");
         assert_eq!(skills["2"]["name"], "ヒト移動速度アップ");
+    }
+
+    /// #396: `generated_at` は battle_db（`strftime('%Y-%m-%dT%H:%M:%SZ','now')`）と
+    /// 同じ書式でなければならない（viewer は両方を同じパーサで読む）。
+    #[test]
+    fn generated_at_now_uses_same_format_as_battle_db() {
+        let now = generated_at_now();
+        // "YYYY-MM-DDTHH:MM:SSZ" = 20 文字・秒精度・UTC 表記の Z（ミリ秒やオフセットは付けない）
+        assert_eq!(now.len(), 20, "generated_at = {now}");
+        assert!(now.ends_with('Z'), "generated_at = {now}");
+        assert_eq!(&now[10..11], "T", "generated_at = {now}");
+        // RFC3339 としてパースできる（viewer / battle_export::parse_iso_z と同じ扱い）
+        assert!(
+            chrono::DateTime::parse_from_rfc3339(&now).is_ok(),
+            "generated_at = {now}"
+        );
     }
 
     #[test]
@@ -593,7 +637,7 @@ mod tests {
         let png_bytes: &[u8] = b"\x89PNG\r\n\x1a\nDUMMYPNGDATA";
         std::fs::write(img_dir.join("ink_main.png"), png_bytes).unwrap();
 
-        let db = build_gear_db(&fixture_equipment()).unwrap();
+        let db = build_gear_db(&fixture_equipment(), FIXTURE_GENERATED_AT).unwrap();
         let db_json = serde_json::to_string_pretty(&db).unwrap();
         encrypt_gear_data_at(&tmp, &db_json).unwrap();
 
@@ -609,6 +653,8 @@ mod tests {
         assert_eq!(decoded["head"][0]["image"], "images/gear/head/hat.gti");
         assert_eq!(decoded["head"][0]["primary_skill"]["image"], "images/skill/ink_main.gti");
         assert_eq!(decoded["skills"]["2"]["image"], "images/skill/run.gti");
+        // #396: generated_at は暗号化・.gti 置換を通しても素通しで残る（viewer の鮮度表示用）
+        assert_eq!(decoded["generated_at"], FIXTURE_GENERATED_AT);
 
         // .gti を XOR 復元すると元の PNG に戻る（画像互換）
         let gti = std::fs::read(tmp.join("images/skill/ink_main.gti")).unwrap();
