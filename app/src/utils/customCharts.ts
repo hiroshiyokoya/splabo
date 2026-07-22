@@ -5,6 +5,18 @@ import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey } fro
 const STORAGE_KEY     = 'splabo:shellCustomCharts'
 const STORAGE_KEY_OLD = 'chartoon:customCharts'
 
+/**
+ * 復元漏れを型で防ぐための補助型（#390）。
+ *
+ * `CustomChart` は optional フィールドが多く、`loadCustomCharts()` の明示列挙から
+ * 抜けても型エラーにならない。実際 #381 で追加した `xLogScale` / `yLogScale` が
+ * 取りこぼされ、リロードでログスケール設定が消えていた。
+ *
+ * `Required<>` でキーを必須化する（値は `undefined` 可のまま）ことで、
+ * `CustomChart` にフィールドを足して復元処理へ書き忘れると tsc が落ちる。
+ */
+type RestoredChart = { [K in keyof Required<CustomChart>]: CustomChart[K] }
+
 /** 旧形式（v1: shape/yComposition 分離前、`type` 1 本、title あり）→ 新形式へ変換する。
  *  title はもう持たないので捨てる。 */
 interface CustomChartV1 {
@@ -43,9 +55,11 @@ export function loadCustomCharts(): CustomChart[] {
       if (typeof c.id !== 'string' || typeof c.groupBy !== 'string') continue
       // 新形式：shape と yComposition が揃っているもの（title は無視）
       // CustomChart の全フィールドを明示的に復元する（#224）。
-      // 将来 CustomChart が拡張されたときは型エラーで気づけるように明示列挙する。
+      // 型注釈で **全キーを必須化** しているので、CustomChart にフィールドを足して
+      // ここへの追記を忘れると tsc が落ちる。optional フィールドは省略しても
+      // 型エラーにならず #381 のログスケールが取りこぼされたため（#390）。
       if (typeof c.shape === 'string' && typeof c.yComposition === 'string') {
-        result.push({
+        const restored: RestoredChart = {
           id:              c.id,
           shape:           c.shape,
           yComposition:    c.yComposition,
@@ -62,7 +76,10 @@ export function loadCustomCharts(): CustomChart[] {
           yMetric:         c.yMetric,
           sizeMetric:      c.sizeMetric,
           colorMetric:     c.colorMetric,
-        })
+          xLogScale:       c.xLogScale,
+          yLogScale:       c.yLogScale,
+        }
+        result.push(restored)
         continue
       }
       // 旧形式：type フィールドのみ → マイグレーション
