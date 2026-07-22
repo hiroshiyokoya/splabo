@@ -529,6 +529,19 @@ export interface CustomChart {
   sizeMetric?:  string
   /** scatter の色メトリクス。バトル単位のときは 'win_lose' も指定可。 */
   colorMetric?: string
+  /**
+   * scatter の X 軸をログスケールにするか (#381)。**未設定 = false**（既存グラフはリニアのまま）。
+   *
+   * バトル数・勝数はロングテールで少数派が原点付近に潰れ、キルレは比率なので
+   * リニアだと「0.5 倍」と「2 倍」が非対称に見える。ログにすると等距離で読める。
+   *
+   * 🔴 ログ軸では **0 以下・非有限（∞ / NaN）の点が描けないので除外**される
+   * （[ScatterChart] の `drawable`）。勝率のような比率メトリクスでは意味がないので
+   * 設定 UI 側で無効化する。
+   */
+  xLogScale?:   boolean
+  /** scatter の Y 軸をログスケールにするか (#381)。詳細は [xLogScale]。 */
+  yLogScale?:   boolean
 }
 
 /** 数値メトリクス bin 軸（ヒートマップで battle 単位の値を離散化）で使えるカラム (#134)。

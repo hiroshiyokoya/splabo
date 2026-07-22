@@ -29,14 +29,44 @@ export interface ScatterPoint {
 /** 目盛りラベルの小数を詰める（浮動小数の誤差も除去）。 */
 const fmtTick = (v: number) => String(Math.round(v * 1000) / 1000)
 
+/**
+ * ログ軸に載せられる値か (#381)。
+ *
+ * `log(0)` は定義されず、キルレは `D=0` で無限大になる。**0 以下と非有限は描けない**ので
+ * 除外する（現実的にはどちらも試合数が少ないケース）。
+ */
+export const isLogPlottable = (v: number | null): v is number =>
+  v !== null && Number.isFinite(v) && v > 0
+
+/**
+ * ログ軸の domain を実データから作る (#381)。
+ *
+ * 🔴 Recharts の `scale="log"` は **`domain={['auto','auto']}` と併用すると壊れる**ので、
+ * 残った点の min/max を明示的に渡す必要がある。
+ *
+ * 全点が同じ値だと min === max になり軸が潰れるため、**1 桁ぶん広げる**。
+ * 値が無ければ null（呼び出し側はログを諦めてリニアに落ちる）。
+ */
+export function logDomain(values: number[]): [number, number] | null {
+  const usable = values.filter(v => Number.isFinite(v) && v > 0)
+  if (usable.length === 0) return null
+  const min = Math.min(...usable)
+  const max = Math.max(...usable)
+  return min === max ? [min / 10, max * 10] : [min, max]
+}
+
 export function ScatterChart({
-  points, xLabel, yLabel, xIsRate, yIsRate, xDomain, yDomain, xRefLine, yRefLine, hasSize, fillOpacity = 0.85, constSize = 120, height = 320,
+  points, xLabel, yLabel, xIsRate, yIsRate, xDomain, yDomain, xRefLine, yRefLine, hasSize, xLogScale, yLogScale, fillOpacity = 0.85, constSize = 120, height = 320,
 }: {
   points:       ScatterPoint[]
   xLabel:       string
   yLabel:       string
   xIsRate?:     boolean
   yIsRate?:     boolean
+  /** X 軸をログスケールにする (#381)。0 以下・非有限の点は描けないので除外される。 */
+  xLogScale?:   boolean
+  /** Y 軸をログスケールにする (#381)。 */
+  yLogScale?:   boolean
   /** 明示ドメイン [min, max]。指定時は xIsRate の [0,1] 既定より優先（オートスケール用）。 */
   xDomain?:     [number, number]
   yDomain?:     [number, number]
@@ -55,7 +85,32 @@ export function ScatterChart({
   const areaRef = useRef<HTMLDivElement>(null)
 
   // X / Y どちらか null は描画対象外
-  const drawable = useMemo(() => points.filter(p => p.x !== null && p.y !== null), [points])
+  const plotted = useMemo(() => points.filter(p => p.x !== null && p.y !== null), [points])
+
+  // ログ軸に載る点だけに絞る (#381)。リニアなら plotted と同じ。
+  const drawable = useMemo(() => {
+    if (!xLogScale && !yLogScale) return plotted
+    return plotted.filter(p =>
+      (!xLogScale || isLogPlottable(p.x)) && (!yLogScale || isLogPlottable(p.y)),
+    )
+  }, [plotted, xLogScale, yLogScale])
+
+  // ログ軸で落ちた件数。**黙って消さない**ための注記に使う（切り替えた瞬間に点が減るので、
+  // 理由が見えないとバグに見える）。
+  const droppedByLog = plotted.length - drawable.length
+
+  // 🔴 Recharts の scale="log" は domain={['auto','auto']} と併用すると壊れるので、
+  // 残った点から min/max を作って明示的に渡す。点が全部落ちたらリニアに落とす。
+  const xLogDomain = useMemo(
+    () => (xLogScale ? logDomain(drawable.map(p => p.x as number)) : null),
+    [drawable, xLogScale],
+  )
+  const yLogDomain = useMemo(
+    () => (yLogScale ? logDomain(drawable.map(p => p.y as number)) : null),
+    [drawable, yLogScale],
+  )
+  const xLog = xLogDomain !== null
+  const yLog = yLogDomain !== null
 
   // groupKey → siblings: 重なり判定用に同一 groupKey の点を集約
   const siblings = useMemo(() => {
@@ -83,10 +138,11 @@ export function ScatterChart({
         onMouseLeave={() => setHover(null)}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-        {xRefLine != null && (
+        {/* ログ軸では 0 以下の基準線は載らない（extendDomain で軸ごと壊れるため出さない）。 */}
+        {xRefLine != null && (!xLog || xRefLine > 0) && (
           <ReferenceLine x={xRefLine} stroke="var(--text-muted)" strokeDasharray="5 4" ifOverflow="extendDomain" />
         )}
-        {yRefLine != null && (
+        {yRefLine != null && (!yLog || yRefLine > 0) && (
           <ReferenceLine y={yRefLine} stroke="var(--text-muted)" strokeDasharray="5 4" ifOverflow="extendDomain" />
         )}
         <XAxis
@@ -95,7 +151,9 @@ export function ScatterChart({
           name={xLabel}
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           tickFormatter={xIsRate ? (v: number) => `${(v * 100).toFixed(0)}%` : fmtTick}
-          domain={xDomain ?? (xIsRate ? [0, 1] : ['auto', 'auto'])}
+          scale={xLog ? 'log' : 'auto'}
+          allowDataOverflow={xLog}
+          domain={xLogDomain ?? xDomain ?? (xIsRate ? [0, 1] : ['auto', 'auto'])}
           label={{ value: xLabel, position: 'insideBottom', offset: -10, fill: 'var(--text)', fontSize: 11, fontWeight: 600 } as object}
         />
         <YAxis
@@ -105,7 +163,9 @@ export function ScatterChart({
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           width={56}
           tickFormatter={yIsRate ? (v: number) => `${(v * 100).toFixed(0)}%` : fmtTick}
-          domain={yDomain ?? (yIsRate ? [0, 1] : ['auto', 'auto'])}
+          scale={yLog ? 'log' : 'auto'}
+          allowDataOverflow={yLog}
+          domain={yLogDomain ?? yDomain ?? (yIsRate ? [0, 1] : ['auto', 'auto'])}
           label={{ value: yLabel, angle: -90, position: 'insideLeft', offset: 12, fill: 'var(--text)', fontSize: 11, fontWeight: 600, style: { textAnchor: 'middle' } } as object}
         />
         <ZAxis type="number" dataKey="size" range={zRange} />
@@ -120,6 +180,20 @@ export function ScatterChart({
         </Scatter>
       </RScatterChart>
     </ResponsiveContainer>
+    {droppedByLog > 0 && (
+      <div
+        style={{
+          fontSize: 10,
+          color: 'var(--text-muted)',
+          textAlign: 'right',
+          marginTop: -18,
+          paddingRight: 8,
+          pointerEvents: 'none',
+        }}
+      >
+        {droppedByLog} 件を非表示（ログ軸に載らない 0 以下・∞）
+      </div>
+    )}
     {hover && (() => {
       // ホバー中のドット座標 (cx, cy) 付近にツールチップを出す。
       // 端に近いときは内側へ反転させてはみ出しを防ぐ。
