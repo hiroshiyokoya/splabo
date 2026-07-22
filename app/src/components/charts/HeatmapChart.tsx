@@ -285,12 +285,14 @@ export function HeatmapChart({
         >
           <div className="hover-tt-title">{xLabel(hover.xKey)} × {yLabel(hover.yKey)}</div>
           <div className="hover-tt-row">{METRIC_LABELS[metric]}: {formatMetric(hover.value, metric)}</div>
-          {/* バトル数の右に勝敗の内訳を並べる。引き分けは発生したときだけ出す。 */}
+          {/* バトル数の右に勝敗の内訳を並べる。引き分けは発生したときだけ出す。
+              メトリクス自体が「バトル数」のときは上の行と同じ値になるので、
+              ラベルと件数を省いて勝敗内訳だけ出す（#388）。 */}
           <div className="hover-tt-row hover-tt-row--muted">
-            バトル数: {hover.total}
+            {metric !== 'total' && <>バトル数: {hover.total}</>}
             {hover.total > 0 && (
               <>
-                {' '}（{hover.wins} 勝 {hover.total - hover.wins - hover.draws} 敗
+                {metric !== 'total' && ' '}（{hover.wins} 勝 {hover.total - hover.wins - hover.draws} 敗
                 {hover.draws > 0 && ` ${hover.draws} 分`}）
               </>
             )}

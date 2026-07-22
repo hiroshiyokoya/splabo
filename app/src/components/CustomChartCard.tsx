@@ -47,6 +47,29 @@ function colorOfValue(value: number | null, isRate: boolean, min: number, max: n
 }
 
 /** カテゴリ単位 (武器/ステージ) の散布図ポイントを作る。 */
+/** ツールチップ 1 行分。 */
+type TooltipRow = { label: string; value: string; muted?: boolean }
+
+/**
+ * ツールチップの行をメトリクスキーで重複排除する（#388）。
+ *
+ * X / Y / サイズ / 色 は同じメトリクスを割り当てられるため（例: サイズと色を両方「バトル数」）、
+ * そのまま並べると同じ行が 2 度出る。先に積んだ行を優先して残す（= X/Y 側が残る）。
+ *
+ * 行は関数で受け取る。サイズ・色は未設定（key が undefined）のことがあり、その場合に
+ * ラベル・値の組み立てを走らせないため（従来の三項演算子によるガードと同じ扱いを保つ）。
+ */
+function dedupeRows(entries: { key: string | undefined; row: () => TooltipRow }[]): TooltipRow[] {
+  const seen = new Set<string>()
+  const out: TooltipRow[] = []
+  for (const { key, row } of entries) {
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(row())
+  }
+  return out
+}
+
 function buildAggScatterPoints(
   data: GroupedStatsRow[],
   xKey: string, yKey: string, sizeKey?: string, colorKey?: string,
@@ -74,12 +97,12 @@ function buildAggScatterPoints(
       y,
       size,
       color: colorKey ? colorOfValue(colorVal, colorIsRate, cmin, cmax, colorKey as MetricKey) : 'var(--accent)',
-      tooltipRows: [
-        { label: metricLabelOf(xKey), value: formatMetric(x, xKey as MetricKey) },
-        { label: metricLabelOf(yKey), value: formatMetric(y, yKey as MetricKey) },
-        ...(sizeKey ? [{ label: metricLabelOf(sizeKey), value: formatMetric(size, sizeKey as MetricKey), muted: true }] : []),
-        ...(colorKey ? [{ label: metricLabelOf(colorKey), value: formatMetric(colorVal, colorKey as MetricKey), muted: true }] : []),
-      ],
+      tooltipRows: dedupeRows([
+        { key: xKey, row: () => ({ label: metricLabelOf(xKey), value: formatMetric(x, xKey as MetricKey) }) },
+        { key: yKey, row: () => ({ label: metricLabelOf(yKey), value: formatMetric(y, yKey as MetricKey) }) },
+        { key: sizeKey, row: () => ({ label: metricLabelOf(sizeKey!), value: formatMetric(size, sizeKey as MetricKey), muted: true }) },
+        { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: formatMetric(colorVal, colorKey as MetricKey), muted: true }) },
+      ]),
     }
   })
 }
@@ -121,16 +144,17 @@ function buildBattleScatterPoints(
       groupKey: `${x ?? 'null'}|${y ?? 'null'}`,
       // 複数件表示時の 1 行: 日付・武器・勝敗
       rowText: `${b.played_at.slice(5, 10)} ${b.weapon}${colorKey === 'win_lose' ? '' : ` (${b.result})`}`,
-      tooltipRows: [
-        // ツールチップには元の値 (ジッタ前) を表示
-        { label: metricLabelOf(xKey), value: fmtBattle(x) },
-        { label: metricLabelOf(yKey), value: fmtBattle(y) },
-        ...(sizeKey ? [{ label: metricLabelOf(sizeKey), value: fmtBattle(size), muted: true }] : []),
-        ...(colorKey === 'win_lose'
-          ? [{ label: '勝敗', value: b.result, muted: true }]
-          : (colorKey ? [{ label: metricLabelOf(colorKey), value: fmtBattle(getBattleMetric(b, colorKey as BattleMetricKey)), muted: true }] : [])
-        ),
-      ],
+      // ツールチップには元の値 (ジッタ前) を表示。同じメトリクスを複数の役割に
+      // 割り当てたときの重複は dedupeRows が落とす（#388）。
+      tooltipRows: dedupeRows([
+        { key: xKey, row: () => ({ label: metricLabelOf(xKey), value: fmtBattle(x) }) },
+        { key: yKey, row: () => ({ label: metricLabelOf(yKey), value: fmtBattle(y) }) },
+        { key: sizeKey, row: () => ({ label: metricLabelOf(sizeKey!), value: fmtBattle(size), muted: true }) },
+        colorKey === 'win_lose'
+          // 勝敗はメトリクスではないので、サイズ等と衝突しない専用キーで持つ
+          ? { key: 'win_lose', row: () => ({ label: '勝敗', value: b.result, muted: true }) }
+          : { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: fmtBattle(getBattleMetric(b, colorKey as BattleMetricKey)), muted: true }) },
+      ]),
     }
   })
 }
