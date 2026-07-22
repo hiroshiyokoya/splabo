@@ -34,15 +34,19 @@
     ],
     "by_stage": [
       {
+        "display_name": "ユノハナ大渓谷",
         "draws": 0,
         "key": "yunohana",
+        "short_name": "ユノハナ",
         "total": 1,
         "win_rate": 1.0,
         "wins": 1
       },
       {
+        "display_name": "ゴンズイ地区",
         "draws": 0,
         "key": "gonzui",
+        "short_name": "ゴンズイ",
         "total": 1,
         "win_rate": 0.0,
         "wins": 0
@@ -50,6 +54,7 @@
     ],
     "by_weapon": [
       {
+        "display_name": "スプラシューター",
         "draws": 0,
         "key": "splattershot",
         "total": 1,
@@ -57,6 +62,7 @@
         "wins": 1
       },
       {
+        "display_name": "わかばシューター",
         "draws": 0,
         "key": "wakaba",
         "total": 1,
@@ -110,15 +116,19 @@
       ],
       "by_stage": [
         {
+          "display_name": "ユノハナ大渓谷",
           "draws": 0,
           "key": "yunohana",
+          "short_name": "ユノハナ",
           "total": 1,
           "win_rate": 1.0,
           "wins": 1
         },
         {
+          "display_name": "ゴンズイ地区",
           "draws": 0,
           "key": "gonzui",
+          "short_name": "ゴンズイ",
           "total": 1,
           "win_rate": 0.0,
           "wins": 0
@@ -126,6 +136,7 @@
       ],
       "by_weapon": [
         {
+          "display_name": "スプラシューター",
           "draws": 0,
           "key": "splattershot",
           "total": 1,
@@ -133,6 +144,7 @@
           "wins": 1
         },
         {
+          "display_name": "わかばシューター",
           "draws": 0,
           "key": "wakaba",
           "total": 1,
@@ -152,7 +164,7 @@
       "since": "2026-07-15T11:10:00Z",
       "until": "2026-07-15T12:00:00Z"
     },
-    "recent": {
+    "last_30d": {
       "by_lobby": [
         {
           "draws": 0,
@@ -187,15 +199,19 @@
       ],
       "by_stage": [
         {
+          "display_name": "ユノハナ大渓谷",
           "draws": 0,
           "key": "yunohana",
+          "short_name": "ユノハナ",
           "total": 1,
           "win_rate": 1.0,
           "wins": 1
         },
         {
+          "display_name": "ゴンズイ地区",
           "draws": 0,
           "key": "gonzui",
+          "short_name": "ゴンズイ",
           "total": 1,
           "win_rate": 0.0,
           "wins": 0
@@ -203,6 +219,7 @@
       ],
       "by_weapon": [
         {
+          "display_name": "スプラシューター",
           "draws": 0,
           "key": "splattershot",
           "total": 1,
@@ -210,6 +227,7 @@
           "wins": 1
         },
         {
+          "display_name": "わかばシューター",
           "draws": 0,
           "key": "wakaba",
           "total": 1,
@@ -226,7 +244,90 @@
         "win_rate": 0.5,
         "wins": 1
       },
-      "since": "2026-07-15T11:10:00Z",
+      "since": "2026-06-15T12:00:00Z",
+      "until": "2026-07-15T12:00:00Z"
+    },
+    "last_7d": {
+      "by_lobby": [
+        {
+          "draws": 0,
+          "key": "bankara",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "regular",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_rule": [
+        {
+          "draws": 0,
+          "key": "area",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "draws": 0,
+          "key": "turf_war",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_stage": [
+        {
+          "display_name": "ユノハナ大渓谷",
+          "draws": 0,
+          "key": "yunohana",
+          "short_name": "ユノハナ",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "display_name": "ゴンズイ地区",
+          "draws": 0,
+          "key": "gonzui",
+          "short_name": "ゴンズイ",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "by_weapon": [
+        {
+          "display_name": "スプラシューター",
+          "draws": 0,
+          "key": "splattershot",
+          "total": 1,
+          "win_rate": 1.0,
+          "wins": 1
+        },
+        {
+          "display_name": "わかばシューター",
+          "draws": 0,
+          "key": "wakaba",
+          "total": 1,
+          "win_rate": 0.0,
+          "wins": 0
+        }
+      ],
+      "overall": {
+        "avg_death": 6.0,
+        "avg_kill": 7.0,
+        "draws": 0,
+        "losses": 1,
+        "total": 2,
+        "win_rate": 0.5,
+        "wins": 1
+      },
+      "since": "2026-07-08T12:00:00Z",
       "until": "2026-07-15T12:00:00Z"
     },
     "season": {
@@ -264,15 +365,19 @@
       ],
       "by_stage": [
         {
+          "display_name": "ユノハナ大渓谷",
           "draws": 0,
           "key": "yunohana",
+          "short_name": "ユノハナ",
           "total": 1,
           "win_rate": 1.0,
           "wins": 1
         },
         {
+          "display_name": "ゴンズイ地区",
           "draws": 0,
           "key": "gonzui",
+          "short_name": "ゴンズイ",
           "total": 1,
           "win_rate": 0.0,
           "wins": 0
@@ -280,6 +385,7 @@
       ],
       "by_weapon": [
         {
+          "display_name": "スプラシューター",
           "draws": 0,
           "key": "splattershot",
           "total": 1,
@@ -287,6 +393,7 @@
           "wins": 1
         },
         {
+          "display_name": "わかばシューター",
           "draws": 0,
           "key": "wakaba",
           "total": 1,
@@ -305,83 +412,6 @@
       },
       "since": "2026-06-01T00:00:00Z",
       "until": "2026-09-01T00:00:00Z"
-    },
-    "week": {
-      "by_lobby": [
-        {
-          "draws": 0,
-          "key": "bankara",
-          "total": 1,
-          "win_rate": 1.0,
-          "wins": 1
-        },
-        {
-          "draws": 0,
-          "key": "regular",
-          "total": 1,
-          "win_rate": 0.0,
-          "wins": 0
-        }
-      ],
-      "by_rule": [
-        {
-          "draws": 0,
-          "key": "area",
-          "total": 1,
-          "win_rate": 1.0,
-          "wins": 1
-        },
-        {
-          "draws": 0,
-          "key": "turf_war",
-          "total": 1,
-          "win_rate": 0.0,
-          "wins": 0
-        }
-      ],
-      "by_stage": [
-        {
-          "draws": 0,
-          "key": "yunohana",
-          "total": 1,
-          "win_rate": 1.0,
-          "wins": 1
-        },
-        {
-          "draws": 0,
-          "key": "gonzui",
-          "total": 1,
-          "win_rate": 0.0,
-          "wins": 0
-        }
-      ],
-      "by_weapon": [
-        {
-          "draws": 0,
-          "key": "splattershot",
-          "total": 1,
-          "win_rate": 1.0,
-          "wins": 1
-        },
-        {
-          "draws": 0,
-          "key": "wakaba",
-          "total": 1,
-          "win_rate": 0.0,
-          "wins": 0
-        }
-      ],
-      "overall": {
-        "avg_death": 6.0,
-        "avg_kill": 7.0,
-        "draws": 0,
-        "losses": 1,
-        "total": 2,
-        "win_rate": 0.5,
-        "wins": 1
-      },
-      "since": "2026-07-12T15:00:00Z",
-      "until": "2026-07-19T15:00:00Z"
     }
   },
   "battles": [

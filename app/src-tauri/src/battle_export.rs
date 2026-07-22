@@ -7,12 +7,13 @@
 //! - win_rate の分母は decisive = total − draws（`db.rs` の定義に合わせる）。
 //! - `battles[]` と `aggregates` は **同一の母集団（直近 N 戦）**（#361）。
 //!   母集団は `scoped_cte()` の 1 箇所だけで定義し、一覧・集計とも同じ CTE に JOIN する。
-//! - `aggregates_by_period` は **全期間 / 今シーズン / 今週 / 直近 N 戦** の 4 期間分の集計（#375）。
+//! - `aggregates_by_period` は **全期間 / 今シーズン / 直近 30 日 / 直近 7 日** の 4 期間分の集計
+//!   （#375 で導入・#379 で「今週」「直近 N 戦」を廃してローリング期間に置き換え）。
 //!   既存の `aggregates`（直近 N 戦）は**そのまま残す**（古い viewer のフォールバック先）。
 //!
 //! 詳細契約: `D:\develop\splatoon-gear\splabo-viewer-battle-db-contract.md`（viewer #30 と対）。
 
-use chrono::{DateTime, Datelike, Days, FixedOffset, NaiveTime, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Days, TimeZone, Utc};
 use serde::Serialize;
 use sqlx::Row;
 use tauri::{AppHandle, Manager};
@@ -146,11 +147,8 @@ fn path_to_slash(p: &std::path::Path) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// 期間（#375）: シーズン / 週の境界計算
+// 期間（#375 / #379）: シーズン境界とローリングウィンドウ
 // ---------------------------------------------------------------------------
-
-/// 日本時間のオフセット（+09:00）。シーズン境界・週境界の基準。
-const JST_OFFSET_SECONDS: i32 = 9 * 3600;
 
 /// UTC の ISO8601（`generated_at` / `played_at` と同じ書式）に整形する。
 fn iso_z(at: DateTime<Utc>) -> String {
@@ -195,29 +193,17 @@ fn season_end_utc(at: DateTime<Utc>) -> DateTime<Utc> {
     Utc.with_ymd_and_hms(year, month, 1, 0, 0, 0).unwrap()
 }
 
-/// `at` が属する「今週」の開始時刻（UTC・inclusive）。
+/// ローリングウィンドウ（直近 N 日）の開始時刻 = `at` の N 日前（UTC・inclusive）。
 ///
-/// **週の起点は月曜 00:00 JST**（= 日曜 15:00 UTC）。根拠:
-/// - 利用者は日本のプレイヤーで、週の感覚は JST の暦週。UTC 週だと日曜の夜のプレイが
-///   翌週に落ちて体感とズレる。
-/// - ISO 8601 の週も月曜起点で、`chrono` の `num_days_from_monday()` とも自然に一致する。
-/// - シーズン境界（09:00 JST）に合わせる案もあるが、シーズンは「月初の 1 回」なのに対し
-///   週は毎週来るので、日付が変わる 00:00 に揃えるほうが説明しやすい。
-fn week_start_utc(at: DateTime<Utc>) -> DateTime<Utc> {
-    let jst = FixedOffset::east_opt(JST_OFFSET_SECONDS).unwrap();
-    let local = at.with_timezone(&jst);
-    let back = u64::from(local.weekday().num_days_from_monday());
-    let monday = local.date_naive() - Days::new(back);
-    jst.from_local_datetime(&monday.and_time(NaiveTime::MIN))
-        .unwrap()
-        .with_timezone(&Utc)
-}
-
-/// `at` が属する週の終了時刻（= 翌週月曜 00:00 JST・UTC・**exclusive**）。
-fn week_end_utc(at: DateTime<Utc>) -> DateTime<Utc> {
-    week_start_utc(at)
-        .checked_add_days(Days::new(7))
-        .expect("週末の算出でオーバーフローすることは無い")
+/// 🔴 #375 の「今週」は**月曜起点の暦週**だったが、利用者の意図は
+/// 「**直近 7 日**」だったので #379 でローリングウィンドウに変更した（#379）。
+/// 暦の境界を持たないので**タイムゾーンに依存しない**（JST 換算が不要になった）。
+///
+/// `Days::new` は「日数」なので、うるう秒や DST ではなく素直に 24h × N 前になる
+/// （UTC 固定なので DST の影響も無い）。
+fn days_ago_utc(at: DateTime<Utc>, days: u64) -> DateTime<Utc> {
+    at.checked_sub_days(Days::new(days))
+        .expect("ローリングウィンドウの起点でオーバーフローすることは無い")
 }
 
 // ---------------------------------------------------------------------------
@@ -265,8 +251,9 @@ async fn population(pool: &sqlx::SqlitePool) -> Result<Population, String> {
 
 /// 集計母集団の絞り込み条件（`scoped_cte()` の 4 バインドと 1:1）。
 ///
-/// - 時間で切る期間（今シーズン・今週）は `since`/`until` を実際の境界にし、`limit` は無制限。
-/// - 件数で切る期間（直近 N 戦）は `since`/`until` を番兵にし、`limit` に N を入れる。
+/// - 暦で切る期間（今シーズン）は `since`/`until` を実際の境界にし、`limit` は無制限。
+/// - ローリング期間（直近 N 日）は `since` だけ実際の境界にし、上限は番兵。
+/// - 件数で切る期間（直近 N 戦 = 既存 `aggregates`）は `since`/`until` を番兵にし、`limit` に N を入れる。
 /// - 全期間は両方とも無制限。
 #[derive(Debug, Clone)]
 struct Scope {
@@ -304,6 +291,17 @@ impl Scope {
             until: until.to_string(),
             limit: -1,
         }
+    }
+
+    /// ローリング期間（直近 N 日・`since` 以降で**上限なし**・#379）。
+    ///
+    /// 🔴 SQL 上の上限を番兵（`RANGE_MAX`）にするのは、`generated_at` が**秒精度**に
+    /// 丸められているため。`until = generated_at` の半開区間（`played_at < until`）に
+    /// すると、ちょうど同じ秒に遊んだバトルが「全期間には入るのに直近 7 日には入らない」
+    /// という不整合を起こす。未来のバトルは存在しないので上限を外しても結果は同じ。
+    /// **配信する `until` には別途 `generated_at` を入れる**（`PeriodRange::Rolling`）。
+    fn rolling(pop: &Population, since: &str) -> Self {
+        Self::range(pop, since, RANGE_MAX)
     }
 }
 
@@ -437,10 +435,16 @@ fn by_lobby_sql() -> String {
 }
 
 /// ブキ別集計 SQL（母集団は `recent`）。
+///
+/// `display_name`（`weapon.name_ja`）を必ず含める（#379）。viewer は
+/// `battles[]`（直近 50 戦）から key → 表示名の対応表を作っていたため、
+/// **50 戦に登場しないブキはアイコン（`sha256(表示名)`）を解決できなかった**。
+/// `w.id` で GROUP BY しているので `w.name_ja` は関数従属（集約の曖昧さは無い）。
 fn by_weapon_sql() -> String {
     format!(
         "{cte}
          SELECT w.key AS name,
+                w.name_ja AS display_name,
                 COUNT(*) AS total,
                 SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END) AS wins,
                 SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END) AS draws
@@ -454,10 +458,17 @@ fn by_weapon_sql() -> String {
 }
 
 /// ステージ別集計 SQL（母集団は `recent`）。
+///
+/// `display_name`（`map.name_ja` = 正式名）を必ず含める（#379）。
+/// 🔴 ブキと違い **`map.key` は数値 ID**（`1` / `10`）なので、key は表示にも
+/// アイコン解決（`sha256(正式名)`）にも使えない。正式名が無いと viewer は
+/// 全期間の集計でステージ名すら出せない。短縮名は取得後に Rust 側で解決する
+/// （`fill_group_short_names`）。
 fn by_stage_sql() -> String {
     format!(
         "{cte}
          SELECT m.key AS name,
+                m.name_ja AS display_name,
                 COUNT(*) AS total,
                 SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END) AS wins,
                 SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END) AS draws
@@ -484,7 +495,26 @@ fn fill_stage_short_names(battles: &mut [BattleExportRow]) {
     }
 }
 
+/// by_stage の各エントリに短縮名（`short_name`）を詰める（#379）。
+///
+/// `battles[]` 側の `fill_stage_short_names` と同じ方針:
+/// **正式名（`display_name`）は残したままの追加**で、`STAGE_SHORT` に無いステージ・
+/// `name_ja` が NULL のステージではフィールド自体を出さない
+/// （viewer は欠落を見て正式名へフォールバックする）。
+fn fill_group_short_names(groups: &mut [serde_json::Value]) {
+    for g in groups.iter_mut() {
+        let short = g
+            .get("display_name")
+            .and_then(serde_json::Value::as_str)
+            .and_then(stage_short_name);
+        if let (Some(short), Some(obj)) = (short, g.as_object_mut()) {
+            obj.insert("short_name".into(), serde_json::json!(short));
+        }
+    }
+}
+
 /// グループ集計 SQL を実行し `[{key,total,wins,draws,win_rate}]` を返す。
+/// SQL が `display_name` 列を返す軸（by_weapon / by_stage）では `display_name` も足す（#379）。
 /// `scope` は `recent` CTE の 3 バインド（since / until / limit）に bind される。
 async fn grouped(
     pool: &sqlx::SqlitePool,
@@ -503,13 +533,21 @@ async fn grouped(
             let wins: i64 = r.try_get("wins").unwrap_or(0);
             let draws: i64 = r.try_get("draws").unwrap_or(0);
             let decisive = total - draws;
-            serde_json::json!({
+            let mut entry = serde_json::json!({
                 "key": name,
                 "total": total,
                 "wins": wins,
                 "draws": draws,
                 "win_rate": if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 },
-            })
+            });
+            // #379: 表示名。**`display_name` 列を返す SQL（by_weapon / by_stage）だけ**が入る。
+            // 列そのものが無い軸（by_rule / by_lobby）では try_get が Err、
+            // `name_ja` が NULL の行では Ok(None) になり、どちらもフィールドを出さない
+            // （viewer は欠落を「解決できない」と見て key へフォールバックする）。
+            if let Some(display) = r.try_get::<Option<String>, _>("display_name").ok().flatten() {
+                entry["display_name"] = serde_json::json!(display);
+            }
+            entry
         })
         .collect())
 }
@@ -549,17 +587,20 @@ async fn aggregates_for(
     pool: &sqlx::SqlitePool,
     scope: &Scope,
 ) -> Result<serde_json::Value, String> {
+    // by_stage だけ短縮名を後段で詰める（#379・SQL では正式名まで）。
+    let mut by_stage = grouped(pool, &by_stage_sql(), scope).await?;
+    fill_group_short_names(&mut by_stage);
     Ok(serde_json::json!({
         "overall":   overall(pool, scope).await?,
         "by_rule":   grouped(pool, &by_rule_sql(),   scope).await?,
         "by_lobby":  grouped(pool, &by_lobby_sql(),  scope).await?,
         "by_weapon": grouped(pool, &by_weapon_sql(), scope).await?,
-        "by_stage":  grouped(pool, &by_stage_sql(),  scope).await?,
+        "by_stage":  by_stage,
     }))
 }
 
 /// 母集団に含まれる最古の `played_at`（0 件なら None）。
-/// カレンダー由来でない期間（全期間・直近 N 戦）の `since` に使う。
+/// 暦にもローリングにも由来しない期間（= 全期間）の `since` に使う。
 async fn population_since(
     pool: &sqlx::SqlitePool,
     scope: &Scope,
@@ -578,30 +619,40 @@ async fn population_since(
     Ok(row.try_get::<Option<String>, _>("since").unwrap_or(None))
 }
 
-/// 期間別集計 1 件分の「配信する絶対範囲」の決め方（#375）。
+/// 期間別集計 1 件分の「配信する絶対範囲」の決め方（#375 / #379）。
 enum PeriodRange {
-    /// 暦で決まる範囲（今週・今シーズン）。**スコープの境界をそのまま**配信する。
+    /// 暦で決まる範囲（**今シーズンのみ**）。**スコープの境界をそのまま**配信する。
     /// `until` は未来時刻になり得る。viewer は `now >= until` を見て
-    /// 「この集計はもう『今週 / 今シーズン』ではない」と判定できる（#367 の再生成タイミング問題対策）。
+    /// 「この集計はもう『今シーズン』ではない」と判定できる（#367 の再生成タイミング問題対策）。
     Calendar,
-    /// データで決まる範囲（全期間・直近 N 戦）。暦の境界が無いので
+    /// ローリングウィンドウ（直近 7 日 / 直近 30 日・#379）。
+    /// `since` = 生成時刻 − N 日、`until` = **生成時刻**。
+    ///
+    /// 🔴 暦の境界が無いため `until` は常に「今」であり、**`now >= until` は生成直後から
+    /// 常に真**になる。つまり Calendar 期間で使えた陳腐化判定はローリング期間では
+    /// 機能しない。本体は実際の絶対時刻を正しく入れるまでを担当し、
+    /// 陳腐化の判定方法は viewer 側で決める（splabo-viewer#97 系）。
+    Rolling,
+    /// データで決まる範囲（**全期間のみ**）。暦の境界が無いので
     /// `since` = 母集団の最古 `played_at`（0 件なら null）、`until` = 生成時刻とする。
     Data,
 }
 
+/// ローリング期間の定義（配信キー, 日数）。#379 で「今週」「直近 N 戦」を置き換えたもの。
+const ROLLING_PERIODS: &[(&str, u64)] = &[("last_30d", 30), ("last_7d", 7)];
+
 /// 期間別集計（`aggregates_by_period`）を組み立てる。
 ///
-/// `recent` は既存 `aggregates` と同一母集団なので、計算済みの値を渡して**使い回す**
-/// （二重計算を避けつつ、既存 `aggregates` と数値が一致することを構造的に保証する）。
+/// 期間は **全期間 / 今シーズン / 直近 30 日 / 直近 7 日** の 4 つ（#379）。
+/// 「直近 N 戦」は期間の選択肢から外れたが、**既存 `aggregates`（直近 N 戦）は
+/// そのまま残す**（履歴リストとの整合・古い viewer のフォールバック先）。
 async fn aggregates_by_period(
     pool: &sqlx::SqlitePool,
     pop: &Population,
-    limit: i64,
     now: DateTime<Utc>,
     generated_at: &str,
-    recent_aggregates: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    let specs: Vec<(&str, Scope, PeriodRange)> = vec![
+    let mut specs: Vec<(&str, Scope, PeriodRange)> = vec![
         ("all_time", Scope::all_time(pop), PeriodRange::Data),
         (
             "season",
@@ -612,24 +663,21 @@ async fn aggregates_by_period(
             ),
             PeriodRange::Calendar,
         ),
-        (
-            "week",
-            Scope::range(pop, &iso_z(week_start_utc(now)), &iso_z(week_end_utc(now))),
-            PeriodRange::Calendar,
-        ),
-        ("recent", Scope::recent(pop, limit), PeriodRange::Data),
     ];
+    for (key, days) in ROLLING_PERIODS {
+        specs.push((
+            key,
+            Scope::rolling(pop, &iso_z(days_ago_utc(now, *days))),
+            PeriodRange::Rolling,
+        ));
+    }
 
     let mut out = serde_json::Map::new();
     for (key, scope, range) in specs {
-        // recent は既存 aggregates の使い回し（同一母集団なので必ず一致する）。
-        let stats = if key == "recent" {
-            recent_aggregates.clone()
-        } else {
-            aggregates_for(pool, &scope).await?
-        };
+        let stats = aggregates_for(pool, &scope).await?;
         let (since, until) = match range {
             PeriodRange::Calendar => (Some(scope.since.clone()), scope.until.clone()),
+            PeriodRange::Rolling => (Some(scope.since.clone()), generated_at.to_string()),
             PeriodRange::Data => (
                 population_since(pool, &scope).await?,
                 generated_at.to_string(),
@@ -694,11 +742,10 @@ pub async fn export_battle_db(
         .try_get(0)
         .unwrap_or(0);
 
-    // --- 期間別集計（#375・全期間 / 今シーズン / 今週 / 直近 N 戦） ---
+    // --- 期間別集計（#375 / #379・全期間 / 今シーズン / 直近 30 日 / 直近 7 日） ---
     // 「今」は generated_at と同じ時刻を使う（配信する範囲とメタがズレないように）。
     let now = parse_iso_z(&generated_at).unwrap_or_else(Utc::now);
-    let by_period =
-        aggregates_by_period(pool, &pop, limit, now, &generated_at, &aggregates).await?;
+    let by_period = aggregates_by_period(pool, &pop, now, &generated_at).await?;
 
     // --- エンベロープ構築 → 暗号化 → 書き出し ---
     let envelope = serde_json::json!({
@@ -707,9 +754,10 @@ pub async fn export_battle_db(
         "generated_at": generated_at,
         "source_db_user_version": user_version,
         "battles": battles,
-        // 既存フィールド（直近 N 戦）。**後方互換のため形も値もそのまま維持する**。
+        // 既存フィールド（直近 N 戦）。**後方互換のため母集団も形もそのまま維持する**
+        //（#379 で by_weapon / by_stage に表示名が増えるのは追加のみ）。
         "aggregates": aggregates,
-        // 追加フィールド（#375）。各期間に since / until（絶対時刻）を含む。
+        // 追加フィールド（#375 / #379）。各期間に since / until（絶対時刻）を含む。
         "aggregates_by_period": by_period,
     });
 
@@ -742,6 +790,48 @@ pub async fn export_battle_db(
 mod tests {
     use super::*;
 
+    /// 1 期間分の集計（`aggregates` / 各 `aggregates_by_period.*` で共通の形）。
+    ///
+    /// フィクスチャの 2 戦はどの期間にも入るので、期間ごとの中身は同じで良い。
+    /// **`by_weapon` / `by_stage` には表示名が入る**（#379）:
+    /// - `display_name` … ブキ名 / ステージ正式名（アイコン解決鍵 `sha256(表示名)`）
+    /// - `short_name`   … ステージ短縮名（by_stage のみ・未知ステージでは出ない）
+    fn sample_stats() -> serde_json::Value {
+        serde_json::json!({
+            "overall": { "total": 2, "wins": 1, "losses": 1, "draws": 0,
+                         "win_rate": 0.5, "avg_kill": 7.0, "avg_death": 6.0 },
+            "by_rule": [
+                { "key": "area", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                { "key": "turf_war", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+            ],
+            "by_lobby": [
+                { "key": "bankara", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                { "key": "regular", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+            ],
+            "by_weapon": [
+                { "key": "splattershot", "display_name": "スプラシューター",
+                  "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                { "key": "wakaba", "display_name": "わかばシューター",
+                  "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+            ],
+            "by_stage": [
+                { "key": "yunohana", "display_name": "ユノハナ大渓谷", "short_name": "ユノハナ",
+                  "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
+                { "key": "gonzui", "display_name": "ゴンズイ地区", "short_name": "ゴンズイ",
+                  "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
+            ]
+        })
+    }
+
+    /// 期間別集計 1 件分（`sample_stats()` + `since` / `until`）。
+    fn sample_period(since: serde_json::Value, until: &str) -> serde_json::Value {
+        let mut v = sample_stats();
+        let obj = v.as_object_mut().unwrap();
+        obj.insert("since".into(), since);
+        obj.insert("until".into(), serde_json::json!(until));
+        v
+    }
+
     /// battle-export-v1 の代表的なエンベロープ（viewer 契約テスト用フィクスチャの元）。
     fn sample_envelope() -> serde_json::Value {
         serde_json::json!({
@@ -771,114 +861,20 @@ mod tests {
                     "sub_weapon": "splash_wall", "special_weapon": "big_bubbler", "detail_fetched": 1
                 }
             ],
-            "aggregates": {
-                "overall": { "total": 2, "wins": 1, "losses": 1, "draws": 0,
-                             "win_rate": 0.5, "avg_kill": 7.0, "avg_death": 6.0 },
-                "by_rule": [
-                    { "key": "area", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                    { "key": "turf_war", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                ],
-                "by_lobby": [
-                    { "key": "bankara", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                    { "key": "regular", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                ],
-                "by_weapon": [
-                    { "key": "splattershot", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                    { "key": "wakaba", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                ],
-                "by_stage": [
-                    { "key": "yunohana", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                    { "key": "gonzui", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                ]
-            },
-            // #375: 期間別集計。既存 `aggregates` と同じ形 + since/until（絶対時刻）。
-            // - all_time / recent … since = 母集団の最古 played_at（0 件なら null）、until = generated_at
-            // - season / week     … その期間の暦上の境界（until は未来時刻になり得る）
+            "aggregates": sample_stats(),
+            // #375 / #379: 期間別集計。既存 `aggregates` と同じ形 + since/until（絶対時刻）。
+            // - all_time          … since = 母集団の最古 played_at（0 件なら null）、until = generated_at
+            // - season            … 暦上の境界（until は未来時刻になり得る）
+            // - last_30d / last_7d … since = generated_at − N 日、until = generated_at（ローリング）
             "aggregates_by_period": {
-                "all_time": {
-                    "since": "2026-07-15T11:10:00Z", "until": "2026-07-15T12:00:00Z",
-                    "overall": { "total": 2, "wins": 1, "losses": 1, "draws": 0,
-                                 "win_rate": 0.5, "avg_kill": 7.0, "avg_death": 6.0 },
-                    "by_rule": [
-                        { "key": "area", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "turf_war", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ],
-                    "by_lobby": [
-                        { "key": "bankara", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "regular", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ],
-                    "by_weapon": [
-                        { "key": "splattershot", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "wakaba", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ],
-                    "by_stage": [
-                        { "key": "yunohana", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "gonzui", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ]
-                },
-                "season": {
-                    "since": "2026-06-01T00:00:00Z", "until": "2026-09-01T00:00:00Z",
-                    "overall": { "total": 2, "wins": 1, "losses": 1, "draws": 0,
-                                 "win_rate": 0.5, "avg_kill": 7.0, "avg_death": 6.0 },
-                    "by_rule": [
-                        { "key": "area", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "turf_war", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ],
-                    "by_lobby": [
-                        { "key": "bankara", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "regular", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ],
-                    "by_weapon": [
-                        { "key": "splattershot", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "wakaba", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ],
-                    "by_stage": [
-                        { "key": "yunohana", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "gonzui", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ]
-                },
-                "week": {
-                    "since": "2026-07-12T15:00:00Z", "until": "2026-07-19T15:00:00Z",
-                    "overall": { "total": 2, "wins": 1, "losses": 1, "draws": 0,
-                                 "win_rate": 0.5, "avg_kill": 7.0, "avg_death": 6.0 },
-                    "by_rule": [
-                        { "key": "area", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "turf_war", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ],
-                    "by_lobby": [
-                        { "key": "bankara", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "regular", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ],
-                    "by_weapon": [
-                        { "key": "splattershot", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "wakaba", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ],
-                    "by_stage": [
-                        { "key": "yunohana", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "gonzui", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ]
-                },
-                "recent": {
-                    "since": "2026-07-15T11:10:00Z", "until": "2026-07-15T12:00:00Z",
-                    "overall": { "total": 2, "wins": 1, "losses": 1, "draws": 0,
-                                 "win_rate": 0.5, "avg_kill": 7.0, "avg_death": 6.0 },
-                    "by_rule": [
-                        { "key": "area", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "turf_war", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ],
-                    "by_lobby": [
-                        { "key": "bankara", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "regular", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ],
-                    "by_weapon": [
-                        { "key": "splattershot", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "wakaba", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ],
-                    "by_stage": [
-                        { "key": "yunohana", "total": 1, "wins": 1, "draws": 0, "win_rate": 1.0 },
-                        { "key": "gonzui", "total": 1, "wins": 0, "draws": 0, "win_rate": 0.0 }
-                    ]
-                }
+                "all_time": sample_period(
+                    serde_json::json!("2026-07-15T11:10:00Z"), "2026-07-15T12:00:00Z"),
+                "season": sample_period(
+                    serde_json::json!("2026-06-01T00:00:00Z"), "2026-09-01T00:00:00Z"),
+                "last_30d": sample_period(
+                    serde_json::json!("2026-06-15T12:00:00Z"), "2026-07-15T12:00:00Z"),
+                "last_7d": sample_period(
+                    serde_json::json!("2026-07-08T12:00:00Z"), "2026-07-15T12:00:00Z"),
             }
         })
     }
@@ -908,11 +904,19 @@ mod tests {
         assert_eq!(by_stage[0]["win_rate"], 1.0);
         assert_eq!(by_stage[1]["key"], "gonzui");
         assert_eq!(by_stage[1]["win_rate"], 0.0);
+        // #379: 既存 aggregates 側の by_stage / by_weapon にも表示名が入る
+        //（期間別だけに入れると viewer が期間を切り替えたとき名前が出たり消えたりする）。
+        assert_eq!(by_stage[0]["display_name"], "ユノハナ大渓谷");
+        assert_eq!(by_stage[0]["short_name"], "ユノハナ");
+        let by_weapon = parsed["aggregates"]["by_weapon"].as_array().unwrap();
+        assert_eq!(by_weapon[0]["display_name"], "スプラシューター");
+        // by_rule / by_lobby は viewer が固有の表示名テーブルを持つので表示名を持たない。
+        assert!(parsed["aggregates"]["by_rule"][0].get("display_name").is_none());
 
-        // #375: 期間別集計。4 期間が揃い、各期間が既存 aggregates と同じ形 + since/until を持つ。
+        // #375 / #379: 期間別集計。4 期間が揃い、各期間が既存 aggregates と同じ形 + since/until を持つ。
         let periods = parsed["aggregates_by_period"].as_object().unwrap();
         assert_eq!(periods.len(), 4);
-        for key in ["all_time", "season", "week", "recent"] {
+        for key in ["all_time", "season", "last_30d", "last_7d"] {
             let p = &parsed["aggregates_by_period"][key];
             assert!(p["since"].is_string() || p["since"].is_null(), "{key}.since");
             assert!(p["until"].is_string(), "{key}.until は必ず入る");
@@ -920,15 +924,23 @@ mod tests {
             for axis in ["by_rule", "by_lobby", "by_weapon", "by_stage"] {
                 assert!(p[axis].is_array(), "{key}.{axis}");
             }
+            // #379: どの期間でも by_weapon / by_stage に表示名が入る。
+            assert_eq!(p["by_weapon"][0]["display_name"], "スプラシューター", "{key}");
+            assert_eq!(p["by_stage"][0]["display_name"], "ユノハナ大渓谷", "{key}");
         }
-        // 暦で決まる期間は since < until（半開区間）。
+        // 暦で決まる期間（今シーズン）は境界そのもの。
         assert_eq!(
             parsed["aggregates_by_period"]["season"]["since"],
             "2026-06-01T00:00:00Z"
         );
+        // ローリング期間の until は生成時刻（= 未来にならない・#379）。
         assert_eq!(
-            parsed["aggregates_by_period"]["week"]["until"],
-            "2026-07-19T15:00:00Z"
+            parsed["aggregates_by_period"]["last_7d"]["until"],
+            "2026-07-15T12:00:00Z"
+        );
+        assert_eq!(
+            parsed["aggregates_by_period"]["last_7d"]["since"],
+            "2026-07-08T12:00:00Z"
         );
         // 既存 aggregates は従来どおり since/until を持たない（後方互換）。
         assert!(parsed["aggregates"].get("since").is_none());
@@ -1520,33 +1532,36 @@ mod tests {
         }
     }
 
-    /// 週の起点は **月曜 00:00 JST = 日曜 15:00 UTC**。
+    /// #379: ローリングウィンドウの起点は「基準時刻ちょうど N 日前」。
+    /// 暦の境界に丸めない（月曜起点だった #375 の `week_start_utc` との違い）。
     #[test]
-    fn week_start_is_monday_jst() {
-        // 2026-07-20 は月曜。JST 月曜 00:00 は UTC では日曜 15:00。
-        let monday_jst_start = utc("2026-07-19T15:00:00Z");
+    fn rolling_window_start_is_exactly_n_days_before() {
+        let now = utc("2026-07-21T12:34:56Z");
 
-        // 起点ちょうど。
-        assert_eq!(week_start_utc(monday_jst_start), monday_jst_start);
-        // 起点の 1 秒前（JST では日曜 23:59:59）は前の週。
-        assert_eq!(
-            week_start_utc(utc("2026-07-19T14:59:59Z")),
-            utc("2026-07-12T15:00:00Z")
-        );
-        // 週の途中（火曜 21:00 JST = 火曜 12:00 UTC）。
-        assert_eq!(week_start_utc(utc("2026-07-21T12:00:00Z")), monday_jst_start);
-        // 日曜 23:00 JST（= 日曜 14:00 UTC）はまだ同じ週。
-        assert_eq!(week_start_utc(utc("2026-07-26T14:00:00Z")), monday_jst_start);
-        // UTC では土曜でも JST では日曜（+9h）→ 同じ週に入る。
-        assert_eq!(week_start_utc(utc("2026-07-25T15:30:00Z")), monday_jst_start);
+        // 時刻はそのまま残る（00:00 や月曜に丸めない）。
+        assert_eq!(days_ago_utc(now, 7), utc("2026-07-14T12:34:56Z"));
+        assert_eq!(days_ago_utc(now, 30), utc("2026-06-21T12:34:56Z"));
+        assert_eq!(days_ago_utc(now, 0), now);
 
-        // 週末は 7 日後（半開区間 [since, until)）。
-        assert_eq!(week_end_utc(monday_jst_start), utc("2026-07-26T15:00:00Z"));
+        // 月跨ぎ・年跨ぎ・うるう年（2028-02-29）でもズレない。
         assert_eq!(
-            week_start_utc(week_end_utc(monday_jst_start)),
-            utc("2026-07-26T15:00:00Z"),
-            "週末ちょうどは次の週の起点"
+            days_ago_utc(utc("2026-01-05T00:00:00Z"), 30),
+            utc("2025-12-06T00:00:00Z")
         );
+        assert_eq!(
+            days_ago_utc(utc("2028-03-01T09:00:00Z"), 1),
+            utc("2028-02-29T09:00:00Z")
+        );
+
+        // 30 日 = 7 日 + 23 日（単純な日数差であることの確認）。
+        assert_eq!(days_ago_utc(days_ago_utc(now, 7), 23), days_ago_utc(now, 30));
+    }
+
+    /// #379: 配信する期間は **全期間 / 今シーズン / 直近 30 日 / 直近 7 日** の 4 つ。
+    /// 「今週」「直近 N 戦」は期間の選択肢から外れた。
+    #[test]
+    fn rolling_periods_are_30d_and_7d() {
+        assert_eq!(ROLLING_PERIODS, &[("last_30d", 30u64), ("last_7d", 7u64)]);
     }
 
     /// 期間別集計の共通検証: 各グループ軸の total 合計が overall.total と一致すること（#364 の性質）。
@@ -1571,32 +1586,38 @@ mod tests {
         let pop = population(pool).await.unwrap();
         let recent = Scope::recent(&pop, limit);
         let aggregates = aggregates_for(pool, &recent).await.unwrap();
-        let by_period = aggregates_by_period(pool, &pop, limit, utc(now), now, &aggregates)
-            .await
-            .unwrap();
+        let by_period = aggregates_by_period(pool, &pop, utc(now), now).await.unwrap();
         (aggregates, by_period)
     }
 
-    /// #375: 全期間 / 今シーズン / 今週 / 直近 N 戦の 4 期間が正しい母集団で計算されること。
+    /// 配信される期間キー（順序は問わない）。
+    const PERIOD_KEYS: [&str; 4] = ["all_time", "season", "last_30d", "last_7d"];
+
+    /// #375 / #379: 全期間 / 今シーズン / 直近 30 日 / 直近 7 日の 4 期間が
+    /// 正しい母集団で計算されること。
     /// あわせて since/until と、既存 `aggregates`（直近 N 戦）の回帰防止を確認する。
     #[tokio::test]
     async fn aggregates_by_period_scopes_and_ranges() {
         let pool = test_pool().await;
 
-        // now = 2026-07-21T12:00:00Z（火曜）
-        //   今シーズン: 2026-06-01T00:00:00Z 〜 2026-09-01T00:00:00Z
-        //   今週:       2026-07-19T15:00:00Z 〜 2026-07-26T15:00:00Z（月曜 00:00 JST 起点）
+        // now = 2026-07-21T12:00:00Z
+        //   今シーズン: 2026-06-01T00:00:00Z 〜 2026-09-01T00:00:00Z（暦境界）
+        //   直近 30 日: 2026-06-21T12:00:00Z 以降（ローリング）
+        //   直近  7 日: 2026-07-14T12:00:00Z 以降（ローリング）
         let now = "2026-07-21T12:00:00Z";
 
         let rows: &[(&str, &str)] = &[
             // 前シーズン（3 月シーズン）: 全期間のみに入る
             ("o1", "2026-04-10T10:00:00Z"),
             ("o2", "2026-05-31T23:59:59Z"), // シーズン開始の 1 秒前 → 今シーズンに入らない
-            // 今シーズン・今週より前
+            // 今シーズンだが直近 30 日より前
             ("s1", "2026-06-01T00:00:00Z"), // シーズン開始ちょうど → 今シーズンに入る
-            ("s2", "2026-07-19T14:59:59Z"), // 週の開始 1 秒前 → 今週に入らない
-            // 今週
-            ("w1", "2026-07-19T15:00:00Z"), // 週の開始ちょうど → 今週に入る
+            ("s2", "2026-06-21T11:59:59Z"), // 直近 30 日の 1 秒前 → 直近 30 日に入らない
+            // 直近 30 日（直近 7 日には入らない）
+            ("m1", "2026-06-21T12:00:00Z"), // 直近 30 日ちょうど → 入る
+            ("m2", "2026-07-14T11:59:59Z"), // 直近 7 日の 1 秒前 → 直近 7 日に入らない
+            // 直近 7 日
+            ("w1", "2026-07-14T12:00:00Z"), // 直近 7 日ちょうど → 入る
             ("w2", "2026-07-21T09:00:00Z"),
         ];
         for (i, (id, played_at)) in rows.iter().enumerate() {
@@ -1618,46 +1639,61 @@ mod tests {
 
         let (aggregates, periods) = build_periods(&pool, now, DEFAULT_LIMIT).await;
 
+        // --- 期間は 4 つだけ（「今週」「直近 N 戦」は消えた・#379） ---
+        let keys: std::collections::HashSet<&str> = periods
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(keys, PERIOD_KEYS.into_iter().collect());
+
         // --- 母集団の件数 ---
         assert_eq!(
-            periods["all_time"]["overall"]["total"], 6,
+            periods["all_time"]["overall"]["total"], 8,
             "全期間（トリカラ除外）"
         );
         assert_eq!(
-            periods["season"]["overall"]["total"], 4,
+            periods["season"]["overall"]["total"], 6,
             "今シーズン（6/1 00:00Z 以降）"
         );
         assert_eq!(
-            periods["week"]["overall"]["total"], 2,
-            "今週（月曜 00:00 JST 以降）"
+            periods["last_30d"]["overall"]["total"], 4,
+            "直近 30 日（now − 30 日 以降）"
         );
         assert_eq!(
-            periods["recent"]["overall"]["total"], 6,
-            "直近 50 戦（6 戦しか無いので全件）"
+            periods["last_7d"]["overall"]["total"], 2,
+            "直近 7 日（now − 7 日 以降）"
         );
 
         // --- since / until ---
-        // 暦で決まる期間は境界そのもの（未来を含む until）。
+        // 暦で決まる期間（今シーズン）は境界そのもの。until は now より未来。
         assert_eq!(periods["season"]["since"], "2026-06-01T00:00:00Z");
         assert_eq!(periods["season"]["until"], "2026-09-01T00:00:00Z");
-        assert_eq!(periods["week"]["since"], "2026-07-19T15:00:00Z");
-        assert_eq!(periods["week"]["until"], "2026-07-26T15:00:00Z");
-        // データで決まる期間は最古の played_at と生成時刻。
+        assert!(
+            periods["season"]["until"].as_str().unwrap() > now,
+            "今シーズンの until は暦境界なので未来時刻になり得る"
+        );
+        // ローリング期間は since = now − N 日、until = 生成時刻（now）。
+        assert_eq!(periods["last_30d"]["since"], "2026-06-21T12:00:00Z");
+        assert_eq!(periods["last_30d"]["until"], now);
+        assert_eq!(periods["last_7d"]["since"], "2026-07-14T12:00:00Z");
+        assert_eq!(periods["last_7d"]["until"], now);
+        // データで決まる期間（全期間）は最古の played_at と生成時刻。
         assert_eq!(periods["all_time"]["since"], "2026-04-10T10:00:00Z");
         assert_eq!(periods["all_time"]["until"], now);
-        assert_eq!(periods["recent"]["since"], "2026-04-10T10:00:00Z");
-        assert_eq!(periods["recent"]["until"], now);
 
         // --- グループ合計 == overall.total（全期間で成立） ---
-        for key in ["all_time", "season", "week", "recent"] {
+        for key in PERIOD_KEYS {
             assert_group_totals_match_overall(&periods[key], key);
         }
 
-        // --- 既存 aggregates の回帰防止: recent 期間と数値が完全一致する ---
+        // --- 既存 aggregates（直近 N 戦）の回帰防止 ---
+        // 8 戦しか無いので直近 50 戦 = 全期間と同じ母集団になり、値が一致する。
         for axis in ["overall", "by_rule", "by_lobby", "by_weapon", "by_stage"] {
             assert_eq!(
-                aggregates[axis], periods["recent"][axis],
-                "既存 aggregates と aggregates_by_period.recent の {axis} は一致する"
+                aggregates[axis], periods["all_time"][axis],
+                "既存 aggregates（8 戦 < 50）は全期間と一致する {axis}"
             );
         }
         // 既存 aggregates 側に since/until は生えない（形は従来どおり）。
@@ -1665,13 +1701,13 @@ mod tests {
         assert!(aggregates.get("until").is_none());
     }
 
-    /// #375: 直近 50 戦を超えるデータでは recent だけが 50 件に制限され、
-    /// 全期間・今シーズンは制限されないこと。
+    /// #379: 期間別集計はどれも**件数で制限されない**（「直近 N 戦」は期間から外れた）。
+    /// 一方で既存 `aggregates` は従来どおり直近 50 戦のまま（回帰防止）。
     #[tokio::test]
-    async fn aggregates_by_period_recent_is_limited_but_others_are_not() {
+    async fn aggregates_by_period_is_never_count_limited() {
         let pool = test_pool().await;
 
-        // 今週の中に 60 戦（月曜 00:00 JST 以降）。
+        // 直近 7 日の中に 60 戦（now = 7/21 12:00Z に対して 7/20 は 1 日前）。
         for i in 0..60i64 {
             insert_battle_at(
                 &pool,
@@ -1687,29 +1723,30 @@ mod tests {
             .await;
         }
 
-        let (_, periods) = build_periods(&pool, "2026-07-21T12:00:00Z", DEFAULT_LIMIT).await;
+        let (aggregates, periods) = build_periods(&pool, "2026-07-21T12:00:00Z", DEFAULT_LIMIT).await;
 
-        assert_eq!(periods["all_time"]["overall"]["total"], 60);
-        assert_eq!(periods["season"]["overall"]["total"], 60);
-        assert_eq!(periods["week"]["overall"]["total"], 60);
-        assert_eq!(
-            periods["recent"]["overall"]["total"], 50,
-            "recent だけ直近 50 戦に制限される"
-        );
-        for key in ["all_time", "season", "week", "recent"] {
+        for key in PERIOD_KEYS {
+            assert_eq!(
+                periods[key]["overall"]["total"], 60,
+                "{key} は 60 戦すべてを数える（件数制限なし）"
+            );
             assert_group_totals_match_overall(&periods[key], key);
         }
+        assert_eq!(
+            aggregates["overall"]["total"], 50,
+            "既存 aggregates は従来どおり直近 50 戦"
+        );
     }
 
-    /// #375: 該当バトルが 0 件の期間でも壊れない
-    /// （今週まだ遊んでいない / DB が空）。
+    /// #375 / #379: 該当バトルが 0 件の期間でも壊れない
+    /// （直近 7 日はまだ遊んでいない / DB が空）。
     #[tokio::test]
     async fn aggregates_by_period_handles_empty_periods() {
         let pool = test_pool().await;
 
         // --- DB が完全に空 ---
         let (_, periods) = build_periods(&pool, "2026-07-21T12:00:00Z", DEFAULT_LIMIT).await;
-        for key in ["all_time", "season", "week", "recent"] {
+        for key in PERIOD_KEYS {
             assert_eq!(periods[key]["overall"]["total"], 0, "{key} は 0 件");
             assert_eq!(periods[key]["overall"]["wins"], 0);
             assert_eq!(periods[key]["overall"]["losses"], 0);
@@ -1732,30 +1769,33 @@ mod tests {
         }
         // データ由来の since は 0 件なら null（until は生成時刻のまま）。
         assert_eq!(periods["all_time"]["since"], serde_json::Value::Null);
-        assert_eq!(periods["recent"]["since"], serde_json::Value::Null);
-        // 暦由来の since/until は 0 件でも必ず入る（viewer が範囲を判定できる）。
-        assert_eq!(periods["week"]["since"], "2026-07-19T15:00:00Z");
-        assert_eq!(periods["week"]["until"], "2026-07-26T15:00:00Z");
+        // 暦由来・ローリング由来の since/until は 0 件でも必ず入る（viewer が範囲を判定できる）。
+        assert_eq!(periods["season"]["since"], "2026-06-01T00:00:00Z");
+        assert_eq!(periods["season"]["until"], "2026-09-01T00:00:00Z");
+        assert_eq!(periods["last_7d"]["since"], "2026-07-14T12:00:00Z");
+        assert_eq!(periods["last_7d"]["until"], "2026-07-21T12:00:00Z");
+        assert_eq!(periods["last_30d"]["since"], "2026-06-21T12:00:00Z");
 
-        // --- 今週だけ 0 件（先週までは遊んでいる） ---
+        // --- 直近 7 日だけ 0 件（それ以前は遊んでいる） ---
         insert_battle_at(&pool, "p1", "2026-07-10T10:00:00Z", 1, 1, 1, 1, Some(1), NON_TRI).await;
         let (_, periods) = build_periods(&pool, "2026-07-21T12:00:00Z", DEFAULT_LIMIT).await;
         assert_eq!(periods["all_time"]["overall"]["total"], 1);
         assert_eq!(periods["season"]["overall"]["total"], 1);
-        assert_eq!(periods["week"]["overall"]["total"], 0, "今週は 0 件");
-        assert_eq!(periods["week"]["overall"]["win_rate"], 0.0);
-        assert_group_totals_match_overall(&periods["week"], "week");
+        assert_eq!(periods["last_30d"]["overall"]["total"], 1);
+        assert_eq!(periods["last_7d"]["overall"]["total"], 0, "直近 7 日は 0 件");
+        assert_eq!(periods["last_7d"]["overall"]["win_rate"], 0.0);
+        assert_group_totals_match_overall(&periods["last_7d"], "last_7d");
         assert_eq!(periods["all_time"]["since"], "2026-07-10T10:00:00Z");
         // #377: 0 件の期間だけ null になり、データのある期間は従来どおり数値が入る。
         assert_eq!(
-            periods["week"]["overall"]["avg_kill"],
+            periods["last_7d"]["overall"]["avg_kill"],
             serde_json::Value::Null,
-            "今週 0 件なら avg_kill は null"
+            "直近 7 日が 0 件なら avg_kill は null"
         );
         assert_eq!(
-            periods["week"]["overall"]["avg_death"],
+            periods["last_7d"]["overall"]["avg_death"],
             serde_json::Value::Null,
-            "今週 0 件なら avg_death は null"
+            "直近 7 日が 0 件なら avg_death は null"
         );
         assert_eq!(
             periods["all_time"]["overall"]["avg_kill"], 3.0,
@@ -1808,7 +1848,7 @@ mod tests {
         // 期間別集計（#375）側も同じ（detail_fetched=0 しか無い期間は null）。
         let (aggregates, periods) = build_periods(&pool, "2026-07-21T12:00:00Z", DEFAULT_LIMIT).await;
         assert_eq!(aggregates["overall"]["avg_kill"], serde_json::Value::Null);
-        for key in ["all_time", "season", "week", "recent"] {
+        for key in PERIOD_KEYS {
             assert_eq!(
                 periods[key]["overall"]["avg_kill"],
                 serde_json::Value::Null,
@@ -1847,7 +1887,7 @@ mod tests {
         let (aggregates, periods) = build_periods(&pool, "2026-07-21T12:00:00Z", DEFAULT_LIMIT).await;
         assert_eq!(aggregates["overall"]["avg_kill"], 3.0);
         assert_eq!(aggregates["overall"]["avg_death"], 2.0);
-        for key in ["all_time", "season", "week", "recent"] {
+        for key in PERIOD_KEYS {
             assert_eq!(periods[key]["overall"]["avg_kill"], 3.0, "{key}.avg_kill");
             assert_eq!(periods[key]["overall"]["avg_death"], 2.0, "{key}.avg_death");
         }
@@ -1884,5 +1924,172 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(battles.len(), 50, "battles[] は直近 50 戦のまま");
+    }
+
+    // -----------------------------------------------------------------------
+    // #379: by_weapon / by_stage の表示名
+    // -----------------------------------------------------------------------
+
+    /// key → エントリの索引（グループ集計は total 降順なので位置で引かない）。
+    fn group_by_key<'a>(groups: &'a serde_json::Value, key: &str) -> &'a serde_json::Value {
+        groups
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| g["key"] == key)
+            .unwrap_or_else(|| panic!("key={key} のグループが無い"))
+    }
+
+    /// #379（このバグの本体）: **直近 50 戦に登場しないブキ・ステージ**でも
+    /// 全期間の by_weapon / by_stage に表示名が入ること。
+    ///
+    /// viewer は `battles[]`（直近 50 戦）から key → 表示名の対応表を作っていたため、
+    /// 全期間を選ぶと 50 戦に出てこないブキ・ステージのアイコンと名前が出せなかった。
+    /// さらに **`map.key` は数値 ID** なので、ステージは key を表示にも使えない。
+    #[tokio::test]
+    async fn group_display_names_cover_entries_missing_from_recent_battles() {
+        let pool = test_pool().await;
+
+        // 実データに合わせて map.key は数値 ID にする（weapon.key は日本語名そのもの）。
+        sqlx::query(
+            "UPDATE map    SET key = '1',  name_ja = 'ユノハナ大渓谷' WHERE id = 1;
+             UPDATE weapon SET key = 'スプラシューター', name_ja = 'スプラシューター' WHERE id = 1;
+             INSERT INTO map    (id, key, name_ja) VALUES (10, '10', 'マサバ海峡大橋');
+             INSERT INTO weapon (id, key, name_ja) VALUES (10, 'ノヴァブラスター', 'ノヴァブラスター');",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // 古い 1 戦だけが map=10 / weapon=10（直近 50 戦には絶対に入らない）。
+        insert_battle_at(&pool, "old", "2026-01-02T10:00:00Z", 10, 1, 1, 10, Some(1), NON_TRI).await;
+        // 直近 60 戦はすべて map=1 / weapon=1。
+        for i in 0..60i64 {
+            insert_battle_at(
+                &pool,
+                &format!("r{i}"),
+                &format!("2026-07-20T{:02}:{:02}:00Z", i / 60, i % 60),
+                1,
+                (i % 3) + 1,
+                1,
+                1,
+                Some(1),
+                NON_TRI,
+            )
+            .await;
+        }
+
+        let (aggregates, periods) = build_periods(&pool, "2026-07-21T12:00:00Z", DEFAULT_LIMIT).await;
+
+        // 前提: battles[]（= 既存 aggregates と同じ母集団）には old が入らない。
+        let battles = sqlx::query_as::<_, BattleExportRow>(&battles_sql())
+            .bind(population(&pool).await.unwrap().0.as_str())
+            .bind(RANGE_MIN)
+            .bind(RANGE_MAX)
+            .bind(DEFAULT_LIMIT)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        assert!(
+            !battles.iter().any(|b| b.id == "old"),
+            "直近 50 戦には old が入らない（viewer は battles[] から名前を引けない）"
+        );
+
+        // --- 全期間: 50 戦に出てこないブキ・ステージにも表示名が入る ---
+        let all = &periods["all_time"];
+        let old_weapon = group_by_key(&all["by_weapon"], "ノヴァブラスター");
+        assert_eq!(old_weapon["display_name"], "ノヴァブラスター");
+        assert_eq!(old_weapon["total"], 1);
+
+        let old_stage = group_by_key(&all["by_stage"], "10");
+        assert_eq!(
+            old_stage["display_name"], "マサバ海峡大橋",
+            "アイコン解決鍵（sha256(正式名)）になるので必須"
+        );
+        assert_eq!(
+            old_stage["short_name"], "マサバ",
+            "STAGE_SHORT が引ける正式名には短縮名も入る"
+        );
+        assert_ne!(
+            old_stage["key"], old_stage["display_name"],
+            "map.key は数値 ID なので表示には使えない"
+        );
+
+        // --- 期間を問わず入る（viewer が期間を切り替えても名前が消えない） ---
+        for key in PERIOD_KEYS {
+            let p = &periods[key];
+            assert_eq!(
+                group_by_key(&p["by_weapon"], "スプラシューター")["display_name"],
+                "スプラシューター",
+                "{key}.by_weapon"
+            );
+            let stage = group_by_key(&p["by_stage"], "1");
+            assert_eq!(stage["display_name"], "ユノハナ大渓谷", "{key}.by_stage");
+            assert_eq!(stage["short_name"], "ユノハナ", "{key}.by_stage");
+        }
+
+        // --- 既存 aggregates（直近 50 戦）にも同じく入る（期間別だけだと不整合） ---
+        assert_eq!(
+            group_by_key(&aggregates["by_weapon"], "スプラシューター")["display_name"],
+            "スプラシューター"
+        );
+        assert_eq!(
+            group_by_key(&aggregates["by_stage"], "1")["display_name"],
+            "ユノハナ大渓谷"
+        );
+        assert_eq!(
+            group_by_key(&aggregates["by_stage"], "1")["short_name"],
+            "ユノハナ"
+        );
+
+        // --- by_rule / by_lobby には表示名を入れない（viewer が固有の表を持つ） ---
+        for axis in ["by_rule", "by_lobby"] {
+            for g in aggregates[axis].as_array().unwrap() {
+                assert!(g.get("display_name").is_none(), "{axis} に表示名は不要");
+                assert!(g.get("short_name").is_none(), "{axis} に短縮名は不要");
+            }
+        }
+    }
+
+    /// #379: `name_ja` が NULL / `STAGE_SHORT` に無いステージでもフィールドを捏造しない。
+    /// - `name_ja` が NULL → `display_name` 自体を出さない（viewer は key へフォールバック）
+    /// - 未知のステージ → `display_name` は入るが `short_name` は出さない（正式名で表示される）
+    #[tokio::test]
+    async fn group_display_names_are_omitted_when_unresolvable() {
+        let pool = test_pool().await;
+
+        sqlx::query(
+            "INSERT INTO map    (id, key, name_ja) VALUES (3, '3', '未来ステージ'), (4, '4', NULL);
+             INSERT INTO weapon (id, key, name_ja) VALUES (3, 'noname', NULL);",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        insert_battle_at(&pool, "u1", "2026-07-20T10:00:00Z", 3, 1, 1, 3, Some(1), NON_TRI).await;
+        insert_battle_at(&pool, "u2", "2026-07-20T11:00:00Z", 4, 1, 1, 3, Some(1), NON_TRI).await;
+
+        let pop = population(&pool).await.unwrap();
+        let stats = aggregates_for(&pool, &Scope::recent(&pop, DEFAULT_LIMIT))
+            .await
+            .unwrap();
+
+        // 未知ステージ: 正式名は入るが短縮名は無い。
+        let mirai = group_by_key(&stats["by_stage"], "3");
+        assert_eq!(mirai["display_name"], "未来ステージ");
+        assert!(
+            mirai.get("short_name").is_none(),
+            "STAGE_SHORT に無いステージの短縮名は出さない"
+        );
+
+        // name_ja が NULL: 表示名も短縮名も出さない（key だけ）。
+        let noname = group_by_key(&stats["by_stage"], "4");
+        assert!(noname.get("display_name").is_none());
+        assert!(noname.get("short_name").is_none());
+        assert_eq!(noname["total"], 1, "集計そのものは従来どおり成立する");
+
+        let w = group_by_key(&stats["by_weapon"], "noname");
+        assert!(w.get("display_name").is_none());
+        assert_eq!(w["total"], 2);
     }
 }
