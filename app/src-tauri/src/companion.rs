@@ -24,12 +24,17 @@
 //!   - `GET /icons/manifest` … バトルアイコンの差分同期マニフェスト（#327・設計書 §6）。
 //!                           viewer は hash を突き合わせ、変わったものだけ `/images/...` を引く。
 //!   - `POST /update`      … ②更新命令の受付。**受付のみで即応答**（202）し、実処理は裏で走る。
+//!                           ボディ `{"target":"battle"|"gear"|"both"}` で対象を選べる（#395）。
 //!   - `GET /update_status`… ②更新命令の進捗・完了・失敗を問い合わせる（ポーリング用）。
 //!   - いずれも `Authorization: Bearer <token>` 検証必須。不一致・欠落は 401。
 //!
 //! ## ②更新命令（設計書 §4②）
 //! - 「重い・数十秒」処理なので HTTP を掴んだまま待たせない。`POST /update` は受付可否だけを
 //!   即返し、viewer は `GET /update_status` をポーリングして完了を待ち、完了後に①プルする。
+//! - **対象を選べる（#395）**。viewer は「前面表示中の定期プルはバトルのみ / ギアは明示操作のみ」と
+//!   同期の粒度を分けるため、`{"target":"battle"|"gear"|"both"}` を送る。任天堂 API への再取得は
+//!   数十秒かかる重い処理なので、要らない側を取りに行かせないことに実利がある。
+//!   **省略・不正値は `both`**（＝この対応以前の動作）に倒すので、古い viewer もそのまま動く。
 //! - **認証済みトークン前提**。未ログインなら任天堂 API を一切叩かず `NOT_LOGGED_IN` を返す。
 //! - **多重起動しない**。実行中の更新ジョブ、およびデスクトップ側のバトル取得
 //!   （`FetchInProgress`・手動/起動時/スケジューラー共通）と重なる場合は新規に走らせず、
@@ -49,7 +54,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 use mdns_sd::{ServiceDaemon, ServiceInfo};
@@ -130,17 +135,53 @@ pub enum UpdateStep {
     Export,
 }
 
+/// 更新ジョブの対象（#395）。`POST /update` のボディ `{"target": ...}` で指定する。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateTarget {
+    /// バトルのみ（＋ battle_db.bin の再生成）。viewer の前面表示中の定期プル用。
+    Battle,
+    /// ギアのみ（gear_db.bin / .gti 再生成）。viewer の設定タブ「ギア更新」用。
+    Gear,
+    /// 両方。**省略時・不正値のフォールバック**（＝#395 以前の動作）。
+    Both,
+}
+
+impl UpdateTarget {
+    fn includes_battle(self) -> bool {
+        matches!(self, Self::Battle | Self::Both)
+    }
+
+    fn includes_gear(self) -> bool {
+        matches!(self, Self::Gear | Self::Both)
+    }
+
+    /// ログ用の短い表記。
+    fn label(self) -> &'static str {
+        match self {
+            Self::Battle => "battle",
+            Self::Gear => "gear",
+            Self::Both => "both",
+        }
+    }
+}
+
 /// 更新ジョブの結果件数。
+///
+/// **各件数は `Option`**（#395）。対象から外れて実行しなかったフェーズは `None`（JSON では null）に
+/// なる。`0` で埋めると「取りに行ったが 0 件だった」と区別できず、viewer が「バトルは更新された（0 件）」
+/// と誤って解釈してしまうため、実行しなかったことを型で表す。
+/// `target` 省略（= `both`）なら全フィールドが `Some` になるので、古い viewer から見た形は変わらない。
 #[derive(Debug, Clone, Copy, Default, Serialize)]
 pub struct UpdateResult {
     /// 新規に取り込んだバトル数。
-    pub battles: usize,
+    pub battles: Option<usize>,
     /// 詳細を補完したバトル数。
-    pub details: usize,
+    pub details: Option<usize>,
     /// gear_db.bin に載ったギア数（頭 + 服 + 靴）。
-    pub gear: usize,
+    pub gear: Option<usize>,
     /// battle_db.bin に載ったバトル行数。
-    pub exported_battles: usize,
+    pub exported_battles: Option<usize>,
 }
 
 /// `POST /update` / `GET /update_status` が返す状態。
@@ -176,10 +217,16 @@ impl Default for UpdateStatus {
 }
 
 impl UpdateStatus {
-    fn running(started_at: i64) -> Self {
+    fn running(started_at: i64, target: UpdateTarget) -> Self {
         Self {
             state: UpdateState::Running,
-            step: Some(UpdateStep::Battles),
+            // 最初のフェーズは対象で決まる。ギア単独のときに `battles` を出すと、viewer の進捗表示が
+            // 「取りに行かないバトル」を待っているように見えてしまう（#395）。
+            step: Some(if target.includes_battle() {
+                UpdateStep::Battles
+            } else {
+                UpdateStep::Gear
+            }),
             started_at: Some(started_at),
             ..Self::default()
         }
@@ -233,12 +280,45 @@ fn desktop_fetch_in_progress(app: &AppHandle) -> bool {
 ///
 /// 実行中（`Running`）なら遷移せず false。`Idle` / `Done` / `Failed` からは再実行できる。
 /// HTTP/Tauri に依存しない純粋関数として切り出し、多重起動防止をユニットテストする。
-fn try_begin(status: &mut UpdateStatus, started_at: i64) -> bool {
+///
+/// **対象が違っても実行中なら弾く**（#395）。バトルとギアで並走させると任天堂 API を同時に叩き、
+/// `FetchInProgress` とも噛み合わなくなる。粒度を分ける狙いは「要らない側を取りに行かせない」ことで
+/// あって「同時に走らせる」ことではない。
+fn try_begin(status: &mut UpdateStatus, started_at: i64, target: UpdateTarget) -> bool {
     if status.state == UpdateState::Running {
         return false;
     }
-    *status = UpdateStatus::running(started_at);
+    *status = UpdateStatus::running(started_at, target);
     true
+}
+
+/// `POST /update` のリクエストボディ（#395）。未知フィールドは無視する。
+#[derive(Debug, Deserialize)]
+struct UpdateCommandBody {
+    #[serde(default)]
+    target: Option<String>,
+}
+
+/// リクエストボディから更新対象を読み取る（#395）。
+///
+/// **ボディが空・JSON でない・`target` が無い・知らない値、いずれも `Both` に倒す。**
+/// 400 を返さないのは意図的で、
+/// - 古い viewer は `target` を送らない（＝現行どおり両方取る、が正しい挙動）
+/// - 将来 viewer が増やした値をこちらが知らない場合も、「遅いが正しい」両方取得に落ちるほうが安全
+/// だからである（イシュー #395 の後方互換方針）。
+fn parse_update_target(body: &str) -> UpdateTarget {
+    let target = serde_json::from_str::<UpdateCommandBody>(body)
+        .ok()
+        .and_then(|b| b.target);
+    match target.as_deref() {
+        Some("battle") => UpdateTarget::Battle,
+        Some("gear") => UpdateTarget::Gear,
+        Some("both") | None => UpdateTarget::Both,
+        Some(other) => {
+            log::warn!("[companion] 未知の更新対象 \"{other}\" → both として扱う");
+            UpdateTarget::Both
+        }
+    }
 }
 
 /// 更新ジョブ本体: SplatNet3 再フェッチ → gear / battle エクスポート再生成。
@@ -247,48 +327,80 @@ fn try_begin(status: &mut UpdateStatus, started_at: i64) -> bool {
 /// - バトル: `crate::run_fetch_full`（`FetchInProgress` による多重起動防止つき）
 /// - ギア  : `crate::gear::fetch_gear_full`（gear_db.bin / .gti を再生成）
 /// - エクスポート: `crate::battle_export::export_battle_db`（battle_db.bin を再生成）
-async fn run_update_job(app: &AppHandle, job: &Arc<Mutex<UpdateStatus>>) -> Result<UpdateResult, String> {
+///
+/// `target` で対象を絞る（#395）。**battle_db.bin のエクスポートはバトルを取り直したときだけ走らせる**。
+/// ギア単独ならバトル DB の中身は変わらず、再生成しても同じファイルを作り直すだけで、viewer 側も
+/// ETag 一致で 304 になるため意味が無い（`gear_db.bin` の再生成は `fetch_gear_full` の中で行われる）。
+async fn run_update_job(
+    app: &AppHandle,
+    job: &Arc<Mutex<UpdateStatus>>,
+    target: UpdateTarget,
+) -> Result<UpdateResult, String> {
     let set_step = |step: UpdateStep| {
         if let Ok(mut s) = job.lock() {
             s.step = Some(step);
         }
     };
 
-    // --- バトル再フェッチ ---
-    set_step(UpdateStep::Battles);
-    let (battles, details, _uploaded) = {
-        let pool = app
-            .try_state::<crate::db::DbPool>()
-            .ok_or_else(|| "DB がまだ初期化されていません。少し待って再試行してください。".to_string())?;
-        crate::run_fetch_full(app, &pool).await?
-    };
+    // 実行しなかったフェーズは None のまま残す（Default = 全 None）。
+    let mut result = UpdateResult::default();
 
-    // --- ギア再フェッチ（gear_db.bin / .gti 再生成まで含む） ---
-    set_step(UpdateStep::Gear);
-    let gear = crate::gear::fetch_gear_full(app.clone()).await?;
+    if target.includes_battle() {
+        // --- バトル再フェッチ ---
+        set_step(UpdateStep::Battles);
+        let (battles, details, _uploaded) = {
+            let pool = app.try_state::<crate::db::DbPool>().ok_or_else(|| {
+                "DB がまだ初期化されていません。少し待って再試行してください。".to_string()
+            })?;
+            crate::run_fetch_full(app, &pool).await?
+        };
+        result.battles = Some(battles);
+        result.details = Some(details);
+    }
 
-    // --- battle_db.bin エクスポート再生成 ---
-    set_step(UpdateStep::Export);
-    let export = {
-        let pool = app
-            .try_state::<crate::db::DbPool>()
-            .ok_or_else(|| "DB がまだ初期化されていません。".to_string())?;
-        crate::battle_export::export_battle_db(app.clone(), pool, None).await?
-    };
+    if target.includes_gear() {
+        // --- ギア再フェッチ（gear_db.bin / .gti 再生成まで含む） ---
+        set_step(UpdateStep::Gear);
+        let gear = crate::gear::fetch_gear_full(app.clone()).await?;
+        result.gear = Some(gear.head + gear.clothing + gear.shoes);
+    }
 
-    Ok(UpdateResult {
-        battles,
-        details,
-        gear: gear.head + gear.clothing + gear.shoes,
-        exported_battles: export.battles,
-    })
+    if target.includes_battle() {
+        // --- battle_db.bin エクスポート再生成 ---
+        set_step(UpdateStep::Export);
+        let export = {
+            let pool = app
+                .try_state::<crate::db::DbPool>()
+                .ok_or_else(|| "DB がまだ初期化されていません。".to_string())?;
+            crate::battle_export::export_battle_db(app.clone(), pool, None).await?
+        };
+        result.exported_battles = Some(export.battles);
+    }
+
+    Ok(result)
+}
+
+/// ログ表示用に件数を整形する。実行しなかったフェーズ（`None`）は `-`。
+fn fmt_count(count: Option<usize>) -> String {
+    count.map_or_else(|| "-".to_string(), |n| n.to_string())
 }
 
 /// `POST /update` を捌く。受付判定のみ同期で行い、実処理は裏で走らせて即応答する。
 ///
 /// - 202: 受付（`state = running`）
 /// - 409: 実行中 / 未ログイン / デスクトップ側取得と衝突（本文の `error_code` で分岐）
-fn handle_update_command(request: tiny_http::Request, ctx: &ServerCtx) {
+///
+/// ボディで対象を指定できる（#395）。`{"target":"battle"|"gear"|"both"}`・省略時は `both`。
+fn handle_update_command(mut request: tiny_http::Request, ctx: &ServerCtx) {
+    // ボディは受付判定より先に読み切る（読まずに respond すると次のリクエストとずれる）。
+    // 読めなかった場合もエラーにせず both に倒す（`parse_update_target` の方針と揃える）。
+    let mut body = String::new();
+    if let Err(e) = request.as_reader().read_to_string(&mut body) {
+        log::warn!("[companion] ②更新命令のボディ読み取り失敗（both として扱う）: {e}");
+        body.clear();
+    }
+    let target = parse_update_target(&body);
+
     // 未ログインなら任天堂 API を一切叩かずに返す（viewer は「デスクトップでログインして」を表示）。
     if !crate::auth::is_logged_in(&ctx.app) {
         let status = UpdateStatus::failed(
@@ -324,7 +436,7 @@ fn handle_update_command(request: tiny_http::Request, ctx: &ServerCtx) {
                 return;
             }
         };
-        let ok = try_begin(&mut guard, started_at);
+        let ok = try_begin(&mut guard, started_at, target);
         let snapshot = guard.clone();
         (ok, snapshot)
     };
@@ -336,17 +448,21 @@ fn handle_update_command(request: tiny_http::Request, ctx: &ServerCtx) {
         }
         (true, snapshot) => {
             respond_json(request, 202, &snapshot);
-            log::info!("[companion] ②更新命令を受付。再フェッチ開始");
+            log::info!("[companion] ②更新命令を受付。再フェッチ開始 target={}", target.label());
             let app = ctx.app.clone();
             let job = Arc::clone(&ctx.job);
             tauri::async_runtime::spawn(async move {
-                let outcome = run_update_job(&app, &job).await;
+                let outcome = run_update_job(&app, &job, target).await;
                 if let Ok(mut s) = job.lock() {
                     match outcome {
                         Ok(result) => {
                             log::info!(
-                                "[companion] ②更新命令 完了 バトル+{} 詳細+{} ギア{} エクスポート{}行",
-                                result.battles, result.details, result.gear, result.exported_battles
+                                "[companion] ②更新命令 完了 target={} バトル+{} 詳細+{} ギア{} エクスポート{}行",
+                                target.label(),
+                                fmt_count(result.battles),
+                                fmt_count(result.details),
+                                fmt_count(result.gear),
+                                fmt_count(result.exported_battles)
                             );
                             s.state = UpdateState::Done;
                             s.step = None;
@@ -355,7 +471,10 @@ fn handle_update_command(request: tiny_http::Request, ctx: &ServerCtx) {
                         }
                         Err(e) => {
                             let code = classify_error(&e);
-                            log::error!("[companion] ②更新命令 失敗 [{code}]: {e}");
+                            log::error!(
+                                "[companion] ②更新命令 失敗 target={} [{code}]: {e}",
+                                target.label()
+                            );
                             let started_at = s.started_at;
                             *s = UpdateStatus::failed(code, e, started_at);
                         }
@@ -1291,7 +1410,7 @@ mod tests {
     #[test]
     fn begins_job_from_idle() {
         let mut status = UpdateStatus::default();
-        assert!(try_begin(&mut status, 100));
+        assert!(try_begin(&mut status, 100, UpdateTarget::Both));
         assert_eq!(status.state, UpdateState::Running);
         assert_eq!(status.step, Some(UpdateStep::Battles));
         assert_eq!(status.started_at, Some(100));
@@ -1300,26 +1419,107 @@ mod tests {
     #[test]
     fn rejects_second_job_while_running() {
         let mut status = UpdateStatus::default();
-        assert!(try_begin(&mut status, 100));
+        assert!(try_begin(&mut status, 100, UpdateTarget::Both));
         // 実行中に再度命令が来ても走らせない（進行中の状態を保つ）。
-        assert!(!try_begin(&mut status, 200));
+        assert!(!try_begin(&mut status, 200, UpdateTarget::Both));
         assert_eq!(status.state, UpdateState::Running);
         assert_eq!(status.started_at, Some(100));
     }
 
     #[test]
+    fn rejects_second_job_even_with_different_target() {
+        // #395: 対象を分けても並走はさせない（任天堂 API を同時に叩かせない）。
+        let mut status = UpdateStatus::default();
+        assert!(try_begin(&mut status, 100, UpdateTarget::Battle));
+        assert!(!try_begin(&mut status, 200, UpdateTarget::Gear));
+        assert_eq!(status.started_at, Some(100));
+        assert_eq!(status.step, Some(UpdateStep::Battles));
+    }
+
+    #[test]
     fn allows_rerun_after_done_or_failed() {
         let mut status = UpdateStatus::default();
-        assert!(try_begin(&mut status, 100));
+        assert!(try_begin(&mut status, 100, UpdateTarget::Both));
         status.state = UpdateState::Done;
-        assert!(try_begin(&mut status, 200));
+        assert!(try_begin(&mut status, 200, UpdateTarget::Both));
         assert_eq!(status.started_at, Some(200));
 
         let mut failed = UpdateStatus::failed("NOT_LOGGED_IN", "未ログイン", None);
-        assert!(try_begin(&mut failed, 300));
+        assert!(try_begin(&mut failed, 300, UpdateTarget::Both));
         assert_eq!(failed.state, UpdateState::Running);
         // 前回の失敗情報は引きずらない。
         assert_eq!(failed.error_code, None);
+    }
+
+    // --- #395: 更新対象の指定 ---
+
+    #[test]
+    fn parses_explicit_targets() {
+        assert_eq!(parse_update_target(r#"{"target":"battle"}"#), UpdateTarget::Battle);
+        assert_eq!(parse_update_target(r#"{"target":"gear"}"#), UpdateTarget::Gear);
+        assert_eq!(parse_update_target(r#"{"target":"both"}"#), UpdateTarget::Both);
+    }
+
+    #[test]
+    fn falls_back_to_both_for_missing_or_invalid_body() {
+        // 古い viewer（ボディ無し）・空ボディ・JSON でないもの・未知の値は、すべて現行動作の both。
+        for body in [
+            "",
+            "{}",
+            r#"{"target":null}"#,
+            r#"{"target":"weapons"}"#,
+            r#"{"target":123}"#,
+            "not json",
+        ] {
+            assert_eq!(parse_update_target(body), UpdateTarget::Both, "body={body:?}");
+        }
+    }
+
+    #[test]
+    fn ignores_unknown_fields_in_body() {
+        // viewer が将来フィールドを増やしても target だけ読めればよい。
+        assert_eq!(
+            parse_update_target(r#"{"target":"gear","since":"2026-01-01"}"#),
+            UpdateTarget::Gear
+        );
+    }
+
+    #[test]
+    fn first_step_follows_target() {
+        // ギア単独なら、取りに行かない battles を進捗に出さない。
+        assert_eq!(
+            UpdateStatus::running(1, UpdateTarget::Gear).step,
+            Some(UpdateStep::Gear)
+        );
+        assert_eq!(
+            UpdateStatus::running(1, UpdateTarget::Battle).step,
+            Some(UpdateStep::Battles)
+        );
+        assert_eq!(
+            UpdateStatus::running(1, UpdateTarget::Both).step,
+            Some(UpdateStep::Battles)
+        );
+    }
+
+    #[test]
+    fn target_selects_phases() {
+        assert!(UpdateTarget::Battle.includes_battle() && !UpdateTarget::Battle.includes_gear());
+        assert!(UpdateTarget::Gear.includes_gear() && !UpdateTarget::Gear.includes_battle());
+        assert!(UpdateTarget::Both.includes_battle() && UpdateTarget::Both.includes_gear());
+    }
+
+    #[test]
+    fn skipped_phase_counts_are_null() {
+        // #395: 実行しなかった側は 0 ではなく null。viewer が「更新して 0 件」と誤読しないため。
+        let result = UpdateResult {
+            gear: Some(10),
+            ..UpdateResult::default()
+        };
+        let json = serde_json::to_value(result).unwrap();
+        assert_eq!(json["gear"], 10);
+        assert_eq!(json["battles"], serde_json::Value::Null);
+        assert_eq!(json["details"], serde_json::Value::Null);
+        assert_eq!(json["exported_battles"], serde_json::Value::Null);
     }
 
     // --- エラー分類（viewer の異常系 UX 分岐） ---
@@ -1342,15 +1542,16 @@ mod tests {
 
     #[test]
     fn serializes_status_shape() {
-        let mut status = UpdateStatus::running(1700000000);
+        let mut status = UpdateStatus::running(1700000000, UpdateTarget::Both);
         status.state = UpdateState::Done;
         status.step = None;
         status.finished_at = Some(1700000042);
+        // target 省略（= both）のときは全件数が埋まるので、古い viewer から見た形は #395 前と同じ。
         status.result = Some(UpdateResult {
-            battles: 3,
-            details: 2,
-            gear: 10,
-            exported_battles: 50,
+            battles: Some(3),
+            details: Some(2),
+            gear: Some(10),
+            exported_battles: Some(50),
         });
         let json = serde_json::to_value(&status).unwrap();
         assert_eq!(json["state"], "done");
@@ -1365,7 +1566,7 @@ mod tests {
         assert_eq!(json["state"], "failed");
         assert_eq!(json["error_code"], "NOT_LOGGED_IN");
 
-        let running = UpdateStatus::running(1);
+        let running = UpdateStatus::running(1, UpdateTarget::Both);
         let json = serde_json::to_value(&running).unwrap();
         assert_eq!(json["state"], "running");
         assert_eq!(json["step"], "battles");
