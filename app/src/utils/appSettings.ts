@@ -89,8 +89,8 @@ const BASE_VARS: Record<string, string> = {
   '--cell-r3':               '#f472b6',
   '--cell-r4':               '#f68fc5',
   '--cell-r5':               '#f9a8d4',
-  // 中立。サンプル不足セルの地も兼ねるため、実データより濃くならないよう明るめ（#383）
-  '--cell-r6':               '#e6e9ed',
+  // 中立。サンプル不足セルの地も兼ねる（#383）
+  '--cell-r6':               '#d0d3d8',
   '--cell-r7':               '#7dd3fc',
   '--cell-r8':               '#57c8fa',
   '--cell-r9':               '#38bdf8',
