@@ -63,6 +63,42 @@ export function logDomain(values: number[]): [number, number] | null {
   return [min / 10 ** pad, max * 10 ** pad]
 }
 
+/** ログ軸の目盛り候補。各桁に 1・2・5 を置く（1,2,5,10,20,50,100…）。 */
+const LOG_MANTISSAS = [1, 2, 5]
+
+/**
+ * ログ軸の目盛りを「切りのいい値」で作る (#387)。
+ *
+ * Recharts の自動生成は domain を等分するので半端な値になる。桁ごとに 1/2/5 を置いて
+ * 人が読める並びにする。レンジが広いと本数が増えすぎるため、収まらなければ
+ * 「10 の冪のみ」→「2 桁ごと」→「3 桁ごと」と順に粗くする。
+ *
+ * 切りのいい値が 2 本未満しか入らない狭いレンジでは null を返し、Recharts に任せる。
+ */
+export function logTicks(domain: [number, number], maxTicks = 10): number[] | null {
+  const [lo, hi] = domain
+  if (!(lo > 0) || !(hi > lo)) return null
+
+  const build = (mantissas: number[], expStep: number): number[] => {
+    const out: number[] = []
+    const startExp = Math.floor(Math.log10(lo))
+    const endExp = Math.ceil(Math.log10(hi))
+    for (let e = startExp; e <= endExp; e += expStep) {
+      for (const m of mantissas) {
+        const v = m * 10 ** e
+        if (v >= lo && v <= hi) out.push(v)
+      }
+    }
+    return out
+  }
+
+  // 細かい順に候補を並べ、maxTicks に収まる最初のものを採る。
+  const usable = [build(LOG_MANTISSAS, 1), build([1], 1), build([1], 2), build([1], 3)]
+    .filter(t => t.length >= 2)
+  if (usable.length === 0) return null
+  return usable.find(t => t.length <= maxTicks) ?? usable[usable.length - 1]
+}
+
 export function ScatterChart({
   points, xLabel, yLabel, xIsRate, yIsRate, xDomain, yDomain, xRefLine, yRefLine, hasSize, xLogScale, yLogScale, fillOpacity = 0.85, constSize = 120, height = 320,
 }: {
@@ -117,6 +153,10 @@ export function ScatterChart({
     () => (yLogScale ? logDomain(drawable.map(p => p.y as number)) : null),
     [drawable, yLogScale],
   )
+  // ログ軸の目盛りは 1/2/5 系列で明示する（#387）。Recharts 任せだと domain を等分した
+  // 半端な値になる。null のときは従来どおり Recharts に任せる。
+  const xTicks = useMemo(() => (xLogDomain ? logTicks(xLogDomain) : null), [xLogDomain])
+  const yTicks = useMemo(() => (yLogDomain ? logTicks(yLogDomain) : null), [yLogDomain])
   const xLog = xLogDomain !== null
   const yLog = yLogDomain !== null
 
@@ -162,6 +202,7 @@ export function ScatterChart({
           scale={xLog ? 'log' : 'auto'}
           allowDataOverflow={xLog}
           domain={xLogDomain ?? xDomain ?? (xIsRate ? [0, 1] : ['auto', 'auto'])}
+          ticks={xTicks ?? undefined}
           label={{ value: xLabel, position: 'insideBottom', offset: -10, fill: 'var(--text)', fontSize: 11, fontWeight: 600 } as object}
         />
         <YAxis
@@ -174,6 +215,7 @@ export function ScatterChart({
           scale={yLog ? 'log' : 'auto'}
           allowDataOverflow={yLog}
           domain={yLogDomain ?? yDomain ?? (yIsRate ? [0, 1] : ['auto', 'auto'])}
+          ticks={yTicks ?? undefined}
           label={{ value: yLabel, angle: -90, position: 'insideLeft', offset: 12, fill: 'var(--text)', fontSize: 11, fontWeight: 600, style: { textAnchor: 'middle' } } as object}
         />
         <ZAxis type="number" dataKey="size" range={zRange} />
