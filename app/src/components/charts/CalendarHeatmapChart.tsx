@@ -138,9 +138,12 @@ export function CalendarHeatmapChart({
     // 列は「日単位」で割り当てる（#310）。
     //   - 月曜になったら列を +1（通常の週送り）
     //   - 月が変わったら列を +1（週の途中でも。新しい月はその月の 1 日から新しい列で始まる）
-    //   - 月初が月曜なら両方に該当するが +1 は 1 回だけ
+    //   - 月初が月曜なら列を +2 して、間に空列を 1 本挟む（#392）
     // これにより月境界の週は 2 列に分割され（曜日の行は保つ）、列と月が必ず一致する。
-    // 空の列は挟まない。結果として月ごとに階段状の「ずれ」ができる。
+    // 結果として月ごとに階段状の「ずれ」ができ、それが月境界の視覚的な手がかりになる。
+    // ただし月初が月曜だとズレが生じず通常の週送りと見分けが付かないため、
+    // そのときだけ空列を挟んで切れ目を見せる（cells には実在する日しか入らないので
+    // 挟んだ列は自然に空白になる・#392）。
     const startMonday = mondayOf(earliest)
     const cells: { date: Date; col: number; row: number }[] = []
     const labels: { col: number; month: number }[] = []
@@ -152,7 +155,12 @@ export function CalendarHeatmapChart({
       const row = weekdayMonStart(d)
       const m = d.getUTCMonth()
       const isFirst = cells.length === 0
-      if (!isFirst && (row === 0 || m !== prevMonth)) col++
+      const isMonday = row === 0
+      const monthChanged = m !== prevMonth
+      if (!isFirst) {
+        if (monthChanged && isMonday) col += 2   // 空列を 1 本挟んで月境界を見せる
+        else if (monthChanged || isMonday) col++
+      }
       if (m !== prevMonth) labels.push({ col, month: m })
       cells.push({ date: d, col, row })
       prevMonth = m
