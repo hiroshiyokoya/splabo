@@ -46,13 +46,21 @@ export const isLogPlottable = (v: number | null): v is number =>
  *
  * 全点が同じ値だと min === max になり軸が潰れるため、**1 桁ぶん広げる**。
  * 値が無ければ null（呼び出し側はログを諦めてリニアに落ちる）。
+ *
+ * min/max をそのまま渡すと端の点が軸線上に載ってドットが半分切れるため、余白を足す（#385）。
+ * ログ軸はログ空間がピクセルに線形対応するので、余白も加算ではなく**乗除**で作る。
+ * span に対する割合で広げるので、データの桁数によらず見た目の余白が一定になる。
  */
+const LOG_PAD_RATIO = 0.05  // 軸長に対する片側の余白
+
 export function logDomain(values: number[]): [number, number] | null {
   const usable = values.filter(v => Number.isFinite(v) && v > 0)
   if (usable.length === 0) return null
   const min = Math.min(...usable)
   const max = Math.max(...usable)
-  return min === max ? [min / 10, max * 10] : [min, max]
+  if (min === max) return [min / 10, max * 10]
+  const pad = (Math.log10(max) - Math.log10(min)) * LOG_PAD_RATIO
+  return [min / 10 ** pad, max * 10 ** pad]
 }
 
 export function ScatterChart({
