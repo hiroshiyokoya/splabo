@@ -262,16 +262,41 @@ body {
 }
 .dashboard-header h2 { font-size: 16px; }
 
+/* #401: 各カードの span 縮小をビューポートではなくグリッド自身の幅で判定するため、
+   グリッドの親（グリッドと同じ幅・padding 無し・レイアウト上は幅が確定している）を
+   container query の基準にする。container-type をグリッド自身に張るとグリッドの幅解決が
+   壊れる（1 列に潰れる）ので、必ず親側に置く。サイドバー幅に依存しないのが利点。 */
+.dashboard { container-type: inline-size; }
+/* #401: 基準トラック 420px の可変グリッド。
+   - auto-fill + dense でスパンのまちまちな歯抜けを詰める（auto-fit ではなく auto-fill：
+     `grid-column: 1 / -1`（=全幅）を安定させるため。auto-fit は空トラックを畳んで -1 がずれる）。 */
 .chart-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  grid-auto-flow: row dense;
   gap: 16px;
 }
 .chart-card {
+  /* グリッドトラックが中身の実寸（ヒートマップ等の固定幅 SVG）で膨らむのを防ぐ。
+     これで overflow:auto のスクロールが効き、span 幅を素直に守れる。 */
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 16px;
+}
+/* #401: チャート種別・データ規模から決めた動的スパン。
+   基準トラック 420px を単位に、wide=2 トラック / full=3 トラック。
+   トラック数が足りない狭い幅では溢れないよう段階的に縮める（2 トラック閾値 856px・
+   3 トラック閾値 1292px＝ 420*n + 16*(n-1)）。1 トラックしか無い幅では `1 / -1` で全幅に落ちる。 */
+.chart-card--wide { grid-column: span 2; }
+.chart-card--full { grid-column: span 3; }
+@container (max-width: 1291px) {
+  .chart-card--full { grid-column: span 2; }
+}
+@container (max-width: 855px) {
+  .chart-card--wide,
+  .chart-card--full { grid-column: 1 / -1; }
 }
 .chart-card svg { overflow: visible; }
 .chart-card-header {
