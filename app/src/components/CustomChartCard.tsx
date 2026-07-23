@@ -175,6 +175,72 @@ const SORT_OPTIONS_ATTACK_DEFENSE: SortOption[] = [
   { key: 'avg_kd',    label: 'キルレ' },
 ]
 
+// ---------------------------------------------------------------------------
+// #401: チャートの「素の幅」からグリッドのスパン（1 / 2 / 3 トラック）を決める。
+// ---------------------------------------------------------------------------
+//
+// 基準トラックは App.css の .chart-grid（minmax(420px, 1fr)）と揃える。チャートの
+// 見込み描画幅が 1 トラックに収まれば standard(1)、2 トラックぶんなら wide(2)、
+// それ以上は full(3)。棒・線・散布図・単一メトリクスは常に standard。
+// ヒートマップ・カレンダーは shape だけでなく列数・週数（データ規模）まで見て決める。
+//
+// 幅の見積もり式は各チャートコンポーネントの実寸ロジックを転記している：
+//   - HeatmapChart:        PAD_LEFT(+yTitle) + 列数 * (CELL_W + GAP)
+//   - CalendarHeatmapChart: GRID_LEFT + 列数 * PITCH + CELL
+// 元コンポーネントの定数を変えたらここも追従すること。
+type ChartSpan = 1 | 2 | 3
+
+// 基準トラック 420px を単位にした閾値。カードの padding（16*2）とスクロールの余白を見て
+// 1 トラック内なら 430px 目安、2 トラック内なら 850px 目安で切り替える。
+function spanForWidth(w: number): ChartSpan {
+  if (w <= 430) return 1
+  if (w <= 850) return 2
+  return 3
+}
+
+/** ヒートマップの見込み幅。data2d の X 軸カテゴリ数（バトル数 > 0）から算出。 */
+function heatmapEstimatedWidth(data2d: GroupedStatsRow2D[] | undefined): number {
+  const xCols = data2d ? new Set(data2d.filter(r => r.total > 0).map(r => r.key_x)).size : 0
+  // HeatmapChart: PAD_LEFT_BASE(110) + yTitle 用 TITLE_PAD(22)、CELL_W(32)+GAP(1)=33、末尾 +8。
+  return 132 + xCols * 33 + 8
+}
+
+/** カレンダーの見込み幅。data（日別 GroupedStatsRow）の日付レンジから週＋月境界ぶんの列数を推定。 */
+function calendarEstimatedWidth(data: GroupedStatsRow[]): number {
+  const times = data
+    .map(d => Date.parse(`${d.name}T00:00:00Z`))
+    .filter(n => !Number.isNaN(n))
+  // データが無いときは CalendarHeatmapChart が直近 1 年（約 52 週）を空表示するので full 相当。
+  let cols: number
+  if (times.length === 0) {
+    cols = 64
+  } else {
+    const min = Math.min(...times)
+    const max = Math.max(...times)
+    const days = (max - min) / 86_400_000 + 1
+    const weeks = Math.ceil(days / 7)
+    // #310/#392: 月境界ごとに列が 1〜2 本ずれる。おおよそ月数ぶん加算して見積もる。
+    const months = Math.max(1, Math.round(days / 30))
+    cols = weeks + months
+  }
+  // CalendarHeatmapChart: GRID_LEFT(22) + 列数 * PITCH(19) + CELL(16) + 末尾 8。
+  return 22 + cols * 19 + 16 + 8
+}
+
+/** チャート 1 枚のグリッドスパンを決める。 */
+function chartSpan(chart: CustomChart, data: GroupedStatsRow[], data2d: GroupedStatsRow2D[] | undefined): ChartSpan {
+  if (chart.shape === 'heatmap') return spanForWidth(heatmapEstimatedWidth(data2d))
+  if (chart.shape === 'calendar_heatmap') return spanForWidth(calendarEstimatedWidth(data))
+  // 棒・線・散布図・単一メトリクスは標準幅（ResponsiveContainer で横 100% に追従する）。
+  return 1
+}
+
+const SPAN_CLASS: Record<ChartSpan, string> = {
+  1: '',
+  2: 'chart-card--wide',
+  3: 'chart-card--full',
+}
+
 /** 上位 14 件抽出 → 指定 MetricKey で降順ソート。null は最後尾。 */
 function sortAndSlice(rows: GroupedStatsRow[], sortKey: MetricKey | null): GroupedStatsRow[] {
   const sliced = rows.slice(0, 14)
@@ -243,8 +309,11 @@ export function CustomChartCard({
     ? data
     : sortAndSlice(data, sortKey)
 
+  // #401: チャート種別・データ規模から決めるグリッドスパン（standard / wide / full）。
+  const spanClass = SPAN_CLASS[chartSpan(chart, data, data2d)]
+
   return (
-    <div className="chart-card custom-chart-card" ref={setNodeRef} style={style}>
+    <div className={`chart-card custom-chart-card${spanClass ? ` ${spanClass}` : ''}`} ref={setNodeRef} style={style}>
       {/* 上段：ドラッグ・設定・削除（カスタムグラフ専用）。
           こうすることで下の chart-card-header は固定 4 グラフと同じ「title | 並び替え」レイアウトになる。 */}
       <div className="custom-chart-toprow">
