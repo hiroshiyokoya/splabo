@@ -19,6 +19,21 @@ pub fn is_dev_build() -> bool {
     env!("CARGO_PKG_VERSION") == "0.0.0-dev"
 }
 
+/// stat.ink への通信・HTTP 失敗を、#399 の `FailureKind` で分類したうえで
+/// 機械可読プリフィクス付きのエラー文字列にする（#402）。
+///
+/// これにより、握りつぶさず返した失敗をフロントの `parseFetchError` が
+/// `UPSTREAM_UNAVAILABLE` / `AUTH_EXPIRED` / `NETWORK` として扱える。
+/// `Unknown` はプリフィクスを付けない（既存の流儀に合わせる）。
+fn classified_upload_error(status: Option<u16>, detail: impl std::fmt::Display) -> String {
+    let detail = detail.to_string();
+    let kind = crate::nxapi::classify_failure(status, None, &detail);
+    match kind.code() {
+        Some(code) => format!("{code}: {detail}"),
+        None => detail,
+    }
+}
+
 // s3s と同じ UUID5 名前空間。同一バトルで s3s と UUID が一致するため stat.ink 側で重複排除される。
 const S3S_NAMESPACE_BYTES: [u8; 16] = [
     0xb3, 0xa2, 0xdb, 0xf5,
@@ -689,10 +704,23 @@ pub async fn upload_pending_battles(
                 let body = r.text().await.unwrap_or_default();
                 let snippet = &body[..body.len().min(500)];
                 log::warn!("[stat.ink] アップロード失敗: status={status} body={snippet}");
+                // 5xx（stat.ink 側の不調）・401/403（API キー無効）は**全件に波及する**ので、
+                // これ以上ループを回さず失敗として返す（#402）。握りつぶさずフロントへ伝える。
+                // 422 等の個別バトル起因の拒否はこの限りではなく、次のバトルへ進む。
+                let kind = crate::nxapi::classify_failure(Some(status.as_u16()), None, snippet);
+                use crate::nxapi::FailureKind;
+                if matches!(kind, FailureKind::UpstreamUnavailable | FailureKind::AuthExpired) {
+                    return Err(classified_upload_error(
+                        Some(status.as_u16()),
+                        format!("stat.ink アップロード失敗 (status={status})"),
+                    ));
+                }
             }
             Err(e) => {
+                // タイムアウト（#402 の主因）・接続断など。ここで握りつぶすと
+                // 「なぜか送られない」だけが残るので、分類して呼び出し元へ返す。
                 log::warn!("[stat.ink] 通信エラー: {e}");
-                break;
+                return Err(classified_upload_error(None, format!("stat.ink 通信エラー: {e}")));
             }
         }
     }
@@ -799,6 +827,35 @@ pub async fn delete_all_uploaded_battles(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 5xx（stat.ink 側の不調）は UPSTREAM_UNAVAILABLE プリフィクスが付く（#402）。
+    #[test]
+    fn upload_error_5xx_is_upstream() {
+        let e = classified_upload_error(Some(503), "stat.ink アップロード失敗 (status=503)");
+        assert!(e.starts_with("UPSTREAM_UNAVAILABLE: "), "got {e}");
+    }
+
+    /// 401/403（API キー無効）は AUTH_EXPIRED プリフィクスが付く（#402）。
+    #[test]
+    fn upload_error_401_is_auth() {
+        let e = classified_upload_error(Some(401), "stat.ink アップロード失敗 (status=401)");
+        assert!(e.starts_with("AUTH_EXPIRED: "), "got {e}");
+    }
+
+    /// タイムアウト等の通信エラー文言は NETWORK に分類される（#402）。
+    /// reqwest のタイムアウトは Display に "timed out" を含むので拾える。
+    #[test]
+    fn upload_error_timeout_is_network() {
+        let e = classified_upload_error(None, "stat.ink 通信エラー: operation timed out");
+        assert!(e.starts_with("NETWORK: "), "got {e}");
+    }
+
+    /// 分類できないものはプリフィクス無しで詳細のみ（#402）。
+    #[test]
+    fn upload_error_unknown_has_no_prefix() {
+        let e = classified_upload_error(Some(422), "個別バトルの検証エラー");
+        assert_eq!(e, "個別バトルの検証エラー");
+    }
 
     #[test]
     fn parse_udemae_s_plus_zero() {

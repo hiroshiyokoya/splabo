@@ -625,9 +625,7 @@ struct EnvBattleRow {
 pub async fn sync_env_masters(
     db: tauri::State<'_, DbPool>,
 ) -> Result<(usize, usize), String> {
-    let client = Client::builder()
-        .build()
-        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    let client = crate::http::build_client()?;
     sync_statink_masters(&db, &client).await
 }
 
@@ -639,9 +637,7 @@ pub async fn import_env_full(
     app: AppHandle,
     db:  tauri::State<'_, DbPool>,
 ) -> Result<usize, String> {
-    let client = Client::builder()
-        .build()
-        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    let client = crate::http::build_client()?;
 
     // まずマスターを同期する。
     sync_statink_masters(&db, &client).await?;
@@ -785,9 +781,7 @@ pub async fn import_env_delta(
     app: AppHandle,
     db:  tauri::State<'_, DbPool>,
 ) -> Result<usize, String> {
-    let client = Client::builder()
-        .build()
-        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    let client = crate::http::build_client()?;
 
     // マスター同期
     sync_statink_masters(&db, &client).await?;

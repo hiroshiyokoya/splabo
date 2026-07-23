@@ -102,6 +102,37 @@ main().catch((e) => {
  * 恒久エラー（未ログイン・4xx 等）は即座に投げる。nxapi の znca-api 呼び出しが断続的に
  * 500{"error":"timeout"} を返す事象への耐性（#272）。
  */
+/**
+ * 1 回のネットワーク操作の上限時間（ミリ秒・#402）。
+ *
+ * nxapi の getBulletToken / getWeaponRecords は内部で複数の HTTP を叩くが、
+ * どれも undici(global fetch) のデフォルトは実質無制限に近く、
+ * 「接続はできるが応答が返らない」上流（stat.ink / znca-api / Cloudflare エッジ）に
+ * 当たるとサイドカーが永久にハングする → Rust 側の await も返らず「取得中」が固まる。
+ * ここで 1 操作ごとに時間上限を設け、超えたら**必ず**エラーとして返す。
+ */
+const NETWORK_TIMEOUT_MS = 30000;
+
+/**
+ * `promise` に時間上限を設ける（#402）。
+ *
+ * global fetch へ AbortSignal を差し込む口が getBulletToken 等には無いため、
+ * Promise.race で打ち切る。元の promise 自体はキャンセルできないが、サイドカーは
+ * 応答後すぐ process.exit するプロセスなので、宙に浮いた fetch はプロセス終了で回収される。
+ * タイムアウト時のメッセージには "timeout"/"ETIMEDOUT" を含め、Rust 側 classify_failure と
+ * 本ファイルの withRetry が「一時エラー」として拾えるようにする。
+ */
+function withTimeout(promise, ms = NETWORK_TIMEOUT_MS, label = 'network') {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`[${label}] request timeout (ETIMEDOUT): ${ms}ms 以内に応答がありません`)),
+      ms,
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function withRetry(fn, { attempts = 3, baseDelayMs = 800, label = 'znca-api' } = {}) {
   let lastErr;
   for (let i = 1; i <= attempts; i++) {
@@ -157,7 +188,8 @@ async function cmdGetBulletToken([dataDir]) {
   process.stderr.write('bulletToken を取得中...\n');
   // splatnet3.js は coral の top-level await を含むため、ここで動的インポート
   const { getBulletToken } = await import('./node_modules/nxapi/dist/common/auth/splatnet3.js');
-  const { data } = await withRetry(() => getBulletToken(storage, sessionToken, undefined, true));
+  const { data } = await withRetry(() =>
+    withTimeout(getBulletToken(storage, sessionToken, undefined, true), NETWORK_TIMEOUT_MS, 'get_bullet_token'));
 
   respond({
     ok: true,
@@ -208,9 +240,10 @@ async function cmdWeaponRecords([dataDir]) {
   process.stderr.write('WeaponRecordQuery を実行中...\n');
   const { getBulletToken } = await import('./node_modules/nxapi/dist/common/auth/splatnet3.js');
   // 第 4 引数 allow_fetch_token=true により bullet_token が無ければ自動取得する。
-  const { splatnet } = await withRetry(() => getBulletToken(storage, sessionToken, undefined, true));
+  const { splatnet } = await withRetry(() =>
+    withTimeout(getBulletToken(storage, sessionToken, undefined, true), NETWORK_TIMEOUT_MS, 'get_bullet_token'));
 
-  const result = await splatnet.getWeaponRecords();
+  const result = await withTimeout(splatnet.getWeaponRecords(), NETWORK_TIMEOUT_MS, 'weapon_records');
   // result は { data, ... }。data.weaponRecords.nodes が本体。
   respond({ ok: true, data: result.data });
 }

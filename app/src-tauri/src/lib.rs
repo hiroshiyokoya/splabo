@@ -13,6 +13,7 @@ pub mod db;
 pub mod env_import;
 pub mod gear;
 pub mod gear_crypto;
+pub mod http;
 pub mod icon_manifest;
 pub mod images;
 pub mod migration;
@@ -256,9 +257,21 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-/// バトル取得 → 詳細取得 → 武器補完 → 画像キャッシュ → stat.ink 自動アップロード を一括実行。
+/// バトル取得 → 詳細取得 → 武器補完 → 画像キャッシュ → battle_db エクスポート を一括実行し、
+/// その**後**に stat.ink 自動アップロードを best-effort で行う。
 /// 開始時に "fetch_start"、終了時に "fetch_finish" イベントを emit する（成功・失敗共通）。
 /// 成功時はさらに "fetch_complete" を emit する（既存の lastFetchedAt 更新リスナー用）。
+///
+/// # 「取得中」表示とアップロードの分離（#402）
+/// stat.ink アップロードは取得そのものとは別物（すでに DB へ保存済みのバトルを送るだけ）。
+/// 以前はこれを取得処理の最後のステップとして `FetchInProgress` を握ったまま同期実行して
+/// いたため、stat.ink がダウンして HTTP がハングすると**バトル取得は終わっているのに
+/// 「取得中」が永久化**した（#402 の主症状）。
+/// そこでフラグ解放・`fetch_finish` は「取得＋エクスポート完了」時点で行い、
+/// stat.ink アップロードはその後の後処理に回す。エクスポートは #367 の意図どおり
+/// フラグ内に残す（コンパニオンの更新命令が中途半端な状態に割り込まないように）。
+/// アップロードは battle_db の中身に影響しない（未送信でもエクスポートされる）ので、
+/// フラグ外へ出しても安全。
 ///
 /// 未ログイン時はサイドカー呼び出しの前に明示的に `NOT_LOGGED_IN:` プリフィクス付き
 /// エラーを返し、フロントが「設定からログインしてください」UI を出せるようにする。
@@ -279,9 +292,49 @@ pub(crate) async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(
     if result.is_ok() {
         export_battle_db_best_effort(app).await;
     }
+    // ここで「取得中」を終える。stat.ink アップロードのハング／遅延に取得完了表示を
+    // 巻き込まないため、フラグ解放と fetch_finish はアップロードの**前**に出す（#402）。
     flag.0.store(false, Ordering::SeqCst);
     let _ = app.emit("fetch_finish", ());
-    result
+
+    // stat.ink 自動アップロードは best-effort な後処理。失敗しても取得結果は成功のまま返す。
+    let uploaded = if result.is_ok() {
+        upload_to_statink_best_effort(app, db).await
+    } else {
+        0
+    };
+
+    result.map(|(battles, details, _)| (battles, details, uploaded))
+}
+
+/// stat.ink 自動アップロードを best-effort で実行する（#402）。
+///
+/// 取得完了（フラグ解放）後に呼ばれる後処理。設定が有効かつ API キーがあるときだけ送信する。
+/// 失敗は握りつぶさず、`statink_upload_failed` イベントで**分類付きのエラー文字列**を
+/// フロントへ伝える（#399 の `UPSTREAM_UNAVAILABLE` / `AUTH_EXPIRED` / `NETWORK` プリフィクス）。
+/// 未送信バトルは DB に残るため、次回取得時に自動で再送される（取りこぼしは無い）。
+async fn upload_to_statink_best_effort(app: &AppHandle, db: &db::DbPool) -> usize {
+    let Some(sc) = app.try_state::<StatinkConfig>() else { return 0 };
+    let (auto_upload, api_key) = {
+        let v = sc.0.lock().unwrap();
+        (v.0, v.1.clone())
+    };
+    if !auto_upload || api_key.is_empty() {
+        return 0;
+    }
+    let client = match crate::http::build_client() {
+        Ok(c) => c,
+        Err(e) => { log::warn!("[stat.ink] クライアント構築失敗のため自動アップロードをスキップ: {e}"); return 0; }
+    };
+    match statink::upload_pending_battles(db, &client, &api_key, None, Some(app)).await {
+        Ok(n) => n,
+        Err(e) => {
+            log::warn!("[stat.ink] 自動アップロード失敗: {e}");
+            // 失敗を握りつぶさずフロントへ通知する（#402 必須2）。
+            let _ = app.emit("statink_upload_failed", e);
+            0
+        }
+    }
 }
 
 /// `battle_db.bin` の再生成を **best-effort** で実行する（#367）。
@@ -320,14 +373,15 @@ fn absorb_export_error<T>(result: Result<T, String>, elapsed: std::time::Duratio
     }
 }
 
+/// バトル取得・詳細取得・武器補完・画像キャッシュを行う（stat.ink アップロードは含まない）。
+/// アップロードは `run_fetch_full` がフラグ解放後に best-effort で行う（#402）。
+/// 戻り値の 3 要素目 `uploaded` はここでは常に 0（実際の件数は `run_fetch_full` が後段で埋める）。
 async fn run_fetch_full_inner(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usize, usize), String> {
     if !auth::is_logged_in(app) {
         return Err("NOT_LOGGED_IN: Nintendo アカウントでログインしていません。設定からログインしてください。".to_string());
     }
     let result = nxapi::nxapi_get_bullet_token(app).await?;
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    let client = crate::http::build_client()?;
 
     let battles = splatnet3::fetch_and_store_battles(
         db, &result.bullet_token, &result.country, &result.language, &client, app,
@@ -345,22 +399,10 @@ async fn run_fetch_full_inner(app: &AppHandle, db: &db::DbPool) -> Result<(usize
     // 全プレイヤー（味方・相手）のメイン武器画像もキャッシュ（#136）
     splatnet3::cache_all_weapon_images(db, app, &client).await?;
 
-    // stat.ink 自動アップロード（設定が有効かつ API キーがある場合のみ）
-    let uploaded = if let Some(sc) = app.try_state::<StatinkConfig>() {
-        let (auto_upload, api_key) = {
-            let v = sc.0.lock().unwrap();
-            (v.0, v.1.clone())
-        };
-        if auto_upload && !api_key.is_empty() {
-            match statink::upload_pending_battles(db, &client, &api_key, None, Some(app)).await {
-                Ok(n)  => n,
-                Err(e) => { log::warn!("[stat.ink] 自動アップロード失敗: {e}"); 0 }
-            }
-        } else { 0 }
-    } else { 0 };
-
-    let _ = app.emit("fetch_complete", FetchCompletePayload { battles, details, uploaded });
-    Ok((battles, details, uploaded))
+    // 「取得完了」はアップロードを待たずここで通知する（lastFetchedAt 更新用）。
+    // uploaded は後段の best-effort アップロードで確定するため、ここでは 0 を載せる。
+    let _ = app.emit("fetch_complete", FetchCompletePayload { battles, details, uploaded: 0 });
+    Ok((battles, details, 0))
 }
 
 /// バトル取得・詳細取得・stat.ink アップロードを一括実行する。
@@ -394,9 +436,7 @@ async fn detect_statink_screen_name(
     if api_key.is_empty() {
         return Ok(None);
     }
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    let client = crate::http::build_client()?;
     statink::fetch_screen_name(&db, &client, &api_key).await
 }
 
@@ -410,9 +450,7 @@ async fn delete_statink_all(
     if api_key.is_empty() {
         return Err("stat.ink API キーが設定されていません".to_string());
     }
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    let client = crate::http::build_client()?;
     statink::delete_all_uploaded_battles(&db, &client, &api_key).await
 }
 
@@ -427,9 +465,7 @@ async fn upload_to_statink(
     if api_key.is_empty() {
         return Err("stat.ink API キーが設定されていません".to_string());
     }
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    let client = crate::http::build_client()?;
     statink::upload_pending_battles(&db, &client, &api_key, None, Some(&app)).await
 }
 
@@ -444,9 +480,7 @@ async fn upload_to_statink_one(
     if api_key.is_empty() {
         return Err("stat.ink API キーが設定されていません".to_string());
     }
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    let client = crate::http::build_client()?;
     statink::upload_pending_battles(&db, &client, &api_key, Some(1), Some(&app)).await
 }
 
@@ -462,9 +496,7 @@ async fn import_from_statink(
     if api_key.is_empty() {
         return Err("stat.ink API キーが設定されていません".to_string());
     }
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    let client = crate::http::build_client()?;
     statink_import::import_all_battles(&db, &client, &api_key).await
 }
 
@@ -476,9 +508,7 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
         return Err("NOT_LOGGED_IN: Nintendo アカウントでログインしていません。".to_string());
     }
     let result = nxapi::nxapi_get_bullet_token(&app).await?;
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    let client = crate::http::build_client()?;
     let count = splatnet3::fetch_and_store_weapons(
         &db,
         &result.bullet_token,

@@ -448,9 +448,7 @@ pub async fn fetch_gear_full(app: AppHandle) -> Result<GearFetchResult, String> 
     }
 
     let bt = crate::nxapi::nxapi_get_bullet_token(&app).await?;
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))?;
+    let client = crate::http::build_client()?;
 
     let equipment = crate::splatnet3::fetch_gear_equipment(
         &client,

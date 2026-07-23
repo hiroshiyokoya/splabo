@@ -198,7 +198,12 @@ await build({
   if (!bundle.includes('upstream_error')) {
     throw new Error('[verify] dist/bundle.cjs: wrapper.js の構造化失敗レスポンス（upstream_error）が載っていません。');
   }
-  console.log(`verified bundle: znca-api ErrorResponse ${kept} 箇所 / upstream_error 出力あり`);
+  // #402: サイドカーのネットワーク操作にタイムアウト（withTimeout / NETWORK_TIMEOUT_MS）が
+  // 載っていること。載っていないと「接続はできるが応答なし」でサイドカーが無限ハングする。
+  if (!bundle.includes('NETWORK_TIMEOUT_MS') || !/function withTimeout\b/.test(bundle)) {
+    throw new Error('[verify] dist/bundle.cjs: ネットワークタイムアウト（withTimeout / NETWORK_TIMEOUT_MS）が載っていません（#402）。');
+  }
+  console.log(`verified bundle: znca-api ErrorResponse ${kept} 箇所 / upstream_error 出力あり / network timeout あり`);
 }
 
 console.log('dist/bundle.cjs generated');
