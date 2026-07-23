@@ -9,7 +9,11 @@
  *   node wrapper.js weapon_records <data_dir>
  *
  * 結果は stdout に 1行の JSON で出力する。
- * エラー時は {"ok": false, "error": "<message>"} を stdout に出力し、exit code 1 で終了。
+ * エラー時は
+ *   {"ok": false, "error": "<message>", "status": <HTTP ステータス|null>, "upstream_error": "<body の error|null>"}
+ * を stdout に出力し、exit code 1 で終了する（#399）。
+ * `status` / `upstream_error` は **Rust 側が失敗理由を分類するための構造**であり、
+ * 文字列 `error` のパターンマッチに頼らせないために用意している。
  */
 
 import path from 'path';
@@ -83,7 +87,7 @@ async function main() {
 }
 
 main().catch((e) => {
-  respond({ ok: false, error: String(e?.message ?? e) });
+  respond(describeFailure(e));
   process.exit(1);
 });
 
@@ -106,7 +110,13 @@ async function withRetry(fn, { attempts = 3, baseDelayMs = 800, label = 'znca-ap
     } catch (e) {
       lastErr = e;
       const msg = String((e && e.message) || e);
-      const transient = /Non-200 status code:\s*5\d\d|timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|socket hang up|fetch failed|network/i.test(msg);
+      // 構造（ステータス / body の error）を優先して判定し、無ければ文字列で拾う（#399）。
+      const status = extractStatus(e, msg);
+      const upstream = extractUpstreamError(e, msg);
+      const transient =
+        (typeof status === 'number' && status >= 500 && status < 600) ||
+        (typeof upstream === 'string' && /timeout|unavailable/i.test(upstream)) ||
+        /Non-200 status code:\s*5\d\d|timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|socket hang up|fetch failed|network/i.test(msg);
       if (!transient || i === attempts) throw e;
       const wait = baseDelayMs * i;
       process.stderr.write(`[${label}] 一時エラー (${i}/${attempts}): ${msg} — ${wait}ms 後に再試行\n`);
@@ -209,6 +219,47 @@ async function cmdWeaponRecords([dataDir]) {
 
 function respond(obj) {
   process.stdout.write(JSON.stringify(obj) + '\n');
+}
+
+/**
+ * 例外を「構造を保った失敗レスポンス」に変換する（#399）。
+ *
+ * nxapi の `ErrorResponse` は元の `Response`（`.response`）とパース済み body（`.data`）を
+ * 保持しているので、そこから **HTTP ステータス** と **body の `error` フィールド** を取り出す。
+ * znca-api の 500 + `{"error":"timeout"}` を「トークン失効」と誤診しないために、
+ * 分類に必要な材料をここで落とさず Rust へ渡すのが要点。
+ */
+function describeFailure(e) {
+  const error = String((e && e.message) || e);
+  return {
+    ok: false,
+    error,
+    status: extractStatus(e, error),
+    upstream_error: extractUpstreamError(e, error),
+  };
+}
+
+/** HTTP ステータスを取り出す。構造が無ければ message から拾う（保険）。 */
+function extractStatus(e, message) {
+  const status = e?.response?.status ?? e?.status;
+  if (typeof status === 'number' && Number.isFinite(status)) return status;
+  const m = /Non-200 status code:\s*(\d{3})/.exec(message);
+  return m ? Number(m[1]) : null;
+}
+
+/** レスポンス body の `error` フィールド（znca-api なら "timeout" / "invalid_grant" 等）。 */
+function extractUpstreamError(e, message) {
+  if (e?.data && typeof e.data === 'object' && typeof e.data.error === 'string') {
+    return e.data.error;
+  }
+  if (typeof e?.body === 'string' && e.body) {
+    try {
+      const parsed = JSON.parse(e.body);
+      if (parsed && typeof parsed.error === 'string') return parsed.error;
+    } catch { /* JSON でなければ無視 */ }
+  }
+  const m = /"error"\s*:\s*"([^"]*)"/.exec(message);
+  return m ? m[1] : null;
 }
 
 function parseJwtSub(jwt) {

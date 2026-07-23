@@ -253,14 +253,32 @@ fn now_unix() -> i64 {
 ///
 /// 既存コードのエラーは `NOT_LOGGED_IN:` / `FETCH_IN_PROGRESS:` プリフィクス方針
 /// （lib.rs `run_fetch_full` / gear.rs `fetch_gear_full`）に従うため、それを尊重する。
-/// bullet_token の取得失敗は **トークン失効が最有力**だが、ネットワーク断や nxapi サイドカーの
-/// 不調でも同じ経路に落ちるためベストエフォート分類（viewer は「再ログインが必要かも」と促す）。
+/// サイドカー由来の失敗は `nxapi::FailureKind` が付ける `UPSTREAM_UNAVAILABLE:` /
+/// `AUTH_EXPIRED:` / `NETWORK:` プリフィクスを見る（#399）。
+///
+/// **「bullet token が取れなかった」という事実だけで TOKEN_EXPIRED にしない。**
+/// znca-api が 500 を返しただけでも再ログインを促してしまい、ユーザーは直らない操作を
+/// 繰り返すことになる（#399 の症状）。理由が分からないものは `FETCH_FAILED` に倒す。
+///
+/// 対応する error_code:
+/// - `UPSTREAM_UNAVAILABLE` … **新設**。外部サービスの一時障害。viewer 側は splabo-viewer#112 で対応。
+///   未知コードを受け取る古い viewer は「その他の失敗」として扱えばよい。
+/// - `AUTH_EXPIRED` → 既存の `TOKEN_EXPIRED` を維持（viewer の既存分岐をそのまま使う）。
+/// - `NETWORK` → 既存の `FETCH_FAILED` に寄せる。viewer 側から見れば「デスクトップが取得に失敗した・
+///   再試行して」で挙動は同じなので、viewer に新コードを増やす価値が無い。
 fn classify_error(message: &str) -> &'static str {
     if message.starts_with("NOT_LOGGED_IN") {
         "NOT_LOGGED_IN"
     } else if message.starts_with("FETCH_IN_PROGRESS") {
         "FETCH_IN_PROGRESS"
-    } else if message.contains("bullet token 取得失敗") {
+    } else if message.starts_with("UPSTREAM_UNAVAILABLE") {
+        "UPSTREAM_UNAVAILABLE"
+    } else if message.starts_with("AUTH_EXPIRED") {
+        "TOKEN_EXPIRED"
+    } else if message.starts_with("NETWORK") {
+        "FETCH_FAILED"
+    } else if message.contains("invalid_grant") {
+        // プリフィクスの付かない経路（Rust 側の認証コード等）から来た失効。
         "TOKEN_EXPIRED"
     } else {
         "FETCH_FAILED"
@@ -1536,6 +1554,55 @@ mod tests {
         );
         assert_eq!(classify_error("bullet token 取得失敗: invalid_grant"), "TOKEN_EXPIRED");
         assert_eq!(classify_error("HTTP クライアント構築失敗: dns"), "FETCH_FAILED");
+    }
+
+    /// #399: znca-api の一時障害を TOKEN_EXPIRED にしない。
+    ///
+    /// 実際に出たログ（2026-07-22）が UPSTREAM_UNAVAILABLE になること、
+    /// 401/403・invalid_grant は従来どおり TOKEN_EXPIRED のままであることを固定する。
+    #[test]
+    fn classifies_upstream_failure_separately_from_auth() {
+        assert_eq!(
+            classify_error(
+                "UPSTREAM_UNAVAILABLE: bullet token 取得失敗: [znca-api] Non-200 status code: 500 (status=500 upstream_error=timeout)"
+            ),
+            "UPSTREAM_UNAVAILABLE"
+        );
+        assert_eq!(
+            classify_error("AUTH_EXPIRED: bullet token 取得失敗: [znca-api] Non-200 status code: 401 (status=401 upstream_error=-)"),
+            "TOKEN_EXPIRED"
+        );
+        // ローカルのネットワーク断は既存の汎用コードに寄せる（viewer に新コードを増やさない）
+        assert_eq!(
+            classify_error("NETWORK: bullet token 取得失敗: fetch failed (status=- upstream_error=-)"),
+            "FETCH_FAILED"
+        );
+        // 理由不明の bullet token 失敗を「失効」と決めつけない（本 Issue の核心）
+        assert_eq!(
+            classify_error("bullet token 取得失敗: 何かよく分からない失敗"),
+            "FETCH_FAILED"
+        );
+    }
+
+    /// Rust の分類（nxapi::FailureKind）と companion の error_code が結線されていること。
+    #[test]
+    fn nxapi_failure_kind_maps_to_expected_error_code() {
+        let cases: &[(Option<u16>, Option<&str>, &str, &str)] = &[
+            (Some(500), Some("timeout"), "[znca-api] Non-200 status code: 500", "UPSTREAM_UNAVAILABLE"),
+            (Some(503), None, "[znca-api] Non-200 status code: 503", "UPSTREAM_UNAVAILABLE"),
+            (Some(401), None, "unauthorized", "TOKEN_EXPIRED"),
+            (Some(403), None, "forbidden", "TOKEN_EXPIRED"),
+            (Some(400), Some("invalid_grant"), "bad request", "TOKEN_EXPIRED"),
+            (None, None, "fetch failed", "FETCH_FAILED"),
+        ];
+        for (status, upstream, message, expected) in cases {
+            let kind = crate::nxapi::classify_failure(*status, *upstream, message);
+            let rendered = match kind.code() {
+                Some(code) => format!("{code}: bullet token 取得失敗: {message}"),
+                None => format!("bullet token 取得失敗: {message}"),
+            };
+            assert_eq!(&classify_error(&rendered), expected, "message={message}");
+        }
     }
 
     // --- JSON 形（viewer #34 が読む契約） ---

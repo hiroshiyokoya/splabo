@@ -72,7 +72,13 @@ export function useNotify(): NotifyContextValue {
 // エラーパース：Rust から返ってくる String エラーから意味のある分類を取り出す
 // ---------------------------------------------------------------------------
 
-export type FetchErrorKind = 'not_logged_in' | 'network' | 'auth_expired' | 'unknown'
+export type FetchErrorKind =
+  | 'not_logged_in'
+  /** 外部サービス（znca-api 等）の一時障害。再ログインしても直らない（#399）。 */
+  | 'upstream_unavailable'
+  | 'network'
+  | 'auth_expired'
+  | 'unknown'
 
 export interface FetchError {
   kind:      FetchErrorKind
@@ -82,17 +88,26 @@ export interface FetchError {
   hint?:     string
 }
 
+/** バックエンドが付ける機械可読プリフィクス（`app/src-tauri/src/nxapi.rs` の `FailureKind::code`）。 */
+const ERROR_CODE_PREFIX = /^(NOT_LOGGED_IN|UPSTREAM_UNAVAILABLE|AUTH_EXPIRED|NETWORK|FETCH_IN_PROGRESS)\s*:\s*/
+
 /**
  * Rust 側のエラー文字列をフロント向けに分類する。
  *
- * - `NOT_LOGGED_IN:` プリフィクスはバックエンドが付与する「ログイン未済」の明示マーカー。
- * - bullet token 系のエラーは認証期限切れの可能性が高いので、再ログインへ誘導する。
- * - reqwest 系のメッセージはネットワークエラーとして扱い、リトライを促す。
+ * 分類は**バックエンドが付けたプリフィクス**で行う。以前は `bullet token|f-token|znca` の
+ * 文字列マッチで「認証期限切れ」に倒していたが、znca-api が 500 を返しただけの一時障害でも
+ * 再ログインを促してしまい、ユーザーは直らない操作を繰り返すことになっていた（#399）。
+ * 「取得に失敗した」という事実ではなく「なぜ失敗したか」で文言を出し分ける。
+ *
+ * プリフィクスが無い（＝分類できなかった）ものは、憶測で認証エラーにせず素直に扱う。
  */
 export function parseFetchError(raw: unknown): FetchError {
   const text = typeof raw === 'string' ? raw : raw instanceof Error ? raw.message : String(raw)
+  const code = ERROR_CODE_PREFIX.exec(text)?.[1]
+  /** 表示用。機械可読プリフィクスはユーザーに見せない。 */
+  const detail = text.replace(ERROR_CODE_PREFIX, '')
 
-  if (text.startsWith('NOT_LOGGED_IN')) {
+  if (code === 'NOT_LOGGED_IN' || text.startsWith('NOT_LOGGED_IN')) {
     return {
       kind:    'not_logged_in',
       title:   'Nintendo アカウントでログインしてください',
@@ -101,22 +116,41 @@ export function parseFetchError(raw: unknown): FetchError {
     }
   }
 
-  // bullet token / f-token 系は認証フロー失敗（期限切れ or Nintendo 側）
-  if (/bullet\s*token|f[-_ ]?token|znca/i.test(text)) {
+  // 外部サービス（znca-api 等）の一時障害。**再ログインを促さない** — トークンは生きている。
+  if (code === 'UPSTREAM_UNAVAILABLE') {
+    return {
+      kind:    'upstream_unavailable',
+      title:   '外部サービスが一時的に不調です',
+      message: detail + '\n\n認証に使う外部サービスが一時的に応答していません。しばらく待ってから再試行してください（ログインし直す必要はありません）。',
+      hint:    'retry',
+    }
+  }
+
+  // 認証情報の失効（401 / 403 / invalid_grant）。ここだけが再ログイン案内。
+  if (code === 'AUTH_EXPIRED') {
     return {
       kind:    'auth_expired',
-      title:   '認証トークンの取得に失敗しました',
-      message: text + '\n\nしばらく待ってから再試行するか、設定からログインし直してください。',
+      title:   '認証の有効期限が切れました',
+      message: detail + '\n\n設定から Nintendo アカウントでログインし直してください。',
       hint:    'retry_or_login',
     }
   }
 
-  // reqwest / tcp / dns / timeout 系はネットワーク
-  if (/timed?\s*out|connection|dns|reqwest|tls|certificate|sendrequest|HTTP\s*client/i.test(text)) {
+  if (code === 'NETWORK') {
     return {
       kind:    'network',
       title:   'ネットワークエラー',
-      message: text + '\n\nインターネット接続を確認のうえ、もう一度お試しください。',
+      message: detail + '\n\nインターネット接続を確認のうえ、もう一度お試しください。',
+      hint:    'retry',
+    }
+  }
+
+  // 分類プリフィクスが付かない経路（Rust 内部の reqwest エラー等）はメッセージから判断する。
+  if (/timed?\s*out|connection|dns|reqwest|tls|certificate|sendrequest|HTTP\s*client/i.test(detail)) {
+    return {
+      kind:    'network',
+      title:   'ネットワークエラー',
+      message: detail + '\n\nインターネット接続を確認のうえ、もう一度お試しください。',
       hint:    'retry',
     }
   }
@@ -124,6 +158,6 @@ export function parseFetchError(raw: unknown): FetchError {
   return {
     kind:    'unknown',
     title:   '予期しないエラーが発生しました',
-    message: text,
+    message: detail,
   }
 }

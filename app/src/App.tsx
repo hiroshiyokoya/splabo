@@ -121,7 +121,9 @@ export default function App() {
       fe.hint === 'settings' ? { label: '設定を開く', onClick: () => setTab('settings') } :
       retry                  ? { label: '再試行',     onClick: retry } :
       undefined
-    notify({ kind: fe.kind === 'not_logged_in' ? 'warning' : 'error', title: fe.title, message: fe.message, action, durationMs: 0 })
+    // 未ログイン・外部サービスの一時障害は「アプリが壊れた」ではないので warning 止まり（#399）。
+    const soft = fe.kind === 'not_logged_in' || fe.kind === 'upstream_unavailable'
+    notify({ kind: soft ? 'warning' : 'error', title: fe.title, message: fe.message, action, durationMs: 0 })
   }
 
   // 認証完了後にデータ取得を実行
