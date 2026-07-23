@@ -152,14 +152,45 @@ export default function App() {
   // 起動時取得・スケジューラ取得でも「取得中…」を出すため、Rust 側の fetch_start/fetch_finish を listen し、
   // さらに mount 時点で進行中なら即座に取得中表示にする（起動時取得は React マウント前に始まり得る race 対策）。
   useEffect(() => {
-    invoke<boolean>('is_fetching').then(setFetching).catch(() => {})
-    const startP  = listen('fetch_start',  () => setFetching(true))
-    const finishP = listen('fetch_finish', () => setFetching(false))
+    let disposed  = false
+    // 実イベントを一度でも受け取ったら、あとから解決する is_fetching スナップショットで
+    // 上書きしない（古い値でのクロバー防止）。
+    let sawEvent  = false
+    const startP  = listen('fetch_start',  () => { sawEvent = true; setFetching(true) })
+    const finishP = listen('fetch_finish', () => { sawEvent = true; setFetching(false) })
+    // listener 登録が完了してから is_fetching を読む。こうすると「登録の隙間に
+    // fetch_finish を取りこぼして『取得中』が残る」race を塞げる（#402 任意4）:
+    // 登録前に emit された finish は、登録後のこの再確認が false を読んで解除する。
+    Promise.all([startP, finishP]).then(() => {
+      invoke<boolean>('is_fetching')
+        .then(v => { if (!disposed && !sawEvent) setFetching(v) })
+        .catch(() => {})
+    })
     return () => {
+      disposed = true
       startP.then(fn => fn())
       finishP.then(fn => fn())
     }
   }, [])
+
+  // stat.ink 自動アップロードの失敗をユーザーに見せる（#402 必須2）。
+  // 以前は warn ログに畳んで握りつぶしていたため「なぜか送られない」だけが残っていた。
+  // 未送信バトルは DB に残り次回自動で再送されるので、データは失われない旨も伝える。
+  useEffect(() => {
+    const unlistenPromise = listen<string>('statink_upload_failed', (event) => {
+      const fe     = parseFetchError(event.payload)
+      const isAuth = fe.kind === 'auth_expired'
+      notify({
+        kind:    'warning',
+        title:   isAuth ? 'stat.ink の API キーを確認してください' : 'stat.ink へ送信できませんでした',
+        message: isAuth
+          ? 'stat.ink の API キーが無効なため送信できませんでした。設定を確認してください。未送信分は次回自動で送られます（データは失われません）。'
+          : 'stat.ink が不調のため送信できませんでした。未送信分は次回自動で送られます（データは失われません）。',
+        durationMs: 8000,
+      })
+    })
+    return () => { unlistenPromise.then(fn => fn()) }
+  }, [notify])
 
   // stat.ink の screen_name を初回アップロード時に自動取得して設定に保存
   useEffect(() => {

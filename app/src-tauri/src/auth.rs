@@ -262,11 +262,9 @@ fn now_unix() -> u64 {
         .unwrap_or(0)
 }
 
-/// reqwest クライアントを構築する（共通設定）。
+/// reqwest クライアントを構築する（共通設定・タイムアウト付き #402）。
 fn http_client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .build()
-        .map_err(|e| format!("HTTP クライアント構築失敗: {e}"))
+    crate::http::build_client()
 }
 
 // ---------------------------------------------------------------------------
