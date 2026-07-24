@@ -16,9 +16,16 @@
 //!                        トップレベルに `generated_at`（UTC ISO8601）を持つ（#396・追加のみ。
 //!                        古い viewer は未知フィールドとして無視する）。
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::gear_crypto;
+
+/// ギア取得中フラグ（#441 レビュー指摘）。`fetch_gear_full` の多重起動を防ぐ。
+/// バトル側の `FetchInProgress` と同型。起動時/自動取得とサイドバー・空状態 CTA が並走し得る。
+#[derive(Default)]
+pub struct GearFetchInProgress(pub AtomicBool);
 
 /// PathBuf を Windows の \\?\ プレフィックスなし・スラッシュ区切りの文字列に変換
 fn path_to_slash(p: &std::path::Path) -> String {
@@ -441,13 +448,25 @@ fn resolve_gear_out_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 /// フロー: bullet_token 取得 → MyOutfitCommonDataEquipmentsQuery →
 /// gear_db.json 構築 → 画像 DL → 暗号化（gear_db.bin / .gti）。
 /// 出力は現行 geartoon 出力（gear-export-v1）と互換（`generated_at` の追加のみ・#396）。
+///
+/// 多重起動は `GearFetchInProgress` で防ぐ（書き込み競合・画像リネーム衝突の回避）。
 #[tauri::command]
 pub async fn fetch_gear_full(app: AppHandle) -> Result<GearFetchResult, String> {
     if !crate::auth::is_logged_in(&app) {
         return Err("NOT_LOGGED_IN: Nintendo アカウントでログインしていません。設定からログインしてください。".to_string());
     }
 
-    let bt = crate::nxapi::nxapi_get_bullet_token(&app).await?;
+    let flag = app.state::<GearFetchInProgress>();
+    if flag.0.swap(true, Ordering::SeqCst) {
+        return Err("GEAR_FETCH_IN_PROGRESS: 既にギア取得が進行中です。".to_string());
+    }
+    let result = fetch_gear_full_inner(&app).await;
+    flag.0.store(false, Ordering::SeqCst);
+    result
+}
+
+async fn fetch_gear_full_inner(app: &AppHandle) -> Result<GearFetchResult, String> {
+    let bt = crate::nxapi::nxapi_get_bullet_token(app).await?;
     let client = crate::http::build_client()?;
 
     let equipment = crate::splatnet3::fetch_gear_equipment(
@@ -458,7 +477,7 @@ pub async fn fetch_gear_full(app: AppHandle) -> Result<GearFetchResult, String> 
     )
     .await?;
 
-    let out_dir = resolve_gear_out_dir(&app)?;
+    let out_dir = resolve_gear_out_dir(app)?;
     let result = build_and_write_gear_data(&client, &equipment, &out_dir).await?;
     log::info!(
         "[gear] 取得完了 頭 {} / 服 {} / 靴 {} / スキル {} → {}",

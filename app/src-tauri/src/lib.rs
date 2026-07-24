@@ -85,6 +85,7 @@ pub fn run() {
         .manage(SchedulerConfig::default())
         .manage(StatinkConfig::default())
         .manage(FetchInProgress::default())
+        .manage(gear::GearFetchInProgress::default())
         .manage(companion::CompanionState::default())
         .invoke_handler(tauri::generate_handler![
             auth::start_login,
@@ -599,12 +600,16 @@ fn show_window(app: &AppHandle) {
 
 /// バトル取得成功後のギア取得（#440）。失敗しても呼び出し元のバトル成功は維持する。
 /// サイドバー手動取得（`App.tsx` の `handleFetchFull`）と同じ best-effort 方針。
+/// 既に別経路でギア取得中ならスキップ（`GEAR_FETCH_IN_PROGRESS`）。
 async fn fetch_gear_best_effort(app: &AppHandle, context: &str) {
     match gear::fetch_gear_full(app.clone()).await {
         Ok(g) => log::info!(
             "[{context}] ギア完了 頭+{} 服+{} 靴+{}",
             g.head, g.clothing, g.shoes
         ),
+        Err(e) if e.starts_with("GEAR_FETCH_IN_PROGRESS:") => {
+            log::info!("[{context}] ギア取得スキップ（別経路で進行中）");
+        }
         Err(e) => log::warn!("[{context}] ギア失敗（バトル取得は成功のまま）: {e}"),
     }
 }
