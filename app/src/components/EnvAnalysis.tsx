@@ -16,7 +16,7 @@ import type {
   EnvStatus, EnvVersion, EnvRank, MetricKey,
 } from '../types'
 import { currentSeasonStart } from '../types'
-import { ScatterChart } from './charts/ScatterChart'
+import { ScatterChart, buildSizeLegend, buildColorLegend } from './charts/ScatterChart'
 import type { ScatterPoint } from './charts/ScatterChart'
 import { Heatmap } from './charts/Heatmap'
 import { MultiSelect } from './MultiSelect'
@@ -528,6 +528,20 @@ export function EnvAnalysis() {
     }
   }).filter(p => p.x !== null && p.y !== null), [scatterData, xM, yM, sizeM, colorM, pointColor, groupBy, iconUrls, iconKind])
 
+  // サイズ・色の凡例（#420）。
+  // サイズは **描画された点** の値から作る（Recharts の ZAxis も描画データから
+  // ドメインを取るので、X/Y が欠けて落ちた点を混ぜるとレンジがズレる）。
+  const sizeLegend = useMemo(
+    () => (sizeM ? buildSizeLegend(sizeM.label, points.map(p => p.size), sizeM.fmt) : null),
+    [sizeM, points],
+  )
+  // 色は **colorRange と同じ scatterData** から作り、色も本体と同じ pointColor で引く。
+  // 別のレンジ・別の関数で作ると凡例が本体とズレる。
+  const colorLegend = useMemo(
+    () => (colorM ? buildColorLegend(colorM.label, scatterData.map(s => colorM.get(s)), colorM.fmt, pointColor) : null),
+    [colorM, scatterData, pointColor],
+  )
+
   const xDomain = useMemo(() => computeDomain(points.map(p => p.x as number), xM.rate01), [points, xM])
   const yDomain = useMemo(() => computeDomain(points.map(p => p.y as number), yM.rate01), [points, yM])
 
@@ -719,6 +733,8 @@ export function EnvAnalysis() {
                     xRefLine={xM.key === 'win_rate' ? 0.5 : undefined}
                     yRefLine={yM.key === 'win_rate' ? 0.5 : undefined}
                     hasSize={!!sizeM}
+                    sizeLegend={sizeLegend}
+                    colorLegend={colorLegend}
                     constSize={300}
                     fillOpacity={0.55}
                     height={440}

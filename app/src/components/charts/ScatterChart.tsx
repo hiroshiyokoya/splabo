@@ -103,8 +103,146 @@ export function logTicks(domain: [number, number], maxTicks = 10): number[] | nu
   return usable.find(t => t.length <= maxTicks) ?? usable[usable.length - 1]
 }
 
+// ---------------------------------------------------------------------------
+// 凡例（#420）
+// ---------------------------------------------------------------------------
+//
+// サイズ・色にメトリクスを割り当てられる（#406）が、凡例が無いと「大きい＝何が多いのか」
+// が画面から読めない。ホバーすればチップに出るが、全体を眺めているときに分からない。
+//
+// 凡例の中身（ラベル・値・色・面積）は **呼び出し側が組み立てて渡す**。環境分析と
+// ダッシュボードで色スケールの作り方が違う（pointColor と colorOfValue）ため、
+// それぞれの関数をそのまま使えるほうが破綻しない。
+
+/** サイズ指標が割り当てられているときのドット面積レンジ（px²）。
+ *
+ *  🔴 凡例の円と実際のドットを一致させるため、ZAxis に渡す range と凡例の面積計算は
+ *  **必ずこの定数を共有する**。片方だけ変えると凡例が嘘になる。 */
+export const SIZE_AREA_RANGE: [number, number] = [40, 600]
+
+export type SizeLegend  = { label: string; items: { label: string; area: number }[] }
+export type ColorLegend = { label: string; items: { label: string | null; color: string }[] }
+
+/** 有限な値だけの min/max。値が無いときは null。 */
+function finiteRange(values: (number | null | undefined)[]): { min: number; max: number } | null {
+  let mn = Infinity, mx = -Infinity
+  for (const v of values) {
+    if (v == null || !isFinite(v)) continue
+    if (v < mn) mn = v
+    if (v > mx) mx = v
+  }
+  return isFinite(mn) ? { min: mn, max: mx } : null
+}
+
+/**
+ * 値 → ドットの面積（px²）。
+ *
+ * 🔴 Recharts の ZAxis のドメインは **[0, データ最大]** であって [最小, 最大] ではない。
+ * `<ZAxis>` に domain を渡さないと `implicitZAxis.domain = [0, 'auto']` が効くため。
+ * 実測で確認済み: range=[40,600]・データ [10,30,55,100] のとき、値 30 のドットは
+ * 直径 16.27px = 面積 208 = 40 + (30/100)×560。[最小,最大] で正規化すると
+ * 最小値のドットが 7.1px のはずが実際は 11.1px で、凡例が嘘になる。
+ */
+function valueToArea(v: number, max: number): number {
+  const [aMin, aMax] = SIZE_AREA_RANGE
+  const t = Math.min(1, Math.max(0, v / max))
+  return aMin + (aMax - aMin) * t
+}
+
+/**
+ * サイズ凡例を作る。データの 最小 / 中間 / 最大 を並べる。
+ *
+ * Recharts は面積を `radius = sqrt(面積 / π)` で描く（recharts/es6/cartesian/Scatter.js）。
+ * 凡例の円も同じ式で描くので実際のドットと一致する。
+ */
+export function buildSizeLegend(
+  label: string, values: (number | null)[], fmt: (v: number) => string, steps = 3,
+): SizeLegend | null {
+  const r = finiteRange(values)
+  // max <= 0 だと面積の比率が作れない（実データでは件数・平均値なので起きない）。
+  if (!r || r.max <= 0) return null
+  // 全部同じ値ならドットの大小が無いので 1 つだけ出す（段を並べても全部同じ大きさになる）。
+  const vals = r.max > r.min
+    ? Array.from({ length: steps }, (_, i) => r.min + (r.max - r.min) * (i / (steps - 1)))
+    : [r.max]
+  return { label, items: vals.map(v => ({ label: fmt(v), area: valueToArea(v, r.max) })) }
+}
+
+/** 面積（px²）→ 半径。Recharts のドットと同じ式。 */
+export function areaToRadius(area: number): number {
+  return Math.sqrt(Math.max(area, 0) / Math.PI)
+}
+
+/**
+ * 色凡例を作る。`colorOf` は **本体のドットと同じ関数**を渡すこと（色がズレないため）。
+ * 値のラベルは両端と中央だけに付ける（全段に付けると数字が潰れて読めない）。
+ */
+export function buildColorLegend(
+  label: string, values: (number | null)[], fmt: (v: number) => string,
+  colorOf: (v: number) => string, steps = 7,
+): ColorLegend | null {
+  const r = finiteRange(values)
+  // 幅が無いと全ドットが同じ色なので、帯にして説明することが無い。
+  if (!r || r.max <= r.min) return null
+  const mid = Math.floor(steps / 2)
+  const items = Array.from({ length: steps }, (_, i) => {
+    const v = r.min + (r.max - r.min) * (i / (steps - 1))
+    const showLabel = i === 0 || i === steps - 1 || i === mid
+    return { label: showLabel ? fmt(v) : null, color: colorOf(v) }
+  })
+  return { label, items }
+}
+
+function ScatterLegends({ sizeLegend, colorLegend }: { sizeLegend?: SizeLegend | null; colorLegend?: ColorLegend | null }) {
+  if (!sizeLegend && !colorLegend) return null
+  // 一番大きい円に合わせて行の高さを取る（円が上下で切れないように）。
+  const maxR = sizeLegend ? areaToRadius(Math.max(...sizeLegend.items.map(i => i.area))) : 0
+  // サイズ凡例の円の色。色にもメトリクスを割り当てているときは実際のドットが
+  // そのスケールの色になるので、accent のままだと凡例だけ違う色で浮く。
+  // 色凡例の**中央のスウォッチ**を借りれば、常に実際のドットと同じパレットになる。
+  const dotColor = colorLegend
+    ? colorLegend.items[Math.floor(colorLegend.items.length / 2)].color
+    : 'var(--accent)'
+  return (
+    <div className="scatter-legend">
+      {sizeLegend && (
+        <div className="scatter-legend-group">
+          <span className="scatter-legend-title">サイズ: {sizeLegend.label}</span>
+          <span className="scatter-legend-items" style={{ minHeight: maxR * 2 }}>
+            {sizeLegend.items.map((it, i) => (
+              <span className="scatter-legend-size" key={i}>
+                <span
+                  className="scatter-legend-dot"
+                  style={{ width: areaToRadius(it.area) * 2, height: areaToRadius(it.area) * 2, background: dotColor }}
+                />
+                <span className="scatter-legend-value">{it.label}</span>
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
+      {colorLegend && (
+        <div className="scatter-legend-group">
+          <span className="scatter-legend-title">色: {colorLegend.label}</span>
+          <span className="scatter-legend-items">
+            <span className="scatter-legend-bar">
+              {colorLegend.items.map((it, i) => (
+                <span className="scatter-legend-band" key={i}>
+                  <span className="scatter-legend-chip" style={{ background: it.color }} />
+                  <span className="scatter-legend-value">{it.label ?? ' '}</span>
+                </span>
+              ))}
+            </span>
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ScatterChart({
   points, xLabel, yLabel, xIsRate, yIsRate, xDomain, yDomain, xRefLine, yRefLine, hasSize, xLogScale, yLogScale, fillOpacity = 0.85, constSize = 120, height = 320,
+  sizeLegend, colorLegend,
 }: {
   points:       ScatterPoint[]
   xLabel:       string
@@ -128,6 +266,10 @@ export function ScatterChart({
    *  ZAxis range のピクセル面積。 */
   constSize?:   number
   height?:      number
+  /** ドットのサイズ・色が何を表しているかの凡例（#420）。buildSizeLegend / buildColorLegend で作る。
+   *  未指定（サイズ・色にメトリクスを割り当てていない）なら出さない。 */
+  sizeLegend?:  SizeLegend | null
+  colorLegend?: ColorLegend | null
 }) {
   const [hover, setHover] = useState<ScatterPoint | null>(null)
   const areaRef = useRef<HTMLDivElement>(null)
@@ -180,7 +322,8 @@ export function ScatterChart({
   const ROW_LIMIT = 12
 
   // サイズ範囲 (sqrt スケール)。指定なしは ZAxis で一定サイズ。
-  const zRange: [number, number] = hasSize ? [40, 600] : [constSize, constSize]
+  // 🔴 凡例と同じ定数を使う（SIZE_AREA_RANGE のコメント参照）。
+  const zRange: [number, number] = hasSize ? SIZE_AREA_RANGE : [constSize, constSize]
 
   return (
     <div className="chart-hover-area" ref={areaRef} style={{ position: 'relative' }}>
@@ -234,6 +377,7 @@ export function ScatterChart({
         </Scatter>
       </RScatterChart>
     </ResponsiveContainer>
+    <ScatterLegends sizeLegend={sizeLegend} colorLegend={colorLegend} />
     {droppedByLog > 0 && (
       <div
         style={{

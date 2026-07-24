@@ -440,6 +440,71 @@ body {
    Tooltip はプロット領域内ホバーにしか反応しないので、X 軸アイコンの
    ホバー時にも出すために独立に描く。 */
 .chart-hover-area { width: 100%; }
+
+/* 散布図のサイズ・色の凡例（#420）。
+   円の直径は ScatterChart が実データから算出してインラインで渡すので、ここでは
+   大きさを指定しない（指定すると実際のドットとズレて凡例が嘘になる）。 */
+.scatter-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  padding: 6px 8px 0;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.scatter-legend-group {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.scatter-legend-title {
+  white-space: nowrap;
+  padding-bottom: 2px;
+}
+.scatter-legend-items {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.scatter-legend-size {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+/* 実際のドットと同じ見え方にする（塗り透過・細い縁取り）。
+   background は色メトリクスがあるとき ScatterChart がインラインで上書きする。 */
+.scatter-legend-dot {
+  display: block;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.85;
+  box-shadow: 0 0 0 0.5px var(--surface);
+  flex-shrink: 0;
+}
+.scatter-legend-bar {
+  display: flex;
+  align-items: flex-end;
+}
+.scatter-legend-band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.scatter-legend-chip {
+  display: block;
+  width: 18px;
+  height: 10px;
+}
+/* 帯は継ぎ目なく並べ、両端だけ角を丸める。 */
+.scatter-legend-band:first-child .scatter-legend-chip { border-radius: 2px 0 0 2px; }
+.scatter-legend-band:last-child  .scatter-legend-chip { border-radius: 0 2px 2px 0; }
+.scatter-legend-value {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .chart-hover-tooltip {
   position: absolute;
   transform: translateX(-50%);
