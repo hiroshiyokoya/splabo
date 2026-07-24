@@ -161,7 +161,7 @@ function buildBattleScatterPoints(
 
 /** yComposition ごとに用意する並び替えオプション。
  *  - stacked_winrate: バトル数 / 勝数 / 勝率
- *  - attack_defense:  キル数 / デス数 / キルレ（K/D 比）
+ *  - attack_defense:  平均キル / 平均デス / キルレ（= 平均キル ÷ 平均デス）
  *  - single_metric:   並び替えなし（既に選択メトリクスが Y 軸なので自明）。 */
 type SortOption = { key: MetricKey; label: string }
 const SORT_OPTIONS_STACKED_WINRATE: SortOption[] = [
@@ -170,8 +170,8 @@ const SORT_OPTIONS_STACKED_WINRATE: SortOption[] = [
   { key: 'win_rate', label: '勝率' },
 ]
 const SORT_OPTIONS_ATTACK_DEFENSE: SortOption[] = [
-  { key: 'avg_kill',  label: 'キル数' },
-  { key: 'avg_death', label: 'デス数' },
+  { key: 'avg_kill',  label: '平均キル' },
+  { key: 'avg_death', label: '平均デス' },
   { key: 'avg_kd',    label: 'キルレ' },
 ]
 

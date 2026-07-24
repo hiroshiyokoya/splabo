@@ -272,7 +272,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
             />
             <StatCard label="平均キル" value={stats?.avg_kill  != null ? stats.avg_kill.toFixed(2)  : '—'} />
             <StatCard label="平均デス" value={stats?.avg_death != null ? stats.avg_death.toFixed(2) : '—'} />
-            <StatCard label="キルレシオ" value={avgKillRatio(stats?.avg_kill ?? null, stats?.avg_death ?? null)} />
+            <StatCard label="キルレ" value={avgKillRatio(stats?.avg_kill ?? null, stats?.avg_death ?? null)} />
           </div>
 
           <div className="chart-grid">

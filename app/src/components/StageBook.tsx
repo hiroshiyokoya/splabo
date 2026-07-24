@@ -27,7 +27,7 @@ const SORT_LABELS: Record<SortKey, string> = {
   win_rate:       '勝率',
   avg_kill:       '平均K',
   avg_death:      '平均D',
-  kd:             'K/D',
+  kd:             'キルレ',
   knockout_rate:  'KO 率',
   name:           '名前',
 }
@@ -246,7 +246,7 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
             <SortHeader label="勝率"     sortKey="win_rate"      activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均K"    sortKey="avg_kill"      activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均D"    sortKey="avg_death"     activeKey={sort} ascending={ascending} onSort={onSort} />
-            <SortHeader label="K/D"      sortKey="kd"            activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="キルレ"    sortKey="kd"            activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="KO率"     sortKey="knockout_rate" activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均塗り"                         activeKey={sort} ascending={ascending} onSort={onSort} />
           </tr>
@@ -342,7 +342,7 @@ function StageCard({ row, image, onClick }: {
           </span>
         </div>
         <div className="stage-card-stat-row">
-          <span className="stage-card-stat-label">K/D</span>
+          <span className="stage-card-stat-label">キルレ</span>
           <span className="stage-card-stat-value">
             {avgKillRatio(row.avg_kill, row.avg_death)}
           </span>

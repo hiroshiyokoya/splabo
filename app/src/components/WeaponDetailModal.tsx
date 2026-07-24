@@ -29,7 +29,7 @@ function fmtRatio(num: number | null | undefined, den: number | null | undefined
 /**
  * 武器図鑑カードをクリックして開く詳細モーダル。
  *
- * - バトル統計（バトル数 / W/L/D / 勝率 / 平均K/D/塗り / キルレシオ）は DB 集計。
+ * - バトル統計（バトル数 / W/L/D / 勝率 / 平均キル・デス・塗り / キルレ）は DB 集計。
  *   親 (WeaponBook) が statsByWeapon から該当行を `stats` prop として渡す。
  * - ステージ Top 5 とルール別勝率は `db_grouped_stats(group_by, weapon=武器スラッグ)` を 2 回呼んで取得。
  *   武器スラッグは `weapons.name`（旧テーブル）= `weapon.key`（新テーブル）= stat.ink キー。
@@ -148,7 +148,7 @@ export function WeaponDetailModal({
               />
               <StatPanel label="平均キル" value={fmtNum(stats?.avg_kill, 2)} />
               <StatPanel label="平均デス" value={fmtNum(stats?.avg_death, 2)} />
-              <StatPanel label="キルレシオ" value={fmtRatio(stats?.avg_kill, stats?.avg_death)} />
+              <StatPanel label="キルレ" value={fmtRatio(stats?.avg_kill, stats?.avg_death)} />
               <StatPanel label="平均塗り" value={fmtNum(stats?.avg_inked, 0)} />
             </div>
           </section>
