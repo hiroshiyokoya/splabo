@@ -127,63 +127,16 @@
     padding-bottom: 0.75rem;
   }
 
-  /* ── App header ── */
+  /* ── DB 更新ボタン ── */
 
-  .app-header {
-    padding: 2rem 0 1.5rem;
-    margin-bottom: 0;
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .app-header__left {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-
-  /* .app-title は LogoSvg コンポーネントに移行済み */
-
-  .app-subtitle {
-    font-size: 0.78rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    padding-left: 0.1rem;
-  }
-
-  .app-header__right {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 0.28rem;
-    align-self: flex-end;
-    margin-bottom: 0.15rem;
-    max-width: min(100%, 40rem);
-  }
-
-  .app-header__toolbar {
-    --header-tool-h: 2.35rem;
-
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 0.5rem 0.65rem;
-    row-gap: 0.4rem;
-  }
-
+  /* ヘッダー（.app-header 一式・.header-divider）は #419 で畳んだので、対応する
+     ルールは #424 で撤去した。高さは .app-db-refresh--empty-cta が単独で決める
+     （後述）。 */
   .app-db-refresh {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    height: var(--header-tool-h);
-    min-height: var(--header-tool-h);
     padding: 0 1.1rem;
     font-family: inherit;
     font-size: 0.8rem;
@@ -214,7 +167,10 @@
   }
 
 
-  /* empty-state 上のCTAボタン */
+  /* empty-state 上のCTAボタン。.app-db-refresh の唯一の使い道なので、高さはここで決める。
+     （かつて .app-db-refresh が使っていた --header-tool-h は .app-header__toolbar が
+      定義元で、empty-state はその子孫ではなく変数が解決されていなかった。実効の高さは
+      当時からこの 2.4rem。） */
   .app-db-refresh--empty-cta {
     margin-top: 1.25rem;
     padding: 0 2rem;
@@ -335,16 +291,6 @@
 
   .app-db-meta__value {
     font-variant-numeric: tabular-nums;
-  }
-
-  /* ── Header divider ── */
-
-  .header-divider {
-    height: 2px;
-    background: linear-gradient(90deg, var(--accent) 0%, var(--accent2) 40%, transparent 100%);
-    border-radius: 2px;
-    margin-bottom: 1.5rem;
-    opacity: 0.6;
   }
 
   /* ── Tabs ── */
@@ -2428,23 +2374,7 @@
     font-family: monospace;
   }
 
-  /* ── Mobile responsive ── */
-
-  @media (max-width: 600px) {
-    .app-header {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 0.75rem;
-    }
-
-    .app-header__left img {
-      width: 100%;
-      height: auto;
-    }
-
-    .app-header__right {
-      max-width: 100%;
-      align-items: flex-start;
-    }
-  }
+  /* ── Mobile responsive ──
+     @media (max-width: 600px) の中身はヘッダー（.app-header 一式）専用の
+     打ち消しだけだったので、ヘッダーの撤去（#419 / #424）に伴いブロックごと削除した。 */
 }
