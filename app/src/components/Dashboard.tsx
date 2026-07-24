@@ -655,7 +655,7 @@ function AiChartRenderer({ spec }: { spec: ChartSpec }) {
           <XAxis dataKey={xKey} />
           <YAxis dataKey={yKey} />
           <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }} />
-          <Scatter data={data} fill="var(--accent)" />
+          <Scatter data={data} fill="var(--accent)" fillOpacity={0.55} />
         </ScatterChart>
       )}
     </ResponsiveContainer>

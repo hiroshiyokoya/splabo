@@ -447,8 +447,8 @@ function renderChartBody(
         xLogScale={chart.xLogScale && chart.xMetric !== 'win_rate'}
         yLogScale={chart.yLogScale && chart.yMetric !== 'win_rate'}
         hasSize={!!chart.sizeMetric}
-        // バトル単位は重なりが多いので透過を強める (ジッタと合わせて密度が見える)
-        fillOpacity={isBattle ? 0.6 : 0.85}
+        // 環境分析の散布図と同じ透過度に揃える (#435)
+        fillOpacity={0.55}
         // サイズメトリクス未指定時の一定サイズ。武器/ステージはドットが少ないので大きめ。
         constSize={isBattle ? 120 : 280}
       />
