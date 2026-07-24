@@ -6,8 +6,8 @@ export type BattlesView = 'dashboard' | 'list'
 /** 図鑑（武器・ステージ）タブ内のビュー（#297）。 */
 export type BookView = 'panel' | 'list'
 
-/** 設定タブ内のサブタブ（#428）。連携＝外部サービス接続、データ＝取得、表示＝見た目。 */
-export type SettingsTab = 'link' | 'data' | 'display'
+/** 設定タブ内のサブタブ（#428 / #434）。連携・データ・表示・AI。 */
+export type SettingsTab = 'link' | 'data' | 'display' | 'ai'
 
 export type Period = 'all' | 'current_season' | '30d' | '7d' | 'custom'
 

@@ -14,7 +14,7 @@ export interface ViewPrefs {
   weapons: BookView
   /** ステージ図鑑: パネル / 一覧 */
   stages: BookView
-  /** 設定タブ: 連携 / データ / 表示（#428） */
+  /** 設定タブ: 連携 / データ / 表示 / AI（#428 / #434） */
   settings: SettingsTab
 }
 
