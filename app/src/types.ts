@@ -6,6 +6,9 @@ export type BattlesView = 'dashboard' | 'list'
 /** 図鑑（武器・ステージ）タブ内のビュー（#297）。 */
 export type BookView = 'panel' | 'list'
 
+/** 設定タブ内のサブタブ（#428）。連携＝外部サービス接続、データ＝取得、表示＝見た目。 */
+export type SettingsTab = 'link' | 'data' | 'display'
+
 export type Period = 'all' | 'current_season' | '30d' | '7d' | 'custom'
 
 /** Splatoon 3 シーズンの開始日 (YYYY-MM-DD) を返す。

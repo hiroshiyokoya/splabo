@@ -13,7 +13,7 @@ import { About } from './components/About'
 import { GearSection } from './gear/GearSection'
 import { ViewToggle } from './components/ViewToggle'
 import type { ViewToggleOption } from './components/ViewToggle'
-import type { Tab, BattlesView, AppSettings, ChartSpec, Filters } from './types'
+import type { Tab, BattlesView, SettingsTab, AppSettings, ChartSpec, Filters } from './types'
 import { DEFAULT_FILTERS } from './types'
 import { loadViewPrefs, saveViewPrefs } from './utils/viewPrefs'
 import { initAppSettings } from './utils/appSettings'
@@ -62,6 +62,14 @@ function loadSettings(): AppSettings {
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('battles')
+  // 設定タブへ飛ばすときに開くサブタブの指定（#428）。nonce を毎回上げることで、
+  // 既に設定タブにいても・同じサブタブでも Settings 側の useEffect が発火する。
+  const [settingsFocus, setSettingsFocus] = useState<{ tab: SettingsTab; nonce: number } | null>(null)
+  /** 設定タブを開き、任意で特定サブタブに着地させる。未指定なら前回の選択のまま。 */
+  const openSettings = (subTab?: SettingsTab) => {
+    setTab('settings')
+    if (subTab) setSettingsFocus(f => ({ tab: subTab, nonce: (f?.nonce ?? 0) + 1 }))
+  }
   // 「バトル」タブ内のビュー。前回選択を localStorage から復元する（#296）。
   const [battlesView, setBattlesViewState] = useState<BattlesView>(() => loadViewPrefs().battles)
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
@@ -118,7 +126,7 @@ export default function App() {
   function reportFetchError(err: unknown, retry?: () => void) {
     const fe = parseFetchError(err)
     const action =
-      fe.hint === 'settings' ? { label: '設定を開く', onClick: () => setTab('settings') } :
+      fe.hint === 'settings' ? { label: '設定を開く', onClick: () => openSettings('link') } :
       retry                  ? { label: '再試行',     onClick: retry } :
       undefined
     // 未ログイン・外部サービスの一時障害は「アプリが壊れた」ではないので warning 止まり（#399）。
@@ -358,7 +366,7 @@ export default function App() {
                 filters={filters}
                 aiChart={aiChart}
                 onFetchRequest={handleFetchFull}
-                onOpenSettings={() => setTab('settings')}
+                onOpenSettings={() => openSettings('link')}
                 fetching={fetching}
               />
             ) : (
@@ -376,7 +384,7 @@ export default function App() {
         {tab === 'env'       && <EnvAnalysis />}
         {tab === 'gear'      && <GearSection />}
         {tab === 'ai' && <AiAnalysis settings={settings} onChartReady={handleAiChart} />}
-        {tab === 'settings' && <Settings settings={settings} onSave={saveSettings} loginVersion={loginVersion} />}
+        {tab === 'settings' && <Settings settings={settings} onSave={saveSettings} loginVersion={loginVersion} focus={settingsFocus} />}
       </main>
 
       {showAbout && <About onClose={() => setShowAbout(false)} />}

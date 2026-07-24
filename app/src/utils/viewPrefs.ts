@@ -4,7 +4,7 @@
 // キーが散らばらないようにするため。値は settings.json へもミラーされる
 // （settingsStore の MIRROR_KEYS に VIEWS_KEY を含めている）。
 
-import type { BattlesView, BookView } from '../types'
+import type { BattlesView, BookView, SettingsTab } from '../types'
 import { VIEWS_KEY, lsGet, mirrorToStore } from './settingsStore'
 
 export interface ViewPrefs {
@@ -14,12 +14,15 @@ export interface ViewPrefs {
   weapons: BookView
   /** ステージ図鑑: パネル / 一覧 */
   stages: BookView
+  /** 設定タブ: 連携 / データ / 表示（#428） */
+  settings: SettingsTab
 }
 
 export const DEFAULT_VIEW_PREFS: ViewPrefs = {
   battles: 'dashboard',
   weapons: 'panel',
   stages: 'panel',
+  settings: 'link',
 }
 
 export function loadViewPrefs(): ViewPrefs {
@@ -33,7 +36,8 @@ export function loadViewPrefs(): ViewPrefs {
   }
 }
 
-export function saveViewPrefs(prefs: ViewPrefs): void {
-  localStorage.setItem(VIEWS_KEY, JSON.stringify(prefs))
+export function saveViewPrefs(prefs: Partial<ViewPrefs>): void {
+  const next = { ...loadViewPrefs(), ...prefs }
+  localStorage.setItem(VIEWS_KEY, JSON.stringify(next))
   void mirrorToStore()
 }
