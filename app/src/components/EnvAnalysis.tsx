@@ -520,13 +520,13 @@ export function EnvAnalysis() {
       // 表示名（= key）はローカルマスターに無い武器だとスラッグのままで、当たらないパスを
       // 取りに行ってしまう。未ロード / 画像なしは undefined でアイコンなしになる。
       iconUrl: s.icon_name ? iconUrls.get(`${iconKind}:${s.icon_name}`) ?? null : null,
+      // 見出しにアイコン + 名前が出るので、武器/ステージ行は重複になる (#433)
       tooltipRows: [
-        { label: groupBy === 'weapon' ? '武器' : 'ステージ', value: s.key },
         ...metricRows,
         { label: 'サンプル', value: s.n.toLocaleString() },
       ],
     }
-  }).filter(p => p.x !== null && p.y !== null), [scatterData, xM, yM, sizeM, colorM, pointColor, groupBy, iconUrls, iconKind])
+  }).filter(p => p.x !== null && p.y !== null), [scatterData, xM, yM, sizeM, colorM, pointColor, iconUrls, iconKind])
 
   // サイズ・色の凡例（#420）。
   // サイズは **描画された点** の値から作る（Recharts の ZAxis も描画データから
