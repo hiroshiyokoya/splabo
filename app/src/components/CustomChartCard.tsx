@@ -13,7 +13,10 @@ import { StackedWinrateChart } from './charts/StackedWinrateChart'
 import { LineChart } from './charts/LineChart'
 import { CalendarHeatmapChart } from './charts/CalendarHeatmapChart'
 import { HeatmapChart } from './charts/HeatmapChart'
-import { ScatterChart, type ScatterPoint } from './charts/ScatterChart'
+import {
+  ScatterChart, buildSizeLegend, buildColorLegend,
+  type ScatterPoint, type SizeLegend, type ColorLegend,
+} from './charts/ScatterChart'
 import { rateCellColor, sequentialCellColor } from '../utils/heatmapColors'
 
 /** 1 バトル単位の散布図メトリクス値を BattleRow から計算する。 */
@@ -70,10 +73,14 @@ function dedupeRows(entries: { key: string | undefined; row: () => TooltipRow }[
   return out
 }
 
+/** 散布図の描画データ一式。凡例はポイントと同じ min/max・同じ色関数から作るので、
+ *  ここでまとめて返す（呼び出し側で作り直すと本体と凡例がズレる）。 */
+type ScatterBundle = { points: ScatterPoint[]; sizeLegend: SizeLegend | null; colorLegend: ColorLegend | null }
+
 function buildAggScatterPoints(
   data: GroupedStatsRow[],
   xKey: string, yKey: string, sizeKey?: string, colorKey?: string,
-): ScatterPoint[] {
+): ScatterBundle {
   const filtered = data.filter(d => d.total > 0)
   // 色マッピング用 min/max
   const colorIsRate = colorKey === 'win_rate'
@@ -86,7 +93,7 @@ function buildAggScatterPoints(
       if (v > cmax) cmax = v
     }
   }
-  return filtered.map(d => {
+  const points = filtered.map(d => {
     const x = getMetric(d, xKey as MetricKey)
     const y = getMetric(d, yKey as MetricKey)
     const size = sizeKey ? getMetric(d, sizeKey as MetricKey) : null
@@ -105,7 +112,26 @@ function buildAggScatterPoints(
       ]),
     }
   })
+  return {
+    points,
+    sizeLegend: sizeKey
+      ? buildSizeLegend(metricLabelOf(sizeKey), points.map(p => p.size), v => formatMetric(v, sizeKey as MetricKey))
+      : null,
+    // 色は本体と **同じ colorOfValue に同じ cmin/cmax** を渡す。別々に作ると凡例が嘘になる。
+    colorLegend: colorKey
+      ? buildColorLegend(
+          metricLabelOf(colorKey),
+          filtered.map(d => getMetric(d, colorKey as MetricKey)),
+          v => formatMetric(v, colorKey as MetricKey),
+          v => colorOfValue(v, colorIsRate, cmin, cmax, colorKey as MetricKey),
+        )
+      : null,
+  }
 }
+
+/** バトル単位メトリクスの表示整形。整数はそのまま、小数は 2 桁。 */
+const fmtBattle = (v: number | null): string =>
+  v === null ? '—' : (Number.isInteger(v) ? v.toString() : v.toFixed(2))
 
 /** バトル単位の散布図ポイントを作る。整数軸 (キル/デス等) の重なりを見やすくするため
  *  ±0.15 のジッタを乗せる。表示上の位置だけずらして、ホバーには元の値を表示する。
@@ -114,11 +140,11 @@ function buildAggScatterPoints(
 function buildBattleScatterPoints(
   data: BattleRow[],
   xKey: string, yKey: string, sizeKey?: string, colorKey?: string,
-): ScatterPoint[] {
+): ScatterBundle {
   const jitter = () => (Math.random() - 0.5) * 0.3  // ±0.15
   const applyJitter = (v: number | null): number | null =>
     v === null ? null : Math.max(0, v + jitter())
-  return data.map(b => {
+  const points = data.map(b => {
     const x = getBattleMetric(b, xKey as BattleMetricKey)
     const y = getBattleMetric(b, yKey as BattleMetricKey)
     const size = sizeKey ? getBattleMetric(b, sizeKey as BattleMetricKey) : null
@@ -131,7 +157,6 @@ function buildBattleScatterPoints(
       // バトル単位の連続値メトリクス。min/max は呼び出しごとに簡易計算 (ここでは accent 単色)
       color = 'var(--accent)'
     }
-    const fmtBattle = (v: number | null) => v === null ? '—' : (typeof v === 'number' ? (Number.isInteger(v) ? v.toString() : v.toFixed(2)) : String(v))
     const name = `${b.played_at.slice(0, 10)} / ${b.weapon}`
     return {
       name,
@@ -157,6 +182,22 @@ function buildBattleScatterPoints(
       ]),
     }
   })
+  return {
+    points,
+    sizeLegend: sizeKey
+      ? buildSizeLegend(metricLabelOf(sizeKey), points.map(p => p.size), fmtBattle)
+      : null,
+    // 勝敗だけは色が 3 値で決まるので、そのまま並べる。
+    // それ以外の色メトリクスは本体が accent 単色のまま（上の分岐参照）なので、
+    // 凡例を出すと「色が値を表している」という嘘になる。出さない。
+    colorLegend: colorKey === 'win_lose'
+      ? { label: '勝敗', items: [
+          { label: '勝', color: 'var(--win)' },
+          { label: '負', color: 'var(--lose)' },
+          { label: '分', color: 'var(--draw)' },
+        ] }
+      : null,
+  }
 }
 
 /** yComposition ごとに用意する並び替えオプション。
@@ -390,12 +431,14 @@ function renderChartBody(
       return <div className="chart-not-implemented">散布図には X 軸 / Y 軸 を選んでください。</div>
     }
     const isBattle = chart.dotUnit === 'battle'
-    const points = isBattle
+    const { points, sizeLegend, colorLegend } = isBattle
       ? buildBattleScatterPoints(battleData ?? [], chart.xMetric, chart.yMetric, chart.sizeMetric, chart.colorMetric)
       : buildAggScatterPoints(data, chart.xMetric, chart.yMetric, chart.sizeMetric, chart.colorMetric)
     return (
       <ScatterChart
         points={points}
+        sizeLegend={sizeLegend}
+        colorLegend={colorLegend}
         xLabel={metricLabelOf(chart.xMetric)}
         yLabel={metricLabelOf(chart.yMetric)}
         xIsRate={chart.xMetric === 'win_rate'}
