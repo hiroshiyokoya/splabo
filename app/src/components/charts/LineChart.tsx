@@ -1,17 +1,55 @@
-import { useState } from 'react'
 import {
-  LineChart as RLineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Legend,
+  LineChart as RLineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Legend, Tooltip,
 } from 'recharts'
 import type { GroupedStatsRow, MetricKey, GroupByKey, AxisGroup } from '../../types'
 import { METRIC_LABELS, getMetric, formatMetric, axisGroupOf } from '../../types'
 import { buildTimeSeries, formatTickDate, formatBucketLabel } from '../../utils/timeBuckets'
-import { HoverTooltip } from './HoverTooltip'
 
 /** 系列の自動配色（#436）。1 系列目は既存の単一メトリクス折れ線と同じ accent を使う。 */
 const LINE_COLORS = [
   'var(--accent)', 'var(--accent2)', 'var(--win)', 'var(--lose)', 'var(--draw)',
   '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#6366f1',
 ]
+
+/** チャートデータ 1 点分（Tooltip の payload から取り出す元データ）。 */
+type LinePoint = {
+  t:      number
+  label:  string
+  row:    GroupedStatsRow | null
+  values: Record<MetricKey, number | null>
+}
+
+/**
+ * Recharts 標準 Tooltip の中身（#443）。
+ *
+ * 自前の index 比例オーバーレイ（旧 HoverTooltip）は、X 軸を実時間軸（number 軸）に
+ * した #436 で位置が合わなくなり、さらに Recharts v3 では number 軸の
+ * `activeTooltipIndex` が文字列/null で返るため index 判定自体が壊れていた
+ * （ツールチップが一切出なくなっていた）。折れ線は X 軸にアイコンが無く日付ラベル
+ * だけなので、標準 Tooltip に最寄り点判定と位置合わせを任せ、content で全系列の値を
+ * まとめて表示する。
+ */
+function LineTooltipContent({ active, payload, metrics }: {
+  active?:  boolean
+  payload?: ReadonlyArray<{ payload?: LinePoint }>
+  metrics:  MetricKey[]
+}) {
+  if (!active || !payload || payload.length === 0) return null
+  const point = payload[0]?.payload
+  // 欠測バケット（row=null）の上ではツールチップ本体を出さない。
+  if (!point || !point.row) return null
+  return (
+    <div className="line-tooltip">
+      <div className="hover-tt-title">{point.label}</div>
+      {metrics.map((m, i) => (
+        <div key={m} className="hover-tt-row" style={{ color: LINE_COLORS[i % LINE_COLORS.length] }}>
+          {METRIC_LABELS[m]}: {formatMetric(point.values[m], m)}
+        </div>
+      ))}
+      <div className="hover-tt-row hover-tt-row--muted">バトル数: {point.row.total}</div>
+    </div>
+  )
+}
 
 /**
  * 時系列の線グラフ。X 軸は db_grouped_stats が返す時系列キー（日 / 3日 / 週 / 月）。
@@ -20,6 +58,7 @@ const LINE_COLORS = [
  * - X 軸は実時間軸（timestamp の number 軸）。欠測バケットは null 埋めして線を切る
  *   （connectNulls={false}）。孤立バケット（両隣が欠測）は点のみ描かれる。
  * - 勝率グループの軸は固定 0–100% スケール、その他は相対スケール。
+ * - ツールチップは Recharts 標準 Tooltip（#443）。全系列の値を 1 つにまとめて表示。
  */
 export function LineChart({
   data, metrics, groupBy, height = 260,
@@ -29,10 +68,8 @@ export function LineChart({
   groupBy:  GroupByKey
   height?:  number
 }) {
-  const [activeIndex, setActiveIndex] = useState<number | null>(null)
-
   const slots = buildTimeSeries(data, groupBy)
-  const chartData = slots.map(s => ({
+  const chartData: LinePoint[] = slots.map(s => ({
     t:      s.t,
     label:  formatBucketLabel(s.t, groupBy),
     row:    s.row,
@@ -59,26 +96,10 @@ export function LineChart({
   const leftPad  = 42
   const rightPad = hasRightAxis ? 42 : 8
 
-  const tMin = chartData[0]?.t
-  const tMax = chartData[chartData.length - 1]?.t
-  const ratioOf = (t: number): number =>
-    tMax === undefined || tMin === undefined || tMax === tMin ? 0.5 : (t - tMin) / (tMax - tMin)
-
-  const activePoint = activeIndex != null ? chartData[activeIndex] : null
-
   return (
-    <div className="chart-hover-area" style={{ position: 'relative' }}>
+    <div className="chart-hover-area">
     <ResponsiveContainer width="100%" height={height}>
-      <RLineChart
-        data={chartData}
-        margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
-        onMouseLeave={() => setActiveIndex(null)}
-        onMouseMove={(state: any) => {
-          const idx = state?.activeTooltipIndex
-          // 欠測バケット（値なし）の上ではツールチップを出さない。
-          setActiveIndex(typeof idx === 'number' && chartData[idx]?.row ? idx : null)
-        }}
-      >
+      <RLineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
         <XAxis
           dataKey="t"
@@ -105,12 +126,18 @@ export function LineChart({
             domain={domainOf(rightGroup)}
           />
         )}
+        <Tooltip
+          cursor={{ stroke: 'var(--border)', strokeDasharray: '3 3' }}
+          isAnimationActive={false}
+          content={(props: any) =>
+            <LineTooltipContent active={props.active} payload={props.payload} metrics={metrics} />}
+        />
         {metrics.map((m, i) => (
           <Line
             key={m}
             yAxisId={axisOf.get(m)}
             type="linear"
-            dataKey={(d: { values: Record<MetricKey, number | null> }) => d.values[m]}
+            dataKey={(d: LinePoint) => d.values[m]}
             name={METRIC_LABELS[m]}
             stroke={LINE_COLORS[i % LINE_COLORS.length]}
             strokeWidth={2}
@@ -125,25 +152,6 @@ export function LineChart({
         )}
       </RLineChart>
     </ResponsiveContainer>
-    <HoverTooltip
-      activeIndex={activeIndex}
-      dataLength={chartData.length}
-      leftPad={leftPad}
-      rightPad={rightPad}
-      ratio={activePoint ? ratioOf(activePoint.t) : undefined}
-    >
-      {activePoint && activePoint.row && (
-        <>
-          <div className="hover-tt-title">{activePoint.label}</div>
-          {metrics.map((m, i) => (
-            <div key={m} className="hover-tt-row" style={{ color: LINE_COLORS[i % LINE_COLORS.length] }}>
-              {METRIC_LABELS[m]}: {formatMetric(activePoint.values[m], m)}
-            </div>
-          ))}
-          <div className="hover-tt-row hover-tt-row--muted">バトル数: {activePoint.row.total}</div>
-        </>
-      )}
-    </HoverTooltip>
     </div>
   )
 }

@@ -518,6 +518,18 @@ body {
   white-space: nowrap;
   box-shadow: 0 4px 12px rgba(0,0,0,0.35);
 }
+/* 線グラフの Recharts 標準 Tooltip content（#443）。配置は Recharts が担うので
+   位置指定は持たず、見た目だけ .chart-hover-tooltip と揃える。 */
+.line-tooltip {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+}
 .hover-tt-title {
   color: var(--text);
   font-weight: 700;
