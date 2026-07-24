@@ -1026,17 +1026,34 @@ body {
   border: 1px solid var(--inner-highlight);
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
 }
-.modal-panel--with-stage::before {
+/* 背景のステージ画像は 2 層で敷く（#414）。
+   モーダルは 760px 幅 × 最大 85vh の縦長、ステージ画像は 16:9 の横長なので、
+   cover 1 枚だと高さを埋めるために 2 倍以上へ拡大され幅の半分以上が切れてしまう。
+   かといって contain で引くと必ず余白が出る（cover は隙間なく埋められる最小の拡大率）。
+   そこで「ぼかした cover で余白を埋め、その上に contain で全体を収める」ことで
+   ステージ全体を見せつつ余白も出さない。 */
+.modal-panel--with-stage::before,
+.modal-panel--with-stage::after {
   content: '';
   position: absolute;
   inset: 0;
-  background-image:    var(--stage-bg);
-  background-size:     cover;
+  background-image:  var(--stage-bg);
+  background-repeat: no-repeat;
   background-position: center;
   filter: var(--stage-img-filter);
   pointer-events: none;
   z-index: 0;
   border-radius: inherit;
+}
+/* 下層: 余白を埋めるフィラー。強くぼかして「引き伸ばした感」を目立たせない。 */
+.modal-panel--with-stage::before {
+  background-size: cover;
+  filter: var(--stage-img-filter) blur(24px);
+  transform: scale(1.1);  /* ぼかしで縁が透けるのを防ぐ */
+}
+/* 上層: ステージ全体を収める。 */
+.modal-panel--with-stage::after {
+  background-size: contain;
 }
 .modal-panel--with-stage > * { position: relative; z-index: 1; }
 /* ヘッダー/ボディは「パネル」ではないのでぼかさない・色も乗せない。
