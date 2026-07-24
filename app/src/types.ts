@@ -492,7 +492,6 @@ export type MetricKey =
   | 'avg_kd'        // キルレ = 平均キル ÷ 平均デス（クライアント側で算出）
   | 'avg_special'   // 平均スペシャル
   | 'avg_inked'     // 平均塗り
-  | 'avg_duration'  // 平均バトル時間（秒）
   | 'sum_kill'      // キル数合計
   | 'sum_death'     // デス数合計
   | 'sum_assist'    // アシスト数合計
@@ -529,8 +528,13 @@ export interface CustomChart {
   shape:        ChartShape
   yComposition: YComposition
   groupBy:      GroupByKey
-  /** yComposition='single_metric' のときのみ必要。それ以外は無視される。 */
+  /** yComposition='single_metric' のときのみ必要。それ以外は無視される。
+   *  shape='line' では複数系列（{@link metrics}）を使うため無視される（#436）。 */
   metric?:      MetricKey
+  /** shape='line' の複数系列メトリクス（#436）。上限なし。
+   *  折れ線以外の shape では無視される。読み込み時の後方互換は {@link chartMetrics} を使うこと
+   *  （旧形式の単一 `metric` しか持たない保存済みグラフも 1 要素の配列として解釈する）。 */
+  metrics?:     MetricKey[]
   /** shape='heatmap' のときの Y 軸。groupBy が X 軸となる。 */
   groupBy2?:    GroupByKey
   /** shape='heatmap' で武器軸を選んだときに表示する上位 N。デフォルト 20。 */
@@ -565,6 +569,14 @@ export interface CustomChart {
   xLogScale?:   boolean
   /** scatter の Y 軸をログスケールにするか (#381)。詳細は [xLogScale]。 */
   yLogScale?:   boolean
+}
+
+/** shape='line' の系列メトリクス一覧を取り出す（#436）。
+ *  `metrics` があれば優先し、無ければ旧形式の単一 `metric` を 1 要素の配列として解釈する。
+ *  こうすることで既存の保存済みグラフ（`metric` のみ）は無変更で動く。 */
+export function chartMetrics(chart: CustomChart): MetricKey[] {
+  if (chart.metrics && chart.metrics.length) return chart.metrics
+  return chart.metric ? [chart.metric] : []
 }
 
 /** 数値メトリクス bin 軸（ヒートマップで battle 単位の値を離散化）で使えるカラム (#134)。
@@ -646,7 +658,6 @@ export interface GroupedStatsRow2D {
   avg_assist:   number | null
   avg_special:  number | null
   avg_inked:    number | null
-  avg_duration: number | null
 }
 
 /** GroupedStatsRow2D から指定メトリクスの値を取り出す。`avg_kd` は計算合成。 */
@@ -664,7 +675,6 @@ export function getMetric2D(row: GroupedStatsRow2D, metric: MetricKey): number |
       return row.avg_kill / row.avg_death
     case 'avg_special':  return row.avg_special
     case 'avg_inked':    return row.avg_inked
-    case 'avg_duration': return row.avg_duration
     // 合計系メトリクスは 2D クロス集計では返さない（GroupedStatsRow2D に列がない）。
     case 'sum_kill':
     case 'sum_death':
@@ -696,7 +706,7 @@ export const IMPLEMENTED_SHAPES: ChartShape[] = ['bar', 'line', 'calendar_heatma
  * メトリクスを「色スケールのグループ」に分類する。
  * - count: バトル数・勝数。相対 max-based。
  * - rate:  勝率。固定 0–100% (50% を中央色とした divergent)。
- * - average: K/D/A・スペシャル・塗り・バトル時間。相対 min-max。
+ * - average: K/D/A・スペシャル・塗り。相対 min-max。
  */
 export type MetricGroup = 'count' | 'rate' | 'average'
 export function metricGroup(metric: MetricKey): MetricGroup {
@@ -705,6 +715,33 @@ export function metricGroup(metric: MetricKey): MetricGroup {
       metric === 'sum_assist' || metric === 'sum_inked')        return 'count'
   if (metric === 'win_rate')                                    return 'rate'
   return 'average'
+}
+
+/**
+ * メトリクスを「折れ線グラフの軸グループ」に分類する（#436）。
+ *
+ * ヒートマップ・カレンダーの色スケール分類（{@link metricGroup}）とは別系統。
+ * こちらは「同じ Y 軸に同居できるか」を値域・単位で決める 4 分類：
+ * - per_battle: 平均キル/デス/アシスト/SP・キルレ。0〜15 程度の回数系。
+ * - win_rate:   勝率。0〜100% 固定域。
+ * - count:      バトル数・勝数・キル/デス/アシスト合計。期間依存の整数。
+ * - paint:      平均塗り・塗りP合計。数百〜千 P。
+ *
+ * キルレ (avg_kd) は厳密には無次元比だが、値域が per_battle と同オーダーなので同居させる。
+ */
+export type AxisGroup = 'per_battle' | 'win_rate' | 'count' | 'paint'
+export const AXIS_GROUP_LABELS: Record<AxisGroup, string> = {
+  per_battle: '回/バトル',
+  win_rate:   '勝率',
+  count:      'カウント',
+  paint:      '塗り',
+}
+export function axisGroupOf(metric: MetricKey): AxisGroup {
+  if (metric === 'win_rate') return 'win_rate'
+  if (metric === 'avg_inked' || metric === 'sum_inked') return 'paint'
+  if (metric === 'total' || metric === 'wins' ||
+      metric === 'sum_kill' || metric === 'sum_death' || metric === 'sum_assist') return 'count'
+  return 'per_battle'  // avg_kill / avg_death / avg_assist / avg_kd / avg_special
 }
 
 /** v1.0.0 で実装済みの yComposition（全 shape 共通で扱う最大集合）。 */
@@ -725,6 +762,8 @@ export function autoChartTitle(spec: {
   groupBy2?:        GroupByKey
   yComposition:     YComposition
   metric?:          MetricKey
+  /** shape='line' の複数系列（#436）。指定があれば metric より優先する。 */
+  metrics?:         MetricKey[]
   dotUnit?:         'battle' | 'weapon' | 'stage'
   xMetric?:         string
   yMetric?:         string
@@ -760,7 +799,9 @@ export function autoChartTitle(spec: {
   }
   if (spec.shape === 'line') {
     const bucket = GROUP_BY_LABELS[spec.groupBy]
-    return `${metricLabel} の推移 (${bucket})`
+    const list = spec.metrics && spec.metrics.length ? spec.metrics : (spec.metric ? [spec.metric] : [])
+    const label = list.length ? list.map(m => METRIC_LABELS[m]).join('・') : metricLabel
+    return `${label} の推移 (${bucket})`
   }
 
   // bar (デフォルト)
@@ -791,7 +832,6 @@ export interface GroupedStatsRow {
   avg_assist:    number | null
   avg_special:   number | null
   avg_inked:     number | null
-  avg_duration:  number | null
   sum_kill:      number | null
   sum_death:     number | null
   sum_assist:    number | null
@@ -826,7 +866,6 @@ export const METRIC_LABELS: Record<MetricKey, string> = {
   avg_kd:       'キルレ',
   avg_special:  '平均SP',
   avg_inked:    '平均塗り',
-  avg_duration: '平均バトル時間',
   sum_kill:     'キル数（合計）',
   sum_death:    'デス数（合計）',
   sum_assist:   'アシスト数（合計）',
@@ -860,7 +899,6 @@ export function getMetric(row: GroupedStatsRow, metric: MetricKey): number | nul
       return row.avg_kill / row.avg_death
     case 'avg_special':  return row.avg_special
     case 'avg_inked':    return row.avg_inked
-    case 'avg_duration': return row.avg_duration
     case 'sum_kill':     return row.sum_kill
     case 'sum_death':    return row.sum_death
     case 'sum_assist':   return row.sum_assist
@@ -868,15 +906,10 @@ export function getMetric(row: GroupedStatsRow, metric: MetricKey): number | nul
   }
 }
 
-/** メトリクス値の表示文字列。勝率は %、時間は m:ss、それ以外は小数 2 桁。 */
+/** メトリクス値の表示文字列。勝率は %、それ以外は小数 2 桁。 */
 export function formatMetric(value: number | null, metric: MetricKey): string {
   if (value === null) return '—'
   if (metric === 'win_rate') return `${(value * 100).toFixed(1)}%`
-  if (metric === 'avg_duration') {
-    const m = Math.floor(value / 60)
-    const s = Math.round(value % 60)
-    return `${m}:${String(s).padStart(2, '0')}`
-  }
   if (metric === 'total' || metric === 'wins' ||
       metric === 'sum_kill' || metric === 'sum_death' ||
       metric === 'sum_assist' || metric === 'sum_inked') return value.toLocaleString()

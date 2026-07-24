@@ -37,8 +37,15 @@ function migrateV1(old: CustomChartV1): CustomChart {
     shape:        'bar' as ChartShape,
     yComposition,
     groupBy:      old.groupBy,
-    metric:       old.metric,
+    metric:       fixupAvgDuration(old.metric),
   }
+}
+
+/** #436: `avg_duration` メトリクスは削除されたので、保存済みグラフに残っていたら勝率へ退避する
+ *  （#351 のヒートマップ SUM_METRICS 退避と同じパターン）。型からは既に外れているので
+ *  ここでは未知の文字列として比較する。 */
+function fixupAvgDuration<T extends string | undefined>(m: T): T {
+  return (m === 'avg_duration' ? 'win_rate' : m) as T
 }
 
 /** localStorage から読み込み。新旧両形式を許容し、新形式に正規化して返す。
@@ -59,12 +66,17 @@ export function loadCustomCharts(): CustomChart[] {
       // ここへの追記を忘れると tsc が落ちる。optional フィールドは省略しても
       // 型エラーにならず #381 のログスケールが取りこぼされたため（#390）。
       if (typeof c.shape === 'string' && typeof c.yComposition === 'string') {
+        // #436: metric の avg_duration は勝率へ退避。metrics は同様に退避したうえで重複を除く。
+        const migratedMetrics: MetricKey[] | undefined = Array.isArray(c.metrics)
+          ? Array.from(new Set((c.metrics as string[]).map(fixupAvgDuration))) as MetricKey[]
+          : undefined
         const restored: RestoredChart = {
           id:              c.id,
           shape:           c.shape,
           yComposition:    c.yComposition,
           groupBy:         c.groupBy,
-          metric:          c.metric,
+          metric:          fixupAvgDuration(c.metric),
+          metrics:         migratedMetrics,
           groupBy2:        c.groupBy2,
           topN:            c.topN,
           xNumericMetric:  c.xNumericMetric,

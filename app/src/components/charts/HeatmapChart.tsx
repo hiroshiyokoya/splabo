@@ -214,7 +214,6 @@ export function HeatmapChart({
   const legendColors = group === 'rate' ? RATE_LEGEND_COLORS : seqLegendColors(metric)
   const fmtLegend = (v: number): string => {
     if (metric === 'win_rate') return `${Math.round(v * 100)}%`
-    if (metric === 'avg_duration') return `${Math.round(v)}s`
     if (metric === 'total' || metric === 'wins') return Math.round(v).toString()
     // 範囲は integerRange で整数化済み
     return Math.round(v).toString()

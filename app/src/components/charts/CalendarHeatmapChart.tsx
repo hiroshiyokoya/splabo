@@ -50,7 +50,6 @@ const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'S
 /** メトリクス値を凡例ラベル用に短く整形。 */
 function fmtLegend(v: number, metric: MetricKey): string {
   if (metric === 'win_rate') return `${Math.round(v * 100)}%`
-  if (metric === 'avg_duration') return `${Math.round(v)}s`
   if (metric === 'total' || metric === 'wins' ||
       metric === 'sum_kill' || metric === 'sum_death' ||
       metric === 'sum_assist' || metric === 'sum_inked') return Math.round(v).toString()

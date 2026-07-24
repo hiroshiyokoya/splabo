@@ -1743,6 +1743,12 @@ body {
 }
 .settings-section input[type="number"] { width: 80px; }
 .checkbox-label { flex-direction: row !important; align-items: center; gap: 8px !important; }
+/* 折れ線グラフのメトリクス複数選択（#436）。チェックボックスをグリッド状に並べる。 */
+.metric-checkbox-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px 12px;
+}
 
 /* ── Common ── */
 .btn-primary {
