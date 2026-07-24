@@ -8,15 +8,17 @@
  * 注意: stat.ink ユーザーは一般プレイヤーより熱心な層に偏るため、
  *       データには投稿バイアスがあります。
  */
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { EnvScatterStat, EnvMatrixCell, EnvStatus, EnvVersion, EnvRank } from '../types'
+import type { EnvScatterStat, EnvMatrixCell, EnvStatus, EnvVersion, EnvRank, MetricKey } from '../types'
 import { currentSeasonStart } from '../types'
 import { ScatterChart } from './charts/ScatterChart'
 import type { ScatterPoint } from './charts/ScatterChart'
 import { Heatmap } from './charts/Heatmap'
 import { MultiSelect } from './MultiSelect'
+import { rateCellColor, sequentialCellColor } from '../utils/heatmapColors'
+import { loadEnvPrefs, saveEnvPrefs } from '../utils/envPrefs'
 
 const LOBBY_OPTIONS = [
   { key: '',                  label: 'すべてのロビー' },
@@ -172,8 +174,30 @@ function formatGameVer(v: string): string {
 interface ImportProgress { current: number; total: number; phase: string }
 
 // ---------------------------------------------------------------------------
+// 散布図ツールチップの行（#406）
+// ---------------------------------------------------------------------------
+
+type TooltipRow = { label: string; value: string; muted?: boolean }
+
+/**
+ * X / Y / サイズ / 色 は同じ指標を割り当てられるため（例: サイズと色を両方「勝率」）、
+ * そのまま並べると同じ行が 2 度出る。指標キーで重複排除し、先に積んだ行を優先する
+ * （= X/Y 側が残る）。#388（カスタムグラフ）の dedupe と同じ考え方。
+ */
+function dedupeMetricRows(entries: { key: string; row: TooltipRow }[]): TooltipRow[] {
+  const seen = new Set<string>()
+  const out: TooltipRow[] = []
+  for (const { key, row } of entries) {
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(row)
+  }
+  return out
+}
 
 export function EnvAnalysis() {
+  // 選択状態の永続化（#407）。mount 時に localStorage から一度だけ読む。
+  const [prefs] = useState(loadEnvPrefs)
   const [status, setStatus]           = useState<EnvStatus | null>(null)
   const [importing, setImporting]     = useState(false)
   const [progress, setProgress]       = useState<ImportProgress | null>(null)
@@ -181,41 +205,64 @@ export function EnvAnalysis() {
   const [loading, setLoading]         = useState(false)   // 集計クエリ実行中
 
   // 共通フィルタ（#190: ロビー/ルールは複数選択）
-  const [lobbyKeys, setLobbyKeys] = useState<string[]>([])
-  const [ruleKeys, setRuleKeys]   = useState<string[]>([])
-  const [period, setPeriod]     = useState<Period>('30d')   // 既定は直近30日
-  const [customSince, setCustomSince] = useState('')
-  const [customUntil, setCustomUntil] = useState('')
+  const [lobbyKeys, setLobbyKeys] = useState<string[]>(prefs.lobbyKeys)
+  const [ruleKeys, setRuleKeys]   = useState<string[]>(prefs.ruleKeys)
+  const [period, setPeriod]     = useState<Period>(prefs.period as Period)   // 既定は直近30日
+  const [customSince, setCustomSince] = useState(prefs.customSince)
+  const [customUntil, setCustomUntil] = useState(prefs.customUntil)
 
   // フィルタ拡充（#189）: バージョン / ウデマエ帯 / Xパワー帯
   const [versionOptions, setVersionOptions] = useState<EnvVersion[]>([])
   const [rankOptions, setRankOptions]       = useState<EnvRank[]>([])
-  const [gameVers, setGameVers]       = useState<string[]>([])  // 選択中バージョン（複数）
-  const [posterRanks, setPosterRanks] = useState<string[]>([])  // 選択中ウデマエ帯（複数）
-  const [powerMin, setPowerMin] = useState('')                  // Xパワー下限（空 = 無指定）
-  const [powerMax, setPowerMax] = useState('')                  // Xパワー上限（空 = 無指定）
+  const [gameVers, setGameVers]       = useState<string[]>(prefs.gameVers)      // 選択中バージョン（複数）
+  const [posterRanks, setPosterRanks] = useState<string[]>(prefs.posterRanks)   // 選択中ウデマエ帯（複数）
+  const [powerMin, setPowerMin] = useState(prefs.powerMin)                       // Xパワー下限（空 = 無指定）
+  const [powerMax, setPowerMax] = useState(prefs.powerMax)                       // Xパワー上限（空 = 無指定）
 
   // 可視化モード
-  const [vizMode, setVizMode] = useState<'scatter' | 'heatmap'>('scatter')
+  const [vizMode, setVizMode] = useState<'scatter' | 'heatmap'>(prefs.vizMode)
 
   // 散布図
-  const [groupBy, setGroupBy] = useState<'weapon' | 'stage'>('weapon')
-  const [xKey, setXKey]       = useState<string>('pick_rate')
-  const [yKey, setYKey]       = useState<string>('win_rate')
+  const [groupBy, setGroupBy] = useState<'weapon' | 'stage'>(prefs.groupBy)
+  const [xKey, setXKey]       = useState<string>(prefs.xKey)
+  const [yKey, setYKey]       = useState<string>(prefs.yKey)
+  const [sizeKey, setSizeKey] = useState<string>(prefs.sizeKey)   // 散布図サイズ指標（''=なし・#406）
+  const [colorKey, setColorKey] = useState<string>(prefs.colorKey) // 散布図色指標（''=なし・#406）
   const [scatterData, setScatterData] = useState<EnvScatterStat[]>([])
 
   // ヒートマップ
-  const [rowDim, setRowDim]         = useState('weapon')
-  const [colDim, setColDim]         = useState('stage')
-  const [cellMetric, setCellMetric] = useState<CellMetricKey>('win_rate')
+  const [rowDim, setRowDim]         = useState(prefs.rowDim)
+  const [colDim, setColDim]         = useState(prefs.colDim)
+  const [cellMetric, setCellMetric] = useState<CellMetricKey>(prefs.cellMetric as CellMetricKey)
   const [matrixData, setMatrixData] = useState<EnvMatrixCell[]>([])
 
   const hasData = status !== null && status.total_rows > 0
 
-  // 集計軸を切り替えたら X/Y 指標を既定へ戻す
+  // 選択状態の永続化（#407）。変更のたびに localStorage（+ settings.json ミラー）へ保存する。
+  // mount 直後の初回は復元値をそのまま書き戻すだけなのでスキップ（無駄なミラーを避ける）。
+  const firstSaveRun = useRef(true)
   useEffect(() => {
+    if (firstSaveRun.current) { firstSaveRun.current = false; return }
+    saveEnvPrefs({
+      vizMode, groupBy, xKey, yKey, sizeKey, colorKey,
+      rowDim, colDim, cellMetric,
+      period, customSince, customUntil,
+      lobbyKeys, ruleKeys, gameVers, posterRanks, powerMin, powerMax,
+    })
+  }, [vizMode, groupBy, xKey, yKey, sizeKey, colorKey, rowDim, colDim, cellMetric,
+      period, customSince, customUntil, lobbyKeys, ruleKeys, gameVers, posterRanks, powerMin, powerMax])
+
+  // 集計軸を切り替えたら X/Y・サイズ・色 指標を既定へ戻す。
+  // 「初回だけスキップ」の ref フラグは StrictMode の二重マウントで false のまま
+  // 再マウントされ、復元済みの選択（特に sizeKey/colorKey）を潰す。値の比較で
+  // 実際に groupBy が変わったときだけリセットする（マウント・StrictMode 再マウントは素通し・#407）。
+  const prevGroupBy = useRef(groupBy)
+  useEffect(() => {
+    if (prevGroupBy.current === groupBy) return   // マウント / 変化なし
+    prevGroupBy.current = groupBy
     if (groupBy === 'weapon') { setXKey('pick_rate'); setYKey('win_rate') }
     else                      { setXKey('ko_rate');   setYKey('avg_count') }
+    setSizeKey(''); setColorKey('')   // 指標セットが変わるのでサイズ/色はリセット（#406）
   }, [groupBy])
 
   // ヒートマップ次元を変えたらセル指標の妥当性を保つ
@@ -360,29 +407,83 @@ export function EnvAnalysis() {
   const metrics = groupBy === 'weapon' ? WEAPON_METRICS : STAGE_METRICS
   const xM = metrics.find(m => m.key === xKey) ?? metrics[0]
   const yM = metrics.find(m => m.key === yKey) ?? metrics[1]
-  const usesKda = (xM.kda || yM.kda) ?? false
+  // サイズ・色 指標（#406）。見つからなければ「なし」。
+  const sizeM  = metrics.find(m => m.key === sizeKey)
+  const colorM = metrics.find(m => m.key === colorKey)
+  // KDA 系（A1/B1 母数）の注記は X/Y に加えサイズ・色の指標も対象にする（#406）。
+  const usesKda = (xM.kda || yM.kda || sizeM?.kda || colorM?.kda) ?? false
+
+  // 色指標が sequential のときの正規化レンジ（勝率＝divergent は min/max 不要）。
+  // カスタムグラフ CustomChartCard.colorOfValue と揃える（#406）。
+  const colorRange = useMemo(() => {
+    if (!colorM || colorM.key === 'win_rate') return null
+    let mn = Infinity, mx = -Infinity
+    for (const s of scatterData) {
+      const v = colorM.get(s)
+      if (v == null) continue
+      if (v < mn) mn = v
+      if (v > mx) mx = v
+    }
+    return isFinite(mn) ? { min: mn, max: mx } : null
+  }, [scatterData, colorM])
+
+  // 色指標の値 → セル色。勝率は divergent（rateCellColor）、それ以外は sequential 濃淡。
+  // heatmapColors の共通スケールを流用（CustomChartCard と同じ）。
+  const pointColor = useCallback((v: number | null): string => {
+    if (!colorM || v == null) return 'var(--accent)'
+    if (colorM.key === 'win_rate') return rateCellColor(v)
+    if (!colorRange || colorRange.max <= colorRange.min) return sequentialCellColor(0.5, colorM.key as MetricKey)
+    return sequentialCellColor((v - colorRange.min) / (colorRange.max - colorRange.min), colorM.key as MetricKey)
+  }, [colorM, colorRange])
 
   const points: ScatterPoint[] = useMemo(() => scatterData.map(s => {
     const x = xM.get(s)
     const y = yM.get(s)
+    const sv = sizeM ? sizeM.get(s) : null
+    const cv = colorM ? colorM.get(s) : null
+    const metricRows = dedupeMetricRows([
+      { key: xM.key,    row: { label: xM.label, value: x == null ? '—' : xM.fmt(x) } },
+      { key: yM.key,    row: { label: yM.label, value: y == null ? '—' : yM.fmt(y) } },
+      ...(sizeM  ? [{ key: sizeM.key,  row: { label: sizeM.label,  value: sv == null ? '—' : sizeM.fmt(sv),  muted: true } }] : []),
+      ...(colorM ? [{ key: colorM.key, row: { label: colorM.label, value: cv == null ? '—' : colorM.fmt(cv), muted: true } }] : []),
+    ])
     return {
       name: s.key,
       x, y,
-      size: null,
-      color: 'var(--accent)',
+      size: sv,
+      color: pointColor(cv),
       tooltipRows: [
         { label: groupBy === 'weapon' ? '武器' : 'ステージ', value: s.key },
-        { label: xM.label, value: x == null ? '—' : xM.fmt(x) },
-        { label: yM.label, value: y == null ? '—' : yM.fmt(y) },
+        ...metricRows,
         { label: 'サンプル', value: s.n.toLocaleString() },
       ],
     }
-  }).filter(p => p.x !== null && p.y !== null), [scatterData, xM, yM, groupBy])
+  }).filter(p => p.x !== null && p.y !== null), [scatterData, xM, yM, sizeM, colorM, pointColor, groupBy])
 
   const xDomain = useMemo(() => computeDomain(points.map(p => p.x as number), xM.rate01), [points, xM])
   const yDomain = useMemo(() => computeDomain(points.map(p => p.y as number), yM.rate01), [points, yM])
 
   const cm = CELL_METRICS.find(m => m.key === cellMetric) ?? CELL_METRICS[0]
+
+  // 軸ラベル色付け用の射影値（#405）。行ごと・列ごとに、そのキーの全セルを
+  // サンプル数 n で加重平均する。色スケールはセルと同じものを Heatmap 側で適用する
+  // （Heatmap がセルの min/max で正規化するので、ここでは値だけ渡す）。
+  const { rowProj, colProj } = useMemo(() => {
+    const project = (keyOf: (c: EnvMatrixCell) => string): Map<string, number | null> => {
+      const wSum = new Map<string, number>()   // Σ value*n
+      const nSum = new Map<string, number>()    // Σ n
+      for (const c of matrixData) {
+        if (c.value == null) continue
+        const k = keyOf(c)
+        wSum.set(k, (wSum.get(k) ?? 0) + c.value * c.n)
+        nSum.set(k, (nSum.get(k) ?? 0) + c.n)
+      }
+      const out = new Map<string, number | null>()
+      for (const [k, n] of nSum) out.set(k, n > 0 ? wSum.get(k)! / n : null)
+      return out
+    }
+    return { rowProj: project(c => c.row_key), colProj: project(c => c.col_key) }
+  }, [matrixData])
 
   return (
     <div className="env-analysis">
@@ -533,6 +634,18 @@ export function EnvAnalysis() {
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                   </select>
                 </label>
+                <label>サイズ
+                  <select value={sizeKey} onChange={e => setSizeKey(e.target.value)}>
+                    <option value="">なし</option>
+                    {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                  </select>
+                </label>
+                <label>色
+                  <select value={colorKey} onChange={e => setColorKey(e.target.value)}>
+                    <option value="">なし</option>
+                    {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                  </select>
+                </label>
               </div>
 
               <div className="env-chart-section">
@@ -547,6 +660,7 @@ export function EnvAnalysis() {
                     xDomain={xDomain} yDomain={yDomain}
                     xRefLine={xM.key === 'win_rate' ? 0.5 : undefined}
                     yRefLine={yM.key === 'win_rate' ? 0.5 : undefined}
+                    hasSize={!!sizeM}
                     constSize={300}
                     fillOpacity={0.55}
                     height={440}
@@ -596,6 +710,8 @@ export function EnvAnalysis() {
                     diagonalCols={colDim === 'stage'}
                     rowOrder={rowDim === 'rule' ? RULE_HEATMAP_ORDER : undefined}
                     colOrder={colDim === 'rule' ? RULE_HEATMAP_ORDER : undefined}
+                    rowValue={rowProj}
+                    colValue={colProj}
                   />
                 )}
                 <p className="env-chart-note">
@@ -604,6 +720,7 @@ export function EnvAnalysis() {
                   {cellMetric === 'avg_death' && ' デスは多いほど濃い赤（少ないほど良い）。'}
                   {(cellMetric === 'kill_ratio' || cellMetric === 'contrib_ratio') && ' 1.0 を中心に赤(低)〜青(高)。'}
                   {KDA_CELL_KEYS.includes(cellMetric) && ' ※キル系は記録のある A1・B1 のみを母数にしています。'}
+                  {' 行・列の見出し色は、その軸に射影した平均値（サンプル数で加重）です。'}
                 </p>
               </div>
             </>
