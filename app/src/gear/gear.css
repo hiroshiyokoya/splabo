@@ -239,29 +239,6 @@
     color: var(--text);
   }
 
-  /* タブ行の先頭に置く総数表示（#419）。高さを決めていた .app-header__toolbar が
-     無くなったので、--header-tool-h に頼らず単独で成立させる。 */
-  .app-db-counter {
-    display: inline-flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    flex-shrink: 0;
-    padding: 0.4rem 0.75rem;
-    border-radius: 6px;
-    white-space: nowrap;
-    font-size: 0.8rem;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-    line-height: 1;
-    color: var(--accent-dim);
-    font-variant-numeric: tabular-nums;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  }
-
   .app-db-meta {
     margin: 0;
     flex-shrink: 0;
