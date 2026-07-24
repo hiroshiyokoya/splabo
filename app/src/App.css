@@ -679,18 +679,22 @@ body {
    これで ViewToggle は 3 タブとも見出し行の中に入ったため、かつて .content 直下の
    切替を中身幅に留めていた `.content > .view-toggle { align-self: flex-start }` は
    対象が無くなったので撤去した（#426）。 */
-.battles-header {
+/* 見出し + 表示切替の行。バトル・設定（#428）で共用。 */
+.battles-header,
+.settings-header {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
 }
-.battles-header h2 { font-size: 16px; }
+.battles-header h2,
+.settings-header h2 { font-size: 16px; }
 /* 🔴 align-items: center は **マージンボックス** を中央に揃えるため、
    .view-toggle の margin-bottom がそのまま縦ずれになる（14px の半分＝7px）。
    行の中では下余白を親（見出し行）に持たせて、切替自身のマージンは消す。
    武器・ステージの見出し行でも以前から同じずれが出ていたので一緒に直す。 */
 .battles-header .view-toggle,
+.settings-header .view-toggle,
 .weapon-book-header .view-toggle,
 .stage-book-header .view-toggle { margin-bottom: 0; }
 .view-toggle__btn {
@@ -1705,7 +1709,9 @@ body {
 
 /* ── Settings ── */
 .settings-panel { max-width: 540px; }
-.settings-panel h2 { margin-bottom: 20px; }
+/* 見出しの下余白は .settings-header（flex 行）が 16px で持つ。h2 自身のマージンは
+   align-items: center の縦ずれになるため 0 にする（#428）。 */
+.settings-panel h2 { margin-bottom: 0; }
 .settings-section { margin-bottom: 28px; }
 .settings-section h3 { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
 .settings-note { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }

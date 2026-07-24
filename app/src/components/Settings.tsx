@@ -3,7 +3,9 @@ import { invoke } from '@tauri-apps/api/core'
 import { getVersion } from '@tauri-apps/api/app'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { QRCodeSVG } from 'qrcode.react'
-import type { AppSettings } from '../types'
+import type { AppSettings, SettingsTab } from '../types'
+import { ViewToggle, type ViewToggleOption } from './ViewToggle'
+import { loadViewPrefs, saveViewPrefs } from '../utils/viewPrefs'
 import { THEMES, saveTheme, getThemeId } from '../utils/appSettings'
 import { AI_MODELS, PROVIDER_LABELS, modelDisplayLabel, defaultModelFor, type AiProvider } from '../utils/aiModels'
 import { clearCustomCharts } from '../utils/customCharts'
@@ -27,7 +29,18 @@ interface Props {
   settings: AppSettings
   onSave: (s: AppSettings) => void
   loginVersion: number
+  /** 遷移時に開くサブタブの指定（#428）。認証エラー通知やダッシュボード空状態から
+   *  「設定を開く」で飛ばすとき、目的の項目（Nintendo アカウント）がある連携タブを開かせる。
+   *  nonce を変えるたびに効くので、永続化した選択より優先される（同じ tab を再指定しても発火）。 */
+  focus?: { tab: SettingsTab; nonce: number } | null
 }
+
+/** 設定タブ内のサブタブ（#428）。 */
+const SETTINGS_TABS: readonly ViewToggleOption<SettingsTab>[] = [
+  { key: 'link',    label: '連携', icon: '🔗' },
+  { key: 'data',    label: 'データ', icon: '🗄' },
+  { key: 'display', label: '表示', icon: '🎨' },
+]
 
 /** companion_start の戻り値（Rust companion.rs::CompanionInfo に対応）。 */
 interface CompanionInfo {
@@ -64,7 +77,15 @@ function pairingPayload(info: CompanionInfo): string {
   return JSON.stringify({ v: 1, hosts: info.host_ips, port: info.port, token: info.token })
 }
 
-export function Settings({ settings, onSave, loginVersion }: Props) {
+export function Settings({ settings, onSave, loginVersion, focus }: Props) {
+  // サブタブ（#428）。前回選択を復元し、focus 指定（遷移時の着地）が来たら上書きする。
+  const [subTab, setSubTab] = useState<SettingsTab>(() => loadViewPrefs().settings)
+  // 選択が変わったら永続化。他のタブ内ビュー（バトル/図鑑）と同じ shellViews に相乗り。
+  useEffect(() => { saveViewPrefs({ settings: subTab }) }, [subTab])
+  // 遷移元の着地指定。nonce が変わるたびに効く（同じ tab を再指定しても発火する）ので、
+  // 復元した選択より優先される。
+  useEffect(() => { if (focus) setSubTab(focus.tab) }, [focus])
+
   const [loggedIn, setLoggedIn] = useState(false)
   const [authLoading, setAuthLoading] = useState(false)
   const [themeId, setThemeId] = useState(getThemeId)
@@ -275,8 +296,17 @@ async function handleUploadStatink() {
 
   return (
     <div className="settings-panel">
-      <h2>設定</h2>
+      <div className="settings-header">
+        <h2>設定</h2>
+        <ViewToggle
+          options={SETTINGS_TABS}
+          value={subTab}
+          onChange={setSubTab}
+          ariaLabel="設定の分類切替"
+        />
+      </div>
 
+      {subTab === 'link' && (
       <section className="settings-section">
         <h3>Nintendo アカウント</h3>
         {loggedIn ? (
@@ -297,7 +327,9 @@ async function handleUploadStatink() {
           </div>
         )}
       </section>
+      )}
 
+      {subTab === 'data' && (
       <section className="settings-section">
         <h3>自動取得（有効時はトレイに常駐）</h3>
         <label className="checkbox-label">
@@ -326,7 +358,9 @@ async function handleUploadStatink() {
           </select>
         </label>
       </section>
+      )}
 
+      {subTab === 'link' && (<>
       {/* モバイル同期（コンパニオン）UI は接続先モバイルアプリ（splabo-viewer）公開まで
           リリースビルドでは隠す（行き止まり導線を出さない）。バックエンドは opt-in で
           自動起動しないため同梱のまま。開発ビルド（0.0.0-dev）では表示して開発可能にする。#339 */}
@@ -413,7 +447,9 @@ async function handleUploadStatink() {
         )}
       </section>
       )}
+      </>)}
 
+      {subTab === 'link' && (
       <section className="settings-section">
         <h3>stat.ink 連携</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
@@ -480,7 +516,9 @@ async function handleUploadStatink() {
           )}
         </div>
       </section>
+      )}
 
+      {subTab === 'link' && (
       <section className="settings-section">
         <h3>AI API</h3>
         <label>
@@ -542,7 +580,9 @@ async function handleUploadStatink() {
           価格・コンテキスト長は 2026 年 5 月時点の情報。最新は各プロバイダの公式料金ページを参照してください。
         </p>
       </section>
+      )}
 
+      {subTab === 'display' && (
       <section className="settings-section">
         <h3>ダッシュボード</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
@@ -561,7 +601,9 @@ async function handleUploadStatink() {
           カスタムグラフをすべて削除（ダッシュボードをリセット）
         </button>
       </section>
+      )}
 
+      {subTab === 'data' && (
       <section className="settings-section">
         <h3>マスターデータ</h3>
         <div className="settings-help" style={{ marginBottom: 12 }}>
@@ -587,7 +629,9 @@ async function handleUploadStatink() {
           </div>
         )}
       </section>
+      )}
 
+      {subTab === 'display' && (
       <section className="settings-section">
         <h3>カラーテーマ</h3>
         <div className="theme-options">
@@ -603,7 +647,9 @@ async function handleUploadStatink() {
           ))}
         </div>
       </section>
+      )}
 
+      {subTab === 'display' && (
       <section className="settings-section">
         <h3>ギア</h3>
         <p className="settings-note" style={{ marginTop: 0, marginBottom: 12 }}>
@@ -660,6 +706,7 @@ async function handleUploadStatink() {
           )}
         </div>
       </section>
+      )}
     </div>
   )
 }
