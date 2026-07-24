@@ -422,21 +422,14 @@ export function GearSection() {
     )
   }
 
-  const total = data.head.length + data.clothing.length + data.shoes.length
-
   return (
     <div className="gear-root">
       <div className={`gear-app${comboOpen ? ' gear-app--combo-open' : ''}`}>
         <div ref={appTopRef} className="app-top app-top--sticky">
           {/* 旧アプリ名はメニュー側の「ギア (Geartoon)」に一本化したのでヘッダーごと畳んだ（#419）。
-              唯一の中身だった総数カウンターは、各カテゴリのバッジと並ぶタブ行の先頭に移した。 */}
+              中身だった総数カウンターは、各タブのバッジ（頭/服/靴それぞれの件数）と
+              重複するので出さない。 */}
           <nav className="tabs">
-            <span
-              className="app-db-counter"
-              aria-label={`データに収録されている全ギアは ${total.toLocaleString()} 件です`}
-            >
-              {`全${total.toLocaleString()}ギア取得`}
-            </span>
             {TABS.map(({ key, label, icon }) => (
               <button
                 key={key}

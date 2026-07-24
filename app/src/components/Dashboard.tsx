@@ -248,10 +248,6 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
 
   return (
     <div className="dashboard">
-      <div className="dashboard-header">
-        <h2>ダッシュボード</h2>
-      </div>
-
       {loading ? (
         <div className="loading">読み込み中...</div>
       ) : !summary || totalBattles === 0 ? (

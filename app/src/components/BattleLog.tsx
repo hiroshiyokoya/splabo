@@ -135,10 +135,6 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
 
   return (
     <div className="battle-log book--fill">
-      <div className="log-header">
-        <h2>バトルログ</h2>
-      </div>
-
       {stats && (
         <div className="stat-cards" style={{ marginBottom: 12 }}>
           <LogStatCard label="総バトル数"        value={stats.total.toLocaleString()} />

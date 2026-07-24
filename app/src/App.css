@@ -197,6 +197,7 @@ body {
   color: var(--text-muted);
   cursor: pointer;
   font-size: 13px;
+  font-weight: 700;
   transition: color 0.15s, background 0.15s;
 }
 .nav-item-icon {
@@ -211,7 +212,6 @@ body {
    ラベル領域は 180px - パディング - アイコンで約 118px。 */
 .nav-item-legacy {
   margin-left: 3px;
-  font-weight: 700;
 }
 .nav-item:hover { color: var(--text); background: var(--surface2); }
 .nav-item.active { color: var(--accent); background: var(--surface2); border-left: 2px solid var(--accent); }
@@ -260,14 +260,6 @@ body {
 }
 
 /* ── Dashboard ── */
-.dashboard-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-.dashboard-header h2 { font-size: 16px; }
-
 /* #401: 各カードの span 縮小をビューポートではなくグリッド自身の幅で判定するため、
    グリッドの親（グリッドと同じ幅・padding 無し・レイアウト上は幅が確定している）を
    container query の基準にする。container-type をグリッド自身に張るとグリッドの幅解決が
@@ -562,13 +554,6 @@ body {
 
 /* ── Battle Log ── */
 .battle-log { max-width: 1100px; }
-.log-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-.log-header h2 { font-size: 16px; }
 .total-count { color: var(--text-muted); font-size: 12px; }
 
 .battle-table {
