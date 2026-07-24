@@ -314,12 +314,13 @@ export default function App() {
         <button className="logo" onClick={() => setShowAbout(true)} aria-label="splabo について">
           <img src="/splabo-logo.png" alt="splabo" />
         </button>
-        {/* 並び順: 戦績 → 武器図鑑 → ステージ図鑑 → ギアコーデ → 環境分析 → AI分析 → 設定
-            命名は「対象＋役割」で統一（戦績 / 〜図鑑 / 〜コーデ / 〜分析）。 */}
+        {/* 並び順: 戦績 → 武器図鑑 → ステージ図鑑 → ギア → 環境分析 → AI分析 → 設定
+            命名は「対象＋役割」で統一（〜図鑑 / 〜分析）。旧アプリ由来の 2 つ（戦績 / ギア）は
+            メニューでだけ旧名を併記する（#419）。 */}
         <NavItem id="battles"   icon="⚔️" label="戦績" legacyName="Chartoon" active={tab} onClick={setTab} />
         <NavItem id="weapons"   icon="🔫" label="武器図鑑"       active={tab} onClick={setTab} />
         <NavItem id="stages"    icon="🗺️" label="ステージ図鑑"   active={tab} onClick={setTab} />
-        <NavItem id="gear"      icon="👕" label="ギアコーデ"     active={tab} onClick={setTab} />
+        <NavItem id="gear"      icon="👕" label="ギア" legacyName="Geartoon" active={tab} onClick={setTab} />
         <NavItem id="env"       icon="🌍" label="環境分析"       active={tab} onClick={setTab} />
         <NavItem id="ai"        icon="🧙" label="AI分析"         active={tab} onClick={setTab} />
         <NavItem id="settings"  icon="⚙️" label="設定"           active={tab} onClick={setTab} />

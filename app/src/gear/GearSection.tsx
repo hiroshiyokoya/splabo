@@ -213,7 +213,7 @@ export function GearSection() {
       setUpdatePhase('error')
     }
   }, [updatePhase, isCoolingDown])
-  const [sortKey, setSortKey]       = useState<SortKey>('name')
+  const [sortKey, setSortKey]       = useState<SortKey>('brand')
   const [drawerOpen, setDrawerOpen]       = useState(false)
   const [comboLimit] = useState<ComboLimitValue>(loadComboLimit)
   const [nearLimit]  = useState<NearLimitValue>(loadNearLimit)
@@ -428,26 +428,15 @@ export function GearSection() {
     <div className="gear-root">
       <div className={`gear-app${comboOpen ? ' gear-app--combo-open' : ''}`}>
         <div ref={appTopRef} className="app-top app-top--sticky">
-          <header className="app-header">
-            <div className="app-header__left">
-              {/* 旧アプリ名（geartoon）の名残としてサブタイトルに残す。 */}
-              <p className="app-subtitle">Geartoon</p>
-            </div>
-            <div className="app-header__right">
-              <div className="app-header__toolbar">
-                <span
-                  className="app-db-counter"
-                  aria-label={`データに収録されている全ギアは ${total.toLocaleString()} 件です`}
-                >
-                  {`全${total.toLocaleString()}ギア取得`}
-                </span>
-              </div>
-            </div>
-          </header>
-
-          <div className="header-divider" />
-
+          {/* 旧アプリ名はメニュー側の「ギア (Geartoon)」に一本化したのでヘッダーごと畳んだ（#419）。
+              唯一の中身だった総数カウンターは、各カテゴリのバッジと並ぶタブ行の先頭に移した。 */}
           <nav className="tabs">
+            <span
+              className="app-db-counter"
+              aria-label={`データに収録されている全ギアは ${total.toLocaleString()} 件です`}
+            >
+              {`全${total.toLocaleString()}ギア取得`}
+            </span>
             {TABS.map(({ key, label, icon }) => (
               <button
                 key={key}

@@ -120,16 +120,9 @@
     -webkit-backdrop-filter: blur(6px);
   }
 
-  .app-top--sticky .app-header {
-    padding-top: 1.25rem;
-    padding-bottom: 1rem;
-  }
-
-  .app-top--sticky .header-divider {
-    margin-bottom: 1rem;
-  }
-
+  /* ヘッダーを畳んだので（#419）、上余白はヘッダーが持っていた分をタブ行が引き継ぐ。 */
   .app-top--sticky .tabs {
+    padding-top: 1.25rem;
     margin-bottom: 1rem;
     padding-bottom: 0.75rem;
   }
@@ -290,16 +283,16 @@
     color: var(--text);
   }
 
+  /* タブ行の先頭に置く総数表示（#419）。高さを決めていた .app-header__toolbar が
+     無くなったので、--header-tool-h に頼らず単独で成立させる。 */
   .app-db-counter {
     display: inline-flex;
     flex-direction: row;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    height: var(--header-tool-h);
-    min-height: var(--header-tool-h);
     flex-shrink: 0;
-    padding: 0 0.75rem;
+    padding: 0.4rem 0.75rem;
     border-radius: 6px;
     white-space: nowrap;
     font-size: 0.8rem;
