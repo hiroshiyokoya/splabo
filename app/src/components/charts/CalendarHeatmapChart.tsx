@@ -28,6 +28,10 @@ const CELL_MIN = CELL
 /** セルの上限。直近 7 日のように列が 2〜3 本しか無いと、幅いっぱいに広げる計算では
  *  セルが 100px 超になってカレンダーに見えなくなるので止める（残る余白は許容する）。 */
 const CELL_MAX = 24
+/** セル幅を合わせる基準にする列数の上限＝約 1 年ぶん（#431）。
+ *  53 週 + 月境界の空列 12。データがこれより長くなっても、見える幅は 1 年ぶんに保ち、
+ *  古いぶんは横スクロールで見に行く。CustomChartCard.calendarEstimatedWidth の見積もりと揃える。 */
+const VISIBLE_COLS_MAX = 65
 /** グリッド左端（曜日ラベルぶんのオフセット）。 */
 const GRID_LEFT = 22
 /** 1 日 = ミリ秒。 */
@@ -218,12 +222,16 @@ export function CalendarHeatmapChart({
   // セルはカード幅いっぱいまで広げる（#429）。SVG が固定幅だとカードとの差がそのまま
   // 右の死に幅になっていた（1 年 × 3 トラックで約 119px）。
   //
-  //   幅 = GRID_LEFT + maxCol * (cell + GAP) + cell + 8   … これを availW に一致させる
+  //   幅 = GRID_LEFT + cols * (cell + GAP) + cell + 8   … これを availW に一致させる
   //
-  // 下限で止まったとき（コンテナが狭い）は従来どおり幅が余って横スクロールになり、
-  // 上限で止まったとき（列が数本しかない）は余白が残る。どちらも意図した挙動。
+  // 🔴 セル幅を合わせる列数は最長 1 年（VISIBLE_COLS_MAX）で頭打ちにする（#431）。
+  // データが増えるほど列が増え、幅いっぱいに合わせるとセルが際限なく縮む（下限 16px に
+  // 張り付き、期間によって見た目が変わる）。1 年ぶんの列数を基準にすれば、見える幅が
+  // ちょうど 1 年になり、それより古いデータは横スクロールで見に行く形になる。
+  // SVG 全体幅（後述の width）は実データの maxCol から出すので、スクロール領域は保たれる。
+  const fitCols = Math.min(maxCol, VISIBLE_COLS_MAX)
   const cell = availW > 0
-    ? Math.min(CELL_MAX, Math.max(CELL_MIN, (availW - GRID_LEFT - maxCol * GAP - 8) / (maxCol + 1)))
+    ? Math.min(CELL_MAX, Math.max(CELL_MIN, (availW - GRID_LEFT - fitCols * GAP - 8) / (fitCols + 1)))
     : CELL
   const pitch = cell + GAP
   const GRID_HEIGHT = 7 * pitch
