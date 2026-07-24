@@ -261,7 +261,7 @@ async function handleUploadStatink() {
   async function handleDeleteGearData() {
     if (!window.confirm(
       '取得済みのギアデータ（ギア一覧・画像キャッシュ）をすべて削除します。\n' +
-      '削除後はギアタブが空になり、再度「データ更新」から取得が必要です。実行しますか？'
+      '削除後はギアタブが空になり、再度サイドバーの「最新データを取得」から取得が必要です。実行しますか？'
     )) return
     setGearDeleting(true)
     setGearDeleteResult(null)
@@ -338,7 +338,7 @@ async function handleUploadStatink() {
             checked={settings.autoFetchEnabled}
             onChange={(e) => update({ autoFetchEnabled: e.target.checked })}
           />
-          自動でバトルデータを取得する
+          自動でバトル・ギアデータを取得する
         </label>
         <label>
           取得間隔

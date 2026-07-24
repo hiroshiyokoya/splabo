@@ -464,7 +464,7 @@ pub async fn fetch_gear_full(app: AppHandle) -> Result<GearFetchResult, String> 
         "[gear] 取得完了 頭 {} / 服 {} / 靴 {} / スキル {} → {}",
         result.head, result.clothing, result.shoes, result.skills, result.db_path
     );
-    // 取得元（ギアタブの「データ更新」/ サイドバーの一括取得）を問わず、
+    // 取得元（サイドバー一括 / 空状態 CTA / 起動時・自動取得 / コンパニオン）を問わず、
     // フロントのギア一覧を再読み込みさせるためのイベントを発火する。
     let _ = app.emit("gear_updated", ());
     Ok(result)

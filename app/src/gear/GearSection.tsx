@@ -144,8 +144,9 @@ export function GearSection() {
     initAppSettings()
   }, [])
 
-  // どこからギアを取得しても（ギアタブの「データ更新」/ サイドバーの一括取得）、
-  // Rust が発火する gear_updated イベントで最終取得日時の更新と一覧の再読み込みを一元化する。
+  // どこからギアを取得しても（サイドバーの「最新データを取得」/ 空状態の「認証・データ取得」/
+  // 起動時・自動取得 / コンパニオン更新）、Rust が発火する gear_updated イベントで
+  // 最終取得日時の更新と一覧の再読み込みを一元化する。
   useEffect(() => {
     if (!isTauri()) return
     let un: (() => void) | undefined

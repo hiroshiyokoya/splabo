@@ -189,7 +189,11 @@ pub fn run() {
                             if auth::is_logged_in(&handle) {
                                 log::info!("[起動時取得] 開始");
                                 match run_fetch_full(&handle, &pool).await {
-                                    Ok((b, d, u)) => log::info!("[起動時取得] 完了 バトル+{b}件 詳細+{d}件 stat.ink+{u}件"),
+                                    Ok((b, d, u)) => {
+                                        log::info!("[起動時取得] 完了 バトル+{b}件 詳細+{d}件 stat.ink+{u}件");
+                                        // サイドバー手動取得と同じく、バトル成功後にギアも best-effort（#440）。
+                                        fetch_gear_best_effort(&handle, "起動時取得").await;
+                                    }
                                     Err(e)        => log::error!("[起動時取得] 失敗: {e}"),
                                 }
                             } else {
@@ -236,6 +240,8 @@ pub fn run() {
                             match run_fetch_full(&handle, &pool).await {
                                 Ok((b, _, u)) => {
                                     log::info!("[自動取得] 完了 バトル+{b}件 stat.ink+{u}件");
+                                    // サイドバー手動取得と同じく、バトル成功後にギアも best-effort（#440）。
+                                    fetch_gear_best_effort(&handle, "自動取得").await;
                                     send_notification(&handle, b);
                                 }
                                 Err(e) => {
@@ -261,6 +267,9 @@ pub fn run() {
 /// その**後**に stat.ink 自動アップロードを best-effort で行う。
 /// 開始時に "fetch_start"、終了時に "fetch_finish" イベントを emit する（成功・失敗共通）。
 /// 成功時はさらに "fetch_complete" を emit する（既存の lastFetchedAt 更新リスナー用）。
+///
+/// ギア取得は含めない。起動時・自動取得・サイドバーは呼び出し側で `fetch_gear_best_effort`
+/// を後続実行する（#440）。コンパニオンの battle-only 経路を壊さないため本体には入れない。
 ///
 /// # 「取得中」表示とアップロードの分離（#402）
 /// stat.ink アップロードは取得そのものとは別物（すでに DB へ保存済みのバトルを送るだけ）。
@@ -585,6 +594,18 @@ fn show_window(app: &AppHandle) {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
+    }
+}
+
+/// バトル取得成功後のギア取得（#440）。失敗しても呼び出し元のバトル成功は維持する。
+/// サイドバー手動取得（`App.tsx` の `handleFetchFull`）と同じ best-effort 方針。
+async fn fetch_gear_best_effort(app: &AppHandle, context: &str) {
+    match gear::fetch_gear_full(app.clone()).await {
+        Ok(g) => log::info!(
+            "[{context}] ギア完了 頭+{} 服+{} 靴+{}",
+            g.head, g.clothing, g.shoes
+        ),
+        Err(e) => log::warn!("[{context}] ギア失敗（バトル取得は成功のまま）: {e}"),
     }
 }
 
