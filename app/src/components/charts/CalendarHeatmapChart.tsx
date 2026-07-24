@@ -23,6 +23,15 @@ import {
 const CELL  = 16
 const GAP   = 3
 const PITCH = CELL + GAP
+/** セルの下限＝素のサイズ。これより狭いコンテナでは広げず、従来どおり横スクロールさせる（#429）。 */
+const CELL_MIN = CELL
+/** セルの上限。直近 7 日のように列が 2〜3 本しか無いと、幅いっぱいに広げる計算では
+ *  セルが 100px 超になってカレンダーに見えなくなるので止める（残る余白は許容する）。 */
+const CELL_MAX = 24
+/** セル幅を合わせる基準にする列数の上限＝約 1 年ぶん（#431）。
+ *  53 週 + 月境界の空列 12。データがこれより長くなっても、見える幅は 1 年ぶんに保ち、
+ *  古いぶんは横スクロールで見に行く。CustomChartCard.calendarEstimatedWidth の見積もりと揃える。 */
+const VISIBLE_COLS_MAX = 65
 /** グリッド左端（曜日ラベルぶんのオフセット）。 */
 const GRID_LEFT = 22
 /** 1 日 = ミリ秒。 */
@@ -101,6 +110,19 @@ export function CalendarHeatmapChart({
   // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
   const [hover, setHover] = useState<{ mx: number; my: number; date: string; value: number | null; total: number; wins: number; draws: number } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // カード幅に合わせてセルを広げるための実測幅（#429）。0 = 未計測（素のサイズで描く）。
+  // ウィンドウリサイズやサイドバー幅の変化にも追従させたいので ResizeObserver で見る。
+  const [availW, setAvailW] = useState(0)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const ro = new ResizeObserver(entries => {
+      for (const e of entries) setAvailW(e.contentRect.width)
+    })
+    ro.observe(el)
+    setAvailW(el.clientWidth)
+    return () => ro.disconnect()
+  }, [])
   // サンプル不足セルのハッチ用。同一ページに複数チャートが載るので id は一意にする（#351）。
   const sparseId = `sparse-${useId()}`
 
@@ -196,13 +218,29 @@ export function CalendarHeatmapChart({
   }
 
   const GRID_TOP = 32
-  const GRID_HEIGHT = 7 * PITCH
+
+  // セルはカード幅いっぱいまで広げる（#429）。SVG が固定幅だとカードとの差がそのまま
+  // 右の死に幅になっていた（1 年 × 3 トラックで約 119px）。
+  //
+  //   幅 = GRID_LEFT + cols * (cell + GAP) + cell + 8   … これを availW に一致させる
+  //
+  // 🔴 セル幅を合わせる列数は最長 1 年（VISIBLE_COLS_MAX）で頭打ちにする（#431）。
+  // データが増えるほど列が増え、幅いっぱいに合わせるとセルが際限なく縮む（下限 16px に
+  // 張り付き、期間によって見た目が変わる）。1 年ぶんの列数を基準にすれば、見える幅が
+  // ちょうど 1 年になり、それより古いデータは横スクロールで見に行く形になる。
+  // SVG 全体幅（後述の width）は実データの maxCol から出すので、スクロール領域は保たれる。
+  const fitCols = Math.min(maxCol, VISIBLE_COLS_MAX)
+  const cell = availW > 0
+    ? Math.min(CELL_MAX, Math.max(CELL_MIN, (availW - GRID_LEFT - fitCols * GAP - 8) / (fitCols + 1)))
+    : CELL
+  const pitch = cell + GAP
+  const GRID_HEIGHT = 7 * pitch
 
   /** 列インデックス → x 座標。 */
-  const colX = (col: number) => GRID_LEFT + col * PITCH
+  const colX = (col: number) => GRID_LEFT + col * pitch
 
   // 月境界で列がずれるぶん、幅は最大列インデックスから算出する
-  const width  = Math.max(colX(maxCol) + CELL + 8, 280)
+  const width  = Math.max(colX(maxCol) + cell + 8, 280)
   const height = GRID_TOP + GRID_HEIGHT + 8
 
   // カレンダーは左が古い・右が最新。初期表示・データ更新時に最新（右端）が見えるよう右端へスクロール。
@@ -241,7 +279,7 @@ export function CalendarHeatmapChart({
           <text
             key={lbl}
             x={4}
-            y={GRID_TOP + i * PITCH + CELL * 0.75}
+            y={GRID_TOP + i * pitch + cell * 0.75}
             fontSize={9}
             fontWeight={600}
             fill="var(--text)"
@@ -263,9 +301,9 @@ export function CalendarHeatmapChart({
               key={dateStr}
               className="cal-cell"
               x={colX(col)}
-              y={GRID_TOP + row * PITCH}
-              width={CELL}
-              height={CELL}
+              y={GRID_TOP + row * pitch}
+              width={cell}
+              height={cell}
               rx={2}
               fill={fill}
               onMouseEnter={(e) => setHover({ mx: e.clientX, my: e.clientY, date: dateStr, value: v, total, wins, draws })}
@@ -283,6 +321,8 @@ export function CalendarHeatmapChart({
           const fills = group === 'count'
             ? ['var(--cell-count-empty)', ...legendColors]
             : legendColors
+          // 凡例はグリッドとは別物なので固定サイズのまま（#429）。ここまで可変にすると
+          // スウォッチが 24px に膨らんで不格好になる。
           const barWidth = fills.length * PITCH - GAP
           return (
             <svg className="cal-legend-bar" width={barWidth} height={CELL}>
