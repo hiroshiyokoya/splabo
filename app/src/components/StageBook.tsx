@@ -150,13 +150,13 @@ export function StageBook({ filters }: { filters: Filters }) {
   return (
     <div className={`stage-book${view === 'list' ? ' book--fill' : ''}`}>
       <div className="stage-book-header">
-        <h2>ステージ図鑑</h2>
+        <h2>ステージ</h2>
         <span className="total-count">{filtered.length} ステージ</span>
         <ViewToggle
           options={BOOK_VIEWS}
           value={view}
           onChange={setView}
-          ariaLabel="ステージ図鑑の表示切替"
+          ariaLabel="ステージの表示切替"
         />
         {view === 'list' ? (
           <input

@@ -247,7 +247,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
   return (
     <div className={`weapon-book${view === 'list' ? ' book--fill' : ''}`}>
       <div className="weapon-book-header">
-        <h2>武器図鑑</h2>
+        <h2>武器</h2>
         <span className="total-count">{filtered.length} 種</span>
         {hasFilter && (
           <button className="filter-reset-btn" onClick={reset} style={{ marginLeft: 8 }}>✕ リセット</button>
@@ -256,7 +256,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
           options={BOOK_VIEWS}
           value={view}
           onChange={setView}
-          ariaLabel="武器図鑑の表示切替"
+          ariaLabel="武器の表示切替"
         />
         {view === 'panel' && (
           <div className="weapon-book-sort">

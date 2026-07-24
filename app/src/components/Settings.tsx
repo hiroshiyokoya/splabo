@@ -462,7 +462,7 @@ async function handleUploadStatink() {
           )}
         </div>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '16px 0 10px' }}>
-          stat.ink に保存済みの自分の過去バトルを chartoon に取り込みます。
+          stat.ink に保存済みの自分の過去バトルをデータベースに取り込みます。
           SplatNet 3 が保持しない古いバトルも集計対象にできます（重複は自動でスキップ）。
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

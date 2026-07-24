@@ -293,13 +293,13 @@ export default function App() {
     setFetching(true)
     try {
       await invoke('fetch_battles_full')
-      // 統合: サイドバーの取得で戦績に続けてギアも取得する。
-      // ギアの失敗は戦績取得と独立に通知し、戦績取得の成功は保つ。
+      // 統合: サイドバーの取得でバトルに続けてギアも取得する。
+      // ギアの失敗はバトル取得と独立に通知し、バトル取得の成功は保つ。
       try {
         await invoke('fetch_gear_full')
       } catch (gearErr) {
         console.error('gear fetch failed:', gearErr)
-        notify({ kind: 'warning', title: 'ギアの取得に失敗しました', message: '戦績は取得できました。ギアは時間をおいて「最新データを取得」からもう一度取得してください。', durationMs: 6000 })
+        notify({ kind: 'warning', title: 'ギアの取得に失敗しました', message: 'バトルは取得できました。ギアは時間をおいて「最新データを取得」からもう一度取得してください。', durationMs: 6000 })
       }
     } catch (e) {
       reportFetchError(e, handleFetchFull)
@@ -314,12 +314,13 @@ export default function App() {
         <button className="logo" onClick={() => setShowAbout(true)} aria-label="splabo について">
           <img src="/splabo-logo.png" alt="splabo" />
         </button>
-        {/* 並び順: 戦績 → 武器図鑑 → ステージ図鑑 → ギアコーデ → 環境分析 → AI分析 → 設定
-            命名は「対象＋役割」で統一（戦績 / 〜図鑑 / 〜コーデ / 〜分析）。 */}
-        <NavItem id="battles"   icon="⚔️" label="戦績"           active={tab} onClick={setTab} />
-        <NavItem id="weapons"   icon="🔫" label="武器図鑑"       active={tab} onClick={setTab} />
-        <NavItem id="stages"    icon="🗺️" label="ステージ図鑑"   active={tab} onClick={setTab} />
-        <NavItem id="gear"      icon="👕" label="ギアコーデ"     active={tab} onClick={setTab} />
+        {/* 並び順: バトル → 武器 → ステージ → ギア → 環境分析 → AI分析 → 設定
+            扱う対象をそのまま名前にする。旧アプリ由来の 2 つ（バトル / ギア）は
+            メニューでだけ旧名を併記する（#419）。 */}
+        <NavItem id="battles"   icon="⚔️" label="バトル" legacyName="Chartoon" active={tab} onClick={setTab} />
+        <NavItem id="weapons"   icon="🔫" label="武器"           active={tab} onClick={setTab} />
+        <NavItem id="stages"    icon="🗺️" label="ステージ"       active={tab} onClick={setTab} />
+        <NavItem id="gear"      icon="👕" label="ギア" legacyName="Geartoon" active={tab} onClick={setTab} />
         <NavItem id="env"       icon="🌍" label="環境分析"       active={tab} onClick={setTab} />
         <NavItem id="ai"        icon="🧙" label="AI分析"         active={tab} onClick={setTab} />
         <NavItem id="settings"  icon="⚙️" label="設定"           active={tab} onClick={setTab} />
@@ -346,7 +347,7 @@ export default function App() {
               options={BATTLES_VIEWS}
               value={battlesView}
               onChange={setBattlesView}
-              ariaLabel="戦績の表示切替"
+              ariaLabel="バトルの表示切替"
             />
             {battlesView === 'dashboard' ? (
               <Dashboard
@@ -379,11 +380,17 @@ export default function App() {
   )
 }
 
-function NavItem({ id, icon, label, active, onClick }: { id: Tab; icon: string; label: string; active: Tab; onClick: (t: Tab) => void }) {
+function NavItem({ id, icon, label, legacyName, active, onClick }: { id: Tab; icon: string; label: string; legacyName?: string; active: Tab; onClick: (t: Tab) => void }) {
   return (
     <button className={`nav-item ${active === id ? 'active' : ''}`} onClick={() => onClick(id)}>
       <span className="nav-item-icon" aria-hidden="true">{icon}</span>
-      <span className="nav-item-label">{label}</span>
+      <span className="nav-item-label">
+        {label}
+        {/* 旧アプリ由来のタブ（バトル＝Chartoon / ギア＝Geartoon）に添える旧アプリ名。
+            タブの中は絞り込み窓を図鑑と揃えている都合で置き場所が無いため、メニューに一本化した。
+            aria からは外す（読み上げでは日本語名だけで十分）。 */}
+        {legacyName && <span className="nav-item-legacy" aria-hidden="true">({legacyName})</span>}
+      </span>
     </button>
   )
 }

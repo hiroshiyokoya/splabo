@@ -213,7 +213,7 @@ export function GearSection() {
       setUpdatePhase('error')
     }
   }, [updatePhase, isCoolingDown])
-  const [sortKey, setSortKey]       = useState<SortKey>('name')
+  const [sortKey, setSortKey]       = useState<SortKey>('brand')
   const [drawerOpen, setDrawerOpen]       = useState(false)
   const [comboLimit] = useState<ComboLimitValue>(loadComboLimit)
   const [nearLimit]  = useState<NearLimitValue>(loadNearLimit)
@@ -422,31 +422,13 @@ export function GearSection() {
     )
   }
 
-  const total = data.head.length + data.clothing.length + data.shoes.length
-
   return (
     <div className="gear-root">
       <div className={`gear-app${comboOpen ? ' gear-app--combo-open' : ''}`}>
         <div ref={appTopRef} className="app-top app-top--sticky">
-          <header className="app-header">
-            <div className="app-header__left">
-              {/* 旧アプリ名（geartoon）の名残としてサブタイトルに残す。 */}
-              <p className="app-subtitle">Geartoon</p>
-            </div>
-            <div className="app-header__right">
-              <div className="app-header__toolbar">
-                <span
-                  className="app-db-counter"
-                  aria-label={`データに収録されている全ギアは ${total.toLocaleString()} 件です`}
-                >
-                  {`全${total.toLocaleString()}ギア取得`}
-                </span>
-              </div>
-            </div>
-          </header>
-
-          <div className="header-divider" />
-
+          {/* 旧アプリ名はメニュー側の「ギア (Geartoon)」に一本化したのでヘッダーごと畳んだ（#419）。
+              中身だった総数カウンターは、各タブのバッジ（頭/服/靴それぞれの件数）と
+              重複するので出さない。 */}
           <nav className="tabs">
             {TABS.map(({ key, label, icon }) => (
               <button
