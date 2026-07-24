@@ -295,7 +295,7 @@ export default function App() {
     setBattlesView('dashboard')
   }
 
-  // サイドバーから呼ばれる「バトルデータ更新」処理
+  // サイドバーから呼ばれる「最新データを取得」処理（バトル → ギア best-effort）
   async function handleFetchFull() {
     if (fetching) return
     setFetching(true)
