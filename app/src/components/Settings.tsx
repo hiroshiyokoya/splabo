@@ -35,11 +35,12 @@ interface Props {
   focus?: { tab: SettingsTab; nonce: number } | null
 }
 
-/** 設定タブ内のサブタブ（#428）。 */
+/** 設定タブ内のサブタブ（#428 / #434）。AI を右端に追加。 */
 const SETTINGS_TABS: readonly ViewToggleOption<SettingsTab>[] = [
   { key: 'link',    label: '連携', icon: '🔗' },
   { key: 'data',    label: 'データ', icon: '🗄' },
   { key: 'display', label: '表示', icon: '🎨' },
+  { key: 'ai',      label: 'AI',   icon: '🤖' },
 ]
 
 /** companion_start の戻り値（Rust companion.rs::CompanionInfo に対応）。 */
@@ -306,6 +307,7 @@ async function handleUploadStatink() {
         />
       </div>
 
+      {/* ── 連携: Nintendo → stat.ink → モバイル同期 ── */}
       {subTab === 'link' && (
       <section className="settings-section">
         <h3>Nintendo アカウント</h3>
@@ -328,126 +330,6 @@ async function handleUploadStatink() {
         )}
       </section>
       )}
-
-      {subTab === 'data' && (
-      <section className="settings-section">
-        <h3>自動取得（有効時はトレイに常駐）</h3>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={settings.autoFetchEnabled}
-            onChange={(e) => update({ autoFetchEnabled: e.target.checked })}
-          />
-          自動でバトルデータを取得する
-        </label>
-        <label>
-          取得間隔
-          <select
-            value={settings.autoFetchIntervalMin}
-            onChange={(e) => update({ autoFetchIntervalMin: Number(e.target.value) })}
-            disabled={!settings.autoFetchEnabled}
-          >
-            <option value={15}>15分ごと</option>
-            <option value={30}>30分ごと</option>
-            <option value={60}>1時間ごと</option>
-            <option value={120}>2時間ごと</option>
-            <option value={240}>4時間ごと</option>
-            <option value={360}>6時間ごと</option>
-            <option value={720}>12時間ごと</option>
-            <option value={1440}>24時間ごと</option>
-          </select>
-        </label>
-      </section>
-      )}
-
-      {subTab === 'link' && (<>
-      {/* モバイル同期（コンパニオン）UI は接続先モバイルアプリ（splabo-viewer）公開まで
-          リリースビルドでは隠す（行き止まり導線を出さない）。バックエンドは opt-in で
-          自動起動しないため同梱のまま。開発ビルド（0.0.0-dev）では表示して開発可能にする。#339 */}
-      {isDevBuild && (
-      <section className="settings-section">
-        <h3>モバイル同期（コンパニオン）</h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
-          同じ Wi-Fi のスマホアプリ「SpLabo」へ、取得済みのギア・直近バトルデータを配信します。
-          任天堂 API には一切アクセスしません。有効な間だけ配信し、アプリ終了で自動的に止まります。
-        </p>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={companionInfo !== null}
-            disabled={companionBusy}
-            onChange={(e) => handleToggleCompanion(e.target.checked)}
-          />
-          モバイル同期を有効にする
-        </label>
-        {companionError && (
-          <p style={{ color: 'var(--lose)', fontSize: 13, margin: '8px 0 0' }}>
-            エラー: {companionError}
-          </p>
-        )}
-        {companionInfo && (
-          <div style={{ marginTop: 14 }}>
-            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
-              スマホの「SpLabo」でこの QR コードを読み取ってペアリングしてください。
-            </p>
-            <div
-              style={{
-                display: 'inline-block',
-                padding: 12,
-                background: '#fff',
-                borderRadius: 8,
-              }}
-            >
-              <QRCodeSVG value={pairingPayload(companionInfo)} size={192} level="M" />
-            </div>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '10px 0 0' }}>
-              接続先: {companionInfo.host_ips.length > 0 ? companionInfo.host_ips.join(', ') : '（IP 不明）'}
-              {' : '}{companionInfo.port}
-            </p>
-            {companionInfo.host_ips.length === 0 && (
-              <p style={{ color: 'var(--lose)', fontSize: 12, margin: '4px 0 0' }}>
-                ⚠ LAN の IP アドレスが取得できませんでした。Wi-Fi 接続を確認してください。
-              </p>
-            )}
-            {companionDiag?.network_category === 'public' && (
-              <div
-                style={{
-                  color: 'var(--lose)',
-                  fontSize: 12,
-                  margin: '8px 0 0',
-                  lineHeight: 1.6,
-                }}
-              >
-                ⚠ このネットワークが Windows で「パブリック」に設定されています。
-                この状態だと Windows ファイアウォールがスマホからの接続を遮断し、QR を読んでも
-                つながりません。<strong>「プライベート ネットワーク」に変更</strong>してください
-                （設定 → ネットワークとインターネット → 現在の接続 → ネットワーク プロファイルの種類）。
-                初回接続時に許可ダイアログが出たら、<strong>プライベートにチェックして許可</strong>します。
-              </div>
-            )}
-            <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '8px 0 0', lineHeight: 1.6 }}>
-              QR を読んでもつながらない場合、ネットワークが「プライベート」でも
-              Windows ファイアウォールの<strong>受信許可がパブリック用にしか無い</strong>ことがあります
-              （以前パブリックの状態で許可したまま、あとからプライベートに変更した場合）。
-              許可規則はプロファイルごとに効くため引き継がれません。
-              <code>wf.msc</code> →「受信の規則」→ <strong>splabo</strong> → プロパティ → 詳細設定タブ →
-              プロファイルで<strong>プライベートにチェック</strong>してください。
-              <strong>splabo の規則は通常 2 つ（TCP / UDP）あるので、すべて確認</strong>します。
-            </p>
-            <p style={{ fontSize: 12, margin: '8px 0 0' }}>
-              <a
-                href={FIREWALL_HELP_URL}
-                onClick={e => { e.preventDefault(); openUrl(FIREWALL_HELP_URL).catch(console.error) }}
-                style={{ color: 'var(--accent)', cursor: 'pointer' }}
-              >
-                つながらないときは（ファイアウォール / ネットワークの確認・詳しい手順）
-              </a>
-            </p>
-          </div>
-        )}
-      </section>
-      )}
-      </>)}
 
       {subTab === 'link' && (
       <section className="settings-section">
@@ -518,7 +400,259 @@ async function handleUploadStatink() {
       </section>
       )}
 
-      {subTab === 'link' && (
+      {/* モバイル同期 UI は splabo-viewer 公開までリリースビルドでは隠す（#339）。 */}
+      {subTab === 'link' && isDevBuild && (
+      <section className="settings-section">
+        <h3>モバイル同期（コンパニオン）</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+          同じネットワーク（Wi-Fi ルーターや有線 LAN）上のスマホアプリ「SpLabo viewer」へ、
+          取得済みのギア・直近バトルデータを配信します。
+          任天堂 API には一切アクセスしません。有効な間だけ配信し、アプリ終了で自動的に止まります。
+        </p>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={companionInfo !== null}
+            disabled={companionBusy}
+            onChange={(e) => handleToggleCompanion(e.target.checked)}
+          />
+          モバイル同期を有効にする
+        </label>
+        {companionError && (
+          <p style={{ color: 'var(--lose)', fontSize: 13, margin: '8px 0 0' }}>
+            エラー: {companionError}
+          </p>
+        )}
+        {companionInfo && (
+          <div style={{ marginTop: 14 }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+              スマホの「SpLabo viewer」でこの QR コードを読み取ってペアリングしてください。
+            </p>
+            <div
+              style={{
+                display: 'inline-block',
+                padding: 12,
+                background: '#fff',
+                borderRadius: 8,
+              }}
+            >
+              <QRCodeSVG value={pairingPayload(companionInfo)} size={192} level="M" />
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '10px 0 0' }}>
+              接続先: {companionInfo.host_ips.length > 0 ? companionInfo.host_ips.join(', ') : '（IP 不明）'}
+              {' : '}{companionInfo.port}
+            </p>
+            {companionInfo.host_ips.length === 0 && (
+              <p style={{ color: 'var(--lose)', fontSize: 12, margin: '4px 0 0' }}>
+                ⚠ LAN の IP アドレスが取得できませんでした。ネットワーク接続を確認してください。
+              </p>
+            )}
+            {companionDiag?.network_category === 'public' && (
+              <div
+                style={{
+                  color: 'var(--lose)',
+                  fontSize: 12,
+                  margin: '8px 0 0',
+                  lineHeight: 1.6,
+                }}
+              >
+                ⚠ このネットワークが Windows で「パブリック」に設定されています。
+                この状態だと Windows ファイアウォールがスマホからの接続を遮断し、QR を読んでも
+                つながりません。<strong>「プライベート ネットワーク」に変更</strong>してください
+                （設定 → ネットワークとインターネット → 現在の接続 → ネットワーク プロファイルの種類）。
+                初回接続時に許可ダイアログが出たら、<strong>プライベートにチェックして許可</strong>します。
+              </div>
+            )}
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '8px 0 0', lineHeight: 1.6 }}>
+              QR を読んでもつながらない場合、ネットワークが「プライベート」でも
+              Windows ファイアウォールの<strong>受信許可がパブリック用にしか無い</strong>ことがあります
+              （以前パブリックの状態で許可したまま、あとからプライベートに変更した場合）。
+              許可規則はプロファイルごとに効くため引き継がれません。
+              <code>wf.msc</code> →「受信の規則」→ <strong>splabo</strong> → プロパティ → 詳細設定タブ →
+              プロファイルで<strong>プライベートにチェック</strong>してください。
+              <strong>splabo の規則は通常 2 つ（TCP / UDP）あるので、すべて確認</strong>します。
+            </p>
+            <p style={{ fontSize: 12, margin: '8px 0 0' }}>
+              <a
+                href={FIREWALL_HELP_URL}
+                onClick={e => { e.preventDefault(); openUrl(FIREWALL_HELP_URL).catch(console.error) }}
+                style={{ color: 'var(--accent)', cursor: 'pointer' }}
+              >
+                つながらないときは（ファイアウォール / ネットワークの確認・詳しい手順）
+              </a>
+            </p>
+          </div>
+        )}
+      </section>
+      )}
+
+      {/* ── データ: 自動取得 → マスターデータ → ギアデータ削除 ── */}
+      {subTab === 'data' && (
+      <section className="settings-section">
+        <h3>自動取得（有効時はトレイに常駐）</h3>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={settings.autoFetchEnabled}
+            onChange={(e) => update({ autoFetchEnabled: e.target.checked })}
+          />
+          自動でバトルデータを取得する
+        </label>
+        <label>
+          取得間隔
+          <select
+            value={settings.autoFetchIntervalMin}
+            onChange={(e) => update({ autoFetchIntervalMin: Number(e.target.value) })}
+            disabled={!settings.autoFetchEnabled}
+          >
+            <option value={15}>15分ごと</option>
+            <option value={30}>30分ごと</option>
+            <option value={60}>1時間ごと</option>
+            <option value={120}>2時間ごと</option>
+            <option value={240}>4時間ごと</option>
+            <option value={360}>6時間ごと</option>
+            <option value={720}>12時間ごと</option>
+            <option value={1440}>24時間ごと</option>
+          </select>
+        </label>
+      </section>
+      )}
+
+      {subTab === 'data' && (
+      <section className="settings-section">
+        <h3>マスターデータ</h3>
+        <div className="settings-help" style={{ marginBottom: 12 }}>
+          武器・サブ・SP・カテゴリ等のマスターデータを SplatNet 3 から取得します。
+          起動時に 24 時間ごとに自動取得しますが、手動でも実行できます。
+        </div>
+        <button
+          className="btn-primary"
+          onClick={handleUpdateWeapons}
+          disabled={weaponUpdating || !loggedIn}
+        >
+          {weaponUpdating ? '取得中...' : '武器データを更新'}
+        </button>
+        {weaponUpdateResult && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: weaponUpdateResult.startsWith('エラー') ? 'var(--accent2)' : 'var(--text-muted)',
+            }}
+          >
+            {weaponUpdateResult}
+          </div>
+        )}
+      </section>
+      )}
+
+      {subTab === 'data' && (
+      <section className="settings-section">
+        <h3>ギアデータ</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+          取得済みのギアデータ（ギア一覧・画像キャッシュ）をすべて削除します。ギアタブから再取得できます。
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            className="btn-secondary"
+            onClick={handleDeleteGearData}
+            disabled={gearDeleting}
+          >
+            {gearDeleting ? '削除中...' : 'ギアデータを削除'}
+          </button>
+          {gearDeleteResult && (
+            <span style={{ fontSize: 13, color: gearDeleteResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
+              {gearDeleteResult}
+            </span>
+          )}
+        </div>
+      </section>
+      )}
+
+      {/* ── 表示: カラーテーマ → ダッシュボード → ギア表示 ── */}
+      {subTab === 'display' && (
+      <section className="settings-section">
+        <h3>カラーテーマ</h3>
+        <div className="theme-options">
+          {THEMES.map(t => (
+            <button
+              key={t.id}
+              className={`theme-option${themeId === t.id ? ' active' : ''}`}
+              onClick={() => { saveTheme(t.id); setThemeId(t.id) }}
+            >
+              <span className="theme-dot" style={{ background: t.dot }} />
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </section>
+      )}
+
+      {subTab === 'display' && (
+      <section className="settings-section">
+        <h3>ダッシュボード</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+          追加したカスタムグラフをすべて消してダッシュボードを初期状態（既存の固定 4 グラフのみ）に戻します。
+        </p>
+        <button
+          className="btn-secondary"
+          onClick={() => {
+            if (window.confirm('追加したカスタムグラフをすべて削除します。よろしいですか？')) {
+              clearCustomCharts()
+              // 反映のためリロード。Dashboard 側 state を直接触る経路を作らないシンプル運用。
+              window.location.reload()
+            }
+          }}
+        >
+          カスタムグラフをすべて削除（ダッシュボードをリセット）
+        </button>
+      </section>
+      )}
+
+      {subTab === 'display' && (
+      <section className="settings-section">
+        <h3>ギア</h3>
+        <p className="settings-note" style={{ marginTop: 0, marginBottom: 12 }}>
+          ギアタブの表示とコーデ検索に関する設定です。表示密度の変更は次回ギアタブを開いたときに反映されます。
+        </p>
+        <label>
+          表示密度
+          <select
+            value={gearDensity}
+            onChange={(e) => handleChangeDensity(e.target.value as DensityId)}
+          >
+            {DENSITIES.map(d => (
+              <option key={d.id} value={d.id}>{d.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          コーデ候補の表示件数
+          <select
+            value={gearComboLimit}
+            onChange={(e) => handleChangeComboLimit(Number(e.target.value) as ComboLimitValue)}
+          >
+            {COMBO_LIMITS.map(v => (
+              <option key={v} value={v}>{v} 件</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          近いコーデの表示件数
+          <select
+            value={gearNearLimit}
+            onChange={(e) => handleChangeNearLimit(Number(e.target.value) as NearLimitValue)}
+          >
+            {NEAR_LIMITS.map(v => (
+              <option key={v} value={v}>{v} 件</option>
+            ))}
+          </select>
+        </label>
+      </section>
+      )}
+
+      {/* ── AI（新設）: AI API ── */}
+      {subTab === 'ai' && (
       <section className="settings-section">
         <h3>AI API</h3>
         <label>
@@ -579,132 +713,6 @@ async function handleUploadStatink() {
         <p className="settings-note">
           価格・コンテキスト長は 2026 年 5 月時点の情報。最新は各プロバイダの公式料金ページを参照してください。
         </p>
-      </section>
-      )}
-
-      {subTab === 'display' && (
-      <section className="settings-section">
-        <h3>ダッシュボード</h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
-          追加したカスタムグラフをすべて消してダッシュボードを初期状態（既存の固定 4 グラフのみ）に戻します。
-        </p>
-        <button
-          className="btn-secondary"
-          onClick={() => {
-            if (window.confirm('追加したカスタムグラフをすべて削除します。よろしいですか？')) {
-              clearCustomCharts()
-              // 反映のためリロード。Dashboard 側 state を直接触る経路を作らないシンプル運用。
-              window.location.reload()
-            }
-          }}
-        >
-          カスタムグラフをすべて削除（ダッシュボードをリセット）
-        </button>
-      </section>
-      )}
-
-      {subTab === 'data' && (
-      <section className="settings-section">
-        <h3>マスターデータ</h3>
-        <div className="settings-help" style={{ marginBottom: 12 }}>
-          武器・サブ・SP・カテゴリ等のマスターデータを SplatNet 3 から取得します。
-          起動時に 24 時間ごとに自動取得しますが、手動でも実行できます。
-        </div>
-        <button
-          className="btn-primary"
-          onClick={handleUpdateWeapons}
-          disabled={weaponUpdating || !loggedIn}
-        >
-          {weaponUpdating ? '取得中...' : '武器データを更新'}
-        </button>
-        {weaponUpdateResult && (
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 13,
-              color: weaponUpdateResult.startsWith('エラー') ? 'var(--accent2)' : 'var(--text-muted)',
-            }}
-          >
-            {weaponUpdateResult}
-          </div>
-        )}
-      </section>
-      )}
-
-      {subTab === 'display' && (
-      <section className="settings-section">
-        <h3>カラーテーマ</h3>
-        <div className="theme-options">
-          {THEMES.map(t => (
-            <button
-              key={t.id}
-              className={`theme-option${themeId === t.id ? ' active' : ''}`}
-              onClick={() => { saveTheme(t.id); setThemeId(t.id) }}
-            >
-              <span className="theme-dot" style={{ background: t.dot }} />
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </section>
-      )}
-
-      {subTab === 'display' && (
-      <section className="settings-section">
-        <h3>ギア</h3>
-        <p className="settings-note" style={{ marginTop: 0, marginBottom: 12 }}>
-          ギアタブの表示とコーデ検索に関する設定です。表示密度の変更は次回ギアタブを開いたときに反映されます。
-        </p>
-        <label>
-          表示密度
-          <select
-            value={gearDensity}
-            onChange={(e) => handleChangeDensity(e.target.value as DensityId)}
-          >
-            {DENSITIES.map(d => (
-              <option key={d.id} value={d.id}>{d.label}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          コーデ候補の表示件数
-          <select
-            value={gearComboLimit}
-            onChange={(e) => handleChangeComboLimit(Number(e.target.value) as ComboLimitValue)}
-          >
-            {COMBO_LIMITS.map(v => (
-              <option key={v} value={v}>{v} 件</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          近いコーデの表示件数
-          <select
-            value={gearNearLimit}
-            onChange={(e) => handleChangeNearLimit(Number(e.target.value) as NearLimitValue)}
-          >
-            {NEAR_LIMITS.map(v => (
-              <option key={v} value={v}>{v} 件</option>
-            ))}
-          </select>
-        </label>
-        <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '16px 0 10px' }}>
-          取得済みのギアデータ（ギア一覧・画像キャッシュ）をすべて削除します。ギアタブから再取得できます。
-        </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            className="btn-secondary"
-            onClick={handleDeleteGearData}
-            disabled={gearDeleting}
-          >
-            {gearDeleting ? '削除中...' : 'ギアデータを削除'}
-          </button>
-          {gearDeleteResult && (
-            <span style={{ fontSize: 13, color: gearDeleteResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
-              {gearDeleteResult}
-            </span>
-          )}
-        </div>
       </section>
       )}
     </div>
