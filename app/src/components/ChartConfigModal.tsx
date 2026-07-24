@@ -3,7 +3,7 @@ import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey, Batt
 import {
   GROUP_BY_LABELS, METRIC_LABELS, HEATMAP_METRICS, SUM_METRICS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
   IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, scatterMetricOptions,
-  BATTLE_NUMERIC_METRIC_LABELS, BATTLE_NUMERIC_DEFAULT_BIN,
+  BATTLE_NUMERIC_METRIC_LABELS, BATTLE_NUMERIC_DEFAULT_BIN, axisGroupOf, AXIS_GROUP_LABELS, chartMetrics,
 } from '../types'
 
 /**
@@ -50,6 +50,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   const [groupBy,      setGroupBy]      = useState<GroupByKey>(initial?.groupBy      ?? 'weapon')
   const [groupBy2,     setGroupBy2]     = useState<GroupByKey>(initial?.groupBy2     ?? 'stage')
   const [metric,       setMetric]       = useState<MetricKey>(initial?.metric       ?? 'win_rate')
+  // shape='line' 専用: 複数系列メトリクス（#436）。選択順を保持する（軸の左右割当は選択順で決まる）。
+  const [lineMetrics,  setLineMetrics]  = useState<MetricKey[]>(
+    initial?.shape === 'line' ? chartMetrics(initial) : ['win_rate']
+  )
   const [topN,         setTopN]         = useState<number>(initial?.topN ?? 20)
   // ヒートマップの数値メトリクス bin 軸 (#134)。null/undefined ならカテゴリ軸。
   const [xNumericMetric, setXNumericMetric] = useState<BattleNumericMetric | null>(initial?.xNumericMetric ?? null)
@@ -142,13 +146,28 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // 折れ線の軸グループ（#436）: 同時に使えるのは 2 グループまで。
+  // 3 グループ目に属する未選択メトリクスは選べない（チェックボックスを disabled にする）。
+  const lineUsedGroups = new Set(lineMetrics.map(axisGroupOf))
+  function toggleLineMetric(m: MetricKey) {
+    setLineMetrics(prev => {
+      if (prev.includes(m)) return prev.filter(x => x !== m)
+      const group = axisGroupOf(m)
+      const usedGroups = new Set(prev.map(axisGroupOf))
+      if (!usedGroups.has(group) && usedGroups.size >= 2) return prev  // 3 グループ目は追加しない
+      return [...prev, m]
+    })
+  }
+
   function handleSave() {
     const chart: CustomChart = {
       id:           initial?.id ?? '',  // 保存側で空ならカスタム ID 生成
       shape,
       yComposition,
       groupBy,
-      metric:       yComposition === 'single_metric' ? metric : undefined,
+      // line は metrics（複数系列・#436）、それ以外は単一 metric。
+      metric:       shape !== 'line' && yComposition === 'single_metric' ? metric : undefined,
+      metrics:      shape === 'line' ? lineMetrics : undefined,
       groupBy2:     shape === 'heatmap' ? groupBy2 : undefined,
       topN:         shape === 'heatmap' ? topN : undefined,
       dotUnit:      shape === 'scatter' ? dotUnit : undefined,
@@ -372,9 +391,9 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             )
           })()}
 
-          {/* line / heatmap / calendar_heatmap 用のメトリクス選択。
-              これらは yComposition が常に single_metric に固定されている。 */}
-          {shape !== 'scatter' && shape !== 'bar' && yComposition === 'single_metric' && (
+          {/* heatmap / calendar_heatmap 用のメトリクス選択（単一）。
+              これらは yComposition が常に single_metric に固定されている。line は下の複数選択 UI を使う。 */}
+          {shape !== 'scatter' && shape !== 'bar' && shape !== 'line' && yComposition === 'single_metric' && (
             <div className="form-field">
               <label className="form-label">メトリクス</label>
               {/* ヒートマップは合計系を出さない。2D クロス集計に列が無く、
@@ -384,6 +403,41 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                   <option key={m} value={m}>{METRIC_LABELS[m]}</option>
                 ))}
               </select>
+            </div>
+          )}
+
+          {/* line 用のメトリクス選択。複数系列対応（#436）：チェックボックス群、上限なし。
+              同時に使える軸グループ（回/バトル・勝率・カウント・塗り）は 2 つまで。
+              軸の左右は自動割当（最初に選んだ系列のグループ = 左軸、2 つ目のグループ = 右軸）。 */}
+          {shape === 'line' && (
+            <div className="form-field">
+              <label className="form-label">メトリクス（複数選択可）</label>
+              <div className="metric-checkbox-group">
+                {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => {
+                  const group = axisGroupOf(m)
+                  const checked = lineMetrics.includes(m)
+                  const disabled = !checked && !lineUsedGroups.has(group) && lineUsedGroups.size >= 2
+                  return (
+                    <label key={m} className="checkbox-label" style={disabled ? { opacity: 0.45 } : undefined}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={() => toggleLineMetric(m)}
+                      />
+                      {METRIC_LABELS[m]}
+                    </label>
+                  )
+                })}
+              </div>
+              {lineUsedGroups.size >= 2 && (
+                <p className="form-hint">
+                  軸は 2 種類までです（{[...lineUsedGroups].map(g => AXIS_GROUP_LABELS[g]).join('・')} を使用中）。
+                </p>
+              )}
+              {lineMetrics.length === 0 && (
+                <p className="form-hint form-hint--warn">少なくとも 1 つ選んでください。</p>
+              )}
             </div>
           )}
 
@@ -466,7 +520,11 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
 
           <div className="modal-actions">
             <button className="btn-secondary" onClick={onClose}>キャンセル</button>
-            <button className="btn-primary" onClick={handleSave} disabled={!shapeIsImplemented}>
+            <button
+              className="btn-primary"
+              onClick={handleSave}
+              disabled={!shapeIsImplemented || (shape === 'line' && lineMetrics.length === 0)}
+            >
               {initial ? '更新' : '追加'}
             </button>
           </div>

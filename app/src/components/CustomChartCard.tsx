@@ -3,7 +3,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, MetricKey, BattleMetricKey } from '../types'
 import {
-  stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric,
+  stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric, chartMetrics,
   METRIC_LABELS, BATTLE_METRIC_LABELS, BATTLE_NUMERIC_METRIC_LABELS,
   GROUP_BY_LABELS, formatMetric,
 } from '../types'
@@ -399,15 +399,15 @@ function renderChartBody(
   tickAngle:     number | undefined,
   weaponImages:  Map<string, string> | undefined,
 ): ReactNode {
-  // line: 時系列のみ。yComposition は single_metric を前提とする。
+  // line: 時系列のみ。複数系列対応（#436）。
   if (chart.shape === 'line') {
-    if (chart.yComposition === 'single_metric' && chart.metric) {
-      return <LineChart data={data} metric={chart.metric} />
+    const metrics = chartMetrics(chart)
+    if (metrics.length > 0) {
+      return <LineChart data={data} metrics={metrics} groupBy={chart.groupBy} />
     }
     return (
       <div className="chart-not-implemented">
-        この組み合わせ（line × {chart.yComposition}）はまだ未対応です。<br />
-        「単一メトリクス」を選んでください。
+        メトリクスを 1 つ以上選んでください。
       </div>
     )
   }
