@@ -266,6 +266,23 @@ function SortTh({ col, label, orderBy, orderAsc, onSort }: {
 // 詳細モーダル
 // ---------------------------------------------------------------------------
 
+/**
+ * 背景ステージ画像を横方向のどこで切り出すか（0–100 の %）を、バトル ID から決める（#416）。
+ *
+ * modal は縦長なので `background-size: cover` では縦が全部入り、横が約 4 割切れる。
+ * その「横のどこを見せるか」を毎回変えて単調さを避ける。
+ *
+ * 🔴 `Math.random()` は使わない。レンダリングのたびに値が変わるので、ホバーや状態更新の
+ * 再レンダリングで背景がガタつく。ID からのハッシュなら見た目の多様性は同じまま、
+ * **再レンダリングで動かず、同じバトルを開き直せば同じ絵**になる。
+ */
+function stageCropX(id: string): number {
+  // djb2。暗号強度は不要で、ID の分布をばらけさせられればよい。
+  let h = 5381
+  for (let i = 0; i < id.length; i++) h = ((h << 5) + h + id.charCodeAt(i)) | 0
+  return (h >>> 0) % 101
+}
+
 function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, statinkScreenName, onClose, onPrev, onNext }: {
   battle: BattleRow
   weaponImages: Map<string, string>
@@ -303,7 +320,10 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
 
   const stageImage = stageImages.get(battle.stage_name ?? battle.stage)
   const panelStyle = stageImage
-    ? ({ ['--stage-bg' as string]: `url("${stageImage}")` } as React.CSSProperties)
+    ? ({
+        ['--stage-bg' as string]: `url("${stageImage}")`,
+        ['--stage-pos' as string]: `${stageCropX(battle.id)}% center`,
+      } as React.CSSProperties)
     : undefined
 
   return (

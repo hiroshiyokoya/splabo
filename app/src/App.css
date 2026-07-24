@@ -1044,7 +1044,10 @@ body {
   inset: 0;
   background-image:    var(--stage-bg);
   background-size:     cover;
-  background-position: center;
+  /* 切り出し位置はバトルごとに変える（#416）。modal は縦長なので cover では
+     縦が全部入り横が切れる。その「横のどこを見せるか」を BattleLog がバトル ID から
+     決めて --stage-pos で渡す。未指定（画像なし等）なら従来どおり中央。 */
+  background-position: var(--stage-pos, center);
   filter: var(--stage-img-filter);
   pointer-events: none;
   z-index: 0;
