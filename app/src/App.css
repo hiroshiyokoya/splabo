@@ -674,12 +674,25 @@ body {
   border: 1px solid var(--border);
   border-radius: 8px;
 }
-/* .content は縦フローの flex（#334）なので、その直下に置く戦績の切替は
-   既定の align-items:stretch で右端まで引き伸ばされてしまう。中身幅に留める。
-   図鑑タブの切替は図鑑ヘッダ内にネストしているため、この指定の対象外。 */
-.content > .view-toggle {
-  align-self: flex-start;
+/* バトルタブの見出し行。武器・ステージの見出し行と同じ組み方（見出し + 表示切替）で、
+   下余白も 16px で揃える。
+   これで ViewToggle は 3 タブとも見出し行の中に入ったため、かつて .content 直下の
+   切替を中身幅に留めていた `.content > .view-toggle { align-self: flex-start }` は
+   対象が無くなったので撤去した（#426）。 */
+.battles-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
 }
+.battles-header h2 { font-size: 16px; }
+/* 🔴 align-items: center は **マージンボックス** を中央に揃えるため、
+   .view-toggle の margin-bottom がそのまま縦ずれになる（14px の半分＝7px）。
+   行の中では下余白を親（見出し行）に持たせて、切替自身のマージンは消す。
+   武器・ステージの見出し行でも以前から同じずれが出ていたので一緒に直す。 */
+.battles-header .view-toggle,
+.weapon-book-header .view-toggle,
+.stage-book-header .view-toggle { margin-bottom: 0; }
 .view-toggle__btn {
   display: inline-flex;
   align-items: center;
