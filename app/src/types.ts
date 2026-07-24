@@ -358,6 +358,10 @@ export interface EnvStatus {
  *  集計軸（武器/ステージ）によって埋まる指標が異なり、該当しないものは null。 */
 export interface EnvScatterStat {
   key:          string
+  /** アイコン画像を引くための正式名（ローカルマスターの name_ja・#412）。
+   *  `read_image` は表示名でキャッシュされているため `key` では当たらないことがある。
+   *  ローカルマスターに無い武器はスラッグのままで、画像は見つからない（アイコンなしで名前だけ）。 */
+  icon_name:    string | null
   n:            number
   // 武器集計
   pick_rate:    number | null

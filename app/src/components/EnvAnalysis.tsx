@@ -238,6 +238,10 @@ export function EnvAnalysis() {
   const [sizeKey, setSizeKey] = useState<string>(prefs.sizeKey)   // 散布図サイズ指標（''=なし・#406）
   const [colorKey, setColorKey] = useState<string>(prefs.colorKey) // 散布図色指標（''=なし・#406）
   const [scatterData, setScatterData] = useState<EnvScatterStat[]>([])
+  // scatterData がどちらの集計軸のものか（#412）。groupBy は選択した瞬間に変わるが
+  // scatterData は再取得が終わるまで前の軸のまま。アイコンの kind をこの遅れた軸で決めないと、
+  // 切り替え直後に「武器名を kind:'stage' で読みに行く」空振りの invoke が飛ぶ。
+  const [scatterAxis, setScatterAxis] = useState<'weapon' | 'stage'>(groupBy)
 
   // ヒートマップ
   const [rowDim, setRowDim]         = useState(prefs.rowDim)
@@ -347,6 +351,7 @@ export function EnvAnalysis() {
           ...extFilters,
         })
         setScatterData(rows)
+        setScatterAxis(groupBy)   // 行と軸は必ずセットで更新する（#412）
       } else {
         if (bothWeapon) { setMatrixData([]); setRowMarginals([]); setColMarginals([]); return }
         // 次元を変えた直後、セル指標が新しい次元にまだ整合していない一瞬は取得しない
@@ -374,6 +379,51 @@ export function EnvAnalysis() {
 
   useEffect(() => { loadStatus() }, [loadStatus])
   useEffect(() => { loadData() }, [loadData])
+
+  // ------------------------------------------------------------------
+  // 散布図ツールチップのアイコン画像（#412）
+  // ------------------------------------------------------------------
+  //
+  // 他画面（BattleLog / Dashboard / FilterBar）と同じく **まとめて事前ロード** して
+  // Map に持つ。ツールチップ側は同期的に引くだけで、ホバーのたびに invoke は飛ばさない。
+  //
+  // キーは `${kind}:${正式名}`。武器とステージで同名が衝突しないよう kind を前置する。
+  // 取りに行った名前は `iconTried` に積み、画像が無かったものを毎回引き直さない
+  // （stat.ink 由来でローカルマスターに無い武器は永久に見つからないため）。
+  const [iconUrls, setIconUrls] = useState<Map<string, string>>(new Map())
+  const iconTried = useRef<Set<string>>(new Set())
+  const iconKind = scatterAxis === 'weapon' ? 'weapon' : 'stage'
+
+  useEffect(() => {
+    if (vizMode !== 'scatter') return
+    const targets: [string, string][] = []
+    const seen = new Set<string>()
+    for (const s of scatterData) {
+      const name = s.icon_name
+      if (!name || seen.has(name)) continue
+      seen.add(name)
+      const ck = `${iconKind}:${name}`
+      if (iconTried.current.has(ck)) continue
+      iconTried.current.add(ck)   // 解決前に積む（再レンダーで二重に invoke しない）
+      targets.push([ck, name])
+    }
+    if (targets.length === 0) return
+    Promise.all(targets.map(([ck, name]) =>
+      invoke<string | null>('read_image', { kind: iconKind, name })
+        .then(url => (url ? [ck, url] as [string, string] : null))
+        .catch(() => null)
+    )).then(res => {
+      const hits = res.filter((x): x is [string, string] => x !== null)
+      if (hits.length === 0) return
+      // 累積マージのみ。取り違えないようキーに kind を含めてあるので、
+      // 軸を切り替えても古い結果が混ざらない（unmount 後の set も無害）。
+      setIconUrls(prev => {
+        const next = new Map(prev)
+        for (const [k, u] of hits) next.set(k, u)
+        return next
+      })
+    })
+  }, [scatterData, iconKind, vizMode])
 
   // 進捗イベント購読
   useEffect(() => {
@@ -466,13 +516,17 @@ export function EnvAnalysis() {
       x, y,
       size: sv,
       color: pointColor(cv),
+      // アイコンは **表示名ではなく BE が返した正式名（icon_name）** で引く（#412）。
+      // 表示名（= key）はローカルマスターに無い武器だとスラッグのままで、当たらないパスを
+      // 取りに行ってしまう。未ロード / 画像なしは undefined でアイコンなしになる。
+      iconUrl: s.icon_name ? iconUrls.get(`${iconKind}:${s.icon_name}`) ?? null : null,
       tooltipRows: [
         { label: groupBy === 'weapon' ? '武器' : 'ステージ', value: s.key },
         ...metricRows,
         { label: 'サンプル', value: s.n.toLocaleString() },
       ],
     }
-  }).filter(p => p.x !== null && p.y !== null), [scatterData, xM, yM, sizeM, colorM, pointColor, groupBy])
+  }).filter(p => p.x !== null && p.y !== null), [scatterData, xM, yM, sizeM, colorM, pointColor, groupBy, iconUrls, iconKind])
 
   const xDomain = useMemo(() => computeDomain(points.map(p => p.x as number), xM.rate01), [points, xM])
   const yDomain = useMemo(() => computeDomain(points.map(p => p.y as number), yM.rate01), [points, yM])

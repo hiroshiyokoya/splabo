@@ -17,6 +17,10 @@ export interface ScatterPoint {
   y:           number | null
   size:        number | null   // null = 一定サイズ
   color:       string          // 既に CSS color に解決済み
+  /** ツールチップ見出しの左に出すアイコン（#412）。`color` と同じく **呼び出し側で解決済み**の
+   *  data URI を渡す。画像が無ければ省略（アイコンなしで名前だけ出す）。
+   *  ここで画像を取りに行かないのは、ホバーのたびに invoke を飛ばさないため。 */
+  iconUrl?:    string | null
   tooltipRows: { label: string; value: string; muted?: boolean }[]
   /** 重なり判定用キー。同じ groupKey の点はツールチップで一緒に並べて表示する。
    *  バトル単位なら整数化された (x, y) 等、カテゴリ単位なら省略 (グループ化しない)。 */
@@ -278,7 +282,10 @@ export function ScatterChart({
           </>
         ) : (
           <>
-            <div className="hover-tt-title">{hover.name}</div>
+            <div className="hover-tt-title">
+              {hover.iconUrl && <img className="hover-tt-icon" src={hover.iconUrl} alt="" />}
+              {hover.name}
+            </div>
             {hover.tooltipRows.map((r, i) => (
               <div key={i} className={r.muted ? 'hover-tt-row hover-tt-row--muted' : 'hover-tt-row'}>
                 {r.label}: {r.value}

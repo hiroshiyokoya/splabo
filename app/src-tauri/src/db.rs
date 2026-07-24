@@ -3530,6 +3530,14 @@ fn bind_env_filters<'q>(
 #[derive(Debug, Serialize)]
 pub struct EnvScatterStat {
     pub key:        String,      // 武器キー or ステージキー
+    /// アイコン画像を引くための正式名（= ローカルマスターの `name_ja`・#412）。
+    ///
+    /// 画像キャッシュは SplatNet3 の**表示名**をキーにして保存されている（`images::read_image`）ため、
+    /// `key`（武器は `weapon.key`・stat.ink 由来だと英字スラッグのことがある）では当たらない。
+    /// env_battles は `statink_key` 経由でローカルマスター行に解決済みなので、その行の
+    /// `name_ja` をそのまま返す。ローカルマスターに無い武器は `name_ja` もスラッグのままで、
+    /// 画像が見つからない（FE 側でアイコンなし・名前だけにフォールバックする）。
+    pub icon_name:  Option<String>,
     pub n:          i64,         // サンプルサイズ（武器=ピック数 / ステージ=バトル数）
     // 武器集計の指標
     pub pick_rate:  Option<f64>,
@@ -3604,6 +3612,7 @@ pub async fn env_scatter_stats(
         let sql = format!(
             r#"
             SELECT COALESCE(m.name_ja, m.key) AS key,
+                   m.name_ja AS icon_name,
                    COUNT(*) AS n,
                    AVG(CASE WHEN eb.knockout = 1 THEN 1.0 ELSE 0.0 END) AS ko_rate,
                    AVG(eb.alpha_ink_percent) AS avg_ink_self,
@@ -3624,6 +3633,7 @@ pub async fn env_scatter_stats(
         for row in rows {
             result.push(EnvScatterStat {
                 key:          row.get("key"),
+                icon_name:    row.try_get::<Option<String>, _>("icon_name").unwrap_or(None),
                 n:            row.get("n"),
                 pick_rate:    None,
                 win_rate:     None,
@@ -3662,6 +3672,7 @@ pub async fn env_scatter_stats(
         ),
         tb AS (SELECT COUNT(*) AS c FROM env_battles eb {where})
         SELECT w.key      AS key,
+               w.name_ja  AS icon_name,
                COUNT(*)   AS n,
                tb.c       AS total_battles,
                AVG(app.won) AS win_rate,
@@ -3698,6 +3709,7 @@ pub async fn env_scatter_stats(
         };
         result.push(EnvScatterStat {
             key:          row.get("key"),
+            icon_name:    row.try_get::<Option<String>, _>("icon_name").unwrap_or(None),
             n,
             pick_rate,
             win_rate:     row.try_get::<Option<f64>, _>("win_rate").unwrap_or(None),
