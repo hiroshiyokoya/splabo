@@ -141,8 +141,8 @@ export function LineChart({
             name={METRIC_LABELS[m]}
             stroke={LINE_COLORS[i % LINE_COLORS.length]}
             strokeWidth={2}
-            dot={{ fill: LINE_COLORS[i % LINE_COLORS.length], r: 3 }}
-            activeDot={{ r: 5 }}
+            dot={{ fill: LINE_COLORS[i % LINE_COLORS.length], r: 1.5 }}
+            activeDot={{ r: 2.5 }}
             connectNulls={false}
             isAnimationActive={false}
           />
