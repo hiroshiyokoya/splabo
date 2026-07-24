@@ -381,6 +381,22 @@ export interface EnvMatrixCell {
   n:       number
 }
 
+/** env_matrix_stats が返す行・列の周辺集計の 1 キー分（#411）。
+ *  セルの足切り（サンプル不足セルを返さない）とは無関係に、全バトルから算出された値。
+ *  `n` はそのキーの合計サンプル数（軸ラベルを色付けするかの足切り判定に使う）。 */
+export interface EnvMatrixMarginal {
+  key:   string
+  value: number | null
+  n:     number
+}
+
+/** env_matrix_stats コマンドの返却（#411 で marginals を追加）。 */
+export interface EnvMatrixStats {
+  cells:         EnvMatrixCell[]
+  row_marginals: EnvMatrixMarginal[]
+  col_marginals: EnvMatrixMarginal[]
+}
+
 /** env_season_range コマンドの返却型（#187）。 */
 export interface EnvSeasonRange {
   season: string | null

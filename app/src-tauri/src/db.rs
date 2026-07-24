@@ -3723,6 +3723,148 @@ pub struct EnvMatrixCell {
     pub n:       i64,
 }
 
+/// 行・列の周辺集計（marginals）の 1 キー分（#411）。
+///
+/// **セルの足切り（サンプル不足のセルを返さない）とは無関係に、全バトルから算出する。**
+/// 軸ラベルの色付けはこの値を使う。セルを落としてから束ねると、交差する軸によって
+/// 残るセルが変わり「武器×ルールとステージ×ルールで同じルールの値が違う」ことになる。
+///
+/// - `value` … そのキーの集計値（率・平均は全バトルからの比、バトル数は合計）。算出不能は None。
+/// - `n`     … そのキーの合計サンプル数。FE が「標本が少なすぎる軸には色を付けない」判定に使う。
+#[derive(Debug, Serialize)]
+pub struct EnvMatrixMarginal {
+    pub key:   String,
+    pub value: Option<f64>,
+    pub n:     i64,
+}
+
+/// `env_matrix_stats` の返却（#411 で marginals を追加）。
+#[derive(Debug, Serialize)]
+pub struct EnvMatrixStats {
+    /// 表示するセル（従来どおりサンプル不足のセルは含まない）。
+    pub cells:         Vec<EnvMatrixCell>,
+    pub row_marginals: Vec<EnvMatrixMarginal>,
+    pub col_marginals: Vec<EnvMatrixMarginal>,
+}
+
+/// セル足切り前の 1 グループ（SQL の GROUP BY 1 行）の生集計（#411）。
+/// セル値も周辺集計も、すべてここから同じ式で導く。
+#[derive(Debug, Clone, Default, PartialEq)]
+struct MatrixRaw {
+    /// 8 スロット合算の件数（バトルレベル集計では COUNT(*)）。
+    n:        i64,
+    /// a1/b1 の非 NULL 件数（キル系メトリクスの母数）。
+    n_kda:    i64,
+    sum_won:  f64,
+    sum_ko:   f64,
+    sum_k:    f64,
+    sum_d:    f64,
+    sum_a:    f64,
+    sum_ink:  f64,
+    /// ピック率の分母（そのカテゴリの全バトル数 × 8 スロット）。
+    pick_den: f64,
+}
+
+/// メトリクスの集計形（#411）。
+///
+/// - `Ratio` … 値 = num/den。周辺集計はキーごとに num・den を足してから割る。
+///   これは「セル値をサンプル数で加重平均した値」と同値で、
+///   Σ(値ᵢ×nᵢ)/Σnᵢ = Σ(生の分子)/Σ(生の分母) となり **交差する軸に依存しない**。
+/// - `Sum`   … 値そのものが件数（バトル数）。加重平均は size-biased で意味を成さないので合計。
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Agg {
+    Ratio { num: f64, den: f64 },
+    Sum(f64),
+}
+
+impl Agg {
+    /// 表示値。分母が 0（＝母数なし）は算出不能。
+    fn value(self) -> Option<f64> {
+        match self {
+            Agg::Ratio { num, den } => {
+                if den > 0.0 { Some(num / den) } else { None }
+            }
+            Agg::Sum(v) => Some(v),
+        }
+    }
+}
+
+/// メトリクス名 → そのグループの集計（分子・分母）。未知のメトリクスは None。
+fn cell_agg(cell_metric: &str, r: &MatrixRaw) -> Option<Agg> {
+    let n = r.n as f64;
+    // キル系（キル/デス/アシスト/塗り）は a1/b1 にしか記録が無く、他スロットは NULL。
+    // 母数は 8 スロット合算ではなく非 NULL 件数（n_kda）。セル側の HAVING と揃える。
+    let kda = r.n_kda as f64;
+    Some(match cell_metric {
+        "win_rate"      => Agg::Ratio { num: r.sum_won, den: n },
+        "ko_rate"       => Agg::Ratio { num: r.sum_ko,  den: n },
+        // ピック率 = そのカテゴリでの延べ出現数 / そのカテゴリの全スロット数。
+        "pick_rate"     => Agg::Ratio { num: n,         den: r.pick_den },
+        "avg_kill"      => Agg::Ratio { num: r.sum_k,   den: kda },
+        "avg_death"     => Agg::Ratio { num: r.sum_d,   den: kda },
+        "avg_assist"    => Agg::Ratio { num: r.sum_a,   den: kda },
+        "avg_inked"     => Agg::Ratio { num: r.sum_ink, den: kda },
+        // 比の指標は「平均の比」＝「合計の比」（母数 n_kda が約分される）。
+        // 合計で持てば周辺集計も同じ式で正しく畳める。
+        "kill_ratio"    => Agg::Ratio { num: r.sum_k,             den: r.sum_d },
+        "contrib_ratio" => Agg::Ratio { num: r.sum_k + r.sum_a,   den: r.sum_d },
+        "battles"       => Agg::Sum(n),
+        _ => return None,
+    })
+}
+
+/// 周辺集計の入力（セル 1 つ分の寄与）。**足切り前の全グループ**を渡すこと（#411）。
+#[derive(Debug, Clone, PartialEq)]
+struct MarginalInput {
+    row_key: String,
+    col_key: String,
+    agg:     Option<Agg>,
+    /// そのセルのサンプル数（キル系は n_kda）。軸の合計標本数になる。
+    n:       i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Axis { Row, Col }
+
+/// 入力を軸方向へ畳んで周辺集計を作る（#411）。
+///
+/// キーの出現順を保つ（FE は Map 参照なので順序に依存しないが、テストと差分の読みやすさのため）。
+fn fold_marginals(inputs: &[MarginalInput], axis: Axis) -> Vec<EnvMatrixMarginal> {
+    use std::collections::HashMap;
+    /// (Σnum, Σden, Σsum, Σn, 合計系か)
+    struct Acc { num: f64, den: f64, sum: f64, n: i64, is_sum: bool }
+    let mut order: Vec<String> = Vec::new();
+    let mut idx:   HashMap<String, usize> = HashMap::new();
+    let mut acc:   Vec<Acc> = Vec::new();
+
+    for input in inputs {
+        let key = match axis { Axis::Row => &input.row_key, Axis::Col => &input.col_key };
+        let i = *idx.entry(key.clone()).or_insert_with(|| {
+            order.push(key.clone());
+            acc.push(Acc { num: 0.0, den: 0.0, sum: 0.0, n: 0, is_sum: false });
+            acc.len() - 1
+        });
+        acc[i].n += input.n;
+        match input.agg {
+            Some(Agg::Ratio { num, den }) => { acc[i].num += num; acc[i].den += den; }
+            Some(Agg::Sum(v))             => { acc[i].sum += v; acc[i].is_sum = true; }
+            None                          => {}
+        }
+    }
+
+    order.into_iter().zip(acc).map(|(key, a)| EnvMatrixMarginal {
+        key,
+        value: if a.is_sum {
+            Some(a.sum)
+        } else if a.den > 0.0 {
+            Some(a.num / a.den)
+        } else {
+            None
+        },
+        n: a.n,
+    }).collect()
+}
+
 /// 集計次元（battle レベル）→ (env_battles の id カラム, マスターテーブル名, 表示ラベル列)。
 /// map は key が数値 ID / スラッグなので name_ja を表示に使う。rule / lobby は key（FE で和名化）。
 /// weapon はスロット集計が必要なため別扱い（ここでは None）。
@@ -3741,6 +3883,9 @@ fn matrix_dim(dim: &str) -> Option<(&'static str, &'static str, &'static str)> {
 ///   | "avg_inked" | "kill_ratio" | "contrib_ratio" … 行/列の **一方が weapon** であること
 ///   （武器のそのカテゴリでの勝率 / ピック率 / KDA 系）。KDA 系は a1/b1 のみ母数。
 /// - `cell_metric` = "ko_rate" | "battles"   … 行/列とも **weapon 以外**（バトルレベル指標）
+///
+/// セルはサンプル不足を落として返すが、行・列の周辺集計（marginals）は
+/// **足切り前の全グループ**から算出して一緒に返す（#411）。軸ラベルの色付けに使う。
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn env_matrix_stats(
@@ -3757,7 +3902,7 @@ pub async fn env_matrix_stats(
     poster_ranks: Option<Vec<String>>,
     power_min:    Option<f64>,
     power_max:    Option<f64>,
-) -> Result<Vec<EnvMatrixCell>, String> {
+) -> Result<EnvMatrixStats, String> {
     let f = EnvFilters {
         lobby_keys:   lobby_keys.unwrap_or_default(),
         rule_keys:    rule_keys.unwrap_or_default(),
@@ -3798,9 +3943,9 @@ pub async fn env_matrix_stats(
         )).collect();
         let app = selects.join("\n            UNION ALL ");
 
-        // KDA 系はキル母数（a1/b1 の非 NULL 件数）で足切り。勝率/ピック率は 8 スロット合算。
-        let having = if kda_based { "HAVING n_kda >= 20" } else { "HAVING n >= 30" };
-
+        // 周辺集計（#411）を足切り前の全グループから作るため、SQL では絞り込まず
+        // 生の合計だけを取る。セルの足切りは取得後に Rust 側で同じ条件を適用する
+        // （KDA 系はキル母数 n_kda >= 20、勝率/ピック率は 8 スロット合算 n >= 30）。
         let sql = format!(
             r#"
             WITH app AS (
@@ -3811,22 +3956,21 @@ pub async fn env_matrix_stats(
                    om.{olabel} AS other_key,
                    COUNT(*) AS n,
                    COUNT(app.k) AS n_kda,
-                   AVG(app.won) AS win_rate,
-                   CAST(COUNT(*) AS REAL) / (otot.c * 8) AS pick_rate,
-                   AVG(app.k)   AS avg_kill,
-                   AVG(app.d)   AS avg_death,
-                   AVG(app.a)   AS avg_assist,
-                   AVG(app.ink) AS avg_inked
+                   SUM(app.won) AS sum_won,
+                   otot.c * 8.0 AS pick_den,
+                   SUM(app.k)   AS sum_k,
+                   SUM(app.d)   AS sum_d,
+                   SUM(app.a)   AS sum_a,
+                   SUM(app.ink) AS sum_ink
             FROM app
             JOIN weapon w  ON w.id  = app.wid
             JOIN {omaster} om ON om.id = app.oid
             JOIN otot ON otot.oid = app.oid
             WHERE app.wid IS NOT NULL AND app.oid IS NOT NULL
             GROUP BY app.wid, app.oid
-            {having}
             "#,
             app = app, oid = oid_col, omaster = omaster, olabel = olabel,
-            where = where_clause, having = having,
+            where = where_clause,
         );
 
         // バインド: スロット 8 回 + otot 1 回。
@@ -3836,35 +3980,53 @@ pub async fn env_matrix_stats(
         }
         let rows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
 
-        let mut result = Vec::new();
+        // KDA 系はキル母数（a1/b1 の非 NULL 件数）で足切り。勝率/ピック率は 8 スロット合算。
+        let min_n = if kda_based { 20 } else { 30 };
+
+        let mut cells  = Vec::new();
+        let mut inputs = Vec::new();
         for row in rows {
             let weapon_key: String = row.get("weapon_key");
             let other_key:  String = row.get("other_key");
-            let avg_kill   = row.try_get::<Option<f64>, _>("avg_kill").unwrap_or(None);
-            let avg_death  = row.try_get::<Option<f64>, _>("avg_death").unwrap_or(None);
-            let avg_assist = row.try_get::<Option<f64>, _>("avg_assist").unwrap_or(None);
-            // キルレ / 貢献キルレは平均値から算出（デス 0 は不定として非表示）。
-            let value = match cell_metric.as_str() {
-                "kill_ratio" => match (avg_kill, avg_death) {
-                    (Some(k), Some(d)) if d > 0.0 => Some(k / d),
-                    _ => None,
-                },
-                "contrib_ratio" => match (avg_kill, avg_assist, avg_death) {
-                    (Some(k), Some(a), Some(d)) if d > 0.0 => Some((k + a) / d),
-                    _ => None,
-                },
-                other => row.try_get::<Option<f64>, _>(other).unwrap_or(None),
+            let sum = |name: &str| row.try_get::<Option<f64>, _>(name).unwrap_or(None).unwrap_or(0.0);
+            let raw = MatrixRaw {
+                n:        row.get("n"),
+                n_kda:    row.get("n_kda"),
+                sum_won:  sum("sum_won"),
+                sum_ko:   0.0,
+                sum_k:    sum("sum_k"),
+                sum_d:    sum("sum_d"),
+                sum_a:    sum("sum_a"),
+                sum_ink:  sum("sum_ink"),
+                pick_den: sum("pick_den"),
             };
             // KDA 系はキル母数、それ以外は 8 スロット合算を件数として返す。
-            let n: i64 = if kda_based { row.get("n_kda") } else { row.get("n") };
+            let n = if kda_based { raw.n_kda } else { raw.n };
+            let agg = cell_agg(&cell_metric, &raw);
             let (row_key, col_key) = if weapon_is_row {
                 (weapon_key, other_key)
             } else {
                 (other_key, weapon_key)
             };
-            result.push(EnvMatrixCell { row_key, col_key, value, n });
+            // 周辺集計には足切り前の全グループを渡す（#411）。
+            inputs.push(MarginalInput {
+                row_key: row_key.clone(), col_key: col_key.clone(), agg, n,
+            });
+            if n >= min_n {
+                cells.push(EnvMatrixCell { row_key, col_key, value: agg.and_then(Agg::value), n });
+            }
         }
-        return Ok(result);
+
+        let mut row_marginals = fold_marginals(&inputs, Axis::Row);
+        let mut col_marginals = fold_marginals(&inputs, Axis::Col);
+        // ピック率は「武器のシェア」なので、武器以外の軸へ射影するとどのキーでも
+        // Σシェア＝一定（武器で割り切った合計）になり、軸間の差が出ない。
+        // 情報の無い値に色を付けても誤読させるだけなので値なし（＝既定色）にする。
+        if cell_metric == "pick_rate" {
+            let flat = if weapon_is_row { &mut col_marginals } else { &mut row_marginals };
+            for m in flat.iter_mut() { m.value = None; }
+        }
+        return Ok(EnvMatrixStats { cells, row_marginals, col_marginals });
     }
 
     // バトルレベル × バトルレベル（weapon を含まない）。
@@ -3874,41 +4036,52 @@ pub async fn env_matrix_stats(
     let (row_col, rmaster, rlabel) = matrix_dim(&row_dim).ok_or_else(|| format!("未知の集計次元: {row_dim}"))?;
     let (col_col, cmaster, clabel) = matrix_dim(&col_dim).ok_or_else(|| format!("未知の集計次元: {col_dim}"))?;
 
-    let value_expr = match cell_metric.as_str() {
-        "ko_rate" => "AVG(CASE WHEN eb.knockout = 1 THEN 1.0 ELSE 0.0 END)",
-        "battles" => "CAST(COUNT(*) AS REAL)",
-        other     => return Err(format!("未知の cell_metric: {other}")),
-    };
+    if !matches!(cell_metric.as_str(), "ko_rate" | "battles") {
+        return Err(format!("未知の cell_metric: {cell_metric}"));
+    }
 
+    // セル値も周辺集計も生の合計から導くので、SQL では合計だけを取り、
+    // 足切り（n >= 30）は取得後に Rust 側で適用する（#411）。
     let sql = format!(
         r#"
         SELECT rm.{rlabel} AS row_key,
                cm.{clabel} AS col_key,
                COUNT(*) AS n,
-               {value_expr} AS value
+               SUM(CASE WHEN eb.knockout = 1 THEN 1.0 ELSE 0.0 END) AS sum_ko
         FROM env_battles eb
         JOIN {rmaster} rm ON rm.id = eb.{row_col}
         JOIN {cmaster} cm ON cm.id = eb.{col_col}
         {where}
         GROUP BY eb.{row_col}, eb.{col_col}
-        HAVING n >= 30
         "#,
-        value_expr = value_expr, rmaster = rmaster, cmaster = cmaster, rlabel = rlabel, clabel = clabel,
+        rmaster = rmaster, cmaster = cmaster, rlabel = rlabel, clabel = clabel,
         row_col = row_col, col_col = col_col, where = where_clause,
     );
     let q = bind_env_filters(sqlx::query(&sql), &f);
     let rows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
 
-    let mut result = Vec::new();
+    let mut cells  = Vec::new();
+    let mut inputs = Vec::new();
     for row in rows {
-        result.push(EnvMatrixCell {
-            row_key: row.get("row_key"),
-            col_key: row.get("col_key"),
-            value:   row.try_get::<Option<f64>, _>("value").unwrap_or(None),
-            n:       row.get("n"),
-        });
+        let row_key: String = row.get("row_key");
+        let col_key: String = row.get("col_key");
+        let raw = MatrixRaw {
+            n:      row.get("n"),
+            sum_ko: row.try_get::<Option<f64>, _>("sum_ko").unwrap_or(None).unwrap_or(0.0),
+            ..Default::default()
+        };
+        let n   = raw.n;
+        let agg = cell_agg(&cell_metric, &raw);
+        inputs.push(MarginalInput { row_key: row_key.clone(), col_key: col_key.clone(), agg, n });
+        if n >= 30 {
+            cells.push(EnvMatrixCell { row_key, col_key, value: agg.and_then(Agg::value), n });
+        }
     }
-    Ok(result)
+    Ok(EnvMatrixStats {
+        row_marginals: fold_marginals(&inputs, Axis::Row),
+        col_marginals: fold_marginals(&inputs, Axis::Col),
+        cells,
+    })
 }
 
 /// 「今シーズン」の日付レンジ。最新バトルが属するシーズンの min/max source_date。
@@ -4388,4 +4561,129 @@ pub async fn insert_imported_battle(pool: &DbPool, row: &ImportedBattleRow) -> R
     }
 
     Ok(inserted)
+}
+
+// ---------------------------------------------------------------------------
+// テスト
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 周辺集計の入力を組み立てるヘルパ。
+    fn input(row: &str, col: &str, metric: &str, raw: MatrixRaw, kda_based: bool) -> MarginalInput {
+        let n = if kda_based { raw.n_kda } else { raw.n };
+        MarginalInput {
+            row_key: row.to_string(),
+            col_key: col.to_string(),
+            agg:     cell_agg(metric, &raw),
+            n,
+        }
+    }
+
+    fn value_of(ms: &[EnvMatrixMarginal], key: &str) -> Option<f64> {
+        ms.iter().find(|m| m.key == key).expect("キーが無い").value
+    }
+    fn n_of(ms: &[EnvMatrixMarginal], key: &str) -> i64 {
+        ms.iter().find(|m| m.key == key).expect("キーが無い").n
+    }
+
+    /// 勝率の周辺集計は「そのキーの全バトル」の比。1 セルが極端に小さくても除外しない。
+    #[test]
+    fn marginals_include_tiny_cells() {
+        // ガチエリア: 大きいセル 60 勝 / 100 + 小さいセル 1 勝 / 1
+        let inputs = vec![
+            input("area", "w1", "win_rate", MatrixRaw { n: 100, sum_won: 60.0, ..Default::default() }, false),
+            input("area", "w2", "win_rate", MatrixRaw { n: 1,   sum_won: 1.0,  ..Default::default() }, false),
+        ];
+        let rows = fold_marginals(&inputs, Axis::Row);
+        assert_eq!(value_of(&rows, "area"), Some(61.0 / 101.0));
+        assert_eq!(n_of(&rows, "area"), 101);
+    }
+
+    /// **交差する軸を変えても同じ値になる**（#411 の受け入れ条件）。
+    /// 同じ 200 バトル・120 勝を、武器 2 種で割った場合とステージ 4 種で割った場合で比較する。
+    #[test]
+    fn marginals_are_independent_of_cross_axis() {
+        let by_weapon = vec![
+            input("area", "w1", "win_rate", MatrixRaw { n: 150, sum_won: 90.0, ..Default::default() }, false),
+            input("area", "w2", "win_rate", MatrixRaw { n: 50,  sum_won: 30.0, ..Default::default() }, false),
+        ];
+        let by_stage = vec![
+            input("area", "s1", "win_rate", MatrixRaw { n: 40, sum_won: 25.0, ..Default::default() }, false),
+            input("area", "s2", "win_rate", MatrixRaw { n: 60, sum_won: 35.0, ..Default::default() }, false),
+            input("area", "s3", "win_rate", MatrixRaw { n: 97, sum_won: 58.0, ..Default::default() }, false),
+            // 足切り（30）に引っかかる小さいセル。これを落とすと値がズレる。
+            input("area", "s4", "win_rate", MatrixRaw { n: 3,  sum_won: 2.0,  ..Default::default() }, false),
+        ];
+        let w = value_of(&fold_marginals(&by_weapon, Axis::Row), "area").unwrap();
+        let s = value_of(&fold_marginals(&by_stage,  Axis::Row), "area").unwrap();
+        assert!((w - 0.6).abs() < 1e-12, "{w}");
+        assert!((w - s).abs() < 1e-12, "武器割り {w} とステージ割り {s} が一致しない");
+    }
+
+    /// キル系は a1/b1 母数（n_kda）で集計する。8 スロット合算（n）で割ってはいけない。
+    #[test]
+    fn kda_metrics_use_n_kda_denominator() {
+        let raw = MatrixRaw { n: 80, n_kda: 20, sum_k: 100.0, ..Default::default() };
+        assert_eq!(cell_agg("avg_kill", &raw), Some(Agg::Ratio { num: 100.0, den: 20.0 }));
+        assert_eq!(cell_agg("avg_kill", &raw).unwrap().value(), Some(5.0));
+        // 勝率は 8 スロット合算が母数。
+        let raw = MatrixRaw { n: 80, n_kda: 20, sum_won: 40.0, ..Default::default() };
+        assert_eq!(cell_agg("win_rate", &raw), Some(Agg::Ratio { num: 40.0, den: 80.0 }));
+
+        // 周辺集計のサンプル数もキル母数（n_kda）で積む。
+        let inputs = vec![
+            input("area", "w1", "avg_kill", MatrixRaw { n: 80, n_kda: 20, sum_k: 100.0, ..Default::default() }, true),
+            input("area", "w2", "avg_kill", MatrixRaw { n: 40, n_kda: 10, sum_k: 20.0,  ..Default::default() }, true),
+        ];
+        let rows = fold_marginals(&inputs, Axis::Row);
+        assert_eq!(n_of(&rows, "area"), 30);
+        assert_eq!(value_of(&rows, "area"), Some(120.0 / 30.0));
+    }
+
+    /// キルレは「平均の比」＝「合計の比」。周辺集計もキル合計 / デス合計になる。
+    #[test]
+    fn kill_ratio_folds_as_sum_ratio() {
+        let inputs = vec![
+            input("area", "w1", "kill_ratio", MatrixRaw { n_kda: 20, sum_k: 100.0, sum_d: 50.0, ..Default::default() }, true),
+            input("area", "w2", "kill_ratio", MatrixRaw { n_kda: 10, sum_k: 20.0,  sum_d: 40.0, ..Default::default() }, true),
+        ];
+        let rows = fold_marginals(&inputs, Axis::Row);
+        assert_eq!(value_of(&rows, "area"), Some(120.0 / 90.0));
+    }
+
+    /// バトル数（カウント系）は加重平均ではなく合計。
+    #[test]
+    fn battles_marginal_is_sum() {
+        let inputs = vec![
+            input("area", "s1", "battles", MatrixRaw { n: 100, ..Default::default() }, false),
+            input("area", "s2", "battles", MatrixRaw { n: 5,   ..Default::default() }, false),
+            input("hoko", "s1", "battles", MatrixRaw { n: 40,  ..Default::default() }, false),
+        ];
+        let rows = fold_marginals(&inputs, Axis::Row);
+        assert_eq!(value_of(&rows, "area"), Some(105.0));
+        assert_eq!(value_of(&rows, "hoko"), Some(40.0));
+        // 列方向も同じ入力から畳める。
+        let cols = fold_marginals(&inputs, Axis::Col);
+        assert_eq!(value_of(&cols, "s1"), Some(140.0));
+    }
+
+    /// 母数が 0 のキーは値なし（0 除算にしない）。サンプル数だけは積む。
+    #[test]
+    fn marginal_without_denominator_is_none() {
+        let inputs = vec![
+            input("area", "w1", "avg_kill", MatrixRaw { n: 80, n_kda: 0, ..Default::default() }, true),
+        ];
+        let rows = fold_marginals(&inputs, Axis::Row);
+        assert_eq!(value_of(&rows, "area"), None);
+        assert_eq!(n_of(&rows, "area"), 0);
+    }
+
+    /// 未知のメトリクスは集計しない（値なし）。
+    #[test]
+    fn unknown_metric_has_no_agg() {
+        assert_eq!(cell_agg("nope", &MatrixRaw { n: 10, ..Default::default() }), None);
+    }
 }
