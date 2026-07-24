@@ -138,7 +138,7 @@ export function StageDetailModal({
                       <th className="num">平均K</th>
                       <th className="num">平均D</th>
                       <th className="num">平均A</th>
-                      <th className="num">K/D</th>
+                      <th className="num">キルレ</th>
                       <th className="num">KO率</th>
                     </tr>
                   </thead>

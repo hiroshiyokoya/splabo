@@ -148,7 +148,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
             valueColor={stats.total > 0 ? winRateColor(stats.win_rate) : undefined} />
           <LogStatCard label="平均キル"          value={stats.avg_kill  !== null ? stats.avg_kill.toFixed(2)  : '—'} />
           <LogStatCard label="平均デス"          value={stats.avg_death !== null ? stats.avg_death.toFixed(2) : '—'} />
-          <LogStatCard label="キルレシオ"        value={avgKillRatio(stats.avg_kill, stats.avg_death)} />
+          <LogStatCard label="キルレ"            value={avgKillRatio(stats.avg_kill, stats.avg_death)} />
         </div>
       )}
 

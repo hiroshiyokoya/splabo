@@ -22,7 +22,7 @@ function logScaleHint(metric: string): string {
 
 /** 各 yComposition のヒント説明。 */
 const Y_COMPOSITION_DESCRIPTIONS: Record<YComposition, string> = {
-  single_metric:   'Y 軸に好きな 1 メトリクス（勝率・バトル数・平均K/D など）を取る。',
+  single_metric:   'Y 軸に好きな 1 メトリクス（勝率・バトル数・キルレ など）を取る。',
   stacked_winrate: '勝/負/分 を積み上げた棒に、勝率を線で重ねる。既存 4 グラフと同じ形。',
   attack_defense:  'カテゴリごとに「平均キル（灰色アシスト積み）」「平均デス」を 2 本セットで横並びに表示。',
 }

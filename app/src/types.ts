@@ -443,7 +443,7 @@ export interface BattleStats {
   avg_death: number | null
 }
 
-/** 平均キル / 平均デスから集計キルレシオを文字列で返す。null・D=0 を考慮。 */
+/** 平均キル / 平均デスから集計キルレを文字列で返す。null・D=0 を考慮。 */
 export function avgKillRatio(avgKill: number | null, avgDeath: number | null): string {
   if (avgKill === null || avgDeath === null) return '—'
   if (avgDeath === 0) return '∞'
@@ -486,7 +486,7 @@ export type MetricKey =
   | 'avg_kill'      // 平均キル
   | 'avg_death'     // 平均デス
   | 'avg_assist'    // 平均アシスト
-  | 'avg_kd'        // 平均キル/デス（クライアント側で算出）
+  | 'avg_kd'        // キルレ = 平均キル ÷ 平均デス（クライアント側で算出）
   | 'avg_special'   // 平均スペシャル
   | 'avg_inked'     // 平均塗り
   | 'avg_duration'  // 平均バトル時間（秒）
@@ -609,7 +609,7 @@ export const BATTLE_METRIC_LABELS: Record<BattleMetricKey, string> = {
   kill:    'キル数',
   death:   'デス数',
   assist:  'アシスト数',
-  kd:      'キルレ (K/D)',
+  kd:      'キルレ',
   inked:   '塗り',
   special: 'スペシャル',
 }
@@ -820,7 +820,7 @@ export const METRIC_LABELS: Record<MetricKey, string> = {
   avg_kill:     '平均キル',
   avg_death:    '平均デス',
   avg_assist:   '平均アシスト',
-  avg_kd:       '平均キル/デス',
+  avg_kd:       'キルレ',
   avg_special:  '平均SP',
   avg_inked:    '平均塗り',
   avg_duration: '平均バトル時間',

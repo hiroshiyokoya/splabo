@@ -47,7 +47,7 @@ const SORT_LABELS: Record<SortKey, string> = {
   win_rate:          '勝率',
   avg_kill:          '平均キル',
   avg_death:         '平均デス',
-  kd:                'K/D',
+  kd:                'キルレ',
   knockout_rate:     'KO率',
   avg_inked:         '平均塗り',
   weapon_level:      '熟練度',
@@ -281,7 +281,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
           <span className="book-note__badge">全期間</span>
           <strong>Lv*</strong>（熟練度）・通算勝利数・総塗ポイントは任天堂から取得する累計値のため、
           上のフィルター（期間・モード・ルール）を変えても<strong>全期間の値のまま</strong>です。
-          バトル数・勝率・平均K/D はフィルターに追従します。
+          バトル数・勝率・キルレ はフィルターに追従します。
         </p>
       )}
 
@@ -420,7 +420,7 @@ function WeaponTable({ rows, statsByWeapon, subImages, spImages, sortKey, ascend
             <SortHeader label="勝率"     sortKey="win_rate"      activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均K"    sortKey="avg_kill"      activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均D"    sortKey="avg_death"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
-            <SortHeader label="K/D"      sortKey="kd"            activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="キルレ"    sortKey="kd"            activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="KO率"     sortKey="knockout_rate" activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均塗り" sortKey="avg_inked"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
           </tr>
@@ -516,7 +516,7 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
     statLine('K',   avgStats.avg_kill    !== null ? avgStats.avg_kill.toFixed(1)    : '—'),
     statLine('A',   avgStats.avg_assist  !== null ? avgStats.avg_assist.toFixed(1)  : '—'),
     statLine('D',   avgStats.avg_death   !== null ? avgStats.avg_death.toFixed(1)   : '—'),
-    statLine('K/D', kdStr),
+    statLine('キルレ', kdStr),
     statLine('SP',  avgStats.avg_special !== null ? avgStats.avg_special.toFixed(1) : '—'),
   ] : []
 
