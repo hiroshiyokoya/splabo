@@ -122,9 +122,24 @@ export function integerRange(min: number, max: number): { min: number; max: numb
  */
 
 /**
- * 射影値: キーごとに value を weight（サンプル数）で加重平均する。
+ * 射影値（率・平均系）: キーごとに value を weight（サンプル数）で加重平均する。
+ *
+ * **契約（#411）: そのキーの「全データ」を渡すこと。** 呼び出し側でセル単位の足切り
+ * （サンプル不足セルの除外・バックエンドの HAVING）を掛けたデータを渡してはならない。
+ *
+ * 加重平均は Σ(値ᵢ×nᵢ)/Σnᵢ = Σ(生の合計)/Σ(母数) なので、全データを渡しさえすれば
+ * **交差する軸に依存しない**（ガチエリアの勝率は 武器×ルール でも ステージ×ルール でも
+ * 同じ値になる）。足切り後のデータを渡すと、残るセルが交差軸ごとに変わるため
+ * 同じキーの値が食い違う — これが #411 のバグだった。
+ *
+ * 「標本が少なすぎるキーには色を付けない」足切りは、セル単位ではなく **軸の合計標本数**
+ * （`AXIS_MIN_TOTAL_SAMPLES`）で行うこと。
+ *
  * 値が無い行・weight が 0 の行は寄与させない。1 件も寄与しなかったキーは
  * 結果に現れない（＝呼び出し側では「射影値なし」＝既定色）。
+ *
+ * カウント系（バトル数のような件数そのもの）には使わない。件数を件数で加重平均すると
+ * Σ(n²)/Σn という size-biased な値になり意味を成さない。合計（`sumBy`）を使う。
  */
 export function weightedProjection<T>(
   rows:     readonly T[],
@@ -147,6 +162,38 @@ export function weightedProjection<T>(
   for (const [k, w] of nSum) out.set(k, wSum.get(k)! / w)
   return out
 }
+
+/**
+ * キーごとの単純合計（#411）。用途は 2 つ:
+ *  - カウント系（バトル数など件数そのもの）の射影値。合計が正しい集計。
+ *  - 軸の合計標本数（`AXIS_MIN_TOTAL_SAMPLES` の足切り判定）。
+ */
+export function sumBy<T>(
+  rows:    readonly T[],
+  keyOf:   (row: T) => string,
+  valueOf: (row: T) => number | null | undefined,
+): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const row of rows) {
+    const v = valueOf(row)
+    if (v == null) continue
+    const k = keyOf(row)
+    out.set(k, (out.get(k) ?? 0) + v)
+  }
+  return out
+}
+
+/**
+ * 軸ラベルに色を付けるのに必要な、その軸の合計標本数（#411）。
+ *
+ * セル 1 つの値は当てにならないので `minSampleSize` で足切りするが、軸はセルを束ねた
+ * ものなので標本数が桁違いに大きい。同じ足切りを射影へ適用すると「どのセルが残るか」
+ * ＝交差する軸に値が依存してしまうため、足切りは **軸の合計** で行う。
+ *
+ * 30 は「勝率のような比率で標準誤差が 1 段（勝率スケールの 9%）に収まる」目安
+ * （n=30・p=0.5 で SE ≒ 9pt）。環境分析のセル足切り（HAVING n >= 30）とも揃う。
+ */
+export const AXIS_MIN_TOTAL_SAMPLES = 30
 
 /**
  * 軸ラベルに色を付ける下限の強度（0=中立/最小 〜 1=極）。

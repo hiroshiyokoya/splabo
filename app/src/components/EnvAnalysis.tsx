@@ -11,13 +11,16 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { EnvScatterStat, EnvMatrixCell, EnvStatus, EnvVersion, EnvRank, MetricKey } from '../types'
+import type {
+  EnvScatterStat, EnvMatrixCell, EnvMatrixMarginal, EnvMatrixStats,
+  EnvStatus, EnvVersion, EnvRank, MetricKey,
+} from '../types'
 import { currentSeasonStart } from '../types'
 import { ScatterChart } from './charts/ScatterChart'
 import type { ScatterPoint } from './charts/ScatterChart'
 import { Heatmap } from './charts/Heatmap'
 import { MultiSelect } from './MultiSelect'
-import { rateCellColor, sequentialCellColor, weightedProjection } from '../utils/heatmapColors'
+import { rateCellColor, sequentialCellColor, AXIS_MIN_TOTAL_SAMPLES } from '../utils/heatmapColors'
 import { loadEnvPrefs, saveEnvPrefs } from '../utils/envPrefs'
 
 const LOBBY_OPTIONS = [
@@ -195,6 +198,12 @@ function dedupeMetricRows(entries: { key: string; row: TooltipRow }[]): TooltipR
   return out
 }
 
+/** BE の周辺集計 → 軸見出し用の射影値マップ（#411）。
+ *  合計標本数が少ない軸は色を付けない（null＝既定色）。セル単位ではなく軸単位で足切りする。 */
+function marginalProjection(ms: EnvMatrixMarginal[]): Map<string, number | null> {
+  return new Map(ms.map(m => [m.key, m.n >= AXIS_MIN_TOTAL_SAMPLES ? m.value : null]))
+}
+
 export function EnvAnalysis() {
   // 選択状態の永続化（#407）。mount 時に localStorage から一度だけ読む。
   const [prefs] = useState(loadEnvPrefs)
@@ -235,6 +244,9 @@ export function EnvAnalysis() {
   const [colDim, setColDim]         = useState(prefs.colDim)
   const [cellMetric, setCellMetric] = useState<CellMetricKey>(prefs.cellMetric as CellMetricKey)
   const [matrixData, setMatrixData] = useState<EnvMatrixCell[]>([])
+  // 行・列の周辺集計（#411）。セルの足切りに影響されない値なので BE から受け取る。
+  const [rowMarginals, setRowMarginals] = useState<EnvMatrixMarginal[]>([])
+  const [colMarginals, setColMarginals] = useState<EnvMatrixMarginal[]>([])
 
   const hasData = status !== null && status.total_rows > 0
 
@@ -336,11 +348,11 @@ export function EnvAnalysis() {
         })
         setScatterData(rows)
       } else {
-        if (bothWeapon) { setMatrixData([]); return }
+        if (bothWeapon) { setMatrixData([]); setRowMarginals([]); setColMarginals([]); return }
         // 次元を変えた直後、セル指標が新しい次元にまだ整合していない一瞬は取得しない
         // （直後に走る useEffect が cellMetric を有効値へ補正し、再取得される）。
         if (!allowedCellMetrics.some(m => m.key === cellMetric)) return
-        const cells = await invoke<EnvMatrixCell[]>('env_matrix_stats', {
+        const res = await invoke<EnvMatrixStats>('env_matrix_stats', {
           rowDim, colDim, cellMetric,
           lobbyKeys,
           ruleKeys,
@@ -349,7 +361,9 @@ export function EnvAnalysis() {
           until:    range.until,
           ...extFilters,
         })
-        setMatrixData(cells)
+        setMatrixData(res.cells)
+        setRowMarginals(res.row_marginals)
+        setColMarginals(res.col_marginals)
       }
     } catch (e) {
       setError(String(e))
@@ -465,15 +479,15 @@ export function EnvAnalysis() {
 
   const cm = CELL_METRICS.find(m => m.key === cellMetric) ?? CELL_METRICS[0]
 
-  // 軸ラベル色付け用の射影値（#405）。行ごと・列ごとに、そのキーの全セルを
-  // サンプル数 n で加重平均する。色スケールはセルと同じものを Heatmap 側で適用する
-  // （Heatmap がセルの min/max で正規化するので、ここでは値だけ渡す）。
-  // 算出は utils/heatmapColors の weightedProjection に集約（ダッシュボードの
-  // HeatmapChart と同じ関数を使い、2 つのヒートマップで射影値の定義を揃える・#409）。
-  const { rowProj, colProj } = useMemo(() => ({
-    rowProj: weightedProjection(matrixData, c => c.row_key, c => c.value, c => c.n),
-    colProj: weightedProjection(matrixData, c => c.col_key, c => c.value, c => c.n),
-  }), [matrixData])
+  // 軸ラベル色付け用の射影値（#405 / #411）。
+  //
+  // 返ってきたセルから計算してはいけない: env_matrix_stats はサンプル不足のセルを
+  // 落として返すため、クライアントには全データが無い。落ち方は交差する軸で変わるので、
+  // セルから加重平均すると「ガチエリアの勝率が 武器×ルール と ステージ×ルール で違う」
+  // ことになる（#411）。BE がセルの足切りとは無関係に全バトルから算出した
+  // 周辺集計（marginals）をそのまま使う。
+  const rowProj = useMemo(() => marginalProjection(rowMarginals), [rowMarginals])
+  const colProj = useMemo(() => marginalProjection(colMarginals), [colMarginals])
 
   return (
     <div className="env-analysis">
@@ -702,6 +716,8 @@ export function EnvAnalysis() {
                     colOrder={colDim === 'rule' ? RULE_HEATMAP_ORDER : undefined}
                     rowValue={rowProj}
                     colValue={colProj}
+                    // バトル数は合計なので、セルの min/max ではなく軸内の相対で色付けする（#411）。
+                    axisRelative={cellMetric === 'battles'}
                   />
                 )}
                 <p className="env-chart-note">
@@ -710,7 +726,9 @@ export function EnvAnalysis() {
                   {cellMetric === 'avg_death' && ' デスは多いほど濃い赤（少ないほど良い）。'}
                   {(cellMetric === 'kill_ratio' || cellMetric === 'contrib_ratio') && ' 1.0 を中心に赤(低)〜青(高)。'}
                   {KDA_CELL_KEYS.includes(cellMetric) && ' ※キル系は記録のある A1・B1 のみを母数にしています。'}
-                  {' 行・列の見出し色は、その軸に射影した平均値（サンプル数で加重）です。'}
+                  {cellMetric === 'battles'
+                    ? ' 行・列の見出し色は、その軸の合計バトル数（軸内で最大を最も濃く）です。'
+                    : ' 行・列の見出し色は、その軸の全バトルから算出した値です（非表示のセルも含むので、交差する軸を変えても同じ値になります）。'}
                 </p>
               </div>
             </>

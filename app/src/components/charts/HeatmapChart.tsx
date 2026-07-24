@@ -4,7 +4,7 @@ import { METRIC_LABELS, getMetric2D, formatMetric, metricGroup } from '../../typ
 import {
   rateCellColor, RATE_LEGEND_COLORS, sequentialCellColor, seqLegendColors,
   integerRange, SparseHatchPattern, EmptyHatchPattern, hatchFill,
-  weightedProjection, axisLabelColor,
+  weightedProjection, sumBy, axisLabelColor, AXIS_MIN_TOTAL_SAMPLES,
 } from '../../utils/heatmapColors'
 
 /**
@@ -17,8 +17,9 @@ import {
  * - サンプル不足 (率・平均で N 未満) はグレーアウト
  * - 0 サンプルセルは薄いグレー
  * - X / Y の表示順は バトル数合計の多い順
- * - X / Y の軸ラベルは、その軸に射影した値（サンプル数で加重平均）でセルと同じ色スケールに
- *   従って色付けする（#409。環境分析の Heatmap.tsx = #405 と揃えた挙動）
+ * - X / Y の軸ラベルは、その軸に射影した値でセルと同じ色スケールに従って色付けする
+ *   （#409。環境分析の Heatmap.tsx = #405 と揃えた挙動）。射影はその軸の
+ *   **全セル**（サンプル不足セルも含む）から算出する。詳細は #411 / heatmapColors。
  */
 
 const CELL_W  = 32
@@ -161,31 +162,49 @@ export function HeatmapChart({
     }
   }, [data, metric, group, minSampleSize, xNumeric, yNumeric])
 
-  // 軸ラベル色付け用の射影値（#409）。X キー・Y キーごとに、そのキーの全セルを
-  // サンプル数（バトル数）で加重平均する。環境分析の Heatmap（#405）と同じ算出方法。
-  // 率・平均はセルの塗り・min/max と同じくサンプル不足セルを除外するので、
-  // 除外の結果 1 件も残らなかったキーは射影値なし（＝既定色）になる。
-  const { xProj, yProj } = useMemo(() => {
-    const valueOf = (row: GroupedStatsRow2D): number | null => {
-      if ((group === 'rate' || group === 'average') && row.total < minSampleSize) return null
-      return getMetric2D(row, metric)
-    }
+  // 軸ラベル色付け用の射影値（#409 / #411）。X キー・Y キーごとに、そのキーの
+  // **全セル**から算出する。セル単位の足切り（minSampleSize）は射影に掛けない:
+  // どのセルが残るかは交差する軸で変わるため、掛けると「ガチエリアの勝率が
+  // 武器×ルールとステージ×ルールで違う」ことになる（#411）。
+  // 標本不足の軸は、セルではなく「軸の合計バトル数」（AXIS_MIN_TOTAL_SAMPLES）で落とす。
+  //  - 率・平均 … サンプル数（バトル数）で加重平均。Σ(値×n)/Σn = Σ勝数/Σ試合数 で交差軸に依存しない。
+  //  - カウント … 合計。件数を件数で加重平均しても意味を成さない（#411）。
+  const { xProj, yProj, xSamples, ySamples } = useMemo(() => {
+    const valueOf = (row: GroupedStatsRow2D): number | null => getMetric2D(row, metric)
+    const project = (keyOf: (r: GroupedStatsRow2D) => string) =>
+      group === 'count'
+        ? sumBy(data, keyOf, valueOf)
+        : weightedProjection(data, keyOf, valueOf, r => r.total)
     return {
-      xProj: weightedProjection(data, r => r.key_x, valueOf, r => r.total),
-      yProj: weightedProjection(data, r => r.key_y, valueOf, r => r.total),
+      xProj:    project(r => r.key_x),
+      yProj:    project(r => r.key_y),
+      xSamples: sumBy(data, r => r.key_x, r => r.total),
+      ySamples: sumBy(data, r => r.key_y, r => r.total),
     }
-  }, [data, metric, group, minSampleSize])
+  }, [data, metric, group])
 
-  /** 軸ラベルの文字色。射影値が無い（サンプル不足・値なし）キーは既定色（undefined）。 */
-  const labelColor = (proj: Map<string, number>) => (key: string): string | undefined => {
-    const v = proj.get(key)
-    if (v === undefined) return undefined
-    const c = scaleColor(v, group, minVal, maxVal, metric)
-    if (c === null) return undefined
-    return axisLabelColor(c, scaleIntensity(v, group, minVal, maxVal))
+  /**
+   * 軸ラベルの文字色。射影値が無い／軸の合計標本数が足りないキーは既定色（undefined）。
+   *
+   * カウント系だけは正規化基準がセルと違う（#411）。射影値は「合計」なので必ずセルの
+   * 最大値以上になり、セルの max で正規化すると全ラベルが最濃で潰れて差が読めない。
+   * その軸の射影値の max を 1 とする軸内の相対スケールにする（ラベル同士の比較として読む）。
+   * 率・平均はセルと同じ絶対スケール（勝率は 0–100% 固定・平均はセルの min/max）のまま。
+   */
+  const labelColor = (proj: Map<string, number>, samples: Map<string, number>) => {
+    const axisMin = group === 'count' ? 0 : minVal
+    const axisMax = group === 'count' ? Math.max(0, ...proj.values()) : maxVal
+    return (key: string): string | undefined => {
+      if ((samples.get(key) ?? 0) < AXIS_MIN_TOTAL_SAMPLES) return undefined
+      const v = proj.get(key)
+      if (v === undefined) return undefined
+      const c = scaleColor(v, group, axisMin, axisMax, metric)
+      if (c === null) return undefined
+      return axisLabelColor(c, scaleIntensity(v, group, axisMin, axisMax))
+    }
   }
-  const xLabelColor = labelColor(xProj)
-  const yLabelColor = labelColor(yProj)
+  const xLabelColor = labelColor(xProj, xSamples)
+  const yLabelColor = labelColor(yProj, ySamples)
 
   const GRID_H = yKeys.length * (CELL_H + GAP)
   const width  = Math.max(PAD_LEFT + xKeys.length * (CELL_W + GAP) + 8, 360)
