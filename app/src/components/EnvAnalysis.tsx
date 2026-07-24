@@ -17,7 +17,7 @@ import { ScatterChart } from './charts/ScatterChart'
 import type { ScatterPoint } from './charts/ScatterChart'
 import { Heatmap } from './charts/Heatmap'
 import { MultiSelect } from './MultiSelect'
-import { rateCellColor, sequentialCellColor } from '../utils/heatmapColors'
+import { rateCellColor, sequentialCellColor, weightedProjection } from '../utils/heatmapColors'
 import { loadEnvPrefs, saveEnvPrefs } from '../utils/envPrefs'
 
 const LOBBY_OPTIONS = [
@@ -468,22 +468,12 @@ export function EnvAnalysis() {
   // 軸ラベル色付け用の射影値（#405）。行ごと・列ごとに、そのキーの全セルを
   // サンプル数 n で加重平均する。色スケールはセルと同じものを Heatmap 側で適用する
   // （Heatmap がセルの min/max で正規化するので、ここでは値だけ渡す）。
-  const { rowProj, colProj } = useMemo(() => {
-    const project = (keyOf: (c: EnvMatrixCell) => string): Map<string, number | null> => {
-      const wSum = new Map<string, number>()   // Σ value*n
-      const nSum = new Map<string, number>()    // Σ n
-      for (const c of matrixData) {
-        if (c.value == null) continue
-        const k = keyOf(c)
-        wSum.set(k, (wSum.get(k) ?? 0) + c.value * c.n)
-        nSum.set(k, (nSum.get(k) ?? 0) + c.n)
-      }
-      const out = new Map<string, number | null>()
-      for (const [k, n] of nSum) out.set(k, n > 0 ? wSum.get(k)! / n : null)
-      return out
-    }
-    return { rowProj: project(c => c.row_key), colProj: project(c => c.col_key) }
-  }, [matrixData])
+  // 算出は utils/heatmapColors の weightedProjection に集約（ダッシュボードの
+  // HeatmapChart と同じ関数を使い、2 つのヒートマップで射影値の定義を揃える・#409）。
+  const { rowProj, colProj } = useMemo(() => ({
+    rowProj: weightedProjection(matrixData, c => c.row_key, c => c.value, c => c.n),
+    colProj: weightedProjection(matrixData, c => c.col_key, c => c.value, c => c.n),
+  }), [matrixData])
 
   return (
     <div className="env-analysis">

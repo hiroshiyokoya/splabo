@@ -114,6 +114,68 @@ export function integerRange(min: number, max: number): { min: number; max: numb
 }
 
 /**
+ * 行・列の見出し（軸ラベル）を「その軸に射影した値」で色付けするときの共通ルール（#405 / #409）。
+ *
+ * ヒートマップの実装は 2 つある（環境分析の `charts/Heatmap.tsx` と
+ * ダッシュボードの `charts/HeatmapChart.tsx`）。両者で見た目の考え方を揃えるため、
+ * 射影値の算出（サンプル数で加重平均）と「弱い射影値は色を付けない」閾値をここに置く。
+ */
+
+/**
+ * 射影値: キーごとに value を weight（サンプル数）で加重平均する。
+ * 値が無い行・weight が 0 の行は寄与させない。1 件も寄与しなかったキーは
+ * 結果に現れない（＝呼び出し側では「射影値なし」＝既定色）。
+ */
+export function weightedProjection<T>(
+  rows:     readonly T[],
+  keyOf:    (row: T) => string,
+  valueOf:  (row: T) => number | null | undefined,
+  weightOf: (row: T) => number,
+): Map<string, number> {
+  const wSum = new Map<string, number>()  // Σ value*weight
+  const nSum = new Map<string, number>()  // Σ weight
+  for (const row of rows) {
+    const v = valueOf(row)
+    if (v == null) continue
+    const w = weightOf(row)
+    if (!(w > 0)) continue
+    const k = keyOf(row)
+    wSum.set(k, (wSum.get(k) ?? 0) + v * w)
+    nSum.set(k, (nSum.get(k) ?? 0) + w)
+  }
+  const out = new Map<string, number>()
+  for (const [k, w] of nSum) out.set(k, wSum.get(k)! / w)
+  return out
+}
+
+/**
+ * 軸ラベルに色を付ける下限の強度（0=中立/最小 〜 1=極）。
+ * これ未満は既定の文字色のままにして、意味のある差だけを色で示す。
+ * 淡い色を文字色に使わないための可読性のガードでもある。
+ */
+export const AXIS_LABEL_MIN_INTENSITY = 0.12
+
+/**
+ * 軸ラベルの文字色（#409・`HeatmapChart` 用）。
+ *
+ * セルと同じ色スケールの色（`rateCellColor` / `sequentialCellColor` の返り値）を受け取り、
+ * 「文字」として読める強さへ寄せて返す。セル色は面（背景）として設計されているので
+ * 淡い段はそのままでは文字に使えない。既定の文字色（--text）と混ぜることで、
+ * 色相（=スケール上の位置）を残したままライト・ダーク双方で contrast を確保する。
+ * 強度が高いほどセル色の比率を上げ、弱いほど既定色寄りに落とす（＝閾値未満は既定色そのもの）。
+ */
+export function axisLabelColor(cellColor: string, intensity: number): string | undefined {
+  const c = Math.max(0, Math.min(1, intensity))
+  if (c < AXIS_LABEL_MIN_INTENSITY) return undefined
+  // 弱 42%（ほぼ既定色）→ 強 78%（スケール色寄り）。
+  // 弱い＝スケール上の淡い段なので、既定色の比率を高めに取らないと文字として読めない
+  // （solarized-light で最も淡い段でも contrast 2.6 前後を確保する。Heatmap.tsx の
+  //  明度 58%→48% 帯と同程度）。
+  const pct = Math.round(42 + c * 36)
+  return `color-mix(in srgb, ${cellColor} ${pct}%, var(--text))`
+}
+
+/**
  * 「値が無い」セルを示す SVG ハッチ（斜線）パターン。
  *
  * 欠損・サンプル不足は「値」ではないため、色スケール上の色を占有させない。

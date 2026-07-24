@@ -4,6 +4,7 @@ import { METRIC_LABELS, getMetric2D, formatMetric, metricGroup } from '../../typ
 import {
   rateCellColor, RATE_LEGEND_COLORS, sequentialCellColor, seqLegendColors,
   integerRange, SparseHatchPattern, EmptyHatchPattern, hatchFill,
+  weightedProjection, axisLabelColor,
 } from '../../utils/heatmapColors'
 
 /**
@@ -16,6 +17,8 @@ import {
  * - サンプル不足 (率・平均で N 未満) はグレーアウト
  * - 0 サンプルセルは薄いグレー
  * - X / Y の表示順は バトル数合計の多い順
+ * - X / Y の軸ラベルは、その軸に射影した値（サンプル数で加重平均）でセルと同じ色スケールに
+ *   従って色付けする（#409。環境分析の Heatmap.tsx = #405 と揃えた挙動）
  */
 
 const CELL_W  = 32
@@ -36,21 +39,43 @@ function nawabariLast(keys: string[]): string[] {
   ]
 }
 
-function cellColor(value: number | null, group: ReturnType<typeof metricGroup>, min: number, max: number, total: number, minSampleSize: number, sparseId: string, emptyId: string, metric: MetricKey): string {
-  // 値が無いセルは色ではなくハッチで示す（中立グレーの中央と紛れさせないため・#351）。
-  // データなしはサンプル不足より強い（詰まった）ハッチ。
-  if (value === null || total === 0) return hatchFill(emptyId)
-  if ((group === 'rate' || group === 'average') && total < minSampleSize) {
-    return hatchFill(sparseId)
-  }
+type Group = ReturnType<typeof metricGroup>
+
+/**
+ * 値 → 色スケール上の色（欠損・サンプル不足の判定は含まない）。
+ * セル塗りと軸ラベルの文字色で共有し、色スケールを二重定義しない（#409）。
+ * 色を決められない（カウント系で max<=0）ときは null。
+ */
+function scaleColor(value: number, group: Group, min: number, max: number, metric: MetricKey): string | null {
   if (group === 'count') {
-    if (max <= 0) return hatchFill(emptyId)
+    if (max <= 0) return null
     return sequentialCellColor(value / max, metric)
   }
   if (group === 'rate') return rateCellColor(value)
   // average
   if (max <= min) return sequentialCellColor(0.5, metric)
   return sequentialCellColor((value - min) / (max - min), metric)
+}
+
+/**
+ * 値 → 強度（0=淡い/中立 〜 1=濃い/極）。scaleColor と同じ正規化を使う。
+ * 軸ラベルの文字色を「薄すぎるときは既定色に落とす」判定に使う（#409）。
+ */
+function scaleIntensity(value: number, group: Group, min: number, max: number): number {
+  // 勝率は 0–100% 固定の divergent。50% からの隔たりが強度。
+  if (group === 'rate') return Math.min(1, Math.abs(value - 0.5) / 0.5)
+  if (group === 'count') return max > 0 ? value / max : 0
+  return max > min ? (value - min) / (max - min) : 0
+}
+
+function cellColor(value: number | null, group: Group, min: number, max: number, total: number, minSampleSize: number, sparseId: string, emptyId: string, metric: MetricKey): string {
+  // 値が無いセルは色ではなくハッチで示す（中立グレーの中央と紛れさせないため・#351）。
+  // データなしはサンプル不足より強い（詰まった）ハッチ。
+  if (value === null || total === 0) return hatchFill(emptyId)
+  if ((group === 'rate' || group === 'average') && total < minSampleSize) {
+    return hatchFill(sparseId)
+  }
+  return scaleColor(value, group, min, max, metric) ?? hatchFill(emptyId)
 }
 
 export function HeatmapChart({
@@ -136,6 +161,32 @@ export function HeatmapChart({
     }
   }, [data, metric, group, minSampleSize, xNumeric, yNumeric])
 
+  // 軸ラベル色付け用の射影値（#409）。X キー・Y キーごとに、そのキーの全セルを
+  // サンプル数（バトル数）で加重平均する。環境分析の Heatmap（#405）と同じ算出方法。
+  // 率・平均はセルの塗り・min/max と同じくサンプル不足セルを除外するので、
+  // 除外の結果 1 件も残らなかったキーは射影値なし（＝既定色）になる。
+  const { xProj, yProj } = useMemo(() => {
+    const valueOf = (row: GroupedStatsRow2D): number | null => {
+      if ((group === 'rate' || group === 'average') && row.total < minSampleSize) return null
+      return getMetric2D(row, metric)
+    }
+    return {
+      xProj: weightedProjection(data, r => r.key_x, valueOf, r => r.total),
+      yProj: weightedProjection(data, r => r.key_y, valueOf, r => r.total),
+    }
+  }, [data, metric, group, minSampleSize])
+
+  /** 軸ラベルの文字色。射影値が無い（サンプル不足・値なし）キーは既定色（undefined）。 */
+  const labelColor = (proj: Map<string, number>) => (key: string): string | undefined => {
+    const v = proj.get(key)
+    if (v === undefined) return undefined
+    const c = scaleColor(v, group, minVal, maxVal, metric)
+    if (c === null) return undefined
+    return axisLabelColor(c, scaleIntensity(v, group, minVal, maxVal))
+  }
+  const xLabelColor = labelColor(xProj)
+  const yLabelColor = labelColor(yProj)
+
   const GRID_H = yKeys.length * (CELL_H + GAP)
   const width  = Math.max(PAD_LEFT + xKeys.length * (CELL_W + GAP) + 8, 360)
   const height = PAD_TOP + GRID_H + 8
@@ -199,6 +250,7 @@ export function HeatmapChart({
         {/* X 軸ラベル（上に斜め配置） */}
         {xKeys.map((k, i) => {
           const x = PAD_LEFT + i * (CELL_W + GAP) + CELL_W / 2
+          const c = xLabelColor(k)
           return (
             <text
               key={`x-${k}`}
@@ -207,23 +259,29 @@ export function HeatmapChart({
               fontSize={10}
               fontWeight={600}
               fill="var(--text)"
+              // 射影値がある軸だけ style で上書きする（color-mix を確実に CSS として解釈させる）。
+              style={c ? { fill: c } : undefined}
               textAnchor="start"
               transform={`rotate(-35 ${x} ${PAD_TOP - 6})`}
             >{xLabel(k)}</text>
           )
         })}
         {/* Y 軸ラベル（左） */}
-        {yKeys.map((k, i) => (
-          <text
-            key={`y-${k}`}
-            x={PAD_LEFT - 6}
-            y={PAD_TOP + i * (CELL_H + GAP) + CELL_H * 0.7}
-            fontSize={10}
-            fontWeight={600}
-            fill="var(--text)"
-            textAnchor="end"
-          >{yLabel(k)}</text>
-        ))}
+        {yKeys.map((k, i) => {
+          const c = yLabelColor(k)
+          return (
+            <text
+              key={`y-${k}`}
+              x={PAD_LEFT - 6}
+              y={PAD_TOP + i * (CELL_H + GAP) + CELL_H * 0.7}
+              fontSize={10}
+              fontWeight={600}
+              fill="var(--text)"
+              style={c ? { fill: c } : undefined}
+              textAnchor="end"
+            >{yLabel(k)}</text>
+          )
+        })}
         {/* セル */}
         {yKeys.map((yk, yi) =>
           xKeys.map((xk, xi) => {
