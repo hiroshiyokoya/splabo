@@ -388,7 +388,7 @@ function NavItem({ id, icon, label, legacyName, active, onClick }: { id: Tab; ic
         {/* 旧アプリ名。ギアタブはヘッダーに Geartoon が残っているが、戦績タブは絞り込み窓を
             図鑑と揃えている都合でタブ内に置き場所が無いので、メニューにだけ添える。
             aria からは外す（読み上げでは「戦績」だけで十分）。 */}
-        {legacyName && <span className="nav-item-legacy" aria-hidden="true">{legacyName}</span>}
+        {legacyName && <span className="nav-item-legacy" aria-hidden="true">({legacyName})</span>}
       </span>
     </button>
   )
