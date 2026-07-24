@@ -197,6 +197,12 @@ function ScatterLegends({ sizeLegend, colorLegend }: { sizeLegend?: SizeLegend |
   if (!sizeLegend && !colorLegend) return null
   // 一番大きい円に合わせて行の高さを取る（円が上下で切れないように）。
   const maxR = sizeLegend ? areaToRadius(Math.max(...sizeLegend.items.map(i => i.area))) : 0
+  // サイズ凡例の円の色。色にもメトリクスを割り当てているときは実際のドットが
+  // そのスケールの色になるので、accent のままだと凡例だけ違う色で浮く。
+  // 色凡例の**中央のスウォッチ**を借りれば、常に実際のドットと同じパレットになる。
+  const dotColor = colorLegend
+    ? colorLegend.items[Math.floor(colorLegend.items.length / 2)].color
+    : 'var(--accent)'
   return (
     <div className="scatter-legend">
       {sizeLegend && (
@@ -207,7 +213,7 @@ function ScatterLegends({ sizeLegend, colorLegend }: { sizeLegend?: SizeLegend |
               <span className="scatter-legend-size" key={i}>
                 <span
                   className="scatter-legend-dot"
-                  style={{ width: areaToRadius(it.area) * 2, height: areaToRadius(it.area) * 2 }}
+                  style={{ width: areaToRadius(it.area) * 2, height: areaToRadius(it.area) * 2, background: dotColor }}
                 />
                 <span className="scatter-legend-value">{it.label}</span>
               </span>

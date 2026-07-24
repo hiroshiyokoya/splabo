@@ -475,7 +475,8 @@ body {
   align-items: center;
   gap: 2px;
 }
-/* 実際のドットと同じ見え方にする（塗り透過・細い縁取り）。 */
+/* 実際のドットと同じ見え方にする（塗り透過・細い縁取り）。
+   background は色メトリクスがあるとき ScatterChart がインラインで上書きする。 */
 .scatter-legend-dot {
   display: block;
   border-radius: 50%;
