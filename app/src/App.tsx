@@ -316,7 +316,7 @@ export default function App() {
         </button>
         {/* 並び順: 戦績 → 武器図鑑 → ステージ図鑑 → ギアコーデ → 環境分析 → AI分析 → 設定
             命名は「対象＋役割」で統一（戦績 / 〜図鑑 / 〜コーデ / 〜分析）。 */}
-        <NavItem id="battles"   icon="⚔️" label="戦績"           active={tab} onClick={setTab} />
+        <NavItem id="battles"   icon="⚔️" label="戦績" legacyName="Chartoon" active={tab} onClick={setTab} />
         <NavItem id="weapons"   icon="🔫" label="武器図鑑"       active={tab} onClick={setTab} />
         <NavItem id="stages"    icon="🗺️" label="ステージ図鑑"   active={tab} onClick={setTab} />
         <NavItem id="gear"      icon="👕" label="ギアコーデ"     active={tab} onClick={setTab} />
@@ -379,11 +379,17 @@ export default function App() {
   )
 }
 
-function NavItem({ id, icon, label, active, onClick }: { id: Tab; icon: string; label: string; active: Tab; onClick: (t: Tab) => void }) {
+function NavItem({ id, icon, label, legacyName, active, onClick }: { id: Tab; icon: string; label: string; legacyName?: string; active: Tab; onClick: (t: Tab) => void }) {
   return (
     <button className={`nav-item ${active === id ? 'active' : ''}`} onClick={() => onClick(id)}>
       <span className="nav-item-icon" aria-hidden="true">{icon}</span>
-      <span className="nav-item-label">{label}</span>
+      <span className="nav-item-label">
+        {label}
+        {/* 旧アプリ名。ギアタブはヘッダーに Geartoon が残っているが、戦績タブは絞り込み窓を
+            図鑑と揃えている都合でタブ内に置き場所が無いので、メニューにだけ添える。
+            aria からは外す（読み上げでは「戦績」だけで十分）。 */}
+        {legacyName && <span className="nav-item-legacy" aria-hidden="true">{legacyName}</span>}
+      </span>
     </button>
   )
 }

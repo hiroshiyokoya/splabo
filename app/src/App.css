@@ -207,6 +207,13 @@ body {
   flex-shrink: 0;
 }
 .nav-item-label { flex: 1; }
+/* メニューに添える旧アプリ名（#419）。ラベル領域は 180px - パディング - アイコンで
+   約 118px。13px の「戦績」が約 26px なので、10px なら余裕で収まる。 */
+.nav-item-legacy {
+  margin-left: 5px;
+  font-size: 10px;
+  opacity: 0.6;
+}
 .nav-item:hover { color: var(--text); background: var(--surface2); }
 .nav-item.active { color: var(--accent); background: var(--surface2); border-left: 2px solid var(--accent); }
 
