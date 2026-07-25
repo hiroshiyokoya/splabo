@@ -11,7 +11,7 @@
 //!   （#375 で導入・#379 で「今週」「直近 N 戦」を廃してローリング期間に置き換え）。
 //!   既存の `aggregates`（直近 N 戦）は**そのまま残す**（古い viewer のフォールバック先）。
 //!
-//! 詳細契約: `D:\develop\splatoon-gear\splabo-viewer-battle-db-contract.md`（viewer #30 と対）。
+//! 詳細契約: リポ `docs/battle-db-contract.md`（viewer #30 と対。viewer 側にも同内容）。
 
 use chrono::{DateTime, Datelike, Days, TimeZone, Utc};
 use serde::Serialize;
