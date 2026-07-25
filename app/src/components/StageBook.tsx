@@ -17,7 +17,7 @@ function winRateColor(rate: number): string {
 /** ステージ図鑑のソートキー。 */
 type SortKey =
   | 'total' | 'wins' | 'loses' | 'draws'
-  | 'win_rate' | 'avg_kill' | 'avg_death' | 'kd' | 'knockout_rate' | 'name'
+  | 'win_rate' | 'avg_kill' | 'avg_assist' | 'avg_death' | 'kd' | 'knockout_rate' | 'name'
 
 const SORT_LABELS: Record<SortKey, string> = {
   total:          'バトル数',
@@ -26,15 +26,17 @@ const SORT_LABELS: Record<SortKey, string> = {
   draws:          '引分(D)',
   win_rate:       '勝率',
   avg_kill:       '平均K',
+  avg_assist:     '平均A',
   avg_death:      '平均D',
   kd:             'キルレ',
   knockout_rate:  'KO 率',
   name:           '名前',
 }
 
+// 並びはバトル一覧と同じ K → A → D（#449）。
 const SORT_KEYS: SortKey[] = [
   'total', 'wins', 'loses', 'draws',
-  'win_rate', 'avg_kill', 'avg_death', 'kd', 'knockout_rate', 'name',
+  'win_rate', 'avg_kill', 'avg_assist', 'avg_death', 'kd', 'knockout_rate', 'name',
 ]
 
 /** K/D = 平均K ÷ 平均D。デス 0 は上位（Infinity）、データ無しは null。 */
@@ -69,6 +71,12 @@ function compareRows(a: GroupedStatsRow, b: GroupedStatsRow, sort: SortKey): num
     case 'avg_kill': {
       const av = a.avg_kill ?? -1
       const bv = b.avg_kill ?? -1
+      return bv - av
+    }
+    case 'avg_assist': {
+      // 平均A は多いほど良いので降順。null は末尾。
+      const av = a.avg_assist ?? -1
+      const bv = b.avg_assist ?? -1
       return bv - av
     }
     case 'avg_death': {
@@ -245,6 +253,7 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
             <SortHeader label="D"        sortKey="draws"         activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="勝率"     sortKey="win_rate"      activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均K"    sortKey="avg_kill"      activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="平均A"    sortKey="avg_assist"    activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均D"    sortKey="avg_death"     activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="キルレ"    sortKey="kd"            activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="KO率"     sortKey="knockout_rate" activeKey={sort} ascending={ascending} onSort={onSort} />
@@ -267,8 +276,9 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
                 <td className="book-td" style={{ color: winRate !== null ? winRateColor(winRate) : undefined }}>
                   {winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '—'}
                 </td>
-                <td className="book-td">{r.avg_kill  !== null ? r.avg_kill.toFixed(2)  : '—'}</td>
-                <td className="book-td">{r.avg_death !== null ? r.avg_death.toFixed(2) : '—'}</td>
+                <td className="book-td">{r.avg_kill   !== null ? r.avg_kill.toFixed(2)   : '—'}</td>
+                <td className="book-td">{r.avg_assist !== null ? r.avg_assist.toFixed(2) : '—'}</td>
+                <td className="book-td">{r.avg_death  !== null ? r.avg_death.toFixed(2)  : '—'}</td>
                 <td className="book-td">{avgKillRatio(r.avg_kill, r.avg_death)}</td>
                 <td className="book-td">{(koWin * 100).toFixed(1)}%</td>
                 <td className="book-td">{r.avg_inked !== null ? r.avg_inked.toFixed(0) : '—'}</td>
@@ -333,6 +343,12 @@ function StageCard({ row, image, onClick }: {
           <span className="stage-card-stat-label">平均K</span>
           <span className="stage-card-stat-value">
             {row.avg_kill !== null ? row.avg_kill.toFixed(2) : '—'}
+          </span>
+        </div>
+        <div className="stage-card-stat-row">
+          <span className="stage-card-stat-label">平均A</span>
+          <span className="stage-card-stat-value">
+            {row.avg_assist !== null ? row.avg_assist.toFixed(2) : '—'}
           </span>
         </div>
         <div className="stage-card-stat-row">

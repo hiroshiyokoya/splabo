@@ -21,6 +21,13 @@ function statLine(label: string, value: string, title?: string): { label: string
   return { label, value, title }
 }
 
+/** コンパクト戦績「12戦 7勝5敗」。引き分けは 0 でないときだけ「2分」を付ける（#449）。
+ *  WeaponDetailModal.fmtRecord / StageDetailModal.fmtRecord と同期。 */
+function fmtRecord(total: number, wins: number, draws: number): string {
+  const losses = total - wins - draws
+  return `${total}戦 ${wins}勝${losses}敗${draws > 0 ? `${draws}分` : ''}`
+}
+
 // カード一覧のソート種別。
 // 仕様：ブキチャレパワー系・ビッグラン熟練度は WeaponRecordQuery で取れないため除外（#149 事前共有）。
 type SortKey =
@@ -30,6 +37,7 @@ type SortKey =
   | 'draws'           // 引分 D
   | 'win_rate'        // 勝率
   | 'avg_kill'        // 平均キル数（db_grouped_stats から）
+  | 'avg_assist'      // 平均アシスト数（db_grouped_stats から）
   | 'avg_death'       // 平均デス数（db_grouped_stats から・少ないほど上位）
   | 'kd'              // K/D（平均K ÷ 平均D）
   | 'knockout_rate'   // KO 率（db_grouped_stats の knockout_win / total）
@@ -46,6 +54,7 @@ const SORT_LABELS: Record<SortKey, string> = {
   draws:             '引分(D)',
   win_rate:          '勝率',
   avg_kill:          '平均キル',
+  avg_assist:        '平均アシスト',
   avg_death:         '平均デス',
   kd:                'キルレ',
   knockout_rate:     'KO率',
@@ -175,8 +184,9 @@ export function WeaponBook({ filters }: { filters: Filters }) {
     const total    = (w: WeaponRecord): number => st(w)?.total ?? 0
     const wins     = (w: WeaponRecord): number => st(w)?.wins  ?? 0
     const winRate  = (w: WeaponRecord): number | null => st(w)?.win_rate  ?? null
-    const avgKill  = (w: WeaponRecord): number | null => st(w)?.avg_kill  ?? null
-    const avgDeath = (w: WeaponRecord): number | null => st(w)?.avg_death ?? null
+    const avgKill   = (w: WeaponRecord): number | null => st(w)?.avg_kill   ?? null
+    const avgAssist = (w: WeaponRecord): number | null => st(w)?.avg_assist ?? null
+    const avgDeath  = (w: WeaponRecord): number | null => st(w)?.avg_death  ?? null
     const avgInked = (w: WeaponRecord): number | null => st(w)?.avg_inked ?? null
     const koRate   = (w: WeaponRecord): number | null => {
       const s = st(w)
@@ -201,6 +211,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
         case 'draws':             return draws(b) - draws(a)
         case 'win_rate':          return cmpNum(winRate(a), winRate(b))
         case 'avg_kill':          return cmpNum(avgKill(a), avgKill(b))
+        case 'avg_assist':        return cmpNum(avgAssist(a), avgAssist(b))
         case 'avg_death':         return cmpNumAsc(avgDeath(a), avgDeath(b))
         case 'kd':                return cmpNum(kd(a),      kd(b))
         case 'knockout_rate':     return cmpNum(koRate(a),   koRate(b))
@@ -419,6 +430,7 @@ function WeaponTable({ rows, statsByWeapon, subImages, spImages, sortKey, ascend
             <SortHeader label="D"        sortKey="draws"         activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="勝率"     sortKey="win_rate"      activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均K"    sortKey="avg_kill"      activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label="平均A"    sortKey="avg_assist"    activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均D"    sortKey="avg_death"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="キルレ"    sortKey="kd"            activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="KO率"     sortKey="knockout_rate" activeKey={sortKey} ascending={ascending} onSort={onSort} />
@@ -456,8 +468,9 @@ function WeaponTable({ rows, statsByWeapon, subImages, spImages, sortKey, ascend
                 <td className="book-td" style={{ color: winRate !== null ? winRateColor(winRate) : undefined }}>
                   {winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '—'}
                 </td>
-                <td className="book-td">{stats?.avg_kill  != null ? stats.avg_kill.toFixed(2)  : '—'}</td>
-                <td className="book-td">{stats?.avg_death != null ? stats.avg_death.toFixed(2) : '—'}</td>
+                <td className="book-td">{stats?.avg_kill   != null ? stats.avg_kill.toFixed(2)   : '—'}</td>
+                <td className="book-td">{stats?.avg_assist != null ? stats.avg_assist.toFixed(2) : '—'}</td>
+                <td className="book-td">{stats?.avg_death  != null ? stats.avg_death.toFixed(2)  : '—'}</td>
                 <td className="book-td">{avgKillRatio(stats?.avg_kill ?? null, stats?.avg_death ?? null)}</td>
                 <td className="book-td">{koRate !== null ? `${(koRate * 100).toFixed(1)}%` : '—'}</td>
                 <td className="book-td">{stats?.avg_inked != null ? Math.round(stats.avg_inked).toLocaleString() : '—'}</td>
@@ -539,12 +552,14 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
       <div className="weapon-card-name" title={weapon.name}>{weapon.name}</div>
       {total > 0 ? (
         <>
+          {/* 先頭サマリ：戦数＋勝敗＋勝率（#449）。勝率は引き分けを除いた decisive ベース。 */}
           <div className="weapon-card-stats">
-            <span className="weapon-card-stat">{total}試合</span>
+            <span className="weapon-card-stat">{fmtRecord(total, avgStats!.wins, avgStats!.draws)}</span>
+            <span className="weapon-card-stat">·</span>
             <span
               className="weapon-card-stat weapon-card-winrate"
-              style={{ color: winRateColor(winRate!) }}
-            >{(winRate! * 100).toFixed(1)}%</span>
+              style={{ color: winRate !== null ? winRateColor(winRate) : undefined }}
+            >{winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '—'}</span>
           </div>
           <div className="weapon-card-stats-grid">
             <div className="weapon-card-stats-col">

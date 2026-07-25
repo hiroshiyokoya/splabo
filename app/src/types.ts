@@ -435,7 +435,7 @@ export interface ChartSpec {
 }
 
 /** db_battle_stats の返り値型。
- *  avg_kill / avg_death は detail_fetched=1 のバトルのみで集計。詳細未取得しかない場合は null。 */
+ *  avg_kill / avg_death / avg_assist は detail_fetched=1 のバトルのみで集計。詳細未取得しかない場合は null。 */
 export interface BattleStats {
   total: number
   wins: number
@@ -444,6 +444,7 @@ export interface BattleStats {
   weapon_count: number
   avg_kill: number | null
   avg_death: number | null
+  avg_assist: number | null
 }
 
 /** 平均キル / 平均デスから集計キルレを文字列で返す。null・D=0 を考慮。 */
