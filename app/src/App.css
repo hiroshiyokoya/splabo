@@ -570,10 +570,12 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   gap: 8px;
-  padding: 2px 8px 0;
+  /* 左右の padding は LineChart 側で Y 軸幅に合わせて指定し、描画域内に収める */
+  padding-top: 2px;
   font-size: 11px;
   font-weight: 600;
   min-height: 20px;
+  box-sizing: border-box;
 }
 .line-axis-legend-side {
   display: flex;

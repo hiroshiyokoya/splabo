@@ -56,10 +56,13 @@ function LineTooltipContent({ active, payload, metrics }: {
  *
  * Recharts 標準 Legend だと左右どちらに載っているかが分からないので、系列を
  * 左軸／右軸に分け、それぞれ左寄せ・右寄せで並べる。1 系列だけのときは出さない。
+ * padLeft / padRight はチャート本体の Y 軸幅＋余白に合わせ、凡例を描画域の枠内に収める。
  */
-function LineAxisLegend({ metrics, axisOf }: {
-  metrics: MetricKey[]
-  axisOf:  Map<MetricKey, 'left' | 'right'>
+function LineAxisLegend({ metrics, axisOf, padLeft, padRight }: {
+  metrics:  MetricKey[]
+  axisOf:   Map<MetricKey, 'left' | 'right'>
+  padLeft:  number
+  padRight: number
 }) {
   if (metrics.length <= 1) return null
   const left  = metrics.filter(m => axisOf.get(m) === 'left')
@@ -75,7 +78,10 @@ function LineAxisLegend({ metrics, axisOf }: {
     )
   }
   return (
-    <div className="line-axis-legend">
+    <div
+      className="line-axis-legend"
+      style={{ paddingLeft: padLeft, paddingRight: padRight }}
+    >
       <div className="line-axis-legend-side line-axis-legend-side--left">
         {left.map(item)}
       </div>
@@ -137,13 +143,16 @@ export function LineChart({
     g === 'win_rate' ? (v: number) => `${(v * 100).toFixed(0)}%` : undefined
 
   // 軸グループ名の縦書きラベルぶん、少し余白を取る。
+  // margin.right は Recharts のプロット右端余白。凡例の左右パディングは
+  // Y 軸幅＋この余白に合わせ、描画域（枠）の内側に揃える。
+  const chartMarginRight = 8
   const leftPad  = 48
   const rightPad = hasRightAxis ? 48 : 8
 
   return (
     <div className="chart-hover-area">
     <ResponsiveContainer width="100%" height={height}>
-      <RLineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+      <RLineChart data={chartData} margin={{ top: 4, right: chartMarginRight, left: 0, bottom: 4 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
         <XAxis
           dataKey="t"
@@ -207,7 +216,12 @@ export function LineChart({
         ))}
       </RLineChart>
     </ResponsiveContainer>
-    <LineAxisLegend metrics={metrics} axisOf={axisOf} />
+    <LineAxisLegend
+      metrics={metrics}
+      axisOf={axisOf}
+      padLeft={leftPad}
+      padRight={rightPad + chartMarginRight}
+    />
     </div>
   )
 }
