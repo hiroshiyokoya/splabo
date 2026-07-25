@@ -550,7 +550,7 @@ async function handleUploadStatink() {
       <section className="settings-section">
         <h3>ギアデータ</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
-          取得済みのギアデータ（ギア一覧・画像キャッシュ）をすべて削除します。ギアタブから再取得できます。
+          取得済みのギアデータ（ギア一覧・画像キャッシュ）をすべて削除します。再度サイドバーの「最新データを取得」から取得できます。
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
