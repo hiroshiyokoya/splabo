@@ -22,12 +22,14 @@ import { rateCellColor, sequentialCellColor } from '../utils/heatmapColors'
 /** 1 バトル単位の散布図メトリクス値を BattleRow から計算する。 */
 function getBattleMetric(b: BattleRow, k: BattleMetricKey): number | null {
   switch (k) {
-    case 'kill':    return b.kill
-    case 'death':   return b.death
-    case 'assist':  return b.assist
-    case 'kd':      return b.death === 0 ? null : b.kill / b.death
-    case 'inked':   return b.inked
-    case 'special': return b.special
+    case 'kill':         return b.kill
+    case 'assist':       return b.assist
+    case 'contrib_kill': return b.kill + b.assist
+    case 'death':        return b.death
+    case 'kd':           return b.death === 0 ? null : b.kill / b.death
+    case 'contrib_kd':   return b.death === 0 ? null : (b.kill + b.assist) / b.death
+    case 'inked':        return b.inked
+    case 'special':      return b.special
   }
 }
 
@@ -211,9 +213,12 @@ const SORT_OPTIONS_STACKED_WINRATE: SortOption[] = [
   { key: 'win_rate', label: '勝率' },
 ]
 const SORT_OPTIONS_ATTACK_DEFENSE: SortOption[] = [
-  { key: 'avg_kill',  label: '平均キル' },
-  { key: 'avg_death', label: '平均デス' },
-  { key: 'avg_kd',    label: 'キルレ' },
+  { key: 'avg_kill',         label: '平均キル' },
+  { key: 'avg_assist',       label: '平均アシスト' },
+  { key: 'avg_contrib_kill', label: '平均貢献キル' },
+  { key: 'avg_death',        label: '平均デス' },
+  { key: 'avg_kd',           label: 'キルレ' },
+  { key: 'avg_contrib_kd',   label: '貢献キルレ' },
 ]
 
 // ---------------------------------------------------------------------------
