@@ -564,6 +564,43 @@ body {
   white-space: nowrap;
   box-shadow: 0 4px 12px rgba(0,0,0,0.35);
 }
+/* 線グラフの左右軸寄せ凡例（#463）。左軸系列は左、右軸系列は右へ。 */
+.line-axis-legend {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  /* 左右の padding は LineChart 側で Y 軸幅に合わせて指定し、描画域内に収める */
+  padding-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  min-height: 20px;
+  box-sizing: border-box;
+}
+.line-axis-legend-side {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.line-axis-legend-side--left {
+  justify-content: flex-start;
+}
+.line-axis-legend-side--right {
+  justify-content: flex-end;
+  margin-left: auto;
+}
+.line-axis-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.line-axis-legend-swatch {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
 .hover-tt-title {
   color: var(--text);
   font-weight: 700;
