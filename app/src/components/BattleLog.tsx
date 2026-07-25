@@ -21,6 +21,13 @@ function killRatio(kill: number, death: number): string {
   return (kill / death).toFixed(2)
 }
 
+/** 平均キルカードの値「K (A)」＝ キル (アシスト)（#449）。
+ *  K が無ければ '—'、A だけ無ければ括弧内を '—' にする。Dashboard.fmtKillWithAssist と同期。 */
+function fmtKillWithAssist(kill: number | null | undefined, assist: number | null | undefined): string {
+  if (kill == null) return '—'
+  return `${kill.toFixed(2)} (${assist != null ? assist.toFixed(2) : '—'})`
+}
+
 type OrderBy = 'played_at' | 'kill' | 'assist' | 'death' | 'special' | 'inked' | 'kill_ratio'
 
 // ---------------------------------------------------------------------------
@@ -142,7 +149,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
             value={`${stats.wins} / ${stats.total - stats.wins - stats.draws} (${stats.draws})`} />
           <LogStatCard label="全体勝率"          value={stats.total > 0 ? `${(stats.win_rate * 100).toFixed(1)}%` : '—'}
             valueColor={stats.total > 0 ? winRateColor(stats.win_rate) : undefined} />
-          <LogStatCard label="平均キル"          value={stats.avg_kill  !== null ? stats.avg_kill.toFixed(2)  : '—'} />
+          <LogStatCard label="平均キル"          value={fmtKillWithAssist(stats.avg_kill, stats.avg_assist)} />
           <LogStatCard label="平均デス"          value={stats.avg_death !== null ? stats.avg_death.toFixed(2) : '—'} />
           <LogStatCard label="キルレ"            value={avgKillRatio(stats.avg_kill, stats.avg_death)} />
         </div>

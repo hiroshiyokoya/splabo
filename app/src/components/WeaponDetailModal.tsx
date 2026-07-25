@@ -26,6 +26,13 @@ function fmtRatio(num: number | null | undefined, den: number | null | undefined
   return (num / den).toFixed(2)
 }
 
+/** コンパクト戦績「12戦 7勝5敗」。引き分けは 0 でないときだけ「2分」を付ける（#449）。
+ *  WeaponBook.fmtRecord / StageDetailModal.fmtRecord と同期。 */
+function fmtRecord(total: number, wins: number, draws: number): string {
+  const losses = total - wins - draws
+  return `${total}戦 ${wins}勝${losses}敗${draws > 0 ? `${draws}分` : ''}`
+}
+
 /**
  * 武器図鑑カードをクリックして開く詳細モーダル。
  *
@@ -135,7 +142,8 @@ export function WeaponDetailModal({
             </div>
           </section>
 
-          {/* バトル統計：7 パネル（4×2 グリッド） */}
+          {/* バトル統計：7 パネル（4×2 グリッド）。
+              上段はバトル数・勝敗・勝率・平均塗り、下段は K/D 系（平均キル・平均デス・キルレ）で揃える（#449）。 */}
           <section className="modal-section">
             <h3 className="modal-section-title">バトル統計</h3>
             <div className="weapon-modal-stats-grid">
@@ -146,10 +154,10 @@ export function WeaponDetailModal({
                 value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '—'}
                 color={overallWinRate !== null ? winRateColor(overallWinRate) : undefined}
               />
+              <StatPanel label="平均塗り" value={fmtNum(stats?.avg_inked, 0)} />
               <StatPanel label="平均キル" value={fmtNum(stats?.avg_kill, 2)} />
               <StatPanel label="平均デス" value={fmtNum(stats?.avg_death, 2)} />
               <StatPanel label="キルレ" value={fmtRatio(stats?.avg_kill, stats?.avg_death)} />
-              <StatPanel label="平均塗り" value={fmtNum(stats?.avg_inked, 0)} />
             </div>
           </section>
 
@@ -200,7 +208,7 @@ export function WeaponDetailModal({
                   return (
                     <div key={r.key} className="weapon-modal-stage-row">
                       <span className="weapon-modal-stage-name" title={r.name}>{r.name}</span>
-                      <span className="weapon-modal-stage-count">{r.total} 戦</span>
+                      <span className="weapon-modal-stage-count">{fmtRecord(r.total, r.wins, r.draws)}</span>
                       <span
                         className="weapon-modal-stage-rate"
                         style={{ color: wr !== null ? winRateColor(wr) : 'var(--text-muted)' }}
@@ -226,7 +234,7 @@ export function WeaponDetailModal({
                 {bestStages.map(({ row: r, winRate: wr }) => (
                   <div key={r.key} className="weapon-modal-stage-row">
                     <span className="weapon-modal-stage-name" title={r.name}>{r.name}</span>
-                    <span className="weapon-modal-stage-count">{r.total} 戦</span>
+                    <span className="weapon-modal-stage-count">{fmtRecord(r.total, r.wins, r.draws)}</span>
                     <span
                       className="weapon-modal-stage-rate"
                       style={{ color: winRateColor(wr) }}

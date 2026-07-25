@@ -45,6 +45,13 @@ function winRateLevel(rate: number): 'hi' | 'mid' | 'lo' {
   return 'lo'
 }
 
+/** 平均キルカードの値「K (A)」＝ キル (アシスト)（#449）。
+ *  K が無ければ '—'、A だけ無ければ括弧内を '—' にする。BattleLog.fmtKillWithAssist と同期。 */
+function fmtKillWithAssist(kill: number | null | undefined, assist: number | null | undefined): string {
+  if (kill == null) return '—'
+  return `${kill.toFixed(2)} (${assist != null ? assist.toFixed(2) : '—'})`
+}
+
 // 積み上げバーで「最上段のセグメントだけ上端を角丸」にする shape。
 // Recharts の radius={[r,r,0,0]} を全 stack に付けると各セグメントが
 // 個別に丸まって境目に変な凹みが出るため、shape で制御する。
@@ -266,7 +273,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
               value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '—'}
               valueColor={overallWinRate !== null ? winRateColor(overallWinRate) : undefined}
             />
-            <StatCard label="平均キル" value={stats?.avg_kill  != null ? stats.avg_kill.toFixed(2)  : '—'} />
+            <StatCard label="平均キル" value={fmtKillWithAssist(stats?.avg_kill, stats?.avg_assist)} />
             <StatCard label="平均デス" value={stats?.avg_death != null ? stats.avg_death.toFixed(2) : '—'} />
             <StatCard label="キルレ" value={avgKillRatio(stats?.avg_kill ?? null, stats?.avg_death ?? null)} />
           </div>

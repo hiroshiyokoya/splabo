@@ -1067,8 +1067,9 @@ pub async fn db_battle_stats(
             SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END) as wins,
             SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END) as draws,
             COUNT(DISTINCT b.weapon_id) as weapon_count,
-            AVG(CASE WHEN b.detail_fetched = 1 THEN b.kill  END) as avg_kill,
-            AVG(CASE WHEN b.detail_fetched = 1 THEN b.death END) as avg_death
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.kill   END) as avg_kill,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.death  END) as avg_death,
+            AVG(CASE WHEN b.detail_fetched = 1 THEN b.assist END) as avg_assist
          FROM battle b
          JOIN lobby  l   ON l.id   = b.lobby_id
          JOIN rule   r   ON r.id   = b.rule_id
@@ -1099,8 +1100,9 @@ pub async fn db_battle_stats(
     let draws: i64                 = row.get("draws");
     let weapon_count: i64          = row.get("weapon_count");
     // detail_fetched=1 のバトルのみで平均を取る（CASE で NULL にして AVG が無視）
-    let avg_kill:  Option<f64>     = row.try_get("avg_kill").ok();
-    let avg_death: Option<f64>     = row.try_get("avg_death").ok();
+    let avg_kill:   Option<f64>    = row.try_get("avg_kill").ok();
+    let avg_death:  Option<f64>    = row.try_get("avg_death").ok();
+    let avg_assist: Option<f64>    = row.try_get("avg_assist").ok();
     let decisive                   = total - draws;
     Ok(serde_json::json!({
         "total": total,
@@ -1108,8 +1110,9 @@ pub async fn db_battle_stats(
         "draws": draws,
         "win_rate": if decisive > 0 { wins as f64 / decisive as f64 } else { 0.0 },
         "weapon_count": weapon_count,
-        "avg_kill":  avg_kill,
-        "avg_death": avg_death,
+        "avg_kill":   avg_kill,
+        "avg_death":  avg_death,
+        "avg_assist": avg_assist,
     }))
 }
 
