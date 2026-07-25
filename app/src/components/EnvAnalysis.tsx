@@ -21,7 +21,7 @@ import type { ScatterPoint } from './charts/ScatterChart'
 import { Heatmap } from './charts/Heatmap'
 import { MultiSelect } from './MultiSelect'
 import { rateCellColor, sequentialCellColor, AXIS_MIN_TOTAL_SAMPLES } from '../utils/heatmapColors'
-import { loadEnvPrefs, saveEnvPrefs } from '../utils/envPrefs'
+import { loadEnvPrefs, saveEnvPrefs, DEFAULT_ENV_PREFS } from '../utils/envPrefs'
 
 const LOBBY_OPTIONS = [
   { key: '',                  label: 'すべてのロビー' },
@@ -227,6 +227,31 @@ export function EnvAnalysis() {
   const [posterRanks, setPosterRanks] = useState<string[]>(prefs.posterRanks)   // 選択中ウデマエ帯（複数）
   const [powerMin, setPowerMin] = useState(prefs.powerMin)                       // Xパワー下限（空 = 無指定）
   const [powerMax, setPowerMax] = useState(prefs.powerMax)                       // Xパワー上限（空 = 無指定）
+
+  /** 共通フィルタが既定（クリア済み）かどうか（#456）。 */
+  const filtersAreDefault =
+    lobbyKeys.length === 0 &&
+    ruleKeys.length === 0 &&
+    gameVers.length === 0 &&
+    posterRanks.length === 0 &&
+    powerMin === '' &&
+    powerMax === '' &&
+    period === DEFAULT_ENV_PREFS.period &&
+    customSince === '' &&
+    customUntil === ''
+
+  /** 共通フィルタを未指定（初期状態）に戻す（#456）。永続化は既存の save 用 effect が拾う。 */
+  function clearFilters() {
+    setLobbyKeys([])
+    setRuleKeys([])
+    setGameVers([])
+    setPosterRanks([])
+    setPowerMin('')
+    setPowerMax('')
+    setPeriod(DEFAULT_ENV_PREFS.period as Period)
+    setCustomSince('')
+    setCustomUntil('')
+  }
 
   // 可視化モード
   const [vizMode, setVizMode] = useState<'scatter' | 'heatmap'>(prefs.vizMode)
@@ -671,6 +696,13 @@ export function EnvAnalysis() {
                        value={powerMax} onChange={e => setPowerMax(e.target.value)} />
               </span>
             </label>
+            <button
+              type="button"
+              className="env-filter-clear"
+              onClick={clearFilters}
+              disabled={filtersAreDefault}
+              title={filtersAreDefault ? 'すでに初期状態です' : '共通フィルタをすべて初期状態に戻す'}
+            >✕ クリア</button>
           </div>
 
           {(posterRanks.length > 0 || powerMin !== '' || powerMax !== '') && (
