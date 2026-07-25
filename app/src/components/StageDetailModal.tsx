@@ -10,6 +10,13 @@ function winRateColor(rate: number): string {
   return '#f472b6'
 }
 
+/** コンパクト戦績「12戦 7勝5敗」。引き分けは 0 でないときだけ「2分」を付ける（#449）。
+ *  WeaponBook.fmtRecord / WeaponDetailModal.fmtRecord と同期。 */
+function fmtRecord(total: number, wins: number, draws: number): string {
+  const losses = total - wins - draws
+  return `${total}戦 ${wins}勝${losses}敗${draws > 0 ? `${draws}分` : ''}`
+}
+
 /** 武器 TOP セクションの下限バトル数（勝率 TOP のブレを避ける）。 */
 const WEAPON_MIN_BATTLES = 5
 /** 武器 TOP セクションで表示する件数。 */
@@ -241,7 +248,7 @@ function WeaponRow({ row, icon, primary, primaryColor }: {
         }
       </div>
       <span className="stage-modal-weapon-name" title={row.name}>{row.name}</span>
-      <span className="stage-modal-weapon-count">{row.total} 戦</span>
+      <span className="stage-modal-weapon-count">{fmtRecord(row.total, row.wins, row.draws)}</span>
       <span
         className="stage-modal-weapon-primary"
         style={primaryColor ? { color: primaryColor } : undefined}
