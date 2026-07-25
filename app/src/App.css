@@ -920,7 +920,11 @@ body {
   cursor: pointer;
   transition: color 0.12s, border-color 0.12s;
 }
-.filter-reset-btn:hover { color: var(--lose); border-color: var(--lose); }
+.filter-reset-btn:hover:not(:disabled) { color: var(--lose); border-color: var(--lose); }
+.filter-reset-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 
 /* ── Weapon Picker ── */
 .weapon-picker-wrap { position: relative; }
