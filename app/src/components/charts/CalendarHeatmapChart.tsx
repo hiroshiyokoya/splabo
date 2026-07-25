@@ -54,7 +54,8 @@ function fmtLegend(v: number, metric: MetricKey): string {
   if (metric === 'win_rate') return `${Math.round(v * 100)}%`
   if (metric === 'total' || metric === 'wins' ||
       metric === 'sum_kill' || metric === 'sum_death' ||
-      metric === 'sum_assist' || metric === 'sum_inked') return Math.round(v).toString()
+      metric === 'sum_assist' || metric === 'sum_contrib_kill' ||
+      metric === 'sum_inked') return Math.round(v).toString()
   return v.toFixed(1)
 }
 

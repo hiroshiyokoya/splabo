@@ -3825,6 +3825,7 @@ fn cell_agg(cell_metric: &str, r: &MatrixRaw) -> Option<Agg> {
         // 比の指標は「平均の比」＝「合計の比」（母数 n_kda が約分される）。
         // 合計で持てば周辺集計も同じ式で正しく畳める。
         "kill_ratio"    => Agg::Ratio { num: r.sum_k,             den: r.sum_d },
+        "contrib_kill"  => Agg::Ratio { num: r.sum_k + r.sum_a,   den: kda },
         "contrib_ratio" => Agg::Ratio { num: r.sum_k + r.sum_a,   den: r.sum_d },
         "battles"       => Agg::Sum(n),
         _ => return None,
@@ -3898,7 +3899,7 @@ fn matrix_dim(dim: &str) -> Option<(&'static str, &'static str, &'static str)> {
 /// 環境データのマトリクス（ヒートマップ）集計。
 ///
 /// - `cell_metric` = "win_rate" | "pick_rate" | "avg_kill" | "avg_death" | "avg_assist"
-///   | "avg_inked" | "kill_ratio" | "contrib_ratio" … 行/列の **一方が weapon** であること
+///   | "avg_inked" | "kill_ratio" | "contrib_kill" | "contrib_ratio" … 行/列の **一方が weapon** であること
 ///   （武器のそのカテゴリでの勝率 / ピック率 / KDA 系）。KDA 系は a1/b1 のみ母数。
 /// - `cell_metric` = "ko_rate" | "battles"   … 行/列とも **weapon 以外**（バトルレベル指標）
 ///
@@ -3934,7 +3935,8 @@ pub async fn env_matrix_stats(
     // 他スロットは NULL。勝率/ピック率は 8 スロット全員が母数なのと非対称になる。
     let kda_based = matches!(
         cell_metric.as_str(),
-        "avg_kill" | "avg_death" | "avg_assist" | "avg_inked" | "kill_ratio" | "contrib_ratio"
+        "avg_kill" | "avg_death" | "avg_assist" | "avg_inked"
+            | "kill_ratio" | "contrib_kill" | "contrib_ratio"
     );
     let weapon_centric = cell_metric == "win_rate" || cell_metric == "pick_rate" || kda_based;
 

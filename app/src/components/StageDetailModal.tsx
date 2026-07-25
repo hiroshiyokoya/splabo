@@ -143,8 +143,8 @@ export function StageDetailModal({
                       <th className="num">バトル</th>
                       <th className="num">勝率</th>
                       <th className="num">平均K</th>
-                      <th className="num">平均D</th>
                       <th className="num">平均A</th>
+                      <th className="num">平均D</th>
                       <th className="num">キルレ</th>
                       <th className="num">KO率</th>
                     </tr>
@@ -167,8 +167,8 @@ export function StageDetailModal({
                             {wr !== null ? `${(wr * 100).toFixed(1)}%` : '—'}
                           </td>
                           <td className="num">{r?.avg_kill   !== null && r?.avg_kill   !== undefined ? r.avg_kill.toFixed(2)   : '—'}</td>
-                          <td className="num">{r?.avg_death  !== null && r?.avg_death  !== undefined ? r.avg_death.toFixed(2)  : '—'}</td>
                           <td className="num">{r?.avg_assist !== null && r?.avg_assist !== undefined ? r.avg_assist.toFixed(2) : '—'}</td>
+                          <td className="num">{r?.avg_death  !== null && r?.avg_death  !== undefined ? r.avg_death.toFixed(2)  : '—'}</td>
                           <td className="num">{r ? avgKillRatio(r.avg_kill, r.avg_death) : '—'}</td>
                           <td className="num">{koR !== null ? `${(koR * 100).toFixed(1)}%` : '—'}</td>
                         </tr>

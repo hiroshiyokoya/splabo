@@ -72,10 +72,15 @@ const WEAPON_METRICS: ScatterMetric[] = [
   { key: 'pick_rate',  label: 'ピック率',   rate01: true,  fmt: pct,  get: field('pick_rate') },
   { key: 'win_rate',   label: '勝率',       rate01: true,  fmt: pct,  get: field('win_rate') },
   { key: 'avg_kill',   label: '平均キル',   rate01: false, fmt: num2, get: field('avg_kill'),   kda: true },
-  { key: 'avg_death',  label: '平均デス',   rate01: false, fmt: num2, get: field('avg_death'),  kda: true },
   { key: 'avg_assist', label: '平均アシスト', rate01: false, fmt: num2, get: field('avg_assist'), kda: true },
+  { key: 'contrib_kill', label: '平均貢献キル', rate01: false, fmt: num2, kda: true,
+    get: (s) => (s.avg_kill != null && s.avg_assist != null) ? s.avg_kill + s.avg_assist : null },
+  { key: 'avg_death',  label: '平均デス',   rate01: false, fmt: num2, get: field('avg_death'),  kda: true },
   { key: 'kill_ratio', label: 'キルレ',     rate01: false, fmt: num2, kda: true,
     get: (s) => (s.avg_kill != null && s.avg_death != null && s.avg_death > 0) ? s.avg_kill / s.avg_death : null },
+  { key: 'contrib_ratio', label: '貢献キルレ', rate01: false, fmt: num2, kda: true,
+    get: (s) => (s.avg_kill != null && s.avg_assist != null && s.avg_death != null && s.avg_death > 0)
+      ? (s.avg_kill + s.avg_assist) / s.avg_death : null },
   { key: 'avg_inked',  label: '平均塗りP',  rate01: false, fmt: pint, get: field('avg_inked'),  kda: true },
 ]
 
@@ -89,10 +94,12 @@ const STAGE_METRICS: ScatterMetric[] = [
 // ヒートマップのセル指標
 type CellMetricKey =
   | 'win_rate' | 'pick_rate' | 'ko_rate' | 'battles'
-  | 'avg_kill' | 'avg_death' | 'kill_ratio' | 'avg_assist' | 'contrib_ratio' | 'avg_inked'
+  | 'avg_kill' | 'avg_assist' | 'contrib_kill' | 'avg_death' | 'kill_ratio' | 'contrib_ratio' | 'avg_inked'
 // キル系（a1/b1 のみ母数・専用しきい値）。注記・母数表示の切り替えに使う。
 // 平均塗りP(avg_inked)も a1/b1 母数なのでここに含める（#336 で元データの列マッピングを修正済み）。
-const KDA_CELL_KEYS: CellMetricKey[] = ['avg_kill', 'avg_death', 'kill_ratio', 'avg_assist', 'contrib_ratio', 'avg_inked']
+const KDA_CELL_KEYS: CellMetricKey[] = [
+  'avg_kill', 'avg_assist', 'contrib_kill', 'avg_death', 'kill_ratio', 'contrib_ratio', 'avg_inked',
+]
 interface CellMetric {
   key:    CellMetricKey
   label:  string
@@ -103,16 +110,17 @@ interface CellMetric {
   hue?:   number    // sequential の色相（既定 210=青）。デスは 8=赤（高いほど悪い）
 }
 const CELL_METRICS: CellMetric[] = [
-  { key: 'win_rate',      label: '勝率',       fmt: pct,  scale: 'diverging',  weapon: true, mid: 0.5 },
-  { key: 'pick_rate',     label: 'ピック率',   fmt: pct,  scale: 'sequential', weapon: true },
-  { key: 'avg_kill',      label: '平均キル',   fmt: num2, scale: 'sequential', weapon: true },
-  { key: 'avg_death',     label: '平均デス',   fmt: num2, scale: 'sequential', weapon: true, hue: 8 },
-  { key: 'kill_ratio',    label: 'キルレ',     fmt: num2, scale: 'diverging',  weapon: true, mid: 1.0 },
+  { key: 'win_rate',      label: '勝率',         fmt: pct,  scale: 'diverging',  weapon: true, mid: 0.5 },
+  { key: 'pick_rate',     label: 'ピック率',     fmt: pct,  scale: 'sequential', weapon: true },
+  { key: 'avg_kill',      label: '平均キル',     fmt: num2, scale: 'sequential', weapon: true },
   { key: 'avg_assist',    label: '平均アシスト', fmt: num2, scale: 'sequential', weapon: true },
-  { key: 'contrib_ratio', label: '貢献キルレ', fmt: num2, scale: 'diverging',  weapon: true, mid: 1.0 },
+  { key: 'contrib_kill',  label: '平均貢献キル', fmt: num2, scale: 'sequential', weapon: true },
+  { key: 'avg_death',     label: '平均デス',     fmt: num2, scale: 'sequential', weapon: true, hue: 8 },
+  { key: 'kill_ratio',    label: 'キルレ',       fmt: num2, scale: 'diverging',  weapon: true, mid: 1.0 },
+  { key: 'contrib_ratio', label: '貢献キルレ',   fmt: num2, scale: 'diverging',  weapon: true, mid: 1.0 },
   { key: 'avg_inked',     label: '平均塗りP',   fmt: pint, scale: 'sequential', weapon: true },
-  { key: 'ko_rate',       label: 'KO率',       fmt: pct,  scale: 'sequential', weapon: false },
-  { key: 'battles',       label: 'バトル数',   fmt: pint, scale: 'sequential', weapon: false },
+  { key: 'ko_rate',       label: 'KO率',         fmt: pct,  scale: 'sequential', weapon: false },
+  { key: 'battles',       label: 'バトル数',     fmt: pint, scale: 'sequential', weapon: false },
 ]
 // ルールを次元にしたときの並び順（ガチ系を先・ナワバリを最後）。
 const RULE_HEATMAP_ORDER = ['area', 'yagura', 'hoko', 'asari', 'nawabari']
