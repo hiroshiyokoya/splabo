@@ -118,6 +118,9 @@
     background: color-mix(in srgb, var(--bg) 90%, transparent);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
+    /* .content の上余白 24px をこちらの padding で持つ（#450）。
+       こうすると sticky が画面上端まで届き、スクロールした中身が上の帯に見えない。 */
+    padding-top: 24px;
   }
 
   /* ヘッダーを畳んだので（#419）、上余白はヘッダーが持っていた分をタブ行が引き継ぐ。 */

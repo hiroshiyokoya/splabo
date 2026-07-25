@@ -242,13 +242,21 @@ body {
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  /* 上の 24px は .content ではなく sticky バー側の padding-top が持つ（#450）。
+     .content に padding-top があると、sticky が 24px 下で止まり、スクロールした
+     中身が上端の帯にまた見えてしまうため。 */
+  padding: 0 24px 24px;
   /* 縦フローの flex にして、一覧テーブルを持つ画面(.book--fill)が
      残り高さを埋め、テーブルラッパー内でスクロールできるようにする(#334)。
      通常の画面は自然な高さのまま .content 側でページスクロールする。 */
   display: flex;
   flex-direction: column;
 }
+
+/* sticky バーを持たないタブは、自分の上余白で従来の 24px を確保する（#450）。 */
+.env-analysis,
+.ai-panel,
+.settings-panel { margin-top: 24px; }
 
 /* 一覧テーブルを持つ画面を残り高さいっぱいに広げ、テーブルラッパー内で
    縦横スクロールさせる。これで横スクロールバーが常に画面内に表示される(#334)。 */
@@ -261,7 +269,8 @@ body {
 
 /* バトル／武器／ステージ上部の絞り込み（＋バトル見出し）をスクロール中も常時表示（#450）。
    ギアの .app-top--sticky と同じ流儀。高さは App.tsx が --content-sticky-chrome-height に書く。
-   下余白は padding に寄せ、計測した高さが武器・ステージ見出しの sticky top と一致するようにする。 */
+   上下の余白は padding に寄せ、半透明の背景が画面上端まで届き、かつ計測した高さが
+   武器・ステージ見出しの sticky top と一致するようにする。 */
 .content-sticky-chrome {
   position: sticky;
   top: 0;
@@ -269,6 +278,7 @@ body {
   background: color-mix(in srgb, var(--bg) 90%, transparent);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
+  padding-top: 24px;
   padding-bottom: 14px;
   margin-bottom: 0;
 }
@@ -632,6 +642,19 @@ body {
   grid-template-columns: repeat(6, 1fr);
   gap: 10px;
   margin-bottom: 20px;
+}
+/* バトルのダッシュボードでは統計カード行もスクロール中常時表示する（#450）。
+   絞り込み＋見出し（.content-sticky-chrome）のすぐ下に張り付く。
+   下余白は padding に寄せ、半透明の背景でカード間の隙間も覆う。 */
+.dashboard .stat-cards {
+  position: sticky;
+  top: var(--content-sticky-chrome-height, 0px);
+  z-index: 38;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  margin-bottom: 0;
+  padding-bottom: 20px;
 }
 .stat-card {
   background: var(--surface);
