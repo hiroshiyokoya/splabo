@@ -306,7 +306,7 @@ function sortAndSlice(rows: GroupedStatsRow[], sortKey: MetricKey | null): Group
  *   （stacked_winrate / attack_defense のとき）。
  */
 export function CustomChartCard({
-  chart, data, data2d, battleData, onEdit, onDelete, weaponImages,
+  chart, data, data2d, battleData, onEdit, onDelete, weaponImages, since = null, until = null,
 }: {
   chart:    CustomChart
   data:     GroupedStatsRow[]
@@ -318,6 +318,9 @@ export function CustomChartCard({
   onDelete: () => void
   /** 武器名 → 画像 URL の対応。X 軸が `weapon` のときラベルをアイコンに置換する。 */
   weaponImages?: Map<string, string>
+  /** カレンダー用。FilterBar の期間（#461）。 */
+  since?:   string | null
+  until?:   string | null
 }) {
   const sortable = useSortable({ id: chart.id })
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable
@@ -382,7 +385,7 @@ export function CustomChartCard({
           </div>
         )}
       </div>
-      {renderChartBody(chart, sliced, data2d, battleData, nameTransform, tickAngle, weaponImages)}
+      {renderChartBody(chart, sliced, data2d, battleData, nameTransform, tickAngle, weaponImages, since, until)}
     </div>
   )
 }
@@ -398,6 +401,8 @@ function renderChartBody(
   nameTransform: ((s: string) => string) | undefined,
   tickAngle:     number | undefined,
   weaponImages:  Map<string, string> | undefined,
+  since:         string | null,
+  until:         string | null,
 ): ReactNode {
   // line: 時系列のみ。複数系列対応（#436）。
   if (chart.shape === 'line') {
@@ -415,7 +420,7 @@ function renderChartBody(
   // calendar_heatmap: 日別のみ。yComposition は single_metric 前提。
   if (chart.shape === 'calendar_heatmap') {
     if (chart.yComposition === 'single_metric' && chart.metric) {
-      return <CalendarHeatmapChart data={data} metric={chart.metric} />
+      return <CalendarHeatmapChart data={data} metric={chart.metric} since={since} until={until} />
     }
     return (
       <div className="chart-not-implemented">
