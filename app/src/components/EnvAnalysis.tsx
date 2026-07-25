@@ -154,7 +154,7 @@ type Period = 'all' | 'current_season' | '1y' | '180d' | '30d' | 'custom'
 const PERIOD_OPTIONS: { key: Period; label: string }[] = [
   { key: 'all',            label: '全期間' },
   { key: 'current_season', label: '今シーズン' },
-  { key: '1y',             label: '直近1年' },
+  { key: '1y',             label: '1年' },
   { key: '180d',           label: '180日' },
   { key: '30d',            label: '30日' },
   { key: 'custom',         label: 'カスタム' },

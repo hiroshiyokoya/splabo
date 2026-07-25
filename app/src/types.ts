@@ -9,7 +9,7 @@ export type BookView = 'panel' | 'list'
 /** 設定タブ内のサブタブ（#428 / #434）。連携・データ・表示・AI。 */
 export type SettingsTab = 'link' | 'data' | 'display' | 'ai'
 
-export type Period = 'all' | 'current_season' | '30d' | '7d' | 'custom'
+export type Period = 'all' | 'current_season' | '1y' | '180d' | '30d' | '7d' | 'custom'
 
 /** Splatoon 3 シーズンの開始日 (YYYY-MM-DD) を返す。
  *  シーズンは 3/6/9/12 月の 1 日始まりの 3 ヶ月サイクル。 */
@@ -61,11 +61,18 @@ export function ruleFilterArg(rule: string[]): string | null {
   return rule.map(r => (r === 'turf_war' ? 'nawabari' : r)).join('|')
 }
 
+/** 相対期間プリセットを「今日を含む N 日間」の開始日 (YYYY-MM-DD) にする（#466）。
+ *  環境分析と同じく終端日を含めて N 日になるよう、今日から (N-1) 日遡る。 */
 export function periodToSince(period: Period): string | null {
   if (period === 'all' || period === 'custom') return null
   if (period === 'current_season') return currentSeasonStart()
+  const daysBack =
+    period === '1y'   ? 364 :
+    period === '180d' ? 179 :
+    period === '30d'  ?  29 :
+    /* 7d */             6
   const d = new Date()
-  d.setDate(d.getDate() - (period === '30d' ? 30 : 7))
+  d.setDate(d.getDate() - daysBack)
   return d.toISOString().slice(0, 10)
 }
 

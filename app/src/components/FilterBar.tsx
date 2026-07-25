@@ -28,8 +28,10 @@ interface StageInfo { id: string; name: string }
 const PERIODS: { id: Period; label: string }[] = [
   { id: 'all',            label: '全期間' },
   { id: 'current_season', label: '今シーズン' },
-  { id: '30d',            label: '直近30日' },
-  { id: '7d',             label: '直近7日' },
+  { id: '1y',             label: '1年' },
+  { id: '180d',           label: '180日' },
+  { id: '30d',            label: '30日' },
+  { id: '7d',             label: '7日' },
   { id: 'custom',         label: 'カスタム' },
 ]
 
