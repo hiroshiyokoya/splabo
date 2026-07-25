@@ -241,7 +241,7 @@ function ScatterLegends({ sizeLegend, colorLegend }: { sizeLegend?: SizeLegend |
 }
 
 export function ScatterChart({
-  points, xLabel, yLabel, xIsRate, yIsRate, xDomain, yDomain, xRefLine, yRefLine, hasSize, xLogScale, yLogScale, fillOpacity = 0.85, constSize = 120, height = 320,
+  points, xLabel, yLabel, xIsRate, yIsRate, xDomain, yDomain, xRefLine, yRefLine, hasSize, xLogScale, yLogScale, fillOpacity = 0.55, constSize = 120, height = 320,
   sizeLegend, colorLegend,
 }: {
   points:       ScatterPoint[]
@@ -260,7 +260,7 @@ export function ScatterChart({
   xRefLine?:    number
   yRefLine?:    number
   hasSize?:     boolean
-  /** ドットの塗り透過度。バトル単位 (重なり多) では 0.4 程度を渡して密度を見せる。 */
+  /** ドットの塗り透過度。未指定時は環境分析・ダッシュボードと同じ 0.55（#435）。 */
   fillOpacity?: number
   /** サイズメトリクス未指定時の一定サイズ。武器/ステージは大きめ (280)、バトルは小さめ (120) を想定。
    *  ZAxis range のピクセル面積。 */

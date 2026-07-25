@@ -13,12 +13,13 @@ import { initAppSettings, loadComboLimit, loadNearLimit } from './utils/appSetti
 import type { ComboLimitValue, NearLimitValue } from './utils/appSettings'
 import './gear.css'
 
-// ── データ更新ステート ─────────────────────────────────────────
+// ── 空状態 CTA 用のギア取得ステート ─────────────────────────
 // ログイン（waiting-login）は chartoon シェルの deep-link 認証に一本化したため、
 // ギアセクションのフェーズは checking（認証確認）→ fetching（取得）→ idle/error のみ。
+// データがある通常表示には「データ更新」ボタンは無い（サイドバー「最新データを取得」を使う）。
 type UpdatePhase = 'idle' | 'checking' | 'fetching' | 'error'
 
-/** データ更新のクールダウン時間（ミリ秒） */
+/** 空状態からのギア再取得クールダウン（ミリ秒） */
 const UPDATE_COOLDOWN_MS = 5 * 60 * 1000
 
 const SCROLL_TOP_THRESHOLD = 600
@@ -128,11 +129,11 @@ function applyFilter(items: GearItem[], filter: FilterState): GearItem[] {
  * 旧 geartoon 単体アプリの `App.tsx` を chartoon シェルのセクションとして取り込んだもの。
  * ルート要素は `className="gear-root"` で、CSS（gear.css）はこのスコープに閉じている。
  *
- * chartoon シェルへ委譲した要素（本コンポーネントには含めない）:
- *  - ログインフロー（doLoginFlow / start_login / nxapi_setup）→ chartoon 側の deep-link 認証に一本化
- *  - About / Logo / SettingsDialog モーダル → 設定タブ統合は B2 で対応
+ * シェルへ委譲済み（本コンポーネントには含めない）:
+ *  - ログインフロー（doLoginFlow / start_login / nxapi_setup）→ deep-link 認証に一本化
+ *  - About / Logo / SettingsDialog モーダル → 設定タブへ統合済み
  *
- * ギア取得（fetch_gear_full）は Phase A2 で Rust GraphQL 化済み。ログイン確認は chartoon の
+ * ギア取得（fetch_gear_full）は Phase A2 で Rust GraphQL 化済み。ログイン確認は
  * `check_auth_status` を使う。未ログイン・データ無しでもクラッシュせず空状態を描画する。
  */
 export function GearSection() {
@@ -159,7 +160,7 @@ export function GearSection() {
     return () => { un?.() }
   }, [reload])
 
-  // ── データ更新フロー ──────────────────────────────────────
+  // ── 空状態 CTA のギア取得フロー ────────────────────────────
   const [updatePhase, setUpdatePhase] = useState<UpdatePhase>('idle')
   const [updateError, setUpdateError] = useState<string | null>(null)
 
@@ -196,7 +197,7 @@ export function GearSection() {
       const loggedIn = await invoke<boolean>('check_auth_status').catch(() => false)
 
       if (!loggedIn) {
-        // TODO(B1): ログインは chartoon 設定タブに委譲。ここでは案内のみ。
+        // ログインは設定タブに委譲。ここでは案内のみ。
         setUpdateError('Nintendo アカウントにログインしていません。「設定」タブからログインしてください。')
         setUpdatePhase('error')
         return

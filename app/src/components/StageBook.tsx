@@ -188,7 +188,7 @@ export function StageBook({ filters }: { filters: Filters }) {
       ) : rows.length === 0 ? (
         <div className="empty">
           プレイ実績のあるステージがありません。<br />
-          バトルデータを取得してから再度表示してください。
+          最新データを取得してから再度表示してください。
         </div>
       ) : view === 'list' ? (
         <StageTable

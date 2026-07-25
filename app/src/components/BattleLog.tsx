@@ -350,7 +350,7 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
 
         <div className="modal-body">
           {!hasDetail && (
-            <div className="detail-notice">詳細データ未取得 — 「バトルデータを取得」を実行すると詳細が表示されます</div>
+            <div className="detail-notice">詳細データ未取得 — 「最新データを取得」を実行すると詳細が表示されます</div>
           )}
 
           {hasDetail && (myTeam || otherTeams.length > 0) && (

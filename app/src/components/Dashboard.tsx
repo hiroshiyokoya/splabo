@@ -72,7 +72,7 @@ type SortBy = 'total' | 'wins' | 'win_rate'
 interface Props {
   filters: Filters
   aiChart: ChartSpec | null
-  /** サイドバーの「バトルデータを取得」と同じ処理を空状態のボタンからも呼べるようにする。 */
+  /** サイドバーの「最新データを取得」と同じ処理を空状態のボタンからも呼べるようにする。 */
   onFetchRequest?: () => void
   /** 「設定タブを開く」ためのコールバック（ログイン誘導用）。 */
   onOpenSettings?: () => void
@@ -361,16 +361,16 @@ function DashboardEmptyState({ onFetchRequest, onOpenSettings, fetching }: {
       <div className="dashboard-empty-icon" aria-hidden="true">📊</div>
       <h3 className="dashboard-empty-title">まだバトルデータがありません</h3>
       <p className="dashboard-empty-desc">
-        SplatNet 3 から最新のバトルデータを取得すると、ここに勝率グラフ・武器/ステージ別の集計が表示されます。
+        SplatNet 3 から最新のバトル・ギアデータを取得すると、ここに勝率グラフ・武器/ステージ別の集計が表示されます。
       </p>
       <ol className="dashboard-empty-steps">
         <li>初回は <strong>設定</strong> から Nintendo アカウントでログイン</li>
-        <li><strong>バトルデータを取得</strong> ボタンを押す</li>
+        <li><strong>最新データを取得</strong> ボタンを押す</li>
       </ol>
       <div className="dashboard-empty-actions">
         {onFetchRequest && (
           <button className="btn-primary" onClick={onFetchRequest} disabled={fetching}>
-            {fetching ? '取得中…' : 'バトルデータを取得'}
+            {fetching ? '取得中…' : '最新データを取得'}
           </button>
         )}
         {onOpenSettings && (
