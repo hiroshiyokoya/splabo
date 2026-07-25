@@ -698,7 +698,7 @@ export function EnvAnalysis() {
             </label>
             <button
               type="button"
-              className="filter-reset-btn"
+              className="env-filter-clear"
               onClick={clearFilters}
               disabled={filtersAreDefault}
               title={filtersAreDefault ? 'すでに初期状態です' : '共通フィルタをすべて初期状態に戻す'}

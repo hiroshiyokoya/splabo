@@ -2538,6 +2538,26 @@ body {
   color: var(--text);
   font-size: 13px;
 }
+/* 共通フィルタのクリア。隣の MultiSelect summary / select と同じ高さに揃え、
+   ラベル行分だけ下に寄せる（#456）。flex の stretch で縦に伸びないようにする。 */
+.env-filter-clear {
+  align-self: flex-end;
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  font-size: 13px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.env-filter-clear:hover:not(:disabled) { color: var(--lose); border-color: var(--lose); }
+.env-filter-clear:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 
 /* フィルタ拡充（#189）: 複数選択ドロップダウン / Xパワー範囲 / 注記 */
 .env-multiselect-label {
