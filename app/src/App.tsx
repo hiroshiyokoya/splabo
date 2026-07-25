@@ -347,10 +347,10 @@ export default function App() {
         {/* 並び順: バトル → 武器 → ステージ → ギア → 環境分析 → AI分析 → 設定
             扱う対象をそのまま名前にする。旧アプリ由来の 2 つ（バトル / ギア）は
             メニューでだけ旧名を併記する（#419）。 */}
-        <NavItem id="battles"   icon="⚔️" label="バトル" legacyName="Chartoon" active={tab} onClick={setTab} />
+        <NavItem id="battles"   icon="⚔️" label="バトル" legacyName="chartoon" active={tab} onClick={setTab} />
         <NavItem id="weapons"   icon="🔫" label="武器"           active={tab} onClick={setTab} />
         <NavItem id="stages"    icon="🗺️" label="ステージ"       active={tab} onClick={setTab} />
-        <NavItem id="gear"      icon="👕" label="ギア" legacyName="Geartoon" active={tab} onClick={setTab} />
+        <NavItem id="gear"      icon="👕" label="ギア" legacyName="geartoon" active={tab} onClick={setTab} />
         <NavItem id="env"       icon="🌍" label="環境分析"       active={tab} onClick={setTab} />
         <NavItem id="ai"        icon="🧙" label="AI分析"         active={tab} onClick={setTab} />
         <NavItem id="settings"  icon="⚙️" label="設定"           active={tab} onClick={setTab} />

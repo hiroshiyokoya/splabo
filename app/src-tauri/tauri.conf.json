@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "splabo - Splatoon3 ダッシュボード",
+        "title": "SpLabo - Splatoon3 バトル & ギア 分析アプリ",
         "width": 1280,
         "height": 950,
         "minWidth": 900,
