@@ -275,7 +275,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 40;
-  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   padding-top: 24px;
@@ -650,7 +650,7 @@ body {
   position: sticky;
   top: var(--content-sticky-chrome-height, 0px);
   z-index: 38;
-  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   margin-bottom: 0;
@@ -1259,7 +1259,7 @@ body {
   position: sticky;
   top: var(--content-sticky-chrome-height, 0px);
   z-index: 39;
-  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   margin-bottom: 0;
@@ -1533,7 +1533,7 @@ body {
   position: sticky;
   top: var(--content-sticky-chrome-height, 0px);
   z-index: 39;
-  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   margin-bottom: 0;
