@@ -111,7 +111,7 @@ export function parseFetchError(raw: unknown): FetchError {
     return {
       kind:    'not_logged_in',
       title:   'Nintendo アカウントでログインしてください',
-      message: '設定画面の「Nintendo アカウントでログイン」からログインすると、バトルデータを取得できます。',
+      message: '設定画面の「Nintendo アカウントでログイン」からログインすると、最新データを取得できます。',
       hint:    'settings',
     }
   }

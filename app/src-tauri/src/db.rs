@@ -1708,6 +1708,9 @@ async fn db_grouped_stats_by_player_weapon(
 /// 返す JSON 形式: `[{ key_x, key_y, name_x, name_y, total, wins, draws, win_rate,
 /// avg_kill, avg_death, avg_assist, avg_special, avg_inked, avg_duration }, ...]`
 ///
+/// `avg_duration` は集計結果に含めるが、フロントのメトリクス選択肢（MetricKey）からは
+/// #436 で削除済み。UI は表示しない（保存済みグラフは読み込み時に勝率へ退避）。
+///
 /// X / Y どちらかが `weapon` のときは武器のバトル数 Top N で絞り込む。
 /// それ以外のカテゴリはそのまま全件返す。
 #[tauri::command]

@@ -216,7 +216,7 @@ body {
 .nav-item:hover { color: var(--text); background: var(--surface2); }
 .nav-item.active { color: var(--accent); background: var(--surface2); border-left: 2px solid var(--accent); }
 
-/* サイドバー下部の「バトルデータを取得」ボタン。
+/* サイドバー下部の「最新データを取得」ボタン（バトルのあとギアも best-effort）。
    見た目（背景・border・hover）は .btn-primary に任せ、
    ここではサイドバー固有の配置・サイズ・フォント調整。
    .btn-primary は CSS の後ろの方で定義されているため、`.btn-primary.sidebar-fetch-btn`
@@ -1732,7 +1732,7 @@ body {
 .settings-section > *:not(h3) { margin-left: 16px; }
 /* チェックボックスに従属する設定項目はもう一段下げる */
 .settings-section > .settings-subitem { margin-left: 32px; }
-/* 上のセクションのサブ機能を表す（例: バトルデータ取得 > 自動取得）。
+/* 上のセクションのサブ機能を表す（例: データ > 自動取得）。
    セクション自体を 16px 右にずらし、親と視覚的に繋げるため上マージンを詰める。 */
 .settings-section--sub { margin-left: 16px; margin-top: -12px; }
 .settings-section label {
