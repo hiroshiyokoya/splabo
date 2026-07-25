@@ -1,8 +1,8 @@
 import {
-  LineChart as RLineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Legend, Tooltip,
+  LineChart as RLineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip,
 } from 'recharts'
 import type { GroupedStatsRow, MetricKey, GroupByKey, AxisGroup } from '../../types'
-import { METRIC_LABELS, getMetric, formatMetric, axisGroupOf } from '../../types'
+import { METRIC_LABELS, AXIS_GROUP_LABELS, getMetric, formatMetric, axisGroupOf } from '../../types'
 import { buildTimeSeries, formatTickDate, formatBucketLabel } from '../../utils/timeBuckets'
 
 /** 系列の自動配色（#436）。1 系列目は既存の単一メトリクス折れ線と同じ accent を使う。 */
@@ -52,13 +52,56 @@ function LineTooltipContent({ active, payload, metrics }: {
 }
 
 /**
+ * 複数系列の凡例（#463）。
+ *
+ * Recharts 標準 Legend だと左右どちらに載っているかが分からないので、系列を
+ * 左軸／右軸に分け、それぞれ左寄せ・右寄せで並べる。1 系列だけのときは出さない。
+ */
+function LineAxisLegend({ metrics, axisOf }: {
+  metrics: MetricKey[]
+  axisOf:  Map<MetricKey, 'left' | 'right'>
+}) {
+  if (metrics.length <= 1) return null
+  const left  = metrics.filter(m => axisOf.get(m) === 'left')
+  const right = metrics.filter(m => axisOf.get(m) === 'right')
+  const item = (m: MetricKey) => {
+    const i = metrics.indexOf(m)
+    const color = LINE_COLORS[i % LINE_COLORS.length]
+    return (
+      <span key={m} className="line-axis-legend-item" style={{ color }}>
+        <span className="line-axis-legend-swatch" style={{ background: color }} />
+        {METRIC_LABELS[m]}
+      </span>
+    )
+  }
+  return (
+    <div className="line-axis-legend">
+      <div className="line-axis-legend-side line-axis-legend-side--left">
+        {left.map(item)}
+      </div>
+      <div className="line-axis-legend-side line-axis-legend-side--right">
+        {right.map(item)}
+      </div>
+    </div>
+  )
+}
+
+/** Y 軸ラベル（軸グループ名）の共通スタイル。 */
+const axisLabelStyle = {
+  fill: 'var(--text)',
+  fontSize: 10,
+  fontWeight: 600,
+} as const
+
+/**
  * 時系列の線グラフ。X 軸は db_grouped_stats が返す時系列キー（日 / 3日 / 週 / 月）。
  *
- * - シリーズ: 複数メトリクス対応（#436）。軸グループごとに左右 2 軸へ自動割当。
+ * - 複数メトリクス対応（#436）。軸グループごとに左右 2 軸へ自動割当。
  * - X 軸は実時間軸（timestamp の number 軸）。欠測バケットは null 埋めして線を切る
  *   （connectNulls={false}）。孤立バケット（両隣が欠測）は点のみ描かれる。
  * - 勝率グループの軸は固定 0–100% スケール、その他は相対スケール。
  * - ツールチップは Recharts 標準 Tooltip（#443）。全系列の値を 1 つにまとめて表示。
+ * - 二軸時は Y 軸に軸グループ名を出し、凡例を左右の軸側へ寄せる（#463）。
  */
 export function LineChart({
   data, metrics, groupBy, height = 260,
@@ -93,8 +136,9 @@ export function LineChart({
   const tickFormatterOf = (g: AxisGroup | null) =>
     g === 'win_rate' ? (v: number) => `${(v * 100).toFixed(0)}%` : undefined
 
-  const leftPad  = 42
-  const rightPad = hasRightAxis ? 42 : 8
+  // 軸グループ名の縦書きラベルぶん、少し余白を取る。
+  const leftPad  = 48
+  const rightPad = hasRightAxis ? 48 : 8
 
   return (
     <div className="chart-hover-area">
@@ -115,8 +159,15 @@ export function LineChart({
           width={leftPad}
           tickFormatter={tickFormatterOf(leftGroup)}
           domain={domainOf(leftGroup)}
+          label={leftGroup ? {
+            value: AXIS_GROUP_LABELS[leftGroup],
+            angle: -90,
+            position: 'insideLeft',
+            offset: 8,
+            style: axisLabelStyle,
+          } : undefined}
         />
-        {hasRightAxis && (
+        {hasRightAxis && rightGroup && (
           <YAxis
             yAxisId="right"
             orientation="right"
@@ -124,6 +175,13 @@ export function LineChart({
             width={rightPad}
             tickFormatter={tickFormatterOf(rightGroup)}
             domain={domainOf(rightGroup)}
+            label={{
+              value: AXIS_GROUP_LABELS[rightGroup],
+              angle: 90,
+              position: 'insideRight',
+              offset: 8,
+              style: axisLabelStyle,
+            }}
           />
         )}
         <Tooltip
@@ -147,11 +205,9 @@ export function LineChart({
             isAnimationActive={false}
           />
         ))}
-        {metrics.length > 1 && (
-          <Legend verticalAlign="bottom" height={24} wrapperStyle={{ fontSize: 11 }} />
-        )}
       </RLineChart>
     </ResponsiveContainer>
+    <LineAxisLegend metrics={metrics} axisOf={axisOf} />
     </div>
   )
 }
