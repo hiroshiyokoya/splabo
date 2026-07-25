@@ -3974,12 +3974,14 @@ pub async fn env_matrix_stats(
                    om.{olabel} AS other_key,
                    COUNT(*) AS n,
                    COUNT(app.k) AS n_kda,
-                   SUM(app.won) AS sum_won,
+                   -- SUM は SQLite では integer を返すことがある。sqlx の f64 デコードと
+                   -- 型が食い違うと失敗して 0 に潰れていたため、REAL にキャストする（#458）。
+                   CAST(SUM(app.won) AS REAL) AS sum_won,
                    otot.c * 8.0 AS pick_den,
-                   SUM(app.k)   AS sum_k,
-                   SUM(app.d)   AS sum_d,
-                   SUM(app.a)   AS sum_a,
-                   SUM(app.ink) AS sum_ink
+                   CAST(SUM(app.k)   AS REAL) AS sum_k,
+                   CAST(SUM(app.d)   AS REAL) AS sum_d,
+                   CAST(SUM(app.a)   AS REAL) AS sum_a,
+                   CAST(SUM(app.ink) AS REAL) AS sum_ink
             FROM app
             JOIN weapon w  ON w.id  = app.wid
             JOIN {omaster} om ON om.id = app.oid
@@ -4006,7 +4008,15 @@ pub async fn env_matrix_stats(
         for row in rows {
             let weapon_key: String = row.get("weapon_key");
             let other_key:  String = row.get("other_key");
-            let sum = |name: &str| row.try_get::<Option<f64>, _>(name).unwrap_or(None).unwrap_or(0.0);
+            // SUM/演算列は REAL に寄せているが、万一 integer が来ても落ちないようにする（#458）。
+            // 以前の `try_get::<Option<f64>>().unwrap_or(None)` は型不一致を握りつぶして 0 にしていた。
+            let sum = |name: &str| -> f64 {
+                if let Ok(v) = row.try_get::<f64, _>(name) { return v; }
+                if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(name) { return v; }
+                if let Ok(v) = row.try_get::<i64, _>(name) { return v as f64; }
+                if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(name) { return v as f64; }
+                0.0
+            };
             let raw = MatrixRaw {
                 n:        row.get("n"),
                 n_kda:    row.get("n_kda"),
