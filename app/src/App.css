@@ -259,6 +259,30 @@ body {
   flex-direction: column;
 }
 
+/* バトル／武器／ステージ上部の絞り込み（＋バトル見出し）をスクロール中も常時表示（#450）。
+   ギアの .app-top--sticky と同じ流儀。高さは App.tsx が --content-sticky-chrome-height に書く。
+   下余白は padding に寄せ、計測した高さが武器・ステージ見出しの sticky top と一致するようにする。 */
+.content-sticky-chrome {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  padding-bottom: 14px;
+  margin-bottom: 0;
+}
+.content-sticky-chrome:has(.battles-header) {
+  padding-bottom: 16px;
+}
+.content-sticky-chrome .filter-bar {
+  margin-bottom: 0;
+}
+.content-sticky-chrome .battles-header {
+  margin-top: 14px;
+  margin-bottom: 0;
+}
+
 /* ── Dashboard ── */
 /* #401: 各カードの span 縮小をビューポートではなくグリッド自身の幅で判定するため、
    グリッドの親（グリッドと同じ幅・padding 無し・レイアウト上は幅が確定している）を
@@ -1207,7 +1231,16 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  /* FilterBar（.content-sticky-chrome）の直下に張り付かせる（#450）。
+     一覧（book--fill）ではテーブル内スクロールなので実質 no-op。 */
+  position: sticky;
+  top: var(--content-sticky-chrome-height, 0px);
+  z-index: 39;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  margin-bottom: 0;
+  padding-bottom: 16px;
 }
 .weapon-book-header h2 { font-size: 16px; }
 
@@ -1473,7 +1506,15 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  /* FilterBar（.content-sticky-chrome）の直下に張り付かせる（#450）。 */
+  position: sticky;
+  top: var(--content-sticky-chrome-height, 0px);
+  z-index: 39;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  margin-bottom: 0;
+  padding-bottom: 16px;
 }
 .stage-book-header h2 { font-size: 16px; }
 
