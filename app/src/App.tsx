@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { Dashboard } from './components/Dashboard'
@@ -81,6 +81,28 @@ export default function App() {
     () => lsGet(LAST_FETCHED_KEY)
   )
   const { notify } = useNotify()
+  // バトル／武器／ステージ上部の絞り込み＋見出しを sticky にするとき、
+  // 武器・ステージの見出し行が FilterBar の下に来るよう高さを測る（#450）。
+  const stickyChromeRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = stickyChromeRef.current
+    if (!el) {
+      document.documentElement.style.removeProperty('--content-sticky-chrome-height')
+      return
+    }
+    const update = () => {
+      const h = Math.ceil(el.getBoundingClientRect().height)
+      document.documentElement.style.setProperty('--content-sticky-chrome-height', `${h}px`)
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      document.documentElement.style.removeProperty('--content-sticky-chrome-height')
+    }
+  }, [tab, battlesView])
 
   // 起動時: store（settings.json）が localStorage より新しければ取り込む（識別子変更後の復元経路 #241）。
   // 取り込んだら設定 state・派生 state を localStorage の最新値で更新する。
@@ -350,16 +372,19 @@ export default function App() {
           <>
             {/* 武器・ステージ（FilterBar → 見出し行内の ViewToggle）と並びを揃えるため、
                 切替は絞り込みの下に置く。見出しはダッシュボード / 一覧の両方に共通なので、
-                各ビューの中ではなくここに 1 つだけ置く。 */}
-            <FilterBar filters={filters} onChange={setFilters} />
-            <div className="battles-header">
-              <h2>バトル</h2>
-              <ViewToggle
-                options={BATTLES_VIEWS}
-                value={battlesView}
-                onChange={setBattlesView}
-                ariaLabel="バトルの表示切替"
-              />
+                各ビューの中ではなくここに 1 つだけ置く。
+                絞り込み＋見出しはスクロール中も常時表示する（#450）。 */}
+            <div className="content-sticky-chrome" ref={stickyChromeRef}>
+              <FilterBar filters={filters} onChange={setFilters} />
+              <div className="battles-header">
+                <h2>バトル</h2>
+                <ViewToggle
+                  options={BATTLES_VIEWS}
+                  value={battlesView}
+                  onChange={setBattlesView}
+                  ariaLabel="バトルの表示切替"
+                />
+              </div>
             </div>
             {battlesView === 'dashboard' ? (
               <Dashboard
@@ -375,9 +400,12 @@ export default function App() {
           </>
         )}
         {/* 図鑑タブ（#298）: 期間・モード・ルール・結果を集計に反映する。
-            武器/ステージ絞り込みは自己言及的なので hideTargetFilters で隠す。 */}
+            武器/ステージ絞り込みは自己言及的なので hideTargetFilters で隠す。
+            FilterBar は sticky。見出し行は各 Book 内で chrome 高さ分ずらして sticky（#450）。 */}
         {(tab === 'weapons' || tab === 'stages') && (
-          <FilterBar filters={filters} onChange={setFilters} hideTargetFilters />
+          <div className="content-sticky-chrome" ref={stickyChromeRef}>
+            <FilterBar filters={filters} onChange={setFilters} hideTargetFilters />
+          </div>
         )}
         {tab === 'weapons'   && <WeaponBook filters={filters} />}
         {tab === 'stages'    && <StageBook  filters={filters} />}
