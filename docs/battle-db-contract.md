@@ -36,6 +36,17 @@
 `overall{total,wins,losses,draws,win_rate,avg_kill,avg_death}` / `by_rule[] / by_lobby[] / by_weapon[]`（各 `{key,total,wins,draws,win_rate}`）。
 - **win_rate の分母は decisive = total − draws**（db.rs:1104）。viewer も同式で再計算し食い違い防止。
 
+> **【実装追記 2026-07-25】初期案から実装が先行して以下を拡張済み**（`app/src-tauri/src/battle_export.rs`）。schema/version は `battle-export-v1` / `1` のまま（フィールド追加のみで後方互換）。
+>
+> - **`aggregates` と `battles[]` は同一母集団（直近 N 戦・既定 50）**（#361）。母集団は `population()` + `recent` CTE の 1 箇所で確定し、一覧・集計とも同じ id 集合に JOIN する（ズレる余地なし）。
+> - **`by_stage[]` を追加**（by_rule / by_lobby / by_weapon と同形）（#357）。
+> - **`by_weapon[]` / `by_stage[]` に `display_name`（表示名）を含める**。`by_stage[]` は `short_name`（短縮名）も持つ（#368 / #379）。
+> - **`aggregates_by_period` を追加**（#375 → #379 で期間を再定義）。キーは **`all_time` / `season` / `last_30d` / `last_7d`** の 4 つ。各エントリは `aggregates` と同形 + `since` / `until`。
+>   - `season` = カレンダー（今シーズン境界）、`last_30d` / `last_7d` = ローリング、`all_time` = 全データ範囲。
+>   - 「今週」「直近 N 戦」は期間の選択肢から**廃止**（#379）。ただし**トップレベルの `aggregates`（直近 N 戦）はフォールバック用に残す**。
+> - **0 件期間の avg_kill / avg_death は `null`**（かつて 0.0 で配信していた不具合を #377 で修正）。
+> - 差分プル: DB ファイル配信に **ETag / If-None-Match → 304**（splabo #356 / viewer #47）。中身の sha256 が ETag。
+
 ### 暗号・出力
 - JSON→UTF-8→`gear_crypto::encrypt_db()` で `battle_db.bin`。鍵・モード共通。viewer は `GearCrypto` を汎用名（`decryptDb`）で流用。
 
@@ -50,3 +61,4 @@
 - **トリカラ除外**をサマリ/集計で揃える。
 - **detail_fetched=0** 行は avg_kill/death 対象外 → K/D が 0 になり得る。契約で扱いを決める。
 - アイコンは「まずテキスト → 後で同期ペイロード追加」の段階実装（設計書 §6・splabo #327）。
+  - **【2026-07-25】ルールアイコンは供給元なし → テキスト／色チップ確定**。スキルは全種先回り不可（CloudFront 署名付き URL）→ 未取得はプレースホルダ。ブキ・ステージは実画像供給あり（`/icons/manifest` + `ability` kind 掲載・splabo #360 / #362）。
