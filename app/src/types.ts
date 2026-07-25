@@ -489,21 +489,25 @@ export function isTimeBucketGroupBy(g: GroupByKey): boolean {
   return TIME_BUCKET_GROUP_BYS.includes(g)
 }
 
-/** シンプル棒チャートで Y 軸に使えるメトリクス。 */
+/** シンプル棒チャートで Y 軸に使えるメトリクス。
+ *  KDA 系の並びは キル → アシスト → 貢献キル → デス → キルレ → 貢献キルレ（#465）。 */
 export type MetricKey =
-  | 'total'         // バトル数
-  | 'wins'          // 勝数
-  | 'win_rate'      // 勝率（0-1）
-  | 'avg_kill'      // 平均キル
-  | 'avg_death'     // 平均デス
-  | 'avg_assist'    // 平均アシスト
-  | 'avg_kd'        // キルレ = 平均キル ÷ 平均デス（クライアント側で算出）
-  | 'avg_special'   // 平均スペシャル
-  | 'avg_inked'     // 平均塗り
-  | 'sum_kill'      // キル数合計
-  | 'sum_death'     // デス数合計
-  | 'sum_assist'    // アシスト数合計
-  | 'sum_inked'     // 塗りポイント合計
+  | 'total'              // バトル数
+  | 'wins'               // 勝数
+  | 'win_rate'           // 勝率（0-1）
+  | 'avg_kill'           // 平均キル
+  | 'avg_assist'         // 平均アシスト
+  | 'avg_contrib_kill'   // 平均貢献キル = 平均キル + 平均アシスト（クライアント算出）
+  | 'avg_death'          // 平均デス
+  | 'avg_kd'             // キルレ = 平均キル ÷ 平均デス（クライアント算出）
+  | 'avg_contrib_kd'     // 貢献キルレ = (平均キル+平均アシスト) ÷ 平均デス（クライアント算出）
+  | 'avg_special'        // 平均スペシャル
+  | 'avg_inked'          // 平均塗り
+  | 'sum_kill'           // キル数合計
+  | 'sum_assist'         // アシスト数合計
+  | 'sum_contrib_kill'   // 貢献キル合計 = キル合計 + アシスト合計（クライアント算出）
+  | 'sum_death'          // デス数合計
+  | 'sum_inked'          // 塗りポイント合計
 
 /**
  * カスタムグラフ 1 個分の設定。localStorage に CustomChart[] として保存する想定。
@@ -602,7 +606,7 @@ export const BATTLE_NUMERIC_METRIC_LABELS: Record<BattleNumericMetric, string> =
   kill:            'キル数',
   death:           'デス数',
   assist:          'アシスト数',
-  kill_or_assist:  'キル数 + アシスト数',
+  kill_or_assist:  '貢献キル',  // DB カラム名は kill_or_assist のまま（#465）
   special:         'スペシャル',
   inked:           '塗り',
   duration:        'バトル時間',
@@ -619,28 +623,34 @@ export const BATTLE_NUMERIC_DEFAULT_BIN: Record<BattleNumericMetric, number> = {
   duration:       30,
 }
 
-/** 1 バトル単位の散布図で使えるメトリクス。 */
+/** 1 バトル単位の散布図で使えるメトリクス。
+ *  並びは キル → アシスト → 貢献キル → デス → キルレ → 貢献キルレ（#465）。 */
 export type BattleMetricKey =
   | 'kill'
-  | 'death'
   | 'assist'
-  | 'kd'      // kill / death (D=0 は null)
+  | 'contrib_kill'  // kill + assist
+  | 'death'
+  | 'kd'            // kill / death (D=0 は null)
+  | 'contrib_kd'    // (kill + assist) / death (D=0 は null)
   | 'inked'
   | 'special'
 
 export const BATTLE_METRIC_LABELS: Record<BattleMetricKey, string> = {
-  kill:    'キル数',
-  death:   'デス数',
-  assist:  'アシスト数',
-  kd:      'キルレ',
-  inked:   '塗り',
-  special: 'スペシャル',
+  kill:          'キル数',
+  assist:        'アシスト数',
+  contrib_kill:  '貢献キル',
+  death:         'デス数',
+  kd:            'キルレ',
+  contrib_kd:    '貢献キルレ',
+  inked:         '塗り',
+  special:       'スペシャル',
 }
 
 /** カテゴリ単位 (武器/ステージ) の散布図で使えるメトリクス。 */
 export const SCATTER_AGG_METRIC_KEYS: MetricKey[] = [
   'total', 'wins', 'win_rate',
-  'avg_kill', 'avg_death', 'avg_kd', 'avg_assist', 'avg_inked', 'avg_special',
+  'avg_kill', 'avg_assist', 'avg_contrib_kill', 'avg_death', 'avg_kd', 'avg_contrib_kd',
+  'avg_inked', 'avg_special',
 ]
 
 /** ドット単位ごとの「X 軸 / Y 軸 / サイズ」で選べるメトリクスキー一覧。 */
@@ -668,25 +678,34 @@ export interface GroupedStatsRow2D {
   avg_inked:    number | null
 }
 
-/** GroupedStatsRow2D から指定メトリクスの値を取り出す。`avg_kd` は計算合成。 */
+/** GroupedStatsRow2D から指定メトリクスの値を取り出す。
+ *  `avg_kd` / `avg_contrib_*` / `sum_contrib_kill` は計算合成（#465）。 */
 export function getMetric2D(row: GroupedStatsRow2D, metric: MetricKey): number | null {
   switch (metric) {
     case 'total':        return row.total
     case 'wins':         return row.wins
     case 'win_rate':     return row.win_rate
     case 'avg_kill':     return row.avg_kill
-    case 'avg_death':    return row.avg_death
     case 'avg_assist':   return row.avg_assist
+    case 'avg_contrib_kill':
+      if (row.avg_kill === null || row.avg_assist === null) return null
+      return row.avg_kill + row.avg_assist
+    case 'avg_death':    return row.avg_death
     case 'avg_kd':
       if (row.avg_kill === null || row.avg_death === null) return null
       if (row.avg_death === 0) return null
       return row.avg_kill / row.avg_death
+    case 'avg_contrib_kd':
+      if (row.avg_kill === null || row.avg_assist === null || row.avg_death === null) return null
+      if (row.avg_death === 0) return null
+      return (row.avg_kill + row.avg_assist) / row.avg_death
     case 'avg_special':  return row.avg_special
     case 'avg_inked':    return row.avg_inked
     // 合計系メトリクスは 2D クロス集計では返さない（GroupedStatsRow2D に列がない）。
     case 'sum_kill':
     case 'sum_death':
     case 'sum_assist':
+    case 'sum_contrib_kill':
     case 'sum_inked':    return null
   }
 }
@@ -720,7 +739,8 @@ export type MetricGroup = 'count' | 'rate' | 'average'
 export function metricGroup(metric: MetricKey): MetricGroup {
   if (metric === 'total' || metric === 'wins')                  return 'count'
   if (metric === 'sum_kill' || metric === 'sum_death' ||
-      metric === 'sum_assist' || metric === 'sum_inked')        return 'count'
+      metric === 'sum_assist' || metric === 'sum_contrib_kill' ||
+      metric === 'sum_inked')                                   return 'count'
   if (metric === 'win_rate')                                    return 'rate'
   return 'average'
 }
@@ -735,7 +755,8 @@ export function metricGroup(metric: MetricKey): MetricGroup {
  * - count:      バトル数・勝数・キル/デス/アシスト合計。期間依存の整数。
  * - paint:      平均塗り・塗りP合計。数百〜千 P。
  *
- * キルレ (avg_kd) は厳密には無次元比だが、値域が per_battle と同オーダーなので同居させる。
+ * キルレ (avg_kd) ・貢献キルレ (avg_contrib_kd) は厳密には無次元比だが、
+ * 値域が per_battle と同オーダーなので同居させる。貢献キルも同様。
  */
 export type AxisGroup = 'per_battle' | 'win_rate' | 'count' | 'paint'
 export const AXIS_GROUP_LABELS: Record<AxisGroup, string> = {
@@ -748,8 +769,9 @@ export function axisGroupOf(metric: MetricKey): AxisGroup {
   if (metric === 'win_rate') return 'win_rate'
   if (metric === 'avg_inked' || metric === 'sum_inked') return 'paint'
   if (metric === 'total' || metric === 'wins' ||
-      metric === 'sum_kill' || metric === 'sum_death' || metric === 'sum_assist') return 'count'
-  return 'per_battle'  // avg_kill / avg_death / avg_assist / avg_kd / avg_special
+      metric === 'sum_kill' || metric === 'sum_death' ||
+      metric === 'sum_assist' || metric === 'sum_contrib_kill') return 'count'
+  return 'per_battle'  // avg_kill / avg_assist / avg_contrib_kill / avg_death / avg_kd / avg_contrib_kd / avg_special
 }
 
 /** v1.0.0 で実装済みの yComposition（全 shape 共通で扱う最大集合）。 */
@@ -865,19 +887,22 @@ export const GROUP_BY_LABELS: Record<GroupByKey, string> = {
 }
 
 export const METRIC_LABELS: Record<MetricKey, string> = {
-  total:        'バトル数',
-  wins:         '勝数',
-  win_rate:     '勝率',
-  avg_kill:     '平均キル',
-  avg_death:    '平均デス',
-  avg_assist:   '平均アシスト',
-  avg_kd:       'キルレ',
-  avg_special:  '平均SP',
-  avg_inked:    '平均塗り',
-  sum_kill:     'キル数（合計）',
-  sum_death:    'デス数（合計）',
-  sum_assist:   'アシスト数（合計）',
-  sum_inked:    '塗りP（合計）',
+  total:             'バトル数',
+  wins:              '勝数',
+  win_rate:          '勝率',
+  avg_kill:          '平均キル',
+  avg_assist:        '平均アシスト',
+  avg_contrib_kill:  '平均貢献キル',
+  avg_death:         '平均デス',
+  avg_kd:            'キルレ',
+  avg_contrib_kd:    '貢献キルレ',
+  avg_special:       '平均SP',
+  avg_inked:         '平均塗り',
+  sum_kill:          'キル数（合計）',
+  sum_assist:        'アシスト数（合計）',
+  sum_contrib_kill:  '貢献キル（合計）',
+  sum_death:         'デス数（合計）',
+  sum_inked:         '塗りP（合計）',
 }
 
 /**
@@ -885,31 +910,43 @@ export const METRIC_LABELS: Record<MetricKey, string> = {
  * getMetric2D が必ず null を返すため、ヒートマップでは選択させない（#351）。
  * カレンダー・折れ線は GroupedStatsRow に列があるので従来どおり使える。
  */
-export const SUM_METRICS: MetricKey[] = ['sum_kill', 'sum_death', 'sum_assist', 'sum_inked']
+export const SUM_METRICS: MetricKey[] = [
+  'sum_kill', 'sum_assist', 'sum_contrib_kill', 'sum_death', 'sum_inked',
+]
 
 /** ヒートマップ（2D クロス集計）で選べるメトリクス。合計系を除いたもの（#351）。 */
 export const HEATMAP_METRICS = (Object.keys(METRIC_LABELS) as MetricKey[])
   .filter(m => !SUM_METRICS.includes(m))
 
 /** GroupedStatsRow から指定メトリクスの数値を取り出す。NULL は null を返す。
- *  `avg_kd` は avg_kill / avg_death をクライアント側で算出（D=0 は null）。 */
+ *  `avg_kd` / `avg_contrib_*` / `sum_contrib_kill` はクライアント側で算出（#465）。 */
 export function getMetric(row: GroupedStatsRow, metric: MetricKey): number | null {
   switch (metric) {
     case 'total':        return row.total
     case 'wins':         return row.wins
     case 'win_rate':     return row.win_rate
     case 'avg_kill':     return row.avg_kill
-    case 'avg_death':    return row.avg_death
     case 'avg_assist':   return row.avg_assist
+    case 'avg_contrib_kill':
+      if (row.avg_kill === null || row.avg_assist === null) return null
+      return row.avg_kill + row.avg_assist
+    case 'avg_death':    return row.avg_death
     case 'avg_kd':
       if (row.avg_kill === null || row.avg_death === null) return null
       if (row.avg_death === 0) return null
       return row.avg_kill / row.avg_death
+    case 'avg_contrib_kd':
+      if (row.avg_kill === null || row.avg_assist === null || row.avg_death === null) return null
+      if (row.avg_death === 0) return null
+      return (row.avg_kill + row.avg_assist) / row.avg_death
     case 'avg_special':  return row.avg_special
     case 'avg_inked':    return row.avg_inked
     case 'sum_kill':     return row.sum_kill
-    case 'sum_death':    return row.sum_death
     case 'sum_assist':   return row.sum_assist
+    case 'sum_contrib_kill':
+      if (row.sum_kill === null || row.sum_assist === null) return null
+      return row.sum_kill + row.sum_assist
+    case 'sum_death':    return row.sum_death
     case 'sum_inked':    return row.sum_inked
   }
 }
@@ -920,6 +957,6 @@ export function formatMetric(value: number | null, metric: MetricKey): string {
   if (metric === 'win_rate') return `${(value * 100).toFixed(1)}%`
   if (metric === 'total' || metric === 'wins' ||
       metric === 'sum_kill' || metric === 'sum_death' ||
-      metric === 'sum_assist' || metric === 'sum_inked') return value.toLocaleString()
+      metric === 'sum_assist' || metric === 'sum_contrib_kill' || metric === 'sum_inked') return value.toLocaleString()
   return value.toFixed(2)
 }

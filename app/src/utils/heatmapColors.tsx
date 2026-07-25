@@ -57,7 +57,11 @@ function seqBase(metric: MetricKey): string {
   switch (metric) {
     case 'wins':
     case 'avg_kill':
+    case 'avg_assist':
+    case 'avg_contrib_kill':
     case 'avg_kd':
+    case 'avg_contrib_kd':
+    case 'sum_contrib_kill':
       return 'var(--seq-good)'
     case 'avg_death':
       return 'var(--seq-bad)'
