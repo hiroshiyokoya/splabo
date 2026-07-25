@@ -18,6 +18,8 @@ import {
  *   - average → 相対 5 段階 (アクセント色)
  * - 率・平均系はサンプル数 < minSampleSize でグレーアウト
  * - データが無い日は空セル (薄いグレー)
+ * - 表示範囲は FilterBar の since/until に合わせ、期間外は描かない（#461）
+ * - 期間が「いま」まで開いているときは、今日をバトル 0 でも常に出す（#461）
  */
 
 const CELL  = 16
@@ -99,11 +101,15 @@ function averageColor(value: number, min: number, max: number, metric: MetricKey
 }
 
 export function CalendarHeatmapChart({
-  data, metric, minSampleSize = 5,
+  data, metric, minSampleSize = 5, since = null, until = null,
 }: {
   data:           GroupedStatsRow[]
   metric:         MetricKey
   minSampleSize?: number
+  /** FilterBar の期間開始（YYYY-MM-DD）。未指定ならデータ最早日（#461）。 */
+  since?:         string | null
+  /** FilterBar の期間終了（YYYY-MM-DD）。未指定なら「いま」（今日まで・#461）。 */
+  until?:         string | null
 }) {
   // ツールチップ位置はマウスの clientX / clientY (viewport 基準) を使う。
   // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
@@ -128,6 +134,8 @@ export function CalendarHeatmapChart({
   const group = metricGroup(metric)
 
   // データ map / min-max / セル配置（列は日単位で割り当て・#310）
+  // 表示範囲は FilterBar の since/until を優先し、期間外は描かない（#461）。
+  // until 未指定（または今日以降）なら右端を今日まで延ばし、バトル 0 でも今日のセルを出す。
   const { dataMap, minVal, maxVal, cells, monthLabels, maxCol } = useMemo(() => {
     const map = new Map<string, { value: number | null; total: number; wins: number; draws: number }>()
     let mn = Number.POSITIVE_INFINITY
@@ -148,42 +156,60 @@ export function CalendarHeatmapChart({
       if (!latest   || date > latest)   latest   = date
     }
 
-    // データが空の場合は直近 1 年を空表示
-    if (!earliest || !latest) {
-      const today = new Date()
-      latest   = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()))
-      earliest = new Date(latest)
-      earliest.setUTCDate(latest.getUTCDate() - 364)
+    const now = new Date()
+    const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+    const sinceDate = since ? fromIsoDate(since) : null
+    const untilDate = until ? fromIsoDate(until) : null
+    const sinceOk = sinceDate && !isNaN(sinceDate.getTime()) ? sinceDate : null
+    const untilOk = untilDate && !isNaN(untilDate.getTime()) ? untilDate : null
+
+    // 期間終了が「いま」まで開いているときだけ、今日を必ず右端に含める。
+    let rangeEnd = (untilOk && untilOk < todayUtc) ? untilOk : todayUtc
+    if (latest && latest > rangeEnd) rangeEnd = latest  // データが期間より新しい場合は追従（通常は起きない）
+
+    let rangeStart: Date
+    if (sinceOk) {
+      rangeStart = sinceOk
+    } else if (earliest) {
+      rangeStart = earliest
+    } else {
+      // データも since も無い: 直近 1 年を空表示（右端は今日）
+      rangeStart = new Date(rangeEnd)
+      rangeStart.setUTCDate(rangeEnd.getUTCDate() - 364)
     }
+    if (rangeStart > rangeEnd) rangeStart = rangeEnd
 
     // 列は「日単位」で割り当てる（#310）。
     //   - 月曜になったら列を +1（通常の週送り）
     //   - 月が変わったら列を +1（週の途中でも。新しい月はその月の 1 日から新しい列で始まる）
     //   - 月初が月曜なら列を +2 して、間に空列を 1 本挟む（#392）
-    // これにより月境界の週は 2 列に分割され（曜日の行は保つ）、列と月が必ず一致する。
-    // 結果として月ごとに階段状の「ずれ」ができ、それが月境界の視覚的な手がかりになる。
-    // ただし月初が月曜だとズレが生じず通常の週送りと見分けが付かないため、
-    // そのときだけ空列を挟んで切れ目を見せる（cells には実在する日しか入らないので
-    // 挟んだ列は自然に空白になる・#392）。
-    const startMonday = mondayOf(earliest)
+    // レイアウトは rangeStart の週頭から組むが、期間外（rangeStart より前）の日は
+    // cells に入れないので、空のゼロセルとして見えない（#461）。
+    const startMonday = mondayOf(rangeStart)
     const cells: { date: Date; col: number; row: number }[] = []
     const labels: { col: number; month: number }[] = []
     let col = 0
     let prevMonth = -1
+    let labeledMonth = -1
 
-    for (let t = startMonday.getTime(); t <= latest.getTime(); t += DAY_MS) {
+    for (let t = startMonday.getTime(); t <= rangeEnd.getTime(); t += DAY_MS) {
       const d = new Date(t)
       const row = weekdayMonStart(d)
       const m = d.getUTCMonth()
-      const isFirst = cells.length === 0
+      const isFirstIter = t === startMonday.getTime()
       const isMonday = row === 0
       const monthChanged = m !== prevMonth
-      if (!isFirst) {
-        if (monthChanged && isMonday) col += 2   // 空列を 1 本挟んで月境界を見せる
+      if (!isFirstIter) {
+        if (monthChanged && isMonday) col += 2
         else if (monthChanged || isMonday) col++
       }
-      if (m !== prevMonth) labels.push({ col, month: m })
-      cells.push({ date: d, col, row })
+      if (d >= rangeStart && d <= rangeEnd) {
+        if (m !== labeledMonth) {
+          labels.push({ col, month: m })
+          labeledMonth = m
+        }
+        cells.push({ date: d, col, row })
+      }
       prevMonth = m
     }
 
@@ -201,7 +227,7 @@ export function CalendarHeatmapChart({
       monthLabels: labels,
       maxCol: col,
     }
-  }, [data, metric, group, minSampleSize])
+  }, [data, metric, group, minSampleSize, since, until])
 
   function cellFill(_date: string, value: number | null, total: number): string {
     // カレンダーは「バトルの無い日」が大半なので、データなしはハッチにせず静かなべた塗りのまま。
@@ -248,10 +274,6 @@ export function CalendarHeatmapChart({
     if (el) el.scrollLeft = el.scrollWidth
   }, [width])
 
-  // 「今日」より後 (未来) のセルは描画しない。UTC ベース。
-  const now = new Date()
-  const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
-
   /** 凡例ラベル: 左端値・右端値（勝率の中央 50% は廃止・#351） */
   const legendColors = group === 'rate' ? RATE_LEGEND_COLORS : group === 'count' ? COUNT_COLORS : seqLegendColors(metric)
   const legendLeft   = group === 'rate' ? '0%'  : group === 'count' ? '0' : fmtLegend(minVal, metric)
@@ -284,10 +306,9 @@ export function CalendarHeatmapChart({
             fill="var(--text)"
           >{lbl}</text>
         ))}
-        {/* セル: 列は日単位で割り当て済み（月境界で列がずれる・#310） */}
+        {/* セル: 列は日単位で割り当て済み（月境界で列がずれる・#310）。
+            期間外は cells に入れていない。未来日も rangeEnd で今日までに制限済み（#461）。 */}
         {cells.map(({ date, col, row }) => {
-          // 今日より後 (未来) のセルは描画しない
-          if (date > todayUtc) return null
           const dateStr = toIsoDate(date)
           const entry = dataMap.get(dateStr)
           const v = entry?.value ?? null

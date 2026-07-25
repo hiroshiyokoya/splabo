@@ -214,6 +214,8 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
   const totalLosses  = totalBattles - totalWins - totalDraws
   const decisiveBattles = totalBattles - totalDraws
   const overallWinRate  = decisiveBattles > 0 ? totalWins / decisiveBattles : null
+  // カレンダーの表示範囲に渡す（#461）
+  const { since: filterSince, until: filterUntil } = filtersToRange(filters)
 
   function sorted(data: SummaryEntry[], by: SortBy): SummaryEntry[] {
     return [...data].sort((a, b) => b[by] - a[by])
@@ -322,6 +324,8 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
                       onEdit={() => handleEdit(c.id)}
                       onDelete={() => handleDelete(c.id)}
                       weaponImages={weaponImages}
+                      since={filterSince}
+                      until={filterUntil}
                     />
                   )
                 })}
