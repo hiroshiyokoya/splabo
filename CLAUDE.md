@@ -1,6 +1,9 @@
 # splabo - Claude 作業ルール
 
-このファイルは **splabo リポジトリの作業ルール** を記述する。個人全体の共通ルール（実装前の構想確認・ブランチ/PR フロー・コミット前確認・イシューラベル付け・`cd && git` 回避・ファイル操作・git 安全則）は `~/.claude/CLAUDE.md` を参照。
+このファイルは **splabo リポジトリの splabo 固有の運用詳細**（CI・リリースルーチン・旧コード参照・最新状況確認・依存方針・deferred）を記述する。
+
+- **エージェント共通の運用ルール**（実装前の方針確認・PR フロー・並行作業・イシュー/トラッキング #15 更新・リポ構成・ビルドコマンド・CHANGELOG 要点・実装ハマりどころ）は **[`AGENTS.md`](./AGENTS.md) に集約**。まずそちらを読む。
+- **個人全体の共通ルール**（`cd && git` 回避・ファイル操作・git 安全則など）は `~/.claude/CLAUDE.md` を参照。
 
 > **v0.8 統合済み:** 旧 chartoon（戦績）と geartoon（ギア）は 1 バイナリ **splabo**（識別子 `com.splabo.app`・単一リポ）に統合済み。ギア機能は「ギア」タブとして取り込み済み。旧 2 識別子（`com.chartoon.app` / `com.geartoon.app`）のデータは起動時に非破壊コピーで移行される（`app/src-tauri/src/migration.rs`）。`gh -R` はすべて `hiroshiyokoya/splabo`。
 >
@@ -8,35 +11,12 @@
 
 ---
 
-## リポジトリ構成
+## workspace 依存の方針
 
-```
-splabo/
-├─ package.json / package-lock.json   # npm workspaces（ルート一本化 lockfile）
-├─ Cargo.toml / Cargo.lock            # Cargo workspace + [workspace.dependencies]
-├─ app/             # Tauri アプリ本体（src/ フロント + src-tauri/ Rust）
-│                   #   戦績（chartoon 由来）＋ギア（geartoon 由来・「ギア」タブ）
-├─ tools/           # nxapi サイドカーのビルド環境（nxapi-wrapper）
-├─ docs/            # GitHub Pages（chartoon.pages.dev）
-└─ .github/         # workflows（ci.yml / splabo-release.yml）+ release-footer.md
-```
+リポ構成・ビルドコマンドは [`AGENTS.md`](./AGENTS.md) を参照。依存バージョンは splabo 固有の以下に従う。
 
-`gh` 操作は常に `-R hiroshiyokoya/splabo` を付ける。
-
----
-
-## workspace ビルド
-
-フロントエンドは npm workspaces、Rust は Cargo workspace で管理する。**依存インストールはルートで `npm ci` を一度だけ**（`app/` で個別 `npm ci` はしない）。
-
-```bash
-npm ci                     # ルートで workspace 全体
-npm run build -w app       # tsc + vite build
-cargo check                # workspace 全体の Rust 型チェック
-```
-
-- npm の script は `-w app` で対象 workspace を指定して呼ぶ。
-- 依存のバージョンは `Cargo.toml` の `[workspace.dependencies]`（tauri 2.11.1 系）に寄せる。crate 側は `{ workspace = true, features = [...] }` で参照する。
+- **Rust**: `Cargo.toml` の `[workspace.dependencies]`（tauri 2.11.1 系）に寄せる。crate 側は `{ workspace = true, features = [...] }` で参照する。
+- **フロント**: npm workspaces（ルート一本化 lockfile）。依存インストールはルートで `npm ci` を一度だけ。
 
 ---
 
@@ -65,26 +45,15 @@ develop への push / PR で走る。`dorny/paths-filter` で `app/**` / `tools/
 
 ### 1. CHANGELOG.md を更新
 
+CHANGELOG の書き方の要点（利用者が見ていない変更は書かない 等）は [`AGENTS.md`](./AGENTS.md) 参照。リリース時の手順は以下。
+
 - `[Unreleased]` セクションをバージョン番号と日付に変更する
   ```
   ## [X.Y.Z] — YYYY-MM-DD
   ```
 - 新しい `[Unreleased]` セクションを先頭に追加する
 - **前回タグからの差分のみを書く**（既存のリリースエントリには触らない）。`git log <prev-tag>..develop` で粒度を確認
-- **イシュー番号・PR 番号 (`#123` 等) は書かない**。エンドユーザー向け release notes に内部リファレンスは不要
-
-#### 「利用者が見ていない変更」は書かない
-
-CHANGELOG は**前回リリースを使っていた人が、今回何が変わるか**を読むもの。次のものは載せない。
-
-- **そのリリース内で追加した機能の不具合修正**。出荷前に直っているので利用者は一度も目にしていない。個別の Fixed 項目にせず、機能の説明（Added）に畳む
-  - 例: v0.9.4 でログスケールを追加し、同リリース内で「端の点が軸線で欠ける」「目盛りが半端」「設定がリロードで解除される」を修正 → 修正は書かず、ログスケールの Added 項目だけにした
-  - 判断基準は「**その不具合を含むバージョンがタグとして出ているか**」。出ていれば書く、出ていなければ書かない
-- **リリースビルドで見えない変更**。UI がフラグで隠されている機能（例: モバイル同期はリリースビルドで非表示）や内部実装のみの変更は、公開されるまで載せない。公開時にまとめて告知する
-
-#### 出荷済みリリースの項に後日談を書き足さない
-
-「※ この後 vX.Y で別途修正」のような注釈を過去のリリース項に足さない。公開済みのリリースノートは**タグ時点の CHANGELOG から生成**されているため食い違いが生まれ、続きを書いた新しいリリース項とも重複する。続報は新しいリリースの項にだけ書く。
+- **イシュー番号・PR 番号 (`#123` 等) は書かない**
 
 ### 2. README.md を確認
 
@@ -139,27 +108,7 @@ git checkout develop && git pull origin develop
 
 その上で: `git tag --list` / open な PR・Issue の取得 / トラッキング #15 の読み直し。
 
----
-
-## トラッキングイシュー
-
-`tracking` ラベルのついたイシュー（**#15**）は Claude が常に最新の状態に保つ。
-
-新しい Issue を立てたら、直後にトラッキング #15 へ追記すること（共通ルール「`gh issue create` とトラッキング更新はセット」参照）。
-
-```bash
-gh issue view 15 -R hiroshiyokoya/splabo --json body --jq .body > /tmp/tracking.md
-# 編集して該当マイルストーンに「- #<番号> タイトル」を追記
-gh api repos/hiroshiyokoya/splabo/issues/15 -X PATCH -F body=@/tmp/tracking.md
-```
-
-クローズ済みイシューは GitHub が自動的に取り消し線を引くため、トラッキング側で `[x]` を付ける必要はない。
-
----
-
-## ブランチ命名
-
-イシュー番号に対応するブランチを作成: `feature/<番号>-<簡潔な名前>`（例: `feature/1-dashboard`）。
+トラッキング #15 の更新手順は [`AGENTS.md`](./AGENTS.md) 参照。クローズ済みイシューは GitHub が自動的に取り消し線を引くため、トラッキング側で `[x]` を付ける必要はない。
 
 ---
 
