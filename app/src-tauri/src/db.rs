@@ -3557,6 +3557,10 @@ pub struct EnvScatterStat {
     pub avg_ink_self: Option<f64>,
     pub avg_ink_opp:  Option<f64>,
     pub avg_count:    Option<f64>,
+    // 武器集計のみ（#480）。カテゴリ色分け用。
+    pub category_key: Option<String>,
+    pub sub_key:      Option<String>,
+    pub special_key:  Option<String>,
 }
 
 /// 武器スロット 1 個の集計用定義。
@@ -3651,6 +3655,9 @@ pub async fn env_scatter_stats(
                 avg_ink_self: row.try_get::<Option<f64>, _>("avg_ink_self").unwrap_or(None),
                 avg_ink_opp:  row.try_get::<Option<f64>, _>("avg_ink_opp").unwrap_or(None),
                 avg_count:    row.try_get::<Option<f64>, _>("avg_count").unwrap_or(None),
+                category_key: None,
+                sub_key:      None,
+                special_key:  None,
             });
         }
         return Ok(result);
@@ -3679,6 +3686,9 @@ pub async fn env_scatter_stats(
         tb AS (SELECT COUNT(*) AS c FROM env_battles eb {where})
         SELECT w.key      AS key,
                w.name_ja  AS icon_name,
+               w.category_key AS category_key,
+               w.sub_key      AS sub_key,
+               w.special_key  AS special_key,
                COUNT(*)   AS n,
                tb.c       AS total_battles,
                AVG(app.won) AS win_rate,
@@ -3727,6 +3737,9 @@ pub async fn env_scatter_stats(
             avg_ink_self: None,
             avg_ink_opp:  None,
             avg_count:    None,
+            category_key: row.try_get::<Option<String>, _>("category_key").unwrap_or(None),
+            sub_key:      row.try_get::<Option<String>, _>("sub_key").unwrap_or(None),
+            special_key:  row.try_get::<Option<String>, _>("special_key").unwrap_or(None),
         });
     }
     Ok(result)

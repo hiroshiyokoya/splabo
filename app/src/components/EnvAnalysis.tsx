@@ -16,15 +16,19 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type {
   EnvScatterStat, EnvMatrixCell, EnvMatrixMarginal, EnvMatrixStats,
-  EnvStatus, EnvVersion, EnvRank, MetricKey,
+  EnvStatus, EnvVersion, EnvRank, MetricKey, GroupByKey,
 } from '../types'
-import { currentSeasonStart } from '../types'
+import { currentSeasonStart, GROUP_BY_LABELS } from '../types'
 import { ScatterChart, buildSizeLegend, buildColorLegend } from './charts/ScatterChart'
 import type { ScatterPoint } from './charts/ScatterChart'
 import { Heatmap } from './charts/Heatmap'
 import { MultiSelect } from './MultiSelect'
 import { rateCellColor, sequentialCellColor, AXIS_MIN_TOTAL_SAMPLES } from '../utils/heatmapColors'
 import { loadEnvPrefs, saveEnvPrefs, DEFAULT_ENV_PREFS } from '../utils/envPrefs'
+import {
+  SCATTER_CATEGORY_COLOR_KEYS, isScatterCategoryColorKey, categoryColorOf,
+  buildCategoryColorLegend, categoryValueForEnvStat,
+} from '../utils/scatterCategoryColors'
 
 const LOBBY_OPTIONS = [
   { key: '',                  label: 'すべてのロビー' },
@@ -519,9 +523,10 @@ export function EnvAnalysis() {
   // ログスケールの可否（#473）。設定が残っていても不可の指標では効かせない。
   const xLogOk = !NO_LOG_METRICS.has(xM.key)
   const yLogOk = !NO_LOG_METRICS.has(yM.key)
-  // サイズ・色 指標（#406）。見つからなければ「なし」。
+  // サイズ・色 指標（#406）。見つからなければ「なし」。カテゴリ色（#480）は metrics 外。
   const sizeM  = metrics.find(m => m.key === sizeKey)
-  const colorM = metrics.find(m => m.key === colorKey)
+  const colorM = isScatterCategoryColorKey(colorKey) ? undefined : metrics.find(m => m.key === colorKey)
+  const isCatColor = groupBy === 'weapon' && isScatterCategoryColorKey(colorKey)
   // KDA 系（A1/B1 母数）の注記は X/Y に加えサイズ・色の指標も対象にする（#406）。
   const usesKda = (xM.kda || yM.kda || sizeM?.kda || colorM?.kda) ?? false
 
@@ -553,17 +558,19 @@ export function EnvAnalysis() {
     const y = yM.get(s)
     const sv = sizeM ? sizeM.get(s) : null
     const cv = colorM ? colorM.get(s) : null
+    const catVal = isCatColor ? categoryValueForEnvStat(s, colorKey) : null
     const metricRows = dedupeMetricRows([
       { key: xM.key,    row: { label: xM.label, value: x == null ? '—' : xM.fmt(x) } },
       { key: yM.key,    row: { label: yM.label, value: y == null ? '—' : yM.fmt(y) } },
       ...(sizeM  ? [{ key: sizeM.key,  row: { label: sizeM.label,  value: sv == null ? '—' : sizeM.fmt(sv),  muted: true } }] : []),
       ...(colorM ? [{ key: colorM.key, row: { label: colorM.label, value: cv == null ? '—' : colorM.fmt(cv), muted: true } }] : []),
+      ...(isCatColor ? [{ key: colorKey, row: { label: GROUP_BY_LABELS[colorKey as GroupByKey], value: catVal!, muted: true } }] : []),
     ])
     return {
       name: s.key,
       x, y,
       size: sv,
-      color: pointColor(cv),
+      color: isCatColor ? categoryColorOf(catVal!) : pointColor(cv),
       // アイコンは **表示名ではなく BE が返した正式名（icon_name）** で引く（#412）。
       // 表示名（= key）はローカルマスターに無い武器だとスラッグのままで、当たらないパスを
       // 取りに行ってしまう。未ロード / 画像なしは undefined でアイコンなしになる。
@@ -574,7 +581,7 @@ export function EnvAnalysis() {
         { label: 'サンプル', value: s.n.toLocaleString() },
       ],
     }
-  }).filter(p => p.x !== null && p.y !== null), [scatterData, xM, yM, sizeM, colorM, pointColor, iconUrls, iconKind])
+  }).filter(p => p.x !== null && p.y !== null), [scatterData, xM, yM, sizeM, colorM, isCatColor, colorKey, pointColor, iconUrls, iconKind])
 
   // サイズ・色の凡例（#420）。
   // サイズは **描画された点** の値から作る（Recharts の ZAxis も描画データから
@@ -585,10 +592,17 @@ export function EnvAnalysis() {
   )
   // 色は **colorRange と同じ scatterData** から作り、色も本体と同じ pointColor で引く。
   // 別のレンジ・別の関数で作ると凡例が本体とズレる。
-  const colorLegend = useMemo(
-    () => (colorM ? buildColorLegend(colorM.label, scatterData.map(s => colorM.get(s)), colorM.fmt, pointColor) : null),
-    [colorM, scatterData, pointColor],
-  )
+  const colorLegend = useMemo(() => {
+    if (isCatColor) {
+      return buildCategoryColorLegend(
+        GROUP_BY_LABELS[colorKey as GroupByKey],
+        scatterData.map(s => categoryValueForEnvStat(s, colorKey)),
+      )
+    }
+    return colorM
+      ? buildColorLegend(colorM.label, scatterData.map(s => colorM.get(s)), colorM.fmt, pointColor)
+      : null
+  }, [isCatColor, colorKey, colorM, scatterData, pointColor])
 
   const xDomain = useMemo(() => computeDomain(points.map(p => p.x as number), xM.rate01), [points, xM])
   const yDomain = useMemo(() => computeDomain(points.map(p => p.y as number), yM.rate01), [points, yM])
@@ -779,6 +793,9 @@ export function EnvAnalysis() {
                   <select value={colorKey} onChange={e => setColorKey(e.target.value)}>
                     <option value="">なし</option>
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                    {groupBy === 'weapon' && SCATTER_CATEGORY_COLOR_KEYS.map(k => (
+                      <option key={k} value={k}>{GROUP_BY_LABELS[k]}</option>
+                    ))}
                   </select>
                 </label>
               </div>

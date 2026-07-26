@@ -385,6 +385,10 @@ export interface EnvScatterStat {
   avg_ink_self: number | null
   avg_ink_opp:  number | null
   avg_count:    number | null
+  /** 武器集計のみ。カテゴリ色分け（#480）用。 */
+  category_key?: string | null
+  sub_key?:      string | null
+  special_key?:  string | null
 }
 
 /** env_matrix_stats コマンドの 1 セル（#187）。 */

@@ -535,6 +535,24 @@ body {
 /* 帯は継ぎ目なく並べ、両端だけ角を丸める。 */
 .scatter-legend-band:first-child .scatter-legend-chip { border-radius: 2px 0 0 2px; }
 .scatter-legend-band:last-child  .scatter-legend-chip { border-radius: 0 2px 2px 0; }
+.scatter-legend-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 4px 10px;
+  max-width: 100%;
+}
+.scatter-legend-chip-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 140px;
+}
+.scatter-legend-chip-item .scatter-legend-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .scatter-legend-value {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;

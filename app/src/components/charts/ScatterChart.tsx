@@ -135,7 +135,12 @@ export function logTicks(domain: [number, number], maxTicks = 10): number[] | nu
 export const SIZE_AREA_RANGE: [number, number] = [40, 600]
 
 export type SizeLegend  = { label: string; items: { label: string; area: number }[] }
-export type ColorLegend = { label: string; items: { label: string | null; color: string }[] }
+export type ColorLegend = {
+  label: string
+  items: { label: string | null; color: string }[]
+  /** 連続値グラデーション（既定）か、カテゴリチップ列か。 */
+  layout?: 'gradient' | 'chips'
+}
 
 /** 有限な値だけの min/max。値が無いときは null。 */
 function finiteRange(values: (number | null | undefined)[]): { min: number; max: number } | null {
@@ -239,14 +244,25 @@ function ScatterLegends({ sizeLegend, colorLegend }: { sizeLegend?: SizeLegend |
         <div className="scatter-legend-group">
           <span className="scatter-legend-title">色: {colorLegend.label}</span>
           <span className="scatter-legend-items">
-            <span className="scatter-legend-bar">
-              {colorLegend.items.map((it, i) => (
-                <span className="scatter-legend-band" key={i}>
-                  <span className="scatter-legend-chip" style={{ background: it.color }} />
-                  <span className="scatter-legend-value">{it.label ?? ' '}</span>
-                </span>
-              ))}
-            </span>
+            {colorLegend.layout === 'chips' ? (
+              <span className="scatter-legend-chips">
+                {colorLegend.items.map((it, i) => (
+                  <span className="scatter-legend-chip-item" key={i} title={it.label ?? undefined}>
+                    <span className="scatter-legend-chip" style={{ background: it.color }} />
+                    <span className="scatter-legend-value">{it.label ?? ' '}</span>
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span className="scatter-legend-bar">
+                {colorLegend.items.map((it, i) => (
+                  <span className="scatter-legend-band" key={i}>
+                    <span className="scatter-legend-chip" style={{ background: it.color }} />
+                    <span className="scatter-legend-value">{it.label ?? ' '}</span>
+                  </span>
+                ))}
+              </span>
+            )}
           </span>
         </div>
       )}
