@@ -21,6 +21,7 @@ pub mod nxapi;
 pub mod splatnet3;
 pub mod statink;
 pub mod statink_import;
+pub mod weapon_static;
 
 /// スケジューラー設定（フロントエンドから set_scheduler_config で更新される）
 /// (enabled, interval_min) — interval_min は分単位（15, 30, 60, 120, 360, 720, 1440 等）
