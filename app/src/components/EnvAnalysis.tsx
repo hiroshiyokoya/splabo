@@ -630,6 +630,12 @@ export function EnvAnalysis() {
     return sequentialCellColor((v - colorRange.min) / (colorRange.max - colorRange.min), colorM.key as MetricKey)
   }, [colorM, colorRange])
 
+  // カテゴリ色は出現中セットに対して色相をばらけさせて割り当てる。
+  const presentCategories = useMemo(
+    () => isCatColor ? scatterData.map(s => categoryValueForEnvStat(s, colorKey)) : [],
+    [isCatColor, scatterData, colorKey],
+  )
+
   const points: ScatterPoint[] = useMemo(() => scatterData.map(s => {
     const x = xM.get(s)
     const y = yM.get(s)
@@ -647,7 +653,7 @@ export function EnvAnalysis() {
       name: s.key,
       x, y,
       size: sv,
-      color: isCatColor ? categoryColorOf(catVal!) : pointColor(cv),
+      color: isCatColor ? categoryColorOf(catVal!, presentCategories) : pointColor(cv),
       // アイコンは **表示名ではなく BE が返した正式名（icon_name）** で引く（#412）。
       // 表示名（= key）はローカルマスターに無い武器だとスラッグのままで、当たらないパスを
       // 取りに行ってしまう。未ロード / 画像なしは undefined でアイコンなしになる。
@@ -658,7 +664,7 @@ export function EnvAnalysis() {
         { label: 'サンプル', value: s.n.toLocaleString() },
       ],
     }
-  }).filter(p => p.x !== null && p.y !== null), [scatterData, xM, yM, sizeM, colorM, isCatColor, colorKey, pointColor, iconUrls, iconKind])
+  }).filter(p => p.x !== null && p.y !== null), [scatterData, xM, yM, sizeM, colorM, isCatColor, colorKey, pointColor, iconUrls, iconKind, presentCategories])
 
   // サイズ・色の凡例（#420）。
   // サイズは **描画された点** の値から作る（Recharts の ZAxis も描画データから
@@ -960,7 +966,7 @@ export function EnvAnalysis() {
                     >既定の並び</button>
                   )}
                 </div>
-                {bothWeapon ? (
+                {bothWeaponSlot ? (
                   <p className="env-no-data">武器 × 武器は非対応です。一方をステージ/ルール/ロビーにしてください。</p>
                 ) : (
                   <Heatmap
