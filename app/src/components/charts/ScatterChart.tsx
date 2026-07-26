@@ -34,6 +34,20 @@ export interface ScatterPoint {
 const fmtTick = (v: number) => String(Math.round(v * 1000) / 1000)
 
 /**
+ * 比率（0–1）軸の目盛りラベル (#473)。
+ *
+ * ログ軸では 0.001 / 0.002 / 0.005 のような細かい目盛りが並ぶ。小数 0 桁固定だと
+ * 全部 `0%` になって軸が読めないので、1% 未満は値に応じて桁を足す。
+ */
+const fmtRateTick = (v: number) => {
+  const pct = v * 100
+  if (!isFinite(pct) || pct === 0) return '0%'
+  // 0.5% → 1 桁、0.05% → 2 桁。1e-9 は log10 の丸め誤差で 1 桁増えるのを防ぐため。
+  const digits = Math.abs(pct) >= 1 ? 0 : Math.min(4, Math.ceil(-Math.log10(Math.abs(pct)) - 1e-9))
+  return `${pct.toFixed(digits)}%`
+}
+
+/**
  * ログ軸に載せられる値か (#381)。
  *
  * `log(0)` は定義されず、キルレは `D=0` で無限大になる。**0 以下と非有限は描けない**ので
@@ -345,7 +359,7 @@ export function ScatterChart({
           dataKey="x"
           name={xLabel}
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
-          tickFormatter={xIsRate ? (v: number) => `${(v * 100).toFixed(0)}%` : fmtTick}
+          tickFormatter={xIsRate ? fmtRateTick : fmtTick}
           scale={xLog ? 'log' : 'auto'}
           allowDataOverflow={xLog}
           domain={xLogDomain ?? xDomain ?? (xIsRate ? [0, 1] : ['auto', 'auto'])}
@@ -358,7 +372,7 @@ export function ScatterChart({
           name={yLabel}
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           width={56}
-          tickFormatter={yIsRate ? (v: number) => `${(v * 100).toFixed(0)}%` : fmtTick}
+          tickFormatter={yIsRate ? fmtRateTick : fmtTick}
           scale={yLog ? 'log' : 'auto'}
           allowDataOverflow={yLog}
           domain={yLogDomain ?? yDomain ?? (yIsRate ? [0, 1] : ['auto', 'auto'])}

@@ -1,8 +1,8 @@
 // 環境分析タブ（EnvAnalysis）の選択状態を localStorage に永続化する（#407）。
 //
 // タブ切替で EnvAnalysis がアンマウントされると useState が全部リセットされ、
-// グラフの設定（可視化モード・集計軸・X/Y・サイズ/色指標・セル指標・各種フィルタ・
-// 期間）が初期状態に戻ってしまう。これを防ぐため、選択状態を 1 キー
+// グラフの設定（可視化モード・集計軸・X/Y・ログスケール・サイズ/色指標・セル指標・
+// 各種フィルタ・期間）が初期状態に戻ってしまう。これを防ぐため、選択状態を 1 キー
 // （`splabo:shellEnv`）に JSON でまとめて保存し、mount 時に復元する。
 // viewPrefs / customCharts と同じ作法（1 キー・store ミラー・安全フォールバック）。
 //
@@ -21,6 +21,10 @@ export interface EnvPrefs {
   sizeKey:     string
   /** 散布図の色指標（#406）。'' = なし。 */
   colorKey:    string
+  /** 散布図 X 軸をログスケールにするか（#473）。 */
+  xLog:        boolean
+  /** 散布図 Y 軸をログスケールにするか（#473）。 */
+  yLog:        boolean
   rowDim:      string
   colDim:      string
   cellMetric:  string
@@ -42,6 +46,8 @@ export const DEFAULT_ENV_PREFS: EnvPrefs = {
   yKey:        'win_rate',
   sizeKey:     '',
   colorKey:    '',
+  xLog:        false,
+  yLog:        false,
   rowDim:      'weapon',
   colDim:      'stage',
   cellMetric:  'win_rate',
@@ -64,6 +70,10 @@ function strArray(v: unknown, fallback: string[]): string[] {
 function str(v: unknown, fallback: string): string {
   return typeof v === 'string' ? v : fallback
 }
+/** boolean であることを保証する（キーが無い旧データは既定へ落ちる）。 */
+function bool(v: unknown, fallback: boolean): boolean {
+  return typeof v === 'boolean' ? v : fallback
+}
 
 /**
  * localStorage から復元する。壊れた値・欠けたキーは既定へ安全に落とす。
@@ -83,6 +93,8 @@ export function loadEnvPrefs(): EnvPrefs {
       yKey:        str(p.yKey, d.yKey),
       sizeKey:     str(p.sizeKey, d.sizeKey),
       colorKey:    str(p.colorKey, d.colorKey),
+      xLog:        bool(p.xLog, d.xLog),
+      yLog:        bool(p.yLog, d.yLog),
       rowDim:      str(p.rowDim, d.rowDim),
       colDim:      str(p.colDim, d.colDim),
       cellMetric:  str(p.cellMetric, d.cellMetric),
