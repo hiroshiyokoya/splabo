@@ -746,8 +746,25 @@ export function EnvAnalysis() {
                     onClick={() => setVizMode('heatmap')}>ヒートマップ</button>
           </div>
 
-          {/* 共通フィルタ */}
+          {/* 共通フィルタ（並びは FilterBar＝期間→ロビー→ルール→武器→ステージ に合わせる） */}
           <div className="env-filters">
+            <label>期間
+              <select value={period} onChange={e => setPeriod(e.target.value as Period)}>
+                {PERIOD_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+              </select>
+            </label>
+            {period === 'custom' && (
+              <>
+                <label>開始
+                  <input type="date" value={customSince} max={status.max_date ?? undefined}
+                         min={status.min_date ?? undefined} onChange={e => setCustomSince(e.target.value)} />
+                </label>
+                <label>終了
+                  <input type="date" value={customUntil} max={status.max_date ?? undefined}
+                         min={status.min_date ?? undefined} onChange={e => setCustomUntil(e.target.value)} />
+                </label>
+              </>
+            )}
             <MultiSelect
               label="ロビー"
               allLabel="すべてのロビー"
@@ -784,23 +801,6 @@ export function EnvAnalysis() {
                 short: shortStage(s.label),
               }))}
             />
-            <label>期間
-              <select value={period} onChange={e => setPeriod(e.target.value as Period)}>
-                {PERIOD_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-              </select>
-            </label>
-            {period === 'custom' && (
-              <>
-                <label>開始
-                  <input type="date" value={customSince} max={status.max_date ?? undefined}
-                         min={status.min_date ?? undefined} onChange={e => setCustomSince(e.target.value)} />
-                </label>
-                <label>終了
-                  <input type="date" value={customUntil} max={status.max_date ?? undefined}
-                         min={status.min_date ?? undefined} onChange={e => setCustomUntil(e.target.value)} />
-                </label>
-              </>
-            )}
             <MultiSelect
               label="バージョン"
               allLabel="すべてのバージョン"
@@ -960,7 +960,7 @@ export function EnvAnalysis() {
                     >既定の並び</button>
                   )}
                 </div>
-                {bothWeapon ? (
+                {bothWeaponSlot ? (
                   <p className="env-no-data">武器 × 武器は非対応です。一方をステージ/ルール/ロビーにしてください。</p>
                 ) : (
                   <Heatmap
