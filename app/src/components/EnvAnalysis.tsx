@@ -26,7 +26,7 @@ import { MultiSelect } from './MultiSelect'
 import { rateCellColor, sequentialCellColor, AXIS_MIN_TOTAL_SAMPLES } from '../utils/heatmapColors'
 import { loadEnvPrefs, saveEnvPrefs, DEFAULT_ENV_PREFS } from '../utils/envPrefs'
 import {
-  SCATTER_CATEGORY_COLOR_KEYS, isScatterCategoryColorKey, categoryColorOf,
+  SCATTER_CATEGORY_COLOR_KEYS, isScatterCategoryColorKey, categoryStyleOf,
   buildCategoryColorLegend, categoryValueForEnvStat,
 } from '../utils/scatterCategoryColors'
 
@@ -630,12 +630,19 @@ export function EnvAnalysis() {
     return sequentialCellColor((v - colorRange.min) / (colorRange.max - colorRange.min), colorM.key as MetricKey)
   }, [colorM, colorRange])
 
+  // カテゴリ色は出現中セットに対して色相をばらけさせて割り当てる。
+  const presentCategories = useMemo(
+    () => isCatColor ? scatterData.map(s => categoryValueForEnvStat(s, colorKey)) : [],
+    [isCatColor, scatterData, colorKey],
+  )
+
   const points: ScatterPoint[] = useMemo(() => scatterData.map(s => {
     const x = xM.get(s)
     const y = yM.get(s)
     const sv = sizeM ? sizeM.get(s) : null
     const cv = colorM ? colorM.get(s) : null
     const catVal = isCatColor ? categoryValueForEnvStat(s, colorKey) : null
+    const catStyle = isCatColor && catVal ? categoryStyleOf(catVal, presentCategories) : null
     const metricRows = dedupeMetricRows([
       { key: xM.key,    row: { label: xM.label, value: x == null ? '—' : xM.fmt(x) } },
       { key: yM.key,    row: { label: yM.label, value: y == null ? '—' : yM.fmt(y) } },
@@ -647,7 +654,8 @@ export function EnvAnalysis() {
       name: s.key,
       x, y,
       size: sv,
-      color: isCatColor ? categoryColorOf(catVal!) : pointColor(cv),
+      color: catStyle ? catStyle.color : pointColor(cv),
+      markerShape: catStyle?.shape,
       // アイコンは **表示名ではなく BE が返した正式名（icon_name）** で引く（#412）。
       // 表示名（= key）はローカルマスターに無い武器だとスラッグのままで、当たらないパスを
       // 取りに行ってしまう。未ロード / 画像なしは undefined でアイコンなしになる。
@@ -658,7 +666,7 @@ export function EnvAnalysis() {
         { label: 'サンプル', value: s.n.toLocaleString() },
       ],
     }
-  }).filter(p => p.x !== null && p.y !== null), [scatterData, xM, yM, sizeM, colorM, isCatColor, colorKey, pointColor, iconUrls, iconKind])
+  }).filter(p => p.x !== null && p.y !== null), [scatterData, xM, yM, sizeM, colorM, isCatColor, colorKey, pointColor, iconUrls, iconKind, presentCategories])
 
   // サイズ・色の凡例（#420）。
   // サイズは **描画された点** の値から作る（Recharts の ZAxis も描画データから
@@ -746,8 +754,25 @@ export function EnvAnalysis() {
                     onClick={() => setVizMode('heatmap')}>ヒートマップ</button>
           </div>
 
-          {/* 共通フィルタ */}
+          {/* 共通フィルタ（並びは FilterBar＝期間→ロビー→ルール→武器→ステージ に合わせる） */}
           <div className="env-filters">
+            <label>期間
+              <select value={period} onChange={e => setPeriod(e.target.value as Period)}>
+                {PERIOD_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+              </select>
+            </label>
+            {period === 'custom' && (
+              <>
+                <label>開始
+                  <input type="date" value={customSince} max={status.max_date ?? undefined}
+                         min={status.min_date ?? undefined} onChange={e => setCustomSince(e.target.value)} />
+                </label>
+                <label>終了
+                  <input type="date" value={customUntil} max={status.max_date ?? undefined}
+                         min={status.min_date ?? undefined} onChange={e => setCustomUntil(e.target.value)} />
+                </label>
+              </>
+            )}
             <MultiSelect
               label="ロビー"
               allLabel="すべてのロビー"
@@ -784,23 +809,6 @@ export function EnvAnalysis() {
                 short: shortStage(s.label),
               }))}
             />
-            <label>期間
-              <select value={period} onChange={e => setPeriod(e.target.value as Period)}>
-                {PERIOD_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-              </select>
-            </label>
-            {period === 'custom' && (
-              <>
-                <label>開始
-                  <input type="date" value={customSince} max={status.max_date ?? undefined}
-                         min={status.min_date ?? undefined} onChange={e => setCustomSince(e.target.value)} />
-                </label>
-                <label>終了
-                  <input type="date" value={customUntil} max={status.max_date ?? undefined}
-                         min={status.min_date ?? undefined} onChange={e => setCustomUntil(e.target.value)} />
-                </label>
-              </>
-            )}
             <MultiSelect
               label="バージョン"
               allLabel="すべてのバージョン"
@@ -888,7 +896,7 @@ export function EnvAnalysis() {
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                   </select>
                 </label>
-                <label>色
+                <label>色・形
                   <select value={colorKey} onChange={e => setColorKey(e.target.value)}>
                     <option value="">なし</option>
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
