@@ -56,7 +56,7 @@ function colorOfValue(value: number | null, isRate: boolean, min: number, max: n
   return sequentialCellColor((value - min) / (max - min), metric)
 }
 
-/** カテゴリ単位 (武器/ステージ) の散布図ポイントを作る。 */
+/** カテゴリ集計単位（武器 / ステージ / サブ / スペシャル / 武器カテゴリ）の散布図ポイントを作る。 */
 /** ツールチップ 1 行分。 */
 type TooltipRow = { label: string; value: string; muted?: boolean }
 
@@ -463,7 +463,7 @@ function renderChartBody(
   }
 
   // scatter: ドット単位ごとに別データ。バトル単位 = battleData (BattleRow[])、
-  // 武器/ステージ単位 = data (GroupedStatsRow[])。
+  // カテゴリ集計単位 = data (GroupedStatsRow[])。
   if (chart.shape === 'scatter') {
     if (!chart.xMetric || !chart.yMetric) {
       return <div className="chart-not-implemented">散布図には X 軸 / Y 軸 を選んでください。</div>
@@ -487,7 +487,7 @@ function renderChartBody(
         hasSize={!!chart.sizeMetric}
         // 環境分析の散布図と同じ透過度に揃える (#435)
         fillOpacity={0.55}
-        // サイズメトリクス未指定時の一定サイズ。武器/ステージはドットが少ないので大きめ。
+        // サイズメトリクス未指定時の一定サイズ。バトルは点が多いので小さめ、集計単位は大きめ。
         constSize={isBattle ? 120 : 280}
       />
     )

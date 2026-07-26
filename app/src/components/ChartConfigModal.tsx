@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey, BattleNumericMetric } from '../types'
+import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey, BattleNumericMetric, ScatterDotUnit } from '../types'
 import {
   GROUP_BY_LABELS, METRIC_LABELS, HEATMAP_METRICS, SUM_METRICS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
-  IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, scatterMetricOptions,
+  IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, scatterMetricOptions, SCATTER_DOT_UNITS,
+  scatterDotUnitLabel,
   BATTLE_NUMERIC_METRIC_LABELS, BATTLE_NUMERIC_DEFAULT_BIN, axisGroupOf, AXIS_GROUP_LABELS, chartMetrics,
 } from '../types'
 import { SCATTER_CATEGORY_COLOR_KEYS } from '../utils/scatterCategoryColors'
@@ -62,7 +63,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   const [xBinWidth,      setXBinWidth]      = useState<number>(initial?.xBinWidth ?? 1)
   const [yBinWidth,      setYBinWidth]      = useState<number>(initial?.yBinWidth ?? 1)
   // scatter 用 (キーはドット単位ごとに別系統なので string で持つ)
-  const [dotUnit,      setDotUnit]      = useState<'battle' | 'weapon' | 'stage'>(initial?.dotUnit ?? 'weapon')
+  const [dotUnit,      setDotUnit]      = useState<ScatterDotUnit>(initial?.dotUnit ?? 'weapon')
   const [xMetric,      setXMetric]      = useState<string>(initial?.xMetric ?? 'avg_kill')
   const [yMetric,      setYMetric]      = useState<string>(initial?.yMetric ?? 'win_rate')
   // サイズは「（一定サイズ）」が '' で、保存時に undefined へ落ちる（handleSave 参照）。
@@ -446,12 +447,12 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             <>
               <div className="form-field">
                 <label className="form-label">ドット単位</label>
-                <select className="form-input" value={dotUnit} onChange={e => setDotUnit(e.target.value as 'battle' | 'weapon' | 'stage')}>
-                  <option value="battle">バトル</option>
-                  <option value="weapon">武器</option>
-                  <option value="stage">ステージ</option>
+                <select className="form-input" value={dotUnit} onChange={e => setDotUnit(e.target.value as ScatterDotUnit)}>
+                  {SCATTER_DOT_UNITS.map(u => (
+                    <option key={u} value={u}>{scatterDotUnitLabel(u)}</option>
+                  ))}
                 </select>
-                <p className="form-hint">1 ドット = 1 {dotUnit === 'battle' ? 'バトル' : dotUnit === 'weapon' ? '武器' : 'ステージ'}。</p>
+                <p className="form-hint">1 ドット = 1 {scatterDotUnitLabel(dotUnit)}。</p>
               </div>
               <div className="form-field">
                 <label className="form-label">X 軸</label>
