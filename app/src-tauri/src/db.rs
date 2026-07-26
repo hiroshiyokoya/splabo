@@ -2289,7 +2289,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// 適用済みマイグレーションの最新版。**新しい `if current_version < N` ブロックを足したら
 /// 必ずここを N に更新する。** 更新を忘れると `migrate_battle_ids` 冒頭の早期 return に
 /// 阻まれ、追加したマイグレーションが一度も実行されない（#206・#306 の再発防止）。
-const LATEST_MIGRATION_VERSION: i64 = 19;
+const LATEST_MIGRATION_VERSION: i64 = 20;
 
 /// version 2: mode 判定バグ修正版で全件再処理
 /// version 3: kill カウントを kill_or_assist から実キル数に修正
@@ -2309,6 +2309,7 @@ const LATEST_MIGRATION_VERSION: i64 = 19;
 /// version 17: インポート済みバトルに statink_uuid を補填（再送防止）(#200 / #204)
 /// version 18: フェス(チャレンジ)の lobby を raw_json から振り直し (#293)
 /// version 19: is_knockout を三値に修復（KO負けから時間切れ決着を除外）(#315)
+/// version 20: weapon の category/sub/special 空欄を同梱の静的マスターで backfill (#492)
 ///
 /// ⚠ **マイグレーションを追加したら `LATEST_MIGRATION_VERSION` も必ず上げること。**
 ///    ここが古いままだと早期 return に阻まれて新しい版が一度も走らない（#206 / #306 で 2 度踏んだ）。
@@ -3427,6 +3428,41 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             "migrate v19: is_knockout を三値に修復（KO負けから時間切れを除外・{} 件補正）",
             res.rows_affected()
         );
+    }
+
+    if current_version < 20 {
+        // 武器のカテゴリ / サブ / スペシャルが空欄の行を、同梱の静的マスターで埋める（#492）。
+        // stat.ink 由来（環境分析 CSV）でしか登場しない武器は属性が空のまま
+        // 「(未分類)」「(不明)」に落ちていた。statink_key または key（slug）で照合し、
+        // SplatNet 由来の既存値は温存する（空欄のみ埋める）。
+        let mut filled = 0u64;
+        for (slug, cat, sub, sp) in crate::weapon_static::WEAPON_STATIC_ATTRS {
+            let res = sqlx::query(
+                "UPDATE weapon
+                    SET category_key = COALESCE(NULLIF(category_key, ''), ?),
+                        sub_key      = COALESCE(NULLIF(sub_key, ''),      ?),
+                        special_key  = COALESCE(NULLIF(special_key, ''),  ?)
+                  WHERE (statink_key = ? OR key = ?)
+                    AND (category_key IS NULL OR category_key = ''
+                         OR sub_key     IS NULL OR sub_key     = ''
+                         OR special_key IS NULL OR special_key = '')",
+            )
+            .bind(cat)
+            .bind(sub)
+            .bind(sp)
+            .bind(slug)
+            .bind(slug)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+            filled += res.rows_affected();
+        }
+
+        sqlx::query("PRAGMA user_version = 20")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!("migrate v20: 武器属性の空欄を静的マスターで backfill（{filled} 件）");
     }
 
     Ok(updated)

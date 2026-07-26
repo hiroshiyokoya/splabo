@@ -128,12 +128,18 @@ pub async fn resolve_weapon_id(conn: &mut SqliteConnection, statink_key: &str) -
         return Ok(Some(r.get("id")));
     }
     // 無ければ key=statink_key で新規作成し statink_key を付ける。
+    // カテゴリ / サブ / スペシャルは同梱の静的マスターから埋める（#492）。
+    let attrs = crate::weapon_static::lookup(statink_key);
     sqlx::query(
-        "INSERT OR IGNORE INTO weapon (key, name_ja, statink_key) VALUES (?, ?, ?)",
+        "INSERT OR IGNORE INTO weapon (key, name_ja, statink_key, category_key, sub_key, special_key)
+         VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(statink_key)
     .bind(statink_key) // name_ja は後でマスター API から上書きされる
     .bind(statink_key)
+    .bind(attrs.map(|(cat, _, _)| cat))
+    .bind(attrs.map(|(_, sub, _)| sub))
+    .bind(attrs.map(|(_, _, sp)| sp))
     .execute(&mut *conn)
     .await
     .map_err(|e| e.to_string())?;
@@ -226,16 +232,29 @@ async fn sync_weapon_masters(pool: &DbPool, client: &Client) -> Result<usize, St
             .or_else(|| item.pointer("/name/ja-JP"))
             .and_then(|v| v.as_str())
             .unwrap_or(key);
+        // 武器種 / サブ / スペシャルの日本語名（#492: 未分類をなくす）
+        let ja = |ptr: &str| item.pointer(ptr).and_then(|v| v.as_str()).map(str::to_string);
+        let category = ja("/type/name/ja_JP");
+        let sub      = ja("/sub/name/ja_JP");
+        let special  = ja("/special/name/ja_JP");
         // key=statink_key に合わせて upsert: key が既にあれば statink_key を更新、なければ INSERT。
+        // 属性は空欄のときだけ API 値で埋める（SplatNet 由来の既存値は温存）。
         sqlx::query(
-            "INSERT INTO weapon (key, name_ja, statink_key)
-             VALUES (?, ?, ?)
-             ON CONFLICT(key) DO UPDATE SET statink_key = excluded.statink_key,
-                                             name_ja    = COALESCE(NULLIF(name_ja, key), excluded.name_ja)",
+            "INSERT INTO weapon (key, name_ja, statink_key, category_key, sub_key, special_key)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(key) DO UPDATE SET
+                 statink_key  = excluded.statink_key,
+                 name_ja      = COALESCE(NULLIF(name_ja, key), excluded.name_ja),
+                 category_key = COALESCE(NULLIF(category_key, ''), excluded.category_key),
+                 sub_key      = COALESCE(NULLIF(sub_key, ''),      excluded.sub_key),
+                 special_key  = COALESCE(NULLIF(special_key, ''),  excluded.special_key)",
         )
         .bind(name_ja)  // chartoon は name_ja をプライマリキーとして使う場合があるため name_ja 優先
         .bind(name_ja)
         .bind(key)
+        .bind(&category)
+        .bind(&sub)
+        .bind(&special)
         .execute(pool.as_ref())
         .await
         .map_err(|e| e.to_string())?;
@@ -246,6 +265,25 @@ async fn sync_weapon_masters(pool: &DbPool, client: &Client) -> Result<usize, St
         )
         .bind(key)
         .bind(name_ja)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+        // 属性が空欄のままの既存行（statink_key で照合）を API 値で埋める（#492）。
+        sqlx::query(
+            "UPDATE weapon
+                SET category_key = COALESCE(NULLIF(category_key, ''), ?),
+                    sub_key      = COALESCE(NULLIF(sub_key, ''),      ?),
+                    special_key  = COALESCE(NULLIF(special_key, ''),  ?)
+              WHERE statink_key = ?
+                AND (category_key IS NULL OR category_key = ''
+                     OR sub_key     IS NULL OR sub_key     = ''
+                     OR special_key IS NULL OR special_key = '')",
+        )
+        .bind(&category)
+        .bind(&sub)
+        .bind(&special)
+        .bind(key)
         .execute(pool.as_ref())
         .await
         .map_err(|e| e.to_string())?;
