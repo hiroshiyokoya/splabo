@@ -122,6 +122,8 @@ pub fn run() {
             db::env_season_range,
             db::env_versions,
             db::env_ranks,
+            db::env_weapons,
+            db::env_stages,
             // ギア表示系（geartoon 由来・Phase A1 で移植・gear.rs）
             gear::read_gear_db,
             gear::get_data_dir,

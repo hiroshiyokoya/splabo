@@ -16,7 +16,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type {
   EnvScatterStat, EnvMatrixCell, EnvMatrixMarginal, EnvMatrixStats,
-  EnvStatus, EnvVersion, EnvRank, MetricKey, GroupByKey,
+  EnvStatus, EnvVersion, EnvRank, EnvFilterOption, MetricKey, GroupByKey,
 } from '../types'
 import { currentSeasonStart, GROUP_BY_LABELS } from '../types'
 import { ScatterChart, buildSizeLegend, buildColorLegend } from './charts/ScatterChart'
@@ -243,10 +243,15 @@ export function EnvAnalysis() {
   const [customUntil, setCustomUntil] = useState(prefs.customUntil)
 
   // フィルタ拡充（#189）: バージョン / ウデマエ帯 / Xパワー帯
+  // 武器・ステージ（#477）
   const [versionOptions, setVersionOptions] = useState<EnvVersion[]>([])
   const [rankOptions, setRankOptions]       = useState<EnvRank[]>([])
+  const [weaponOptions, setWeaponOptions]   = useState<EnvFilterOption[]>([])
+  const [stageOptions, setStageOptions]     = useState<EnvFilterOption[]>([])
   const [gameVers, setGameVers]       = useState<string[]>(prefs.gameVers)      // 選択中バージョン（複数）
   const [posterRanks, setPosterRanks] = useState<string[]>(prefs.posterRanks)   // 選択中ウデマエ帯（複数）
+  const [weaponKeys, setWeaponKeys]   = useState<string[]>(prefs.weaponKeys)
+  const [stageKeys, setStageKeys]     = useState<string[]>(prefs.stageKeys)
   const [powerMin, setPowerMin] = useState(prefs.powerMin)                       // Xパワー下限（空 = 無指定）
   const [powerMax, setPowerMax] = useState(prefs.powerMax)                       // Xパワー上限（空 = 無指定）
 
@@ -254,6 +259,8 @@ export function EnvAnalysis() {
   const filtersAreDefault =
     lobbyKeys.length === 0 &&
     ruleKeys.length === 0 &&
+    weaponKeys.length === 0 &&
+    stageKeys.length === 0 &&
     gameVers.length === 0 &&
     posterRanks.length === 0 &&
     powerMin === '' &&
@@ -266,6 +273,8 @@ export function EnvAnalysis() {
   function clearFilters() {
     setLobbyKeys([])
     setRuleKeys([])
+    setWeaponKeys([])
+    setStageKeys([])
     setGameVers([])
     setPosterRanks([])
     setPowerMin('')
@@ -315,10 +324,10 @@ export function EnvAnalysis() {
       vizMode, groupBy, xKey, yKey, sizeKey, colorKey, xLog, yLog,
       rowDim, colDim, cellMetric,
       period, customSince, customUntil,
-      lobbyKeys, ruleKeys, gameVers, posterRanks, powerMin, powerMax,
+      lobbyKeys, ruleKeys, weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax,
     })
   }, [vizMode, groupBy, xKey, yKey, sizeKey, colorKey, xLog, yLog, rowDim, colDim, cellMetric,
-      period, customSince, customUntil, lobbyKeys, ruleKeys, gameVers, posterRanks, powerMin, powerMax])
+      period, customSince, customUntil, lobbyKeys, ruleKeys, weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax])
 
   // 集計軸を切り替えたら X/Y・サイズ・色 指標を既定へ戻す。
   // 「初回だけスキップ」の ref フラグは StrictMode の二重マウントで false のまま
@@ -370,6 +379,8 @@ export function EnvAnalysis() {
       if (s.total_rows > 0) {
         try { setVersionOptions(await invoke<EnvVersion[]>('env_versions')) } catch { /* noop */ }
         try { setRankOptions(await invoke<EnvRank[]>('env_ranks')) } catch { /* noop */ }
+        try { setWeaponOptions(await invoke<EnvFilterOption[]>('env_weapons')) } catch { /* noop */ }
+        try { setStageOptions(await invoke<EnvFilterOption[]>('env_stages')) } catch { /* noop */ }
       }
     } catch (e) {
       console.error('[EnvAnalysis] env_status 失敗:', e)
@@ -393,13 +404,15 @@ export function EnvAnalysis() {
     }
   }, [period, status, customSince, customUntil])
 
-  // 拡充フィルタ（#189）を invoke 引数へ。空配列 / 空文字は null（無指定）に正規化。
+  // 拡充フィルタ（#189 / #477）を invoke 引数へ。空配列 / 空文字は null（無指定）に正規化。
   const extFilters = useMemo(() => ({
+    weaponKeys:  weaponKeys.length ? weaponKeys : null,
+    stageKeys:   stageKeys.length ? stageKeys : null,
     gameVers:    gameVers.length ? gameVers : null,
     posterRanks: posterRanks.length ? posterRanks : null,
     powerMin:    powerMin === '' ? null : Number(powerMin),
     powerMax:    powerMax === '' ? null : Number(powerMax),
-  }), [gameVers, posterRanks, powerMin, powerMax])
+  }), [weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax])
 
   // データ読み込み（モード/フィルタ変更で再取得）
   const loadData = useCallback(async () => {
@@ -413,7 +426,6 @@ export function EnvAnalysis() {
           side:     'all',
           lobbyKeys,
           ruleKeys,
-          stageKey: null,
           since:    range.since,
           until:    range.until,
           ...extFilters,
@@ -429,7 +441,6 @@ export function EnvAnalysis() {
           rowDim, colDim, cellMetric,
           lobbyKeys,
           ruleKeys,
-          stageKey: null,
           since:    range.since,
           until:    range.until,
           ...extFilters,
@@ -703,6 +714,28 @@ export function EnvAnalysis() {
               selected={ruleKeys}
               onChange={setRuleKeys}
               options={RULE_OPTIONS.filter(o => o.key).map(o => ({ key: o.key, label: o.label }))}
+            />
+            <MultiSelect
+              label="武器"
+              allLabel="すべての武器"
+              selected={weaponKeys}
+              onChange={setWeaponKeys}
+              options={weaponOptions.map(w => ({
+                key:   w.key,
+                label: `${w.label}（${w.n.toLocaleString()}）`,
+                short: w.label,
+              }))}
+            />
+            <MultiSelect
+              label="ステージ"
+              allLabel="すべてのステージ"
+              selected={stageKeys}
+              onChange={setStageKeys}
+              options={stageOptions.map(s => ({
+                key:   s.key,
+                label: `${shortStage(s.label)}（${s.n.toLocaleString()}）`,
+                short: shortStage(s.label),
+              }))}
             />
             <label>期間
               <select value={period} onChange={e => setPeriod(e.target.value as Period)}>
