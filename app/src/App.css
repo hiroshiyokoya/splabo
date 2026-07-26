@@ -2575,6 +2575,28 @@ body {
   color: var(--text);
   font-size: 13px;
 }
+/* 散布図の軸ログスケール切替（#473）。隣の select と下端を揃える。 */
+.env-filters label.env-log-toggle {
+  flex-direction: row;
+  align-items: center;
+  align-self: flex-end;
+  gap: 5px;
+  padding-bottom: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.env-filters label.env-log-toggle input {
+  margin: 0;
+  cursor: pointer;
+}
+.env-filters label.env-log-toggle.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.env-filters label.env-log-toggle.is-disabled input {
+  cursor: not-allowed;
+}
+
 /* 共通フィルタのクリア。隣の MultiSelect summary / select と同じ高さに揃え、
    ラベル行分だけ下に寄せる（#456）。flex の stretch で縦に伸びないようにする。 */
 .env-filter-clear {

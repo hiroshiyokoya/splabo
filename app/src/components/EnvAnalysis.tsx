@@ -5,6 +5,9 @@
  * 散布図（武器/ステージ別）とマトリクスヒートマップ（カテゴリ×カテゴリ）で
  * 「ステージや武器によってバトル統計がどう変わるか」を見る。
  *
+ * 散布図はピック率のようなロングテール指標を読むため、X/Y 軸ごとにログスケールへ
+ * 切り替えられる（#473）。ピック率の表示は 2 桁固定（マイナー武器が 0.0% に潰れるため）。
+ *
  * 注意: stat.ink ユーザーは一般プレイヤーより熱心な層に偏るため、
  *       データには投稿バイアスがあります。
  */
@@ -51,6 +54,9 @@ const RULE_LABEL:  Record<string, string> = Object.fromEntries(RULE_OPTIONS.filt
 // ---------------------------------------------------------------------------
 
 const pct    = (v: number) => `${(v * 100).toFixed(1)}%`
+// ピック率専用（#473）。マイナー武器は 0.1% 未満に集まっていて 1 桁だと全部 0.0% になり
+// 差が読めないため、2 桁にする。
+const pct2   = (v: number) => `${(v * 100).toFixed(2)}%`
 const pct100 = (v: number) => `${v.toFixed(1)}%`
 const num2   = (v: number) => v.toFixed(2)
 const num1   = (v: number) => v.toFixed(1)
@@ -65,11 +71,15 @@ interface ScatterMetric {
   kda?:   boolean              // KDA 系（A1/B1 母数の注記対象）
 }
 
+/** ログスケールを許さない指標（#473）。勝率は 0.5 前後の狭い帯に収まるので、
+ *  ログにしても読みやすくならず、参照線 50% との相性も悪い。 */
+const NO_LOG_METRICS = new Set(['win_rate'])
+
 /** EnvScatterStat の数値フィールドをそのまま取り出すアクセサ。 */
 const field = (k: keyof EnvScatterStat) => (s: EnvScatterStat) => s[k] as number | null
 
 const WEAPON_METRICS: ScatterMetric[] = [
-  { key: 'pick_rate',  label: 'ピック率',   rate01: true,  fmt: pct,  get: field('pick_rate') },
+  { key: 'pick_rate',  label: 'ピック率',   rate01: true,  fmt: pct2, get: field('pick_rate') },
   { key: 'win_rate',   label: '勝率',       rate01: true,  fmt: pct,  get: field('win_rate') },
   { key: 'avg_kill',   label: '平均キル',   rate01: false, fmt: num2, get: field('avg_kill'),   kda: true },
   { key: 'avg_assist', label: '平均アシスト', rate01: false, fmt: num2, get: field('avg_assist'), kda: true },
@@ -111,7 +121,7 @@ interface CellMetric {
 }
 const CELL_METRICS: CellMetric[] = [
   { key: 'win_rate',      label: '勝率',         fmt: pct,  scale: 'diverging',  weapon: true, mid: 0.5 },
-  { key: 'pick_rate',     label: 'ピック率',     fmt: pct,  scale: 'sequential', weapon: true },
+  { key: 'pick_rate',     label: 'ピック率',     fmt: pct2, scale: 'sequential', weapon: true },
   { key: 'avg_kill',      label: '平均キル',     fmt: num2, scale: 'sequential', weapon: true },
   { key: 'avg_assist',    label: '平均アシスト', fmt: num2, scale: 'sequential', weapon: true },
   { key: 'contrib_kill',  label: '平均貢献キル', fmt: num2, scale: 'sequential', weapon: true },
@@ -270,6 +280,8 @@ export function EnvAnalysis() {
   const [yKey, setYKey]       = useState<string>(prefs.yKey)
   const [sizeKey, setSizeKey] = useState<string>(prefs.sizeKey)   // 散布図サイズ指標（''=なし・#406）
   const [colorKey, setColorKey] = useState<string>(prefs.colorKey) // 散布図色指標（''=なし・#406）
+  const [xLog, setXLog]       = useState<boolean>(prefs.xLog)     // 散布図 X 軸ログスケール（#473）
+  const [yLog, setYLog]       = useState<boolean>(prefs.yLog)
   const [scatterData, setScatterData] = useState<EnvScatterStat[]>([])
   // scatterData がどちらの集計軸のものか（#412）。groupBy は選択した瞬間に変わるが
   // scatterData は再取得が終わるまで前の軸のまま。アイコンの kind をこの遅れた軸で決めないと、
@@ -293,12 +305,12 @@ export function EnvAnalysis() {
   useEffect(() => {
     if (firstSaveRun.current) { firstSaveRun.current = false; return }
     saveEnvPrefs({
-      vizMode, groupBy, xKey, yKey, sizeKey, colorKey,
+      vizMode, groupBy, xKey, yKey, sizeKey, colorKey, xLog, yLog,
       rowDim, colDim, cellMetric,
       period, customSince, customUntil,
       lobbyKeys, ruleKeys, gameVers, posterRanks, powerMin, powerMax,
     })
-  }, [vizMode, groupBy, xKey, yKey, sizeKey, colorKey, rowDim, colDim, cellMetric,
+  }, [vizMode, groupBy, xKey, yKey, sizeKey, colorKey, xLog, yLog, rowDim, colDim, cellMetric,
       period, customSince, customUntil, lobbyKeys, ruleKeys, gameVers, posterRanks, powerMin, powerMax])
 
   // 集計軸を切り替えたら X/Y・サイズ・色 指標を既定へ戻す。
@@ -504,6 +516,9 @@ export function EnvAnalysis() {
   const metrics = groupBy === 'weapon' ? WEAPON_METRICS : STAGE_METRICS
   const xM = metrics.find(m => m.key === xKey) ?? metrics[0]
   const yM = metrics.find(m => m.key === yKey) ?? metrics[1]
+  // ログスケールの可否（#473）。設定が残っていても不可の指標では効かせない。
+  const xLogOk = !NO_LOG_METRICS.has(xM.key)
+  const yLogOk = !NO_LOG_METRICS.has(yM.key)
   // サイズ・色 指標（#406）。見つからなければ「なし」。
   const sizeM  = metrics.find(m => m.key === sizeKey)
   const colorM = metrics.find(m => m.key === colorKey)
@@ -741,11 +756,19 @@ export function EnvAnalysis() {
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                   </select>
                 </label>
+                <LogToggle
+                  label="X軸ログ" checked={xLog} allowed={xLogOk}
+                  metricLabel={xM.label} onChange={setXLog}
+                />
                 <label>Y軸
                   <select value={yKey} onChange={e => setYKey(e.target.value)}>
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                   </select>
                 </label>
+                <LogToggle
+                  label="Y軸ログ" checked={yLog} allowed={yLogOk}
+                  metricLabel={yM.label} onChange={setYLog}
+                />
                 <label>サイズ
                   <select value={sizeKey} onChange={e => setSizeKey(e.target.value)}>
                     <option value="">なし</option>
@@ -769,6 +792,7 @@ export function EnvAnalysis() {
                     points={points}
                     xLabel={xM.label} yLabel={yM.label}
                     xIsRate={xM.rate01} yIsRate={yM.rate01}
+                    xLogScale={xLog && xLogOk} yLogScale={yLog && yLogOk}
                     xDomain={xDomain} yDomain={yDomain}
                     xRefLine={xM.key === 'win_rate' ? 0.5 : undefined}
                     yRefLine={yM.key === 'win_rate' ? 0.5 : undefined}
@@ -875,6 +899,37 @@ function computeDomain(vals: number[], rate01: boolean): [number, number] {
   if (rate01) { nlo = Math.max(0, nlo); nhi = Math.min(1, nhi) }
   const round = (x: number) => Math.round(x * 1e6) / 1e6  // 浮動小数の誤差を除去
   return [round(nlo), round(nhi)]
+}
+
+/**
+ * 散布図の軸ログスケール切替（#473）。
+ *
+ * ピック率のようにロングテールな指標は、リニアだとマイナー武器が原点付近に潰れる。
+ * `allowed` が false（勝率など）のときは押せなくし、理由を title で出す。
+ */
+function LogToggle({ label, checked, allowed, metricLabel, onChange }: {
+  label:       string
+  checked:     boolean
+  allowed:     boolean
+  metricLabel: string
+  onChange:    (v: boolean) => void
+}) {
+  return (
+    <label
+      className={`env-log-toggle${allowed ? '' : ' is-disabled'}`}
+      title={allowed
+        ? `${metricLabel}を対数軸にする。0 以下の点は描けないため除外されます。`
+        : `${metricLabel}は狭い範囲に収まるためログスケールは使えません。`}
+    >
+      <input
+        type="checkbox"
+        checked={checked && allowed}
+        disabled={!allowed}
+        onChange={e => onChange(e.target.checked)}
+      />
+      {label}
+    </label>
+  )
 }
 
 /** 進捗バー表示。 */
