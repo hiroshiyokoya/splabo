@@ -1,13 +1,14 @@
 /**
- * パネルを JPEG 画像として保存する（#500）。
+ * パネルを PNG 画像として保存する（#500）。
  *
  * 画面に出ているパネルをそのままラスタライズするので、テーマ色や凡例は表示と一致する。
  * 表示にしかない要素（操作ボタン・長い注釈）は `EXPORT_HIDE_CLASS` を付けて除外し、
  * 画像にしか無い要素（絞り込み条件のキャプション）は `.is-exporting` 中だけ表示する。
  *
- * JPEG は透過を持てないため、キャプチャ前に必ず不透明な背景色を敷く。
+ * PNG なので角丸の外側は透過のまま残す。パネル本体の背景は要素自身の
+ * `background: var(--surface)` が塗る。
  */
-import { toJpeg } from 'html-to-image'
+import { toPng } from 'html-to-image'
 import { invoke } from '@tauri-apps/api/core'
 import { getVersion } from '@tauri-apps/api/app'
 
@@ -61,11 +62,11 @@ function sanitizeFilenamePart(s: string): string {
     .trim()
 }
 
-/** `splabo-環境分析-武器散布図-2026-07-26.jpg` 形式のファイル名。 */
+/** `splabo-環境分析-武器散布図-2026-07-26.png` 形式のファイル名。 */
 export function buildPanelImageFilename(screen: string, panel: string, now = new Date()): string {
   const date = formatExportDate(now)
   const parts = ['splabo', screen, panel, date].map(sanitizeFilenamePart).filter(Boolean)
-  return `${parts.join('-')}.jpg`
+  return `${parts.join('-')}.png`
 }
 
 function cssVar(name: string, fallback: string): string {
@@ -92,10 +93,10 @@ function nextFrames(): Promise<void> {
 }
 
 /**
- * パネルを JPEG にして保存ダイアログへ渡す。
+ * パネルを PNG にして保存ダイアログへ渡す。
  * 戻り値は保存先パス。キャンセルされたら null。
  */
-export async function savePanelAsJpeg(node: HTMLElement, screen: string, panel: string): Promise<string | null> {
+export async function savePanelAsPng(node: HTMLElement, screen: string, panel: string): Promise<string | null> {
   node.classList.add(EXPORTING_CLASS)
   const tooltipBgs: { el: HTMLElement; prev: string }[] = []
   try {
@@ -114,14 +115,13 @@ export async function savePanelAsJpeg(node: HTMLElement, screen: string, panel: 
     // 散布図ツールチップを「他ドットを避ける位置」へ載せ替える（リスナ側で flushSync）。
     node.dispatchEvent(new CustomEvent(PANEL_EXPORT_PREPARE_EVENT, { bubbles: false }))
     await nextFrames()
-    const dataUrl = await toJpeg(node, {
-      quality:         0.92,
+    // backgroundColor を指定しない → 角丸の外側は透明。パネル内は要素自身の背景色。
+    const dataUrl = await toPng(node, {
       // 等倍だと軸ラベルがつぶれる。2 倍なら 420px 幅のカードでも十分読める。
-      pixelRatio:      2,
-      backgroundColor: cssVar('--surface', '#1b1f27'),
+      pixelRatio: 2,
       // 既定では index.html が読む Google Fonts を毎回ダウンロードして埋め込もうとする。
       // パネル内は system-ui 系しか使っておらず、オフラインでは失敗するだけなので飛ばす。
-      skipFonts:       true,
+      skipFonts: true,
       filter: (el) => !(el instanceof Element) || !el.classList.contains(EXPORT_HIDE_CLASS),
     })
     const dataBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1)

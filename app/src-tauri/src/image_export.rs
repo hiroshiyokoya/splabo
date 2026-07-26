@@ -1,6 +1,6 @@
 //! パネル画像の保存（#500）。
 //!
-//! FE が html-to-image で作った JPEG を base64 で受け取り、
+//! FE が html-to-image で作った PNG を base64 で受け取り、
 //! 「名前を付けて保存」ダイアログで書き出す。画像の合成は FE 側の責務で、
 //! ここはダイアログとファイル書き込みだけを持つ。
 
@@ -8,7 +8,7 @@ use base64::Engine;
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
-/// JPEG バイト列を保存ダイアログ経由で書き出す。
+/// PNG バイト列を保存ダイアログ経由で書き出す。
 ///
 /// 戻り値は保存先パス。ユーザーがキャンセルしたら `None`（FE はエラー表示しない）。
 #[tauri::command]
@@ -27,7 +27,7 @@ pub async fn save_panel_image(
     app.dialog()
         .file()
         .set_file_name(&filename)
-        .add_filter("JPEG 画像", &["jpg", "jpeg"])
+        .add_filter("PNG 画像", &["png"])
         .save_file(move |path| {
             let _ = tx.send(path);
         });
