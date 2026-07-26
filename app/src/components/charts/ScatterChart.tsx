@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { flushSync } from 'react-dom'
 import {
   ScatterChart as RScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts'
+import { PANEL_EXPORT_PREPARE_EVENT } from '../../utils/panelExport'
 
 /**
  * 散布図 (presentational)。
@@ -201,13 +203,17 @@ function scatterPointShape(props: {
   )
 }
 
-type TooltipDirection = 'right' | 'left' | 'bottom' | 'top'
+type TooltipDirection =
+  | 'right' | 'left' | 'bottom' | 'top'
+  | 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left'
 type TooltipPlacement = { left: number; top: number; direction: TooltipDirection }
 type ObstacleRect = { left: number; top: number; right: number; bottom: number }
 
 const TOOLTIP_GAP = 14
 const TOOLTIP_EDGE_PAD = 6
 const DOT_AVOID_PAD = 4
+/** 画像保存時はドット同士の隙間を広めに見て、被りゼロを狙いやすくする。 */
+const EXPORT_DOT_AVOID_PAD = 10
 /** アクティブ点（ハロー込み）とツールチップの間に最低限空ける余白。 */
 const ANCHOR_CLEARANCE = 8
 
@@ -222,7 +228,7 @@ function rectsOverlap(
 }
 
 /**
- * ホバー点の上下左右から、ドットを最も隠さないツールチップ位置を選ぶ（#497）。
+ * ホバー点の周囲から、ドットを最も隠さないツールチップ位置を選ぶ（#497）。
  *
  * 優先順位:
  * 0. **自分のドットを隠さない**（端補正でスライドしても被らない方向を最優先）
@@ -230,6 +236,8 @@ function rectsOverlap(
  * 2. 重なり面積が小さい
  * 3. 端からはみ出さないための補正量が小さい
  * 4. 同程度ならグラフ中心から外側へ向かう
+ *
+ * `richCandidates`（画像保存時）では斜め・遠めの候補も足して、他ドットとの被りゼロを狙いやすくする。
  */
 export function chooseScatterTooltipPlacement({
   anchorX,
@@ -241,6 +249,8 @@ export function chooseScatterTooltipPlacement({
   obstacles,
   anchorObstacle,
   gap = TOOLTIP_GAP,
+  dotAvoidPad = DOT_AVOID_PAD,
+  richCandidates = false,
 }: {
   anchorX: number
   anchorY: number
@@ -253,7 +263,13 @@ export function chooseScatterTooltipPlacement({
   anchorObstacle?: ObstacleRect | null
   /** ドット外縁からツールチップまでの距離。ハロー込みサイズに合わせて呼び出し側が広げる。 */
   gap?: number
+  /** 他ドットを避けるときの外縁パディング。 */
+  dotAvoidPad?: number
+  /** 斜め・遠め候補を足す（画像保存向け）。 */
+  richCandidates?: boolean
 }): TooltipPlacement {
+  const g = gap
+  const g2 = gap * 2
   const candidates: {
     direction: TooltipDirection
     left: number
@@ -261,11 +277,24 @@ export function chooseScatterTooltipPlacement({
     dx: number
     dy: number
   }[] = [
-    { direction: 'right',  left: anchorX + gap,                top: anchorY - tooltipHeight / 2, dx:  1, dy:  0 },
-    { direction: 'left',   left: anchorX - gap - tooltipWidth, top: anchorY - tooltipHeight / 2, dx: -1, dy:  0 },
-    { direction: 'bottom', left: anchorX - tooltipWidth / 2,   top: anchorY + gap,              dx:  0, dy:  1 },
-    { direction: 'top',    left: anchorX - tooltipWidth / 2,   top: anchorY - gap - tooltipHeight, dx: 0, dy: -1 },
+    { direction: 'right',  left: anchorX + g,                top: anchorY - tooltipHeight / 2, dx:  1, dy:  0 },
+    { direction: 'left',   left: anchorX - g - tooltipWidth, top: anchorY - tooltipHeight / 2, dx: -1, dy:  0 },
+    { direction: 'bottom', left: anchorX - tooltipWidth / 2, top: anchorY + g,                dx:  0, dy:  1 },
+    { direction: 'top',    left: anchorX - tooltipWidth / 2, top: anchorY - g - tooltipHeight, dx:  0, dy: -1 },
   ]
+  if (richCandidates) {
+    candidates.push(
+      { direction: 'top-right',    left: anchorX + g,                top: anchorY - g - tooltipHeight, dx:  1, dy: -1 },
+      { direction: 'top-left',     left: anchorX - g - tooltipWidth, top: anchorY - g - tooltipHeight, dx: -1, dy: -1 },
+      { direction: 'bottom-right', left: anchorX + g,                top: anchorY + g,                dx:  1, dy:  1 },
+      { direction: 'bottom-left',  left: anchorX - g - tooltipWidth, top: anchorY + g,                dx: -1, dy:  1 },
+      // 密集時用に、軸方向へさらに離した候補。
+      { direction: 'right',  left: anchorX + g2,                top: anchorY - tooltipHeight / 2, dx:  1, dy:  0 },
+      { direction: 'left',   left: anchorX - g2 - tooltipWidth, top: anchorY - tooltipHeight / 2, dx: -1, dy:  0 },
+      { direction: 'bottom', left: anchorX - tooltipWidth / 2,  top: anchorY + g2,               dx:  0, dy:  1 },
+      { direction: 'top',    left: anchorX - tooltipWidth / 2,  top: anchorY - g2 - tooltipHeight, dx: 0, dy: -1 },
+    )
+  }
 
   const maxLeft = Math.max(TOOLTIP_EDGE_PAD, chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD)
   const maxTop = Math.max(TOOLTIP_EDGE_PAD, chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD)
@@ -274,10 +303,10 @@ export function chooseScatterTooltipPlacement({
 
   const anchorAvoid = anchorObstacle
     ? {
-        left:   anchorObstacle.left - DOT_AVOID_PAD,
-        top:    anchorObstacle.top - DOT_AVOID_PAD,
-        right:  anchorObstacle.right + DOT_AVOID_PAD,
-        bottom: anchorObstacle.bottom + DOT_AVOID_PAD,
+        left:   anchorObstacle.left - dotAvoidPad,
+        top:    anchorObstacle.top - dotAvoidPad,
+        right:  anchorObstacle.right + dotAvoidPad,
+        bottom: anchorObstacle.bottom + dotAvoidPad,
       }
     : null
 
@@ -293,10 +322,10 @@ export function chooseScatterTooltipPlacement({
     let overlapArea = 0
     for (const dot of obstacles) {
       const expanded = {
-        left:   dot.left - DOT_AVOID_PAD,
-        top:    dot.top - DOT_AVOID_PAD,
-        right:  dot.right + DOT_AVOID_PAD,
-        bottom: dot.bottom + DOT_AVOID_PAD,
+        left:   dot.left - dotAvoidPad,
+        top:    dot.top - dotAvoidPad,
+        right:  dot.right + dotAvoidPad,
+        bottom: dot.bottom + dotAvoidPad,
       }
       const hit = rectsOverlap(tip, expanded)
       if (hit.overlap) {
@@ -611,6 +640,8 @@ export function ScatterChart({
   // クリックでピン留め。保存ボタンへマウスを移してもツールチップが消えないようにする。
   const [pinned, setPinned] = useState<ScatterPoint | null>(null)
   const [tooltipPlacement, setTooltipPlacement] = useState<TooltipPlacement | null>(null)
+  // 画像保存直前に立てる。配置を斜め・遠め候補込みでやり直す。
+  const [exportLayout, setExportLayout] = useState(false)
   const areaRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const active = hover ?? pinned
@@ -724,8 +755,10 @@ export function ScatterChart({
       obstacles,
       anchorObstacle,
       gap,
+      dotAvoidPad: exportLayout ? EXPORT_DOT_AVOID_PAD : DOT_AVOID_PAD,
+      richCandidates: exportLayout,
     }))
-  }, [active, hoverSiblings.length, height])
+  }, [active, hoverSiblings.length, height, exportLayout])
 
   // チャート上から保存ボタンへ移ってもツールチップを残す。
   // 消すのは「パネル全体」から出たときだけ（.chart-card / .env-chart-section）。
@@ -744,8 +777,29 @@ export function ScatterChart({
       // ピン留め中はパネル外でも残す（明示クリック解除まで）。
       if (!pinnedRef.current) setTooltipPlacement(null)
     }
+    const onExportPrepare = () => {
+      // キャプチャ前に同期で配置し直す（次フレーム待ちだけでは React 更新が間に合わない）。
+      flushSync(() => setExportLayout(true))
+    }
     panel.addEventListener('mouseleave', onPanelLeave)
-    return () => panel.removeEventListener('mouseleave', onPanelLeave)
+    panel.addEventListener(PANEL_EXPORT_PREPARE_EVENT, onExportPrepare)
+    return () => {
+      panel.removeEventListener('mouseleave', onPanelLeave)
+      panel.removeEventListener(PANEL_EXPORT_PREPARE_EVENT, onExportPrepare)
+    }
+  }, [])
+
+  // 保存が終わって is-exporting が外れたら、通常の配置モードに戻す。
+  useEffect(() => {
+    const area = areaRef.current
+    if (!area) return
+    const panel = area.closest('.chart-card, .env-chart-section')
+    if (!panel) return
+    const obs = new MutationObserver(() => {
+      if (!panel.classList.contains('is-exporting')) setExportLayout(false)
+    })
+    obs.observe(panel, { attributes: true, attributeFilter: ['class'] })
+    return () => obs.disconnect()
   }, [])
 
   return (

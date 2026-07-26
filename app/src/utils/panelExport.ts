@@ -17,6 +17,9 @@ export const EXPORT_HIDE_CLASS = 'panel-export-hide'
 /** キャプチャ中だけパネルのルートに付くクラス。CSS はこれを見てキャプションを出す。 */
 const EXPORTING_CLASS = 'is-exporting'
 
+/** 画像保存直前にパネルへ飛ばす。散布図ツールチップの再配置などに使う。 */
+export const PANEL_EXPORT_PREPARE_EVENT = 'panel-export-prepare'
+
 /** アプリ版は起動中に変わらないので、一度取ったら使い回す。 */
 let cachedAppVersion: string | null = null
 
@@ -89,6 +92,8 @@ export async function savePanelAsJpeg(node: HTMLElement, screen: string, panel: 
     node.querySelectorAll('.panel-export-credit').forEach(el => {
       el.textContent = credit
     })
+    // 散布図ツールチップを「他ドットを避ける位置」へ載せ替える（リスナ側で flushSync）。
+    node.dispatchEvent(new CustomEvent(PANEL_EXPORT_PREPARE_EVENT, { bubbles: false }))
     await nextFrames()
     const dataUrl = await toJpeg(node, {
       quality:         0.92,
