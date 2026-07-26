@@ -17,6 +17,8 @@ export interface ScatterPoint {
   y:           number | null
   size:        number | null   // null = 一定サイズ
   color:       string          // 既に CSS color に解決済み
+  /** カテゴリ色分け時のマーカー形（未指定は circle）。 */
+  markerShape?: ScatterMarkerShape
   /** ツールチップ見出しの左に出すアイコン（#412）。`color` と同じく **呼び出し側で解決済み**の
    *  data URI を渡す。画像が無ければ省略（アイコンなしで名前だけ出す）。
    *  ここで画像を取りに行かないのは、ホバーのたびに invoke を飛ばさないため。 */
@@ -28,6 +30,145 @@ export interface ScatterPoint {
   /** ツールチップ内で 1 行に詰める「個別ラベル」 (例: 日付 / 武器 / 勝敗)。
    *  groupKey で複数点まとまったとき、各点の name 部分として並ぶ。 */
   rowText?:    string
+}
+
+/** 散布図カテゴリの第2軸（色と組み合わせて使う）。 */
+export type ScatterMarkerShape =
+  | 'circle'
+  | 'square'
+  | 'triangle'
+  | 'diamond'
+  | 'cross'
+  | 'star'
+
+export type SizeLegend  = { label: string; items: { label: string; area: number }[] }
+export type ColorLegend = {
+  label: string
+  items: { label: string | null; color: string; shape?: ScatterMarkerShape }[]
+  /** 連続値グラデーション（既定）か、カテゴリチップ列か。 */
+  layout?: 'gradient' | 'chips'
+  /** chips のとき「色」だけか「色・形」か。凡例タイトルに使う。 */
+  encoding?: 'color' | 'color_shape'
+}
+
+/** 半径 r のマーカー SVG（チャート本体・凡例で共有）。 */
+export function ScatterMarkerGlyph({
+  shape = 'circle',
+  color,
+  size = 12,
+  fillOpacity = 0.85,
+  stroke = 'var(--surface)',
+  strokeWidth = 0.5,
+  className,
+}: {
+  shape?:       ScatterMarkerShape
+  color:        string
+  /** 外接円の直径（px）。 */
+  size?:        number
+  fillOpacity?: number
+  stroke?:      string
+  strokeWidth?: number
+  className?:   string
+}) {
+  const r = size / 2
+  const cx = r
+  const cy = r
+  const common = { fill: color, fillOpacity, stroke, strokeWidth }
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      aria-hidden
+      style={{ display: 'block', flexShrink: 0 }}
+    >
+      {markerElement(shape, cx, cy, r * 0.92, common)}
+    </svg>
+  )
+}
+
+function markerElement(
+  shape: ScatterMarkerShape,
+  cx: number,
+  cy: number,
+  r: number,
+  common: { fill: string; fillOpacity: number; stroke: string; strokeWidth: number },
+) {
+  switch (shape) {
+    case 'square': {
+      const s = r * 1.55
+      return <rect x={cx - s / 2} y={cy - s / 2} width={s} height={s} {...common} />
+    }
+    case 'triangle': {
+      const h = r * 1.85
+      const w = r * 1.95
+      return (
+        <polygon
+          points={`${cx},${cy - h * 0.62} ${cx - w * 0.55},${cy + h * 0.42} ${cx + w * 0.55},${cy + h * 0.42}`}
+          {...common}
+        />
+      )
+    }
+    case 'diamond': {
+      const s = r * 1.25
+      return (
+        <polygon
+          points={`${cx},${cy - s} ${cx + s},${cy} ${cx},${cy + s} ${cx - s},${cy}`}
+          {...common}
+        />
+      )
+    }
+    case 'cross': {
+      const arm = r * 1.15
+      const t = Math.max(r * 0.38, 1.2)
+      return (
+        <path
+          d={`M ${cx - t} ${cy - arm} H ${cx + t} V ${cy - t} H ${cx + arm} V ${cy + t} H ${cx + t} V ${cy + arm} H ${cx - t} V ${cy + t} H ${cx - arm} V ${cy - t} H ${cx - t} Z`}
+          {...common}
+        />
+      )
+    }
+    case 'star': {
+      const pts: string[] = []
+      for (let i = 0; i < 5; i++) {
+        const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5
+        const a2 = a + Math.PI / 5
+        pts.push(`${cx + Math.cos(a) * r * 1.25},${cy + Math.sin(a) * r * 1.25}`)
+        pts.push(`${cx + Math.cos(a2) * r * 0.52},${cy + Math.sin(a2) * r * 0.52}`)
+      }
+      return <polygon points={pts.join(' ')} {...common} />
+    }
+    case 'circle':
+    default:
+      return <circle cx={cx} cy={cy} r={r} {...common} />
+  }
+}
+
+/** Recharts Scatter の shape コールバック。payload.markerShape を読む。 */
+function scatterPointShape(props: {
+  cx?: number
+  cy?: number
+  size?: number
+  fill?: string
+  fillOpacity?: number
+  stroke?: string
+  strokeWidth?: number
+  payload?: ScatterPoint
+}) {
+  const cx = props.cx ?? 0
+  const cy = props.cy ?? 0
+  const area = props.size ?? 120
+  const r = Math.sqrt(Math.max(area, 0) / Math.PI)
+  const shape = props.payload?.markerShape ?? 'circle'
+  const common = {
+    fill: props.fill ?? props.payload?.color ?? 'var(--accent)',
+    fillOpacity: props.fillOpacity ?? 0.55,
+    stroke: props.stroke ?? 'var(--surface)',
+    strokeWidth: props.strokeWidth ?? 0.5,
+  }
+  // g で包んで Recharts のヒット領域を保つ
+  return <g>{markerElement(shape, cx, cy, r, common)}</g>
 }
 
 /** 目盛りラベルの小数を詰める（浮動小数の誤差も除去）。 */
@@ -134,14 +275,6 @@ export function logTicks(domain: [number, number], maxTicks = 10): number[] | nu
  *  **必ずこの定数を共有する**。片方だけ変えると凡例が嘘になる。 */
 export const SIZE_AREA_RANGE: [number, number] = [40, 600]
 
-export type SizeLegend  = { label: string; items: { label: string; area: number }[] }
-export type ColorLegend = {
-  label: string
-  items: { label: string | null; color: string }[]
-  /** 連続値グラデーション（既定）か、カテゴリチップ列か。 */
-  layout?: 'gradient' | 'chips'
-}
-
 /** 有限な値だけの min/max。値が無いときは null。 */
 function finiteRange(values: (number | null | undefined)[]): { min: number; max: number } | null {
   let mn = Infinity, mx = -Infinity
@@ -242,13 +375,24 @@ function ScatterLegends({ sizeLegend, colorLegend }: { sizeLegend?: SizeLegend |
       )}
       {colorLegend && (
         <div className="scatter-legend-group">
-          <span className="scatter-legend-title">色: {colorLegend.label}</span>
+          <span className="scatter-legend-title">
+            {colorLegend.encoding === 'color_shape' ? '色・形' : '色'}: {colorLegend.label}
+          </span>
           <span className="scatter-legend-items">
             {colorLegend.layout === 'chips' ? (
               <span className="scatter-legend-chips">
                 {colorLegend.items.map((it, i) => (
                   <span className="scatter-legend-chip-item" key={i} title={it.label ?? undefined}>
-                    <span className="scatter-legend-chip" style={{ background: it.color }} />
+                    {colorLegend.encoding === 'color_shape' ? (
+                      <ScatterMarkerGlyph
+                        shape={it.shape ?? 'circle'}
+                        color={it.color}
+                        size={12}
+                        className="scatter-legend-marker"
+                      />
+                    ) : (
+                      <span className="scatter-legend-chip" style={{ background: it.color }} />
+                    )}
                     <span className="scatter-legend-value">{it.label ?? ' '}</span>
                   </span>
                 ))}
@@ -398,6 +542,7 @@ export function ScatterChart({
         <ZAxis type="number" dataKey="size" range={zRange} />
         <Scatter
           data={drawable}
+          shape={scatterPointShape}
           onMouseEnter={(p: any) => setHover(p)}
           isAnimationActive={false}
         >

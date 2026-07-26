@@ -501,7 +501,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 <p className="form-hint">値が大きいほど大きく見える（sqrt スケール）。</p>
               </div>
               <div className="form-field">
-                <label className="form-label">色（任意）</label>
+                <label className="form-label">色・形（任意）</label>
                 <select className="form-input" value={colorMetric} onChange={e => setColorMetric(e.target.value)}>
                   <option value="">（単色 = アクセント）</option>
                   {dotUnit === 'battle' && <option value="win_lose">勝敗</option>}
@@ -514,9 +514,9 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 </select>
                 <p className="form-hint">
                   {dotUnit === 'battle'
-                    ? '勝敗、または武器カテゴリ・サブ・スペシャルで色分けできます。'
+                    ? '勝敗、または武器カテゴリ・サブ・スペシャルを色×形で区別できます。'
                     : dotUnit === 'weapon'
-                      ? '数値指標のほか、武器カテゴリ・サブ・スペシャルで色分けできます。'
+                      ? '数値指標のほか、武器カテゴリ・サブ・スペシャルを色×形で区別できます。'
                       : '勝率は divergent (赤↔青)、それ以外は accent の濃淡。'}
                 </p>
               </div>

@@ -548,6 +548,9 @@ body {
   gap: 4px;
   max-width: 140px;
 }
+.scatter-legend-marker {
+  flex-shrink: 0;
+}
 .scatter-legend-chip-item .scatter-legend-value {
   overflow: hidden;
   text-overflow: ellipsis;

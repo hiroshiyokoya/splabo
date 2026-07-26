@@ -1,5 +1,5 @@
 import type { BattleRow } from '../types'
-import type { ColorLegend } from '../components/charts/ScatterChart'
+import type { ColorLegend, ScatterMarkerShape } from '../components/charts/ScatterChart'
 
 /** 散布図のカテゴリ色分けキー（GROUP_BY_LABELS のキーと一致）。 */
 export const SCATTER_CATEGORY_COLOR_KEYS = ['weapon_category', 'sub_weapon', 'special_weapon'] as const
@@ -19,13 +19,30 @@ export type WeaponMeta = {
 export const UNCLASSIFIED_CATEGORY = '(未分類)'
 export const UNKNOWN_WEAPON_PART   = '(不明)'
 
-/** カテゴリ名ごとに固定色を割り当てるパレット（Tableau 10 系）。 */
-const SCATTER_CATEGORY_PALETTE = [
-  '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f',
-  '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac',
-  '#86bcb6', '#d37295', '#fabfd2', '#a0cbe8', '#ffbe7d',
-  '#8cd17d', '#b6992d', '#499894', '#f1ce63', '#d4a6c8',
+/**
+ * カテゴリ用の少数色（色相が大きく離れているものだけ）。
+ * 同じ色は別の形と組み合わせて使うので、緑や青を何色も並べない。
+ */
+const CATEGORY_COLORS = [
+  '#ef4444', // red
+  '#3b82f6', // blue
+  '#eab308', // yellow
+  '#a855f7', // purple
+  '#f97316', // orange
+  '#14b8a6', // teal
 ]
+
+/** カテゴリ用のマーカー形。色と直交する第2軸。 */
+export const CATEGORY_SHAPES: ScatterMarkerShape[] = [
+  'circle',
+  'square',
+  'triangle',
+  'diamond',
+  'cross',
+  'star',
+]
+
+export type CategoryStyle = { color: string; shape: ScatterMarkerShape }
 
 function hashString(s: string): number {
   let h = 0
@@ -33,23 +50,59 @@ function hashString(s: string): number {
   return Math.abs(h)
 }
 
-/** カテゴリ名 → CSS 色。同じ名前は常に同じ色。 */
-export function categoryColorOf(name: string): string {
-  const trimmed = name.trim()
-  if (!trimmed || trimmed === UNCLASSIFIED_CATEGORY || trimmed === UNKNOWN_WEAPON_PART) {
-    return 'var(--text-muted)'
-  }
-  return SCATTER_CATEGORY_PALETTE[hashString(trimmed) % SCATTER_CATEGORY_PALETTE.length]
+function isFallbackLabel(name: string): boolean {
+  return name === UNCLASSIFIED_CATEGORY || name === UNKNOWN_WEAPON_PART
 }
 
-/** 出現中カテゴリだけ並べた凡例（折り返し表示）。 */
-export function buildCategoryColorLegend(label: string, categories: string[]): ColorLegend {
-  const sorted = [...new Set(categories.map(c => c.trim() || UNCLASSIFIED_CATEGORY))]
+/** 出現カテゴリを一意化して日本語順に並べる（割当・凡例の共通キー）。 */
+export function uniqueSortedCategories(categories: readonly string[]): string[] {
+  return [...new Set(categories.map(c => c.trim() || UNCLASSIFIED_CATEGORY))]
     .sort((a, b) => a.localeCompare(b, 'ja'))
+}
+
+/**
+ * カテゴリ名 → { color, shape }。
+ * 出現中カテゴリを日本語順に並べ、`色 = i % C` / `形 = ⌊i / C⌋` で組み合わせる。
+ * 同じ色は別の形、同じ形は別の色になるので、色だけ・形だけの見分けに頼らない。
+ */
+export function categoryStyleOf(name: string, presentCategories?: readonly string[]): CategoryStyle {
+  const trimmed = name.trim()
+  if (!trimmed || isFallbackLabel(trimmed)) {
+    return { color: 'var(--text-muted)', shape: 'circle' }
+  }
+
+  let idx: number
+  if (presentCategories && presentCategories.length > 0) {
+    const colored = uniqueSortedCategories(presentCategories).filter(c => !isFallbackLabel(c))
+    const found = colored.indexOf(trimmed)
+    idx = found >= 0 ? found : hashString(trimmed)
+  } else {
+    idx = hashString(trimmed)
+  }
+
+  const nColor = CATEGORY_COLORS.length
+  return {
+    color: CATEGORY_COLORS[idx % nColor],
+    shape: CATEGORY_SHAPES[Math.floor(idx / nColor) % CATEGORY_SHAPES.length],
+  }
+}
+
+/** @deprecated categoryStyleOf を使う。色のみが必要な互換用。 */
+export function categoryColorOf(name: string, presentCategories?: readonly string[]): string {
+  return categoryStyleOf(name, presentCategories).color
+}
+
+/** 出現中カテゴリの色×形凡例。 */
+export function buildCategoryColorLegend(label: string, categories: string[]): ColorLegend {
+  const sorted = uniqueSortedCategories(categories)
   return {
     label,
     layout: 'chips',
-    items: sorted.map(cat => ({ label: cat, color: categoryColorOf(cat) })),
+    encoding: 'color_shape',
+    items: sorted.map(cat => {
+      const style = categoryStyleOf(cat, sorted)
+      return { label: cat, color: style.color, shape: style.shape }
+    }),
   }
 }
 
