@@ -58,27 +58,30 @@ const COL_BRAVO_COUNT:       usize = 18;
 // per-player ブロックは 8 列: weapon, kill-assist, kill, assist, death, special, inked, abilities。
 // 旧コードは kill-assist(offset1) と special(offset5) の存在を見落とし、
 // kill/assist/death/inked を 1 列ずつ手前に読んでいた（#336）。CSV ヘッダで確定した正値に修正。
-const COL_A1_WEAPON: usize = 21;
-// 22: A1-kill-assist（kill+assist 合算・未使用）
-const COL_A1_KILL:   usize = 23;
-const COL_A1_ASSIST: usize = 24;
-const COL_A1_DEATH:  usize = 25;
-// 26: A1-special（SP 発動回数・未使用）
-const COL_A1_INKED: usize = 27;
-// 28: A1-abilities（未使用）
-const COL_A2_WEAPON: usize = 29;
-const COL_A3_WEAPON: usize = 37;
-const COL_A4_WEAPON: usize = 45;
-const COL_B1_WEAPON: usize = 53;
-// 54: B1-kill-assist（未使用）
-const COL_B1_KILL:   usize = 55;
-const COL_B1_ASSIST: usize = 56;
-const COL_B1_DEATH:  usize = 57;
-// 58: B1-special（未使用）
-const COL_B1_INKED: usize = 59;
-const COL_B2_WEAPON: usize = 61;
-const COL_B3_WEAPON: usize = 69;
-const COL_B4_WEAPON: usize = 77;
+
+/// per-player ブロック 1 個分の読み出し位置。kill-assist(offset1) / special(offset5) /
+/// abilities(offset7) は集計に使わないので持たない。
+struct SlotCols {
+    weapon: usize,
+    kill:   usize,
+    assist: usize,
+    death:  usize,
+    inked:  usize,
+}
+
+const fn slot_cols(base: usize) -> SlotCols {
+    SlotCols { weapon: base, kill: base + 2, assist: base + 3, death: base + 4, inked: base + 6 }
+}
+
+/// A1–A4 / B1–B4 の順。A1 が投稿者本人。
+/// stat.ink CSV は 8 人全員の kill/assist/death/inked を持つので全スロットを取り込む（#501）。
+const SLOTS: [SlotCols; 8] = [
+    slot_cols(21), slot_cols(29), slot_cols(37), slot_cols(45),
+    slot_cols(53), slot_cols(61), slot_cols(69), slot_cols(77),
+];
+
+/// `SLOTS` と同じ並びの env_battles カラム接頭辞。
+const SLOT_NAMES: [&str; 8] = ["a1", "a2", "a3", "a4", "b1", "b2", "b3", "b4"];
 
 // ---------------------------------------------------------------------------
 // lobby キー変換（stat.ink CSV → chartoon LOBBY_SEED キー）
@@ -351,15 +354,19 @@ fn validate_env_csv_header(headers: &csv::StringRecord) -> Result<(), String> {
         (COL_STAGE,       "stage"),
         (COL_WIN,         "win"),
         (COL_ALPHA_INKED, "alpha-inked"),
-        (COL_A1_WEAPON,   "A1-weapon"),
-        (COL_A1_KILL,     "A1-kill"),
-        (COL_A1_ASSIST,   "A1-assist"),
-        (COL_A1_DEATH,    "A1-death"),
-        (COL_A1_INKED,    "A1-inked"),
-        (COL_B1_KILL,     "B1-kill"),
-        (COL_B1_INKED,    "B1-inked"),
     ];
-    for &(idx, name) in EXPECT {
+    let mut expect: Vec<(usize, String)> =
+        EXPECT.iter().map(|&(i, n)| (i, n.to_string())).collect();
+    // 8 スロット分の weapon/kill/assist/death/inked をすべて突き合わせる（#501 で全員分を読むため）。
+    for (cols, name) in SLOTS.iter().zip(SLOT_NAMES) {
+        let up = name.to_uppercase();
+        expect.push((cols.weapon, format!("{up}-weapon")));
+        expect.push((cols.kill,   format!("{up}-kill")));
+        expect.push((cols.assist, format!("{up}-assist")));
+        expect.push((cols.death,  format!("{up}-death")));
+        expect.push((cols.inked,  format!("{up}-inked")));
+    }
+    for (idx, name) in expect {
         let got = headers.get(idx).unwrap_or("");
         if got != name {
             return Err(format!(
@@ -487,12 +494,8 @@ async fn import_csv_bytes(
 
         // 武器スラッグ → weapon_id（キャッシュ付き）
         // キャッシュにないスラッグを先に非同期解決してからキャッシュを参照する。
-        let weapon_cols = [
-            COL_A1_WEAPON, COL_A2_WEAPON, COL_A3_WEAPON, COL_A4_WEAPON,
-            COL_B1_WEAPON, COL_B2_WEAPON, COL_B3_WEAPON, COL_B4_WEAPON,
-        ];
-        for &col in &weapon_cols {
-            let slug = fields.get(col).copied().unwrap_or("").trim();
+        for cols in &SLOTS {
+            let slug = fields.get(cols.weapon).copied().unwrap_or("").trim();
             if !slug.is_empty() && !weapon_cache.contains_key(slug) {
                 let id = resolve_weapon_id(&mut *tx, slug).await?;
                 weapon_cache.insert(slug.to_string(), id);
@@ -524,22 +527,16 @@ async fn import_csv_bytes(
             bravo_count:       opt_i64(&fields, COL_BRAVO_COUNT),
             poster_rank:  opt_str(&fields, COL_POSTER_RANK).map(|s| s.to_string()),
             poster_power: opt_f64(&fields, COL_POSTER_POWER),
-            a1_weapon_id: wid(COL_A1_WEAPON),
-            a2_weapon_id: wid(COL_A2_WEAPON),
-            a3_weapon_id: wid(COL_A3_WEAPON),
-            a4_weapon_id: wid(COL_A4_WEAPON),
-            b1_weapon_id: wid(COL_B1_WEAPON),
-            b2_weapon_id: wid(COL_B2_WEAPON),
-            b3_weapon_id: wid(COL_B3_WEAPON),
-            b4_weapon_id: wid(COL_B4_WEAPON),
-            a1_kill:   opt_i64(&fields, COL_A1_KILL),
-            a1_death:  opt_i64(&fields, COL_A1_DEATH),
-            a1_assist: opt_i64(&fields, COL_A1_ASSIST),
-            a1_inked:  opt_i64(&fields, COL_A1_INKED),
-            b1_kill:   opt_i64(&fields, COL_B1_KILL),
-            b1_death:  opt_i64(&fields, COL_B1_DEATH),
-            b1_assist: opt_i64(&fields, COL_B1_ASSIST),
-            b1_inked:  opt_i64(&fields, COL_B1_INKED),
+            slots: std::array::from_fn(|i| {
+                let cols = &SLOTS[i];
+                SlotStats {
+                    weapon_id: wid(cols.weapon),
+                    kill:      opt_i64(&fields, cols.kill),
+                    death:     opt_i64(&fields, cols.death),
+                    assist:    opt_i64(&fields, cols.assist),
+                    inked:     opt_i64(&fields, cols.inked),
+                }
+            }),
         };
 
         batch.push(row);
@@ -554,65 +551,65 @@ async fn import_csv_bytes(
     Ok(inserted)
 }
 
+/// env_battles の INSERT 文。列の並びは `flush_batch` のバインド順と一致させること。
+fn env_insert_sql() -> String {
+    let mut cols: Vec<String> = [
+        "source_date", "lobby_id", "rule_id", "map_id", "period", "season", "game_ver",
+        "win_team", "knockout",
+        "alpha_inked", "alpha_ink_percent", "alpha_count",
+        "bravo_inked", "bravo_ink_percent", "bravo_count",
+        "poster_rank", "poster_power",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    for name in SLOT_NAMES {
+        cols.push(format!("{name}_weapon_id"));
+    }
+    for name in SLOT_NAMES {
+        for metric in ["kill", "death", "assist", "inked"] {
+            cols.push(format!("{name}_{metric}"));
+        }
+    }
+    let ph = vec!["?"; cols.len()].join(",");
+    format!("INSERT INTO env_battles ({}) VALUES ({ph})", cols.join(", "))
+}
+
 /// バッチを env_battles に INSERT する。
 async fn flush_batch(conn: &mut SqliteConnection, batch: &mut Vec<EnvBattleRow>) -> Result<usize, String> {
     let n = batch.len();
     if n == 0 {
         return Ok(0);
     }
+    let sql = env_insert_sql();
     // トランザクション制御は呼び出し元（import_csv_bytes が 1 日 = 1 トランザクション）が持つ。
     // ここでは渡されたトランザクション上にバッチをまとめて INSERT するだけ。
     for row in batch.drain(..) {
-        sqlx::query(
-            "INSERT INTO env_battles
-             (source_date, lobby_id, rule_id, map_id, period, season, game_ver,
-              win_team, knockout,
-              alpha_inked, alpha_ink_percent, alpha_count,
-              bravo_inked, bravo_ink_percent, bravo_count,
-              poster_rank, poster_power,
-              a1_weapon_id, a2_weapon_id, a3_weapon_id, a4_weapon_id,
-              b1_weapon_id, b2_weapon_id, b3_weapon_id, b4_weapon_id,
-              a1_kill, a1_death, a1_assist, a1_inked,
-              b1_kill, b1_death, b1_assist, b1_inked)
-             VALUES
-             (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        )
-        .bind(&row.source_date)
-        .bind(row.lobby_id)
-        .bind(row.rule_id)
-        .bind(row.map_id)
-        .bind(&row.period)
-        .bind(&row.season)
-        .bind(&row.game_ver)
-        .bind(&row.win_team)
-        .bind(row.knockout)
-        .bind(row.alpha_inked)
-        .bind(row.alpha_ink_percent)
-        .bind(row.alpha_count)
-        .bind(row.bravo_inked)
-        .bind(row.bravo_ink_percent)
-        .bind(row.bravo_count)
-        .bind(&row.poster_rank)
-        .bind(row.poster_power)
-        .bind(row.a1_weapon_id)
-        .bind(row.a2_weapon_id)
-        .bind(row.a3_weapon_id)
-        .bind(row.a4_weapon_id)
-        .bind(row.b1_weapon_id)
-        .bind(row.b2_weapon_id)
-        .bind(row.b3_weapon_id)
-        .bind(row.b4_weapon_id)
-        .bind(row.a1_kill)
-        .bind(row.a1_death)
-        .bind(row.a1_assist)
-        .bind(row.a1_inked)
-        .bind(row.b1_kill)
-        .bind(row.b1_death)
-        .bind(row.b1_assist)
-        .bind(row.b1_inked)
-        .execute(&mut *conn)
-        .await
-        .map_err(|e| e.to_string())?;
+        let mut q = sqlx::query(&sql)
+            .bind(&row.source_date)
+            .bind(row.lobby_id)
+            .bind(row.rule_id)
+            .bind(row.map_id)
+            .bind(&row.period)
+            .bind(&row.season)
+            .bind(&row.game_ver)
+            .bind(&row.win_team)
+            .bind(row.knockout)
+            .bind(row.alpha_inked)
+            .bind(row.alpha_ink_percent)
+            .bind(row.alpha_count)
+            .bind(row.bravo_inked)
+            .bind(row.bravo_ink_percent)
+            .bind(row.bravo_count)
+            .bind(&row.poster_rank)
+            .bind(row.poster_power);
+        for s in &row.slots {
+            q = q.bind(s.weapon_id);
+        }
+        for s in &row.slots {
+            q = q.bind(s.kill).bind(s.death).bind(s.assist).bind(s.inked);
+        }
+        q.execute(&mut *conn).await.map_err(|e| e.to_string())?;
     }
     Ok(n)
 }
@@ -636,22 +633,17 @@ struct EnvBattleRow {
     bravo_count:       Option<i64>,
     poster_rank:       Option<String>,
     poster_power:      Option<f64>,
-    a1_weapon_id: Option<i64>,
-    a2_weapon_id: Option<i64>,
-    a3_weapon_id: Option<i64>,
-    a4_weapon_id: Option<i64>,
-    b1_weapon_id: Option<i64>,
-    b2_weapon_id: Option<i64>,
-    b3_weapon_id: Option<i64>,
-    b4_weapon_id: Option<i64>,
-    a1_kill:   Option<i64>,
-    a1_death:  Option<i64>,
-    a1_assist: Option<i64>,
-    a1_inked:  Option<i64>,
-    b1_kill:   Option<i64>,
-    b1_death:  Option<i64>,
-    b1_assist: Option<i64>,
-    b1_inked:  Option<i64>,
+    /// `SLOT_NAMES` と同じ並び（A1–A4 / B1–B4）。
+    slots: [SlotStats; 8],
+}
+
+/// プレイヤー 1 人分の取り込み値。
+struct SlotStats {
+    weapon_id: Option<i64>,
+    kill:      Option<i64>,
+    death:     Option<i64>,
+    assist:    Option<i64>,
+    inked:     Option<i64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -932,4 +924,47 @@ fn build_date_range(max_date: Option<&str>) -> Vec<String> {
         cur += Duration::days(1);
     }
     dates
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// stat.ink CSV のヘッダ（2026-07 時点の 91 カラム）。
+    const HEADER: &str = "season,period,game-ver,lobby,mode,stage,time,win,knockout,rank,power,\
+alpha-inked,alpha-ink-percent,alpha-count,alpha-color,alpha-theme,\
+bravo-inked,bravo-ink-percent,bravo-count,bravo-color,bravo-theme,\
+A1-weapon,A1-kill-assist,A1-kill,A1-assist,A1-death,A1-special,A1-inked,A1-abilities,\
+A2-weapon,A2-kill-assist,A2-kill,A2-assist,A2-death,A2-special,A2-inked,A2-abilities,\
+A3-weapon,A3-kill-assist,A3-kill,A3-assist,A3-death,A3-special,A3-inked,A3-abilities,\
+A4-weapon,A4-kill-assist,A4-kill,A4-assist,A4-death,A4-special,A4-inked,A4-abilities,\
+B1-weapon,B1-kill-assist,B1-kill,B1-assist,B1-death,B1-special,B1-inked,B1-abilities,\
+B2-weapon,B2-kill-assist,B2-kill,B2-assist,B2-death,B2-special,B2-inked,B2-abilities,\
+B3-weapon,B3-kill-assist,B3-kill,B3-assist,B3-death,B3-special,B3-inked,B3-abilities,\
+B4-weapon,B4-kill-assist,B4-kill,B4-assist,B4-death,B4-special,B4-inked,B4-abilities,\
+medal1-grade,medal1-name,medal2-grade,medal2-name,medal3-grade,medal3-name,event";
+
+    fn header_record(s: &str) -> csv::StringRecord {
+        csv::StringRecord::from(s.split(',').collect::<Vec<_>>())
+    }
+
+    /// 8 スロット全員の weapon/kill/assist/death/inked 位置が実ヘッダと一致する（#336 / #501）。
+    #[test]
+    fn slot_columns_match_statink_header() {
+        assert!(validate_env_csv_header(&header_record(HEADER)).is_ok());
+    }
+
+    /// 列が 1 つでもズレたら取り込みを止める（静かに壊れたデータを入れない）。
+    #[test]
+    fn shifted_header_is_rejected() {
+        let shifted = format!("extra,{HEADER}");
+        assert!(validate_env_csv_header(&header_record(&shifted)).is_err());
+    }
+
+    /// INSERT 文のプレースホルダ数が、バインドする値の数（固定 17 + 武器 8 + KDA 32）と一致する。
+    #[test]
+    fn insert_placeholder_count_matches_binds() {
+        let sql = env_insert_sql();
+        assert_eq!(sql.matches('?').count(), 17 + 8 + 8 * 4);
+    }
 }

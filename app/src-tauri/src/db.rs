@@ -2289,7 +2289,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// 適用済みマイグレーションの最新版。**新しい `if current_version < N` ブロックを足したら
 /// 必ずここを N に更新する。** 更新を忘れると `migrate_battle_ids` 冒頭の早期 return に
 /// 阻まれ、追加したマイグレーションが一度も実行されない（#206・#306 の再発防止）。
-const LATEST_MIGRATION_VERSION: i64 = 20;
+const LATEST_MIGRATION_VERSION: i64 = 21;
 
 /// version 2: mode 判定バグ修正版で全件再処理
 /// version 3: kill カウントを kill_or_assist から実キル数に修正
@@ -2310,6 +2310,7 @@ const LATEST_MIGRATION_VERSION: i64 = 20;
 /// version 18: フェス(チャレンジ)の lobby を raw_json から振り直し (#293)
 /// version 19: is_knockout を三値に修復（KO負けから時間切れ決着を除外）(#315)
 /// version 20: weapon の category/sub/special 空欄を同梱の静的マスターで backfill (#492)
+/// version 21: env_battles に A2–A4 / B2–B4 の kill/death/assist/inked 列を追加 (#501)
 ///
 /// ⚠ **マイグレーションを追加したら `LATEST_MIGRATION_VERSION` も必ず上げること。**
 ///    ここが古いままだと早期 return に阻まれて新しい版が一度も走らない（#206 / #306 で 2 度踏んだ）。
@@ -3465,6 +3466,38 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         log::info!("migrate v20: 武器属性の空欄を静的マスターで backfill（{filled} 件）");
     }
 
+    // version 21: env_battles に A2–A4 / B2–B4 の kill/death/assist/inked 列を追加（#501）。
+    // stat.ink CSV は元々 8 人全員の記録を持っているが、取り込みは A1/B1 だけだった。
+    // 既存行は NULL のまま（集計は非 NULL 件数を母数にする）。全期間再取得で埋まる。
+    if current_version < 21 {
+        let existing: std::collections::HashSet<String> =
+            sqlx::query("PRAGMA table_info(env_battles)")
+                .fetch_all(pool.as_ref())
+                .await
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .map(|r| r.get::<String, _>("name"))
+                .collect();
+        for slot in ["a2", "a3", "a4", "b2", "b3", "b4"] {
+            for metric in ["kill", "death", "assist", "inked"] {
+                let col = format!("{slot}_{metric}");
+                if existing.contains(&col) {
+                    continue;
+                }
+                sqlx::query(&format!("ALTER TABLE env_battles ADD COLUMN {col} INTEGER"))
+                    .execute(pool.as_ref())
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        sqlx::query("PRAGMA user_version = 21")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!("migrate v21: env_battles に A2–A4 / B2–B4 の KDA 列を追加");
+    }
+
     Ok(updated)
 }
 
@@ -3478,6 +3511,9 @@ pub struct EnvStatus {
     pub min_date:   Option<String>,
     pub max_date:   Option<String>,
     pub total_rows: i64,
+    /// 取り込み済みデータが 7 人分の KDA を持っているか（#501）。
+    /// v0.9.7 より前に取り込んだ行は A1/B1 の KDA しか持たない。
+    pub full_kda:   bool,
 }
 
 /// env_battles の min/max 日付と総行数を返す。
@@ -3490,10 +3526,21 @@ pub async fn env_status(db: tauri::State<'_, DbPool>) -> Result<EnvStatus, Strin
     .await
     .map_err(|e| e.to_string())?;
 
+    // 7 人分の KDA が揃っているかは「最初に入った行」で判定する（#501）。
+    // 取り込みは追記なので、最古の行が A2 の KDA を持っていれば全期間が新形式。
+    // 全行を数えると数千万行のフルスキャンになるため、rowid 先頭 1 行だけを見る。
+    let full_kda = sqlx::query("SELECT a2_kill IS NOT NULL AS ok FROM env_battles ORDER BY id LIMIT 1")
+        .fetch_optional(db.as_ref())
+        .await
+        .map_err(|e| e.to_string())?
+        .map(|r| r.get::<i64, _>("ok") != 0)
+        .unwrap_or(true); // 未取得なら「これから入るデータは新形式」なので案内しない
+
     Ok(EnvStatus {
         min_date:   row.try_get::<Option<String>, _>("min_d").ok().flatten(),
         max_date:   row.try_get::<Option<String>, _>("max_d").ok().flatten(),
         total_rows: row.get::<i64, _>("cnt"),
+        full_kda,
     })
 }
 
@@ -3540,13 +3587,16 @@ fn build_env_where(f: &EnvFilters) -> String {
     }
     if !f.weapon_keys.is_empty() {
         // いずれかのスロットに選んだ武器が乗っているバトルに絞る（#477）。
+        // 投稿者（a1）は集計対象外なので絞り込みからも外す。含めてしまうと
+        // 「投稿者しか使っていないバトル」がバトル数には乗るのに勝率・KDA には
+        // 寄与せず、母数が食い違う（#501）。
         let ph = vec!["?"; f.weapon_keys.len()].join(",");
         wp.push(format!(
             "EXISTS (\
                SELECT 1 FROM weapon wk \
                WHERE wk.key IN ({ph}) \
                  AND wk.id IN (\
-                   eb.a1_weapon_id, eb.a2_weapon_id, eb.a3_weapon_id, eb.a4_weapon_id, \
+                   eb.a2_weapon_id, eb.a3_weapon_id, eb.a4_weapon_id, \
                    eb.b1_weapon_id, eb.b2_weapon_id, eb.b3_weapon_id, eb.b4_weapon_id\
                  )\
              )"
@@ -3603,7 +3653,7 @@ pub struct EnvScatterStat {
     // 武器集計の指標
     pub pick_rate:  Option<f64>,
     pub win_rate:   Option<f64>,
-    pub avg_kill:   Option<f64>, // A1/B1 のみ母数
+    pub avg_kill:   Option<f64>, // 記録のあるスロットのみ母数
     pub avg_death:  Option<f64>,
     pub avg_assist: Option<f64>,
     pub avg_inked:  Option<f64>,
@@ -3628,24 +3678,28 @@ struct ScatterSlot {
     team: &'static str, // "alpha" | "bravo"
 }
 
+/// 投稿者（A1）を除いた投稿者チーム側の 3 スロット。
+///
+/// stat.ink の全体統計は投稿者を母数から外している（自分のバトルだけを上げる人が多く、
+/// 投稿者の武器と勝敗に偏りが出るため）。splabo もそれに倣う（#501）。
 const SELF_SLOTS: &[ScatterSlot] = &[
-    ScatterSlot { wid: "a1_weapon_id", k: "a1_kill", d: "a1_death", a: "a1_assist", ink: "a1_inked", team: "alpha" },
-    ScatterSlot { wid: "a2_weapon_id", k: "NULL", d: "NULL", a: "NULL", ink: "NULL", team: "alpha" },
-    ScatterSlot { wid: "a3_weapon_id", k: "NULL", d: "NULL", a: "NULL", ink: "NULL", team: "alpha" },
-    ScatterSlot { wid: "a4_weapon_id", k: "NULL", d: "NULL", a: "NULL", ink: "NULL", team: "alpha" },
+    ScatterSlot { wid: "a2_weapon_id", k: "a2_kill", d: "a2_death", a: "a2_assist", ink: "a2_inked", team: "alpha" },
+    ScatterSlot { wid: "a3_weapon_id", k: "a3_kill", d: "a3_death", a: "a3_assist", ink: "a3_inked", team: "alpha" },
+    ScatterSlot { wid: "a4_weapon_id", k: "a4_kill", d: "a4_death", a: "a4_assist", ink: "a4_inked", team: "alpha" },
 ];
 const OPP_SLOTS: &[ScatterSlot] = &[
     ScatterSlot { wid: "b1_weapon_id", k: "b1_kill", d: "b1_death", a: "b1_assist", ink: "b1_inked", team: "bravo" },
-    ScatterSlot { wid: "b2_weapon_id", k: "NULL", d: "NULL", a: "NULL", ink: "NULL", team: "bravo" },
-    ScatterSlot { wid: "b3_weapon_id", k: "NULL", d: "NULL", a: "NULL", ink: "NULL", team: "bravo" },
-    ScatterSlot { wid: "b4_weapon_id", k: "NULL", d: "NULL", a: "NULL", ink: "NULL", team: "bravo" },
+    ScatterSlot { wid: "b2_weapon_id", k: "b2_kill", d: "b2_death", a: "b2_assist", ink: "b2_inked", team: "bravo" },
+    ScatterSlot { wid: "b3_weapon_id", k: "b3_kill", d: "b3_death", a: "b3_assist", ink: "b3_inked", team: "bravo" },
+    ScatterSlot { wid: "b4_weapon_id", k: "b4_kill", d: "b4_death", a: "b4_assist", ink: "b4_inked", team: "bravo" },
 ];
-
 /// 環境データの散布図用集計。
 ///
-/// - `group_by` = "weapon": 武器ごとに pick_rate / win_rate / KDA を集計（8 スロット UNION ALL）
+/// - `group_by` = "weapon": 武器ごとに pick_rate / win_rate / KDA を集計
+///   （投稿者を除く 7 スロットの UNION ALL）
 /// - `group_by` = "stage" : ステージごとに ko_rate / 平均塗り割合 / 平均人数 を集計
-/// - `side` = "all" | "self"(alpha) | "opp"(bravo) … 武器集計でのスロット選択
+/// - `side` = "all" | "self"(alpha) | "opp"(bravo) … 武器集計でのスロット選択。
+///   "self" は投稿者を除いた味方 3 人。
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn env_scatter_stats(
@@ -3703,31 +3757,24 @@ pub async fn env_scatter_stats(
         let mut weapon_stats: std::collections::HashMap<i64, (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<f64>)> =
             std::collections::HashMap::new();
         if !f.weapon_keys.is_empty() {
-            // 選んだ武器が乗っているスロットだけ展開。KDA は a1/b1 のみ値あり。
+            // 選んだ武器が乗っているスロットだけ展開（投稿者 A1 は除外・#501）。
             let wph = vec!["?"; f.weapon_keys.len()].join(",");
-            let slot_sqls: Vec<String> = [
-                ("a1_weapon_id", "alpha", "a1_kill", "a1_death", "a1_assist", "a1_inked"),
-                ("a2_weapon_id", "alpha", "NULL", "NULL", "NULL", "NULL"),
-                ("a3_weapon_id", "alpha", "NULL", "NULL", "NULL", "NULL"),
-                ("a4_weapon_id", "alpha", "NULL", "NULL", "NULL", "NULL"),
-                ("b1_weapon_id", "bravo", "b1_kill", "b1_death", "b1_assist", "b1_inked"),
-                ("b2_weapon_id", "bravo", "NULL", "NULL", "NULL", "NULL"),
-                ("b3_weapon_id", "bravo", "NULL", "NULL", "NULL", "NULL"),
-                ("b4_weapon_id", "bravo", "NULL", "NULL", "NULL", "NULL"),
-            ]
-            .into_iter()
-            .map(|(wid, team, k, d, a, ink)| {
-                format!(
-                    "SELECT eb.map_id AS mid, \
-                            CASE WHEN eb.win_team = '{team}' THEN 1.0 ELSE 0.0 END AS won, \
-                            {k} AS k, {d} AS d, {a} AS a, {ink} AS ink \
-                     FROM env_battles eb \
-                     JOIN weapon wk ON wk.id = eb.{wid} AND wk.key IN ({wph}) \
-                     {where}",
-                    team = team, k = k, d = d, a = a, ink = ink, wid = wid, wph = wph, where = where_clause,
-                )
-            })
-            .collect();
+            let slots: Vec<&ScatterSlot> = SELF_SLOTS.iter().chain(OPP_SLOTS.iter()).collect();
+            let slot_sqls: Vec<String> = slots
+                .iter()
+                .map(|s| {
+                    format!(
+                        "SELECT eb.map_id AS mid, \
+                                CASE WHEN eb.win_team = '{team}' THEN 1.0 ELSE 0.0 END AS won, \
+                                {k} AS k, {d} AS d, {a} AS a, {ink} AS ink \
+                         FROM env_battles eb \
+                         JOIN weapon wk ON wk.id = eb.{wid} AND wk.key IN ({wph}) \
+                         {where}",
+                        team = s.team, k = s.k, d = s.d, a = s.a, ink = s.ink, wid = s.wid,
+                        wph = wph, where = where_clause,
+                    )
+                })
+                .collect();
             let sql = format!(
                 r#"
                 WITH app AS (
@@ -3746,7 +3793,7 @@ pub async fn env_scatter_stats(
             );
             // 各スロット: weapon_keys バインド + EnvFilters バインド
             let mut q = sqlx::query(&sql);
-            for _ in 0..8 {
+            for _ in 0..slots.len() {
                 for v in &f.weapon_keys { q = q.bind(v); }
                 q = bind_env_filters(q, &f);
             }
@@ -3912,9 +3959,9 @@ pub struct EnvMatrixStats {
 /// セル値も周辺集計も、すべてここから同じ式で導く。
 #[derive(Debug, Clone, Default, PartialEq)]
 struct MatrixRaw {
-    /// 8 スロット合算の件数（バトルレベル集計では COUNT(*)）。
+    /// 投稿者を除く 7 スロット合算の件数（バトルレベル集計では COUNT(*)）。
     n:        i64,
-    /// a1/b1 の非 NULL 件数（キル系メトリクスの母数）。
+    /// KDA の記録があるスロットの件数（キル系メトリクスの母数）。
     n_kda:    i64,
     sum_won:  f64,
     sum_ko:   f64,
@@ -3922,7 +3969,7 @@ struct MatrixRaw {
     sum_d:    f64,
     sum_a:    f64,
     sum_ink:  f64,
-    /// ピック率の分母（そのカテゴリの全バトル数 × 8 スロット）。
+    /// ピック率の分母（そのカテゴリの全バトル数 × 投稿者を除く 7 スロット）。
     pick_den: f64,
 }
 
@@ -3953,8 +4000,8 @@ impl Agg {
 /// メトリクス名 → そのグループの集計（分子・分母）。未知のメトリクスは None。
 fn cell_agg(cell_metric: &str, r: &MatrixRaw) -> Option<Agg> {
     let n = r.n as f64;
-    // キル系（キル/デス/アシスト/塗り）は a1/b1 にしか記録が無く、他スロットは NULL。
-    // 母数は 8 スロット合算ではなく非 NULL 件数（n_kda）。セル側の HAVING と揃える。
+    // キル系（キル/デス/アシスト/塗り）は記録の無いスロットがある（再取得前のデータは B1 のみ）。
+    // 母数はスロット合算ではなく非 NULL 件数（n_kda）。セル側の HAVING と揃える。
     let kda = r.n_kda as f64;
     Some(match cell_metric {
         "win_rate"      => Agg::Ratio { num: r.sum_won, den: n },
@@ -4027,7 +4074,7 @@ fn fold_marginals(inputs: &[MarginalInput], axis: Axis) -> Vec<EnvMatrixMarginal
     }).collect()
 }
 
-/// 8 スロット集計が必要な次元（weapon およびその属性軸）。
+/// スロット単位の集計が必要な次元（weapon およびその属性軸）。
 fn is_weapon_slot_dim(dim: &str) -> bool {
     matches!(dim, "weapon" | "weapon_category" | "sub_weapon" | "special_weapon")
 }
@@ -4061,7 +4108,7 @@ fn matrix_dim(dim: &str) -> Option<(&'static str, &'static str, &'static str)> {
 /// - `cell_metric` = "win_rate" | "pick_rate" | "avg_kill" | "avg_death" | "avg_assist"
 ///   | "avg_inked" | "kill_ratio" | "contrib_kill" | "contrib_ratio" … 行/列の **一方が
 ///   weapon / weapon_category / sub_weapon / special_weapon** であること
-///   （スロット単位の勝率 / ピック率 / KDA 系）。KDA 系は a1/b1 のみ母数。
+///   （スロット単位の勝率 / ピック率 / KDA 系）。いずれも投稿者を除く 7 人が母数（#501）。
 /// - `cell_metric` = "ko_rate" | "battles"   … 行/列とも **weapon 系以外**（バトルレベル指標）
 ///
 /// セルはサンプル不足を落として返すが、行・列の周辺集計（marginals）は
@@ -4095,8 +4142,9 @@ pub async fn env_matrix_stats(
         power_min, power_max,
     };
     let where_clause = build_env_where(&f);
-    // KDA 系（キル/デス/アシスト/塗り＋派生比）は a1/b1 の 2 スロットしか記録が無く、
-    // 他スロットは NULL。勝率/ピック率は 8 スロット全員が母数なのと非対称になる。
+    // KDA 系（キル/デス/アシスト/塗り＋派生比）は記録のあるスロットだけが母数になる。
+    // 全期間再取得前のデータは B1 しか KDA を持たないので、勝率/ピック率（7 スロット全員）
+    // とは母数が揃わない。足切りしきい値も別にする。
     let kda_based = matches!(
         cell_metric.as_str(),
         "avg_kill" | "avg_death" | "avg_assist" | "avg_inked"
@@ -4105,7 +4153,7 @@ pub async fn env_matrix_stats(
     let weapon_centric = cell_metric == "win_rate" || cell_metric == "pick_rate" || kda_based;
 
     if weapon_centric {
-        // 行・列のうち厳密に一方が weapon 系（8 スロット集計）であること。
+        // 行・列のうち厳密に一方が weapon 系（スロット単位集計）であること。
         let slot_is_row = is_weapon_slot_dim(&row_dim);
         let slot_is_col = is_weapon_slot_dim(&col_dim);
         if slot_is_row == slot_is_col {
@@ -4121,8 +4169,9 @@ pub async fn env_matrix_stats(
         let (oid_col, omaster, olabel) = matrix_dim(other_dim)
             .ok_or_else(|| format!("未知の集計次元: {other_dim}"))?;
 
-        // 8 スロット（A1–A4 alpha / B1–B4 bravo）を UNION ALL。
-        // k/d/a/ink は a1/b1 のみ実値で他は NULL。KDA 母数 = 非 NULL 件数（COUNT(app.k)）。
+        // 投稿者を除く 7 スロット（A2–A4 alpha / B1–B4 bravo）を UNION ALL（#501）。
+        // KDA 母数 = 非 NULL 件数（COUNT(app.k)）。全期間再取得前のデータは B1 しか
+        // KDA を持たないため、母数は 7 に満たないことがある。
         let slots: Vec<&ScatterSlot> = SELF_SLOTS.iter().chain(OPP_SLOTS.iter()).collect();
         let selects: Vec<String> = slots.iter().map(|s| format!(
             "SELECT {wid} AS wid, CASE WHEN win_team = '{team}' THEN 1 ELSE 0 END AS won, \
@@ -4135,7 +4184,7 @@ pub async fn env_matrix_stats(
 
         // 周辺集計（#411）を足切り前の全グループから作るため、SQL では絞り込まず
         // 生の合計だけを取る。セルの足切りは取得後に Rust 側で同じ条件を適用する
-        // （KDA 系はキル母数 n_kda >= 20、勝率/ピック率は 8 スロット合算 n >= 30）。
+        // （KDA 系はキル母数 n_kda >= 20、勝率/ピック率はスロット合算 n >= 30）。
         let sql = format!(
             r#"
             WITH app AS (
@@ -4149,7 +4198,7 @@ pub async fn env_matrix_stats(
                    -- SUM は SQLite では integer を返すことがある。sqlx の f64 デコードと
                    -- 型が食い違うと失敗して 0 に潰れていたため、REAL にキャストする（#458）。
                    CAST(SUM(app.won) AS REAL) AS sum_won,
-                   otot.c * 8.0 AS pick_den,
+                   otot.c * {slot_count}.0 AS pick_den,
                    CAST(SUM(app.k)   AS REAL) AS sum_k,
                    CAST(SUM(app.d)   AS REAL) AS sum_d,
                    CAST(SUM(app.a)   AS REAL) AS sum_a,
@@ -4162,17 +4211,17 @@ pub async fn env_matrix_stats(
             GROUP BY {slot_key}, app.oid
             "#,
             app = app, oid = oid_col, omaster = omaster, olabel = olabel,
-            slot_key = slot_key_expr, where = where_clause,
+            slot_key = slot_key_expr, where = where_clause, slot_count = slots.len(),
         );
 
-        // バインド: スロット 8 回 + otot 1 回。
+        // バインド: スロット数 + otot 1 回。
         let mut q = sqlx::query(&sql);
         for _ in 0..(slots.len() + 1) {
             q = bind_env_filters(q, &f);
         }
         let rows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
 
-        // KDA 系はキル母数（a1/b1 の非 NULL 件数）で足切り。勝率/ピック率は 8 スロット合算。
+        // KDA 系はキル母数（記録のあるスロットの件数）で足切り。勝率/ピック率はスロット合算。
         let min_n = if kda_based { 20 } else { 30 };
 
         let mut cells  = Vec::new();
@@ -4200,7 +4249,7 @@ pub async fn env_matrix_stats(
                 sum_ink:  sum("sum_ink"),
                 pick_den: sum("pick_den"),
             };
-            // KDA 系はキル母数、それ以外は 8 スロット合算を件数として返す。
+            // KDA 系はキル母数、それ以外はスロット合算を件数として返す。
             let n = if kda_based { raw.n_kda } else { raw.n };
             let agg = cell_agg(&cell_metric, &raw);
             let (row_key, col_key) = if slot_is_row {
@@ -4442,6 +4491,7 @@ pub struct EnvFilterOption {
 }
 
 /// env_battles に登場する武器をピック数降順で返す（絞り込み UI 用・#477）。
+/// 件数は集計と同じく投稿者（a1）を除いたスロットで数える（#501）。
 #[tauri::command]
 pub async fn env_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOption>, String> {
     let rows = sqlx::query(
@@ -4451,7 +4501,7 @@ pub async fn env_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOp
                COUNT(*) AS n
         FROM env_battles eb
         JOIN weapon w ON w.id IN (
-            eb.a1_weapon_id, eb.a2_weapon_id, eb.a3_weapon_id, eb.a4_weapon_id,
+            eb.a2_weapon_id, eb.a3_weapon_id, eb.a4_weapon_id,
             eb.b1_weapon_id, eb.b2_weapon_id, eb.b3_weapon_id, eb.b4_weapon_id
         )
         GROUP BY w.id
@@ -4893,13 +4943,13 @@ mod tests {
         assert!((w - s).abs() < 1e-12, "武器割り {w} とステージ割り {s} が一致しない");
     }
 
-    /// キル系は a1/b1 母数（n_kda）で集計する。8 スロット合算（n）で割ってはいけない。
+    /// キル系は記録のあるスロット（n_kda）が母数。スロット合算（n）で割ってはいけない。
     #[test]
     fn kda_metrics_use_n_kda_denominator() {
         let raw = MatrixRaw { n: 80, n_kda: 20, sum_k: 100.0, ..Default::default() };
         assert_eq!(cell_agg("avg_kill", &raw), Some(Agg::Ratio { num: 100.0, den: 20.0 }));
         assert_eq!(cell_agg("avg_kill", &raw).unwrap().value(), Some(5.0));
-        // 勝率は 8 スロット合算が母数。
+        // 勝率はスロット合算が母数。
         let raw = MatrixRaw { n: 80, n_kda: 20, sum_won: 40.0, ..Default::default() };
         assert_eq!(cell_agg("win_rate", &raw), Some(Agg::Ratio { num: 40.0, den: 80.0 }));
 
@@ -4955,5 +5005,20 @@ mod tests {
     #[test]
     fn unknown_metric_has_no_agg() {
         assert_eq!(cell_agg("nope", &MatrixRaw { n: 10, ..Default::default() }), None);
+    }
+
+    /// 集計スロットは投稿者（a1）を含まない 7 人ちょうど（#501）。
+    /// ここが 8 に戻るとピック率の分母と勝率の母数が投稿者込みになる。
+    #[test]
+    fn scatter_slots_exclude_poster() {
+        let slots: Vec<&ScatterSlot> = SELF_SLOTS.iter().chain(OPP_SLOTS.iter()).collect();
+        assert_eq!(slots.len(), 7);
+        for s in &slots {
+            assert!(!s.wid.starts_with("a1_"), "投稿者スロットが混ざっている: {}", s.wid);
+            // 全スロットが実カラムの KDA を持つ（NULL 固定のスロットを残さない）。
+            for col in [s.k, s.d, s.a, s.ink] {
+                assert_ne!(col, "NULL", "{} の KDA が NULL 固定のまま", s.wid);
+            }
+        }
     }
 }

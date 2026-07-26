@@ -72,7 +72,7 @@ interface ScatterMetric {
   rate01: boolean              // 値が [0,1] のレート（% 表示）か
   fmt:    (v: number) => string
   get:    (s: EnvScatterStat) => number | null
-  kda?:   boolean              // KDA 系（A1/B1 母数の注記対象）
+  kda?:   boolean              // KDA 系（記録のあるプレイヤーだけが母数・注記対象）
 }
 
 /** ログスケールを許さない指標（#473）。勝率は 0.5 前後の狭い帯に収まるので、
@@ -125,8 +125,8 @@ const STAGE_WEAPON_ONLY = new Set([
 type CellMetricKey =
   | 'win_rate' | 'pick_rate' | 'ko_rate' | 'battles'
   | 'avg_kill' | 'avg_assist' | 'contrib_kill' | 'avg_death' | 'kill_ratio' | 'contrib_ratio' | 'avg_inked'
-// キル系（a1/b1 のみ母数・専用しきい値）。注記・母数表示の切り替えに使う。
-// 平均塗りP(avg_inked)も a1/b1 母数なのでここに含める（#336 で元データの列マッピングを修正済み）。
+// キル系（記録のあるプレイヤーだけが母数・専用しきい値）。注記・母数表示の切り替えに使う。
+// 平均塗りP(avg_inked)も同じ母数なのでここに含める（#336 で元データの列マッピングを修正済み）。
 const KDA_CELL_KEYS: CellMetricKey[] = [
   'avg_kill', 'avg_assist', 'contrib_kill', 'avg_death', 'kill_ratio', 'contrib_ratio', 'avg_inked',
 ]
@@ -155,7 +155,11 @@ const CELL_METRICS: CellMetric[] = [
 // ルールを次元にしたときの並び順（ガチ系を先・ナワバリを最後）。
 const RULE_HEATMAP_ORDER = ['area', 'yagura', 'hoko', 'asari', 'nawabari']
 
-/** 8 スロット集計が必要なヒートマップ次元（#481）。 */
+/** 投稿者除外の共通注記（#501）。散布図・ヒートマップで同じ文言を使う。
+ *  stat.ink の全体統計と同じく、投稿者本人を母数から外して残り 7 人で集計している。 */
+const POSTER_EXCLUDED_NOTE = '※ 集計は投稿者を除く 7 人分です（stat.ink の全体統計と同じ）。'
+
+/** スロット単位の集計が必要なヒートマップ次元（#481）。 */
 const WEAPON_SLOT_DIMS = ['weapon', 'weapon_category', 'sub_weapon', 'special_weapon'] as const
 const isWeaponSlotDim = (dim: string) =>
   (WEAPON_SLOT_DIMS as readonly string[]).includes(dim)
@@ -574,14 +578,15 @@ export function EnvAnalysis() {
   }
 
   // 全期間の再取得。既存 env_battles を削除して stat.ink から取り込み直す。
-  // #336 で per-player 列（kill/assist/death/inked）の取り込み位置を修正したため、
-  // それ以前に取り込んだデータを正すには全期間の再取得が必要になる。
+  // #336 で per-player 列（kill/assist/death/inked）の取り込み位置を修正し、
+  // #501 で投稿者以外 6 人分のキル系も取り込むようにしたため、
+  // それ以前に取り込んだデータを最新の集計に揃えるには全期間の再取得が必要になる。
   async function handleRefetchFull() {
     if (importing) return
     const ok = window.confirm(
       '全期間データを削除して stat.ink から取り込み直します（約 944 MiB・10〜15 分）。\n\n' +
-      'このバージョンでキル・デス・アシスト・塗りポイントの取り込み位置を修正しました。' +
-      'それ以前に取得したデータを正しい値に直すには、全期間の再取得が必要です。実行しますか？'
+      'このバージョンから、キル・デス・アシスト・塗りポイントを投稿者を除く 7 人分すべて取り込みます。' +
+      'それ以前に取得したデータは 1 人分しか記録が無く、キル系の母数が不足します。実行しますか？'
     )
     if (!ok) return
     await handleDownloadFull()
@@ -604,7 +609,7 @@ export function EnvAnalysis() {
   const sizeM  = metrics.find(m => m.key === sizeKey)
   const colorM = isScatterCategoryColorKey(colorKey) ? undefined : metrics.find(m => m.key === colorKey)
   const isCatColor = groupBy === 'weapon' && isScatterCategoryColorKey(colorKey)
-  // KDA 系（A1/B1 母数）の注記は X/Y に加えサイズ・色の指標も対象にする（#406）。
+  // KDA 系の注記は X/Y に加えサイズ・色の指標も対象にする（#406）。
   const usesKda = (xM.kda || yM.kda || sizeM?.kda || colorM?.kda) ?? false
 
   // 色指標が sequential のときの正規化レンジ（勝率＝divergent は min/max 不要）。
@@ -744,6 +749,14 @@ export function EnvAnalysis() {
             {error && <span className="env-error">{error}</span>}
           </div>
 
+          {!status.full_kda && (
+            <p className="env-filter-note">
+              ※ 取り込み済みのデータは、キル・デス・アシスト・塗りポイントを 1 人分しか持っていません
+              （v0.9.7 から 7 人分を取り込みます）。「全期間再取得」でキル系の母数が 7 倍になります。
+              勝率・ピック率は再取得しなくても 7 人分で集計されます。
+            </p>
+          )}
+
           {progress && <ProgressDisplay progress={progress} />}
 
           {/* モード切替 */}
@@ -851,8 +864,8 @@ export function EnvAnalysis() {
 
           {(posterRanks.length > 0 || powerMin !== '' || powerMax !== '') && (
             <p className="env-filter-note">
-              ※ ウデマエ帯・Xパワーは投稿者（A1）のみの記録に基づく絞り込みです。
-              対戦相手 7 名の帯は含まれないため、参加者全員がこの帯であることは保証されません。
+              ※ ウデマエ帯・Xパワーは投稿者のみの記録に基づく絞り込みです。
+              残る 7 名（味方 3 人・相手 4 人）の帯は含まれないため、参加者全員がこの帯であることは保証されません。
               Xパワーは X マッチ等の投稿でのみ記録されます。
             </p>
           )}
@@ -932,7 +945,8 @@ export function EnvAnalysis() {
                   50 サンプル未満は非表示。各点にマウスオーバーで詳細表示。
                   {groupBy === 'stage' && weaponKeys.length === 0 &&
                     ' ※勝率・キル系は武器を絞り込むと選べます。'}
-                  {usesKda && ' ※KDA系の指標は記録のある A1・B1（投稿者・相手代表）を母数にしています。'}
+                  {' '}{POSTER_EXCLUDED_NOTE}
+                  {usesKda && !status.full_kda && ' キル系は再取得前のデータでは 1 人分のみが母数です。'}
                 </p>
               </div>
             </>
@@ -999,7 +1013,9 @@ export function EnvAnalysis() {
                   {cellMetric === 'win_rate' && ' 勝率は 50% を中心に赤(低)〜青(高)。'}
                   {cellMetric === 'avg_death' && ' デスは多いほど濃い赤（少ないほど良い）。'}
                   {(cellMetric === 'kill_ratio' || cellMetric === 'contrib_ratio') && ' 1.0 を中心に赤(低)〜青(高)。'}
-                  {KDA_CELL_KEYS.includes(cellMetric) && ' ※キル系は記録のある A1・B1 のみを母数にしています。'}
+                  {cm.weapon && ` ${POSTER_EXCLUDED_NOTE}`}
+                  {KDA_CELL_KEYS.includes(cellMetric) && !status.full_kda &&
+                    ' キル系は再取得前のデータでは 1 人分のみが母数です。'}
                   {cellMetric === 'battles'
                     ? ' 行・列の見出し色は、その軸の合計バトル数（軸内で最大を最も濃く）です。'
                     : ' 行・列の見出し色は、その軸の全バトルから算出した値です（非表示のセルも含むので、交差する軸を変えても同じ値になります）。'}
