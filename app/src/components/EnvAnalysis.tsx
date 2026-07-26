@@ -16,7 +16,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type {
   EnvScatterStat, EnvMatrixCell, EnvMatrixMarginal, EnvMatrixStats,
-  EnvStatus, EnvVersion, EnvRank, MetricKey, GroupByKey,
+  EnvStatus, EnvVersion, EnvRank, EnvFilterOption, MetricKey, GroupByKey,
 } from '../types'
 import { currentSeasonStart, GROUP_BY_LABELS } from '../types'
 import { ScatterChart, buildSizeLegend, buildColorLegend } from './charts/ScatterChart'
@@ -99,11 +99,27 @@ const WEAPON_METRICS: ScatterMetric[] = [
 ]
 
 const STAGE_METRICS: ScatterMetric[] = [
-  { key: 'ko_rate',      label: 'KO率',        rate01: true,  fmt: pct,    get: field('ko_rate') },
+  // 勝率・KDA は武器絞り込み時だけ BE が埋める（#478）。未選択時は点が null で落ちる。
+  { key: 'win_rate',   label: '勝率',       rate01: true,  fmt: pct,  get: field('win_rate') },
+  { key: 'avg_kill',   label: '平均キル',   rate01: false, fmt: num2, get: field('avg_kill'),   kda: true },
+  { key: 'avg_assist', label: '平均アシスト', rate01: false, fmt: num2, get: field('avg_assist'), kda: true },
+  { key: 'contrib_kill', label: '平均貢献キル', rate01: false, fmt: num2, kda: true,
+    get: (s) => (s.avg_kill != null && s.avg_assist != null) ? s.avg_kill + s.avg_assist : null },
+  { key: 'avg_death',  label: '平均デス',   rate01: false, fmt: num2, get: field('avg_death'),  kda: true },
+  { key: 'kill_ratio', label: 'キルレ',     rate01: false, fmt: num2, kda: true,
+    get: (s) => (s.avg_kill != null && s.avg_death != null && s.avg_death > 0) ? s.avg_kill / s.avg_death : null },
+  { key: 'contrib_ratio', label: '貢献キルレ', rate01: false, fmt: num2, kda: true,
+    get: (s) => (s.avg_kill != null && s.avg_assist != null && s.avg_death != null && s.avg_death > 0)
+      ? (s.avg_kill + s.avg_assist) / s.avg_death : null },
   { key: 'avg_count',    label: '平均カウント', rate01: false, fmt: num1,   get: field('avg_count') },
   { key: 'avg_ink_self', label: '自分側 塗り%', rate01: false, fmt: pct100, get: field('avg_ink_self') },
   { key: 'avg_ink_opp',  label: '相手側 塗り%', rate01: false, fmt: pct100, get: field('avg_ink_opp') },
 ]
+
+/** ステージ散布図で武器未選択だと無意味な指標（#478）。 */
+const STAGE_WEAPON_ONLY = new Set([
+  'win_rate', 'avg_kill', 'avg_assist', 'contrib_kill', 'avg_death', 'kill_ratio', 'contrib_ratio',
+])
 
 // ヒートマップのセル指標
 type CellMetricKey =
@@ -251,10 +267,15 @@ export function EnvAnalysis() {
   const [customUntil, setCustomUntil] = useState(prefs.customUntil)
 
   // フィルタ拡充（#189）: バージョン / ウデマエ帯 / Xパワー帯
+  // 武器・ステージ（#477）
   const [versionOptions, setVersionOptions] = useState<EnvVersion[]>([])
   const [rankOptions, setRankOptions]       = useState<EnvRank[]>([])
+  const [weaponOptions, setWeaponOptions]   = useState<EnvFilterOption[]>([])
+  const [stageOptions, setStageOptions]     = useState<EnvFilterOption[]>([])
   const [gameVers, setGameVers]       = useState<string[]>(prefs.gameVers)      // 選択中バージョン（複数）
   const [posterRanks, setPosterRanks] = useState<string[]>(prefs.posterRanks)   // 選択中ウデマエ帯（複数）
+  const [weaponKeys, setWeaponKeys]   = useState<string[]>(prefs.weaponKeys)
+  const [stageKeys, setStageKeys]     = useState<string[]>(prefs.stageKeys)
   const [powerMin, setPowerMin] = useState(prefs.powerMin)                       // Xパワー下限（空 = 無指定）
   const [powerMax, setPowerMax] = useState(prefs.powerMax)                       // Xパワー上限（空 = 無指定）
 
@@ -262,6 +283,8 @@ export function EnvAnalysis() {
   const filtersAreDefault =
     lobbyKeys.length === 0 &&
     ruleKeys.length === 0 &&
+    weaponKeys.length === 0 &&
+    stageKeys.length === 0 &&
     gameVers.length === 0 &&
     posterRanks.length === 0 &&
     powerMin === '' &&
@@ -274,6 +297,8 @@ export function EnvAnalysis() {
   function clearFilters() {
     setLobbyKeys([])
     setRuleKeys([])
+    setWeaponKeys([])
+    setStageKeys([])
     setGameVers([])
     setPosterRanks([])
     setPowerMin('')
@@ -308,6 +333,9 @@ export function EnvAnalysis() {
   // 行・列の周辺集計（#411）。セルの足切りに影響されない値なので BE から受け取る。
   const [rowMarginals, setRowMarginals] = useState<EnvMatrixMarginal[]>([])
   const [colMarginals, setColMarginals] = useState<EnvMatrixMarginal[]>([])
+  // ヒートマップ列見出しクリックによる行ソート（#479）。永続化しない。
+  const [heatmapSortCol, setHeatmapSortCol] = useState<string | null>(null)
+  const [heatmapSortDir, setHeatmapSortDir] = useState<'asc' | 'desc'>('desc')
 
   const hasData = status !== null && status.total_rows > 0
 
@@ -320,10 +348,10 @@ export function EnvAnalysis() {
       vizMode, groupBy, xKey, yKey, sizeKey, colorKey, xLog, yLog,
       rowDim, colDim, cellMetric,
       period, customSince, customUntil,
-      lobbyKeys, ruleKeys, gameVers, posterRanks, powerMin, powerMax,
+      lobbyKeys, ruleKeys, weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax,
     })
   }, [vizMode, groupBy, xKey, yKey, sizeKey, colorKey, xLog, yLog, rowDim, colDim, cellMetric,
-      period, customSince, customUntil, lobbyKeys, ruleKeys, gameVers, posterRanks, powerMin, powerMax])
+      period, customSince, customUntil, lobbyKeys, ruleKeys, weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax])
 
   // 集計軸を切り替えたら X/Y・サイズ・色 指標を既定へ戻す。
   // 「初回だけスキップ」の ref フラグは StrictMode の二重マウントで false のまま
@@ -334,9 +362,26 @@ export function EnvAnalysis() {
     if (prevGroupBy.current === groupBy) return   // マウント / 変化なし
     prevGroupBy.current = groupBy
     if (groupBy === 'weapon') { setXKey('pick_rate'); setYKey('win_rate') }
-    else                      { setXKey('ko_rate');   setYKey('avg_count') }
+    else                      { setXKey('avg_ink_self'); setYKey('avg_count') }
     setSizeKey(''); setColorKey('')   // 指標セットが変わるのでサイズ/色はリセット（#406）
   }, [groupBy])
+
+  // ステージ軸で武器フィルタが空のとき、勝率・KDA が選ばれていたらステージ固有指標へ戻す（#478）。
+  // 武器を選んだ直後は勝率 vs キルレを既定にする。
+  const prevWeaponFilter = useRef(weaponKeys.length > 0)
+  useEffect(() => {
+    if (groupBy !== 'stage') { prevWeaponFilter.current = weaponKeys.length > 0; return }
+    const hasW = weaponKeys.length > 0
+    if (!hasW) {
+      if (STAGE_WEAPON_ONLY.has(xKey)) setXKey('avg_ink_self')
+      if (STAGE_WEAPON_ONLY.has(yKey)) setYKey('avg_count')
+      if (STAGE_WEAPON_ONLY.has(sizeKey)) setSizeKey('')
+      if (STAGE_WEAPON_ONLY.has(colorKey)) setColorKey('')
+    } else if (!prevWeaponFilter.current) {
+      setXKey('win_rate'); setYKey('kill_ratio')
+    }
+    prevWeaponFilter.current = hasW
+  }, [groupBy, weaponKeys, xKey, yKey, sizeKey, colorKey])
 
   // ヒートマップ次元を変えたらセル指標の妥当性を保つ
   const weaponSlotInvolved = isWeaponSlotDim(rowDim) || isWeaponSlotDim(colDim)
@@ -351,6 +396,22 @@ export function EnvAnalysis() {
     }
   }, [allowedCellMetrics, cellMetric])
 
+  // ヒートマップの軸・指標を変えたら列ソートを既定に戻す（#479）。
+  useEffect(() => {
+    setHeatmapSortCol(null)
+    setHeatmapSortDir('desc')
+  }, [rowDim, colDim, cellMetric])
+
+  function handleHeatmapColHeaderClick(colKey: string) {
+    if (heatmapSortCol === colKey) setHeatmapSortDir(d => (d === 'desc' ? 'asc' : 'desc'))
+    else { setHeatmapSortCol(colKey); setHeatmapSortDir('desc') }
+  }
+
+  function clearHeatmapSort() {
+    setHeatmapSortCol(null)
+    setHeatmapSortDir('desc')
+  }
+
   // 取得状況とシーズンレンジを読み込む
   const loadStatus = useCallback(async () => {
     try {
@@ -359,6 +420,8 @@ export function EnvAnalysis() {
       if (s.total_rows > 0) {
         try { setVersionOptions(await invoke<EnvVersion[]>('env_versions')) } catch { /* noop */ }
         try { setRankOptions(await invoke<EnvRank[]>('env_ranks')) } catch { /* noop */ }
+        try { setWeaponOptions(await invoke<EnvFilterOption[]>('env_weapons')) } catch { /* noop */ }
+        try { setStageOptions(await invoke<EnvFilterOption[]>('env_stages')) } catch { /* noop */ }
       }
     } catch (e) {
       console.error('[EnvAnalysis] env_status 失敗:', e)
@@ -382,13 +445,15 @@ export function EnvAnalysis() {
     }
   }, [period, status, customSince, customUntil])
 
-  // 拡充フィルタ（#189）を invoke 引数へ。空配列 / 空文字は null（無指定）に正規化。
+  // 拡充フィルタ（#189 / #477）を invoke 引数へ。空配列 / 空文字は null（無指定）に正規化。
   const extFilters = useMemo(() => ({
+    weaponKeys:  weaponKeys.length ? weaponKeys : null,
+    stageKeys:   stageKeys.length ? stageKeys : null,
     gameVers:    gameVers.length ? gameVers : null,
     posterRanks: posterRanks.length ? posterRanks : null,
     powerMin:    powerMin === '' ? null : Number(powerMin),
     powerMax:    powerMax === '' ? null : Number(powerMax),
-  }), [gameVers, posterRanks, powerMin, powerMax])
+  }), [weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax])
 
   // データ読み込み（モード/フィルタ変更で再取得）
   const loadData = useCallback(async () => {
@@ -402,7 +467,6 @@ export function EnvAnalysis() {
           side:     'all',
           lobbyKeys,
           ruleKeys,
-          stageKey: null,
           since:    range.since,
           until:    range.until,
           ...extFilters,
@@ -418,7 +482,6 @@ export function EnvAnalysis() {
           rowDim, colDim, cellMetric,
           lobbyKeys,
           ruleKeys,
-          stageKey: null,
           since:    range.since,
           until:    range.until,
           ...extFilters,
@@ -525,7 +588,13 @@ export function EnvAnalysis() {
   }
 
   // 散布図ポイント生成
-  const metrics = groupBy === 'weapon' ? WEAPON_METRICS : STAGE_METRICS
+  const stageWeaponReady = groupBy === 'stage' && weaponKeys.length > 0
+  const metrics = useMemo(() => {
+    if (groupBy === 'weapon') return WEAPON_METRICS
+    // 武器未選択時は勝率・KDA を選択肢から外す（#478）
+    if (!stageWeaponReady) return STAGE_METRICS.filter(m => !STAGE_WEAPON_ONLY.has(m.key))
+    return STAGE_METRICS
+  }, [groupBy, stageWeaponReady])
   const xM = metrics.find(m => m.key === xKey) ?? metrics[0]
   const yM = metrics.find(m => m.key === yKey) ?? metrics[1]
   // ログスケールの可否（#473）。設定が残っていても不可の指標では効かせない。
@@ -693,6 +762,28 @@ export function EnvAnalysis() {
               onChange={setRuleKeys}
               options={RULE_OPTIONS.filter(o => o.key).map(o => ({ key: o.key, label: o.label }))}
             />
+            <MultiSelect
+              label="武器"
+              allLabel="すべての武器"
+              selected={weaponKeys}
+              onChange={setWeaponKeys}
+              options={weaponOptions.map(w => ({
+                key:   w.key,
+                label: `${w.label}（${w.n.toLocaleString()}）`,
+                short: w.label,
+              }))}
+            />
+            <MultiSelect
+              label="ステージ"
+              allLabel="すべてのステージ"
+              selected={stageKeys}
+              onChange={setStageKeys}
+              options={stageOptions.map(s => ({
+                key:   s.key,
+                label: `${shortStage(s.label)}（${s.n.toLocaleString()}）`,
+                short: shortStage(s.label),
+              }))}
+            />
             <label>期間
               <select value={period} onChange={e => setPeriod(e.target.value as Period)}>
                 {PERIOD_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
@@ -831,6 +922,8 @@ export function EnvAnalysis() {
                 )}
                 <p className="env-chart-note">
                   50 サンプル未満は非表示。各点にマウスオーバーで詳細表示。
+                  {groupBy === 'stage' && weaponKeys.length === 0 &&
+                    ' ※勝率・キル系は武器を絞り込むと選べます。'}
                   {usesKda && ' ※KDA系の指標は記録のある A1・B1（投稿者・相手代表）を母数にしています。'}
                 </p>
               </div>
@@ -856,7 +949,17 @@ export function EnvAnalysis() {
               </div>
 
               <div className="env-chart-section">
-                <h3 className="env-chart-title">{dimLabel(rowDim)} × {dimLabel(colDim)}（{cm.label}）</h3>
+                <div className="env-chart-title-row">
+                  <h3 className="env-chart-title">{dimLabel(rowDim)} × {dimLabel(colDim)}（{cm.label}）</h3>
+                  {heatmapSortCol && (
+                    <button
+                      type="button"
+                      className="env-heatmap-sort-reset"
+                      onClick={clearHeatmapSort}
+                      title="列クリックによる並べ替えを解除し、サンプル数順などの既定並びに戻す"
+                    >既定の並び</button>
+                  )}
+                </div>
                 {bothWeapon ? (
                   <p className="env-no-data">武器 × 武器は非対応です。一方をステージ/ルール/ロビーにしてください。</p>
                 ) : (
@@ -873,6 +976,9 @@ export function EnvAnalysis() {
                     diagonalCols={colDim === 'stage'}
                     rowOrder={rowDim === 'rule' ? RULE_HEATMAP_ORDER : undefined}
                     colOrder={colDim === 'rule' ? RULE_HEATMAP_ORDER : undefined}
+                    sortColKey={heatmapSortCol}
+                    sortDir={heatmapSortDir}
+                    onColHeaderClick={handleHeatmapColHeaderClick}
                     rowValue={rowProj}
                     colValue={colProj}
                     // バトル数は合計なので、セルの min/max ではなく軸内の相対で色付けする（#411）。
@@ -881,6 +987,7 @@ export function EnvAnalysis() {
                 )}
                 <p className="env-chart-note">
                   {KDA_CELL_KEYS.includes(cellMetric) ? '20' : '30'} サンプル未満のセルは非表示。セルにマウスオーバーで件数を表示。
+                  列見出しをクリックすると、その列の値で行を並べ替えられます（再クリックで昇順/降順切替）。
                   {cellMetric === 'win_rate' && ' 勝率は 50% を中心に赤(低)〜青(高)。'}
                   {cellMetric === 'avg_death' && ' デスは多いほど濃い赤（少ないほど良い）。'}
                   {(cellMetric === 'kill_ratio' || cellMetric === 'contrib_ratio') && ' 1.0 を中心に赤(低)〜青(高)。'}

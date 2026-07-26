@@ -3465,16 +3465,17 @@ pub async fn env_status(db: tauri::State<'_, DbPool>) -> Result<EnvStatus, Strin
 // 環境分析 拡張（#187）: 散布図 / ヒートマップ
 // ---------------------------------------------------------------------------
 
-/// env_battles の共通フィルタ条件をひとまとめにした構造体（#189 で拡張）。
+/// env_battles の共通フィルタ条件をひとまとめにした構造体（#189 で拡張・#477 で武器/ステージ複数）。
 ///
-/// 期間・ロビー・ルール・ステージに加え、ゲームバージョン（複数）・
+/// 期間・ロビー・ルール・ステージ・武器に加え、ゲームバージョン（複数）・
 /// ウデマエ帯（複数）・Xパワー範囲を AND で絞り込む。
-/// `game_vers` / `poster_ranks` は空なら絞り込まない。
+/// `game_vers` / `poster_ranks` / `weapon_keys` / `stage_keys` は空なら絞り込まない。
 #[derive(Default)]
 pub struct EnvFilters {
     pub lobby_keys:   Vec<String>,
     pub rule_keys:    Vec<String>,
-    pub stage_key:    Option<String>,
+    pub stage_keys:   Vec<String>,
+    pub weapon_keys:  Vec<String>,
     pub since:        Option<String>,
     pub until:        Option<String>,
     pub game_vers:    Vec<String>,
@@ -3497,7 +3498,24 @@ fn build_env_where(f: &EnvFilters) -> String {
         let ph = vec!["?"; f.rule_keys.len()].join(",");
         wp.push(format!("EXISTS (SELECT 1 FROM rule rk WHERE rk.id = eb.rule_id AND rk.key IN ({ph}))"));
     }
-    if f.stage_key.is_some() { wp.push("EXISTS (SELECT 1 FROM map   mk WHERE mk.id = eb.map_id   AND mk.key = ?)".into()); }
+    if !f.stage_keys.is_empty() {
+        let ph = vec!["?"; f.stage_keys.len()].join(",");
+        wp.push(format!("EXISTS (SELECT 1 FROM map mk WHERE mk.id = eb.map_id AND mk.key IN ({ph}))"));
+    }
+    if !f.weapon_keys.is_empty() {
+        // いずれかのスロットに選んだ武器が乗っているバトルに絞る（#477）。
+        let ph = vec!["?"; f.weapon_keys.len()].join(",");
+        wp.push(format!(
+            "EXISTS (\
+               SELECT 1 FROM weapon wk \
+               WHERE wk.key IN ({ph}) \
+                 AND wk.id IN (\
+                   eb.a1_weapon_id, eb.a2_weapon_id, eb.a3_weapon_id, eb.a4_weapon_id, \
+                   eb.b1_weapon_id, eb.b2_weapon_id, eb.b3_weapon_id, eb.b4_weapon_id\
+                 )\
+             )"
+        ));
+    }
     if f.since.is_some()     { wp.push("eb.source_date >= ?".into()); }
     if f.until.is_some()     { wp.push("eb.source_date <= ?".into()); }
     if !f.game_vers.is_empty() {
@@ -3519,9 +3537,10 @@ fn bind_env_filters<'q>(
     mut q: sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
     f: &'q EnvFilters,
 ) -> sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
-    for v in &f.lobby_keys { q = q.bind(v); }
-    for v in &f.rule_keys  { q = q.bind(v); }
-    if let Some(v) = &f.stage_key { q = q.bind(v); }
+    for v in &f.lobby_keys   { q = q.bind(v); }
+    for v in &f.rule_keys    { q = q.bind(v); }
+    for v in &f.stage_keys   { q = q.bind(v); }
+    for v in &f.weapon_keys  { q = q.bind(v); }
     if let Some(v) = &f.since     { q = q.bind(v); }
     if let Some(v) = &f.until     { q = q.bind(v); }
     for v in &f.game_vers    { q = q.bind(v); }
@@ -3599,7 +3618,8 @@ pub async fn env_scatter_stats(
     side:         Option<String>,
     lobby_keys:   Option<Vec<String>>,
     rule_keys:    Option<Vec<String>>,
-    stage_key:    Option<String>,
+    stage_keys:   Option<Vec<String>>,
+    weapon_keys:  Option<Vec<String>>,
     since:        Option<String>,
     until:        Option<String>,
     game_vers:    Option<Vec<String>>,
@@ -3610,7 +3630,9 @@ pub async fn env_scatter_stats(
     let f = EnvFilters {
         lobby_keys:   lobby_keys.unwrap_or_default(),
         rule_keys:    rule_keys.unwrap_or_default(),
-        stage_key, since, until,
+        stage_keys:   stage_keys.unwrap_or_default(),
+        weapon_keys:  weapon_keys.unwrap_or_default(),
+        since, until,
         game_vers:    game_vers.unwrap_or_default(),
         poster_ranks: poster_ranks.unwrap_or_default(),
         power_min, power_max,
@@ -3618,13 +3640,14 @@ pub async fn env_scatter_stats(
     let where_clause = build_env_where(&f);
 
     if group_by == "stage" {
-        // ステージ集計: 勝率は約 50% で無意味なので使わず、ステージで意味のある指標を出す。
-        let sql = format!(
+        // ステージ固有指標（バトル単位）。KO率は出さない（#478）。
+        // 勝率・KDA は武器絞り込み時だけスロット展開で算出（未選択だと両チーム平均で約50%になり無意味）。
+        let battle_sql = format!(
             r#"
-            SELECT COALESCE(m.name_ja, m.key) AS key,
+            SELECT eb.map_id AS mid,
+                   COALESCE(m.name_ja, m.key) AS key,
                    m.name_ja AS icon_name,
                    COUNT(*) AS n,
-                   AVG(CASE WHEN eb.knockout = 1 THEN 1.0 ELSE 0.0 END) AS ko_rate,
                    AVG(eb.alpha_ink_percent) AS avg_ink_self,
                    AVG(eb.bravo_ink_percent) AS avg_ink_opp,
                    AVG((COALESCE(eb.alpha_count,0) + COALESCE(eb.bravo_count,0)) / 2.0) AS avg_count
@@ -3637,21 +3660,92 @@ pub async fn env_scatter_stats(
             "#,
             where = where_clause,
         );
-        let q = bind_env_filters(sqlx::query(&sql), &f);
+        let q = bind_env_filters(sqlx::query(&battle_sql), &f);
         let rows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
+
+        // map_id → 勝率/KDA（武器フィルタがあるときだけ埋める）
+        let mut weapon_stats: std::collections::HashMap<i64, (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<f64>)> =
+            std::collections::HashMap::new();
+        if !f.weapon_keys.is_empty() {
+            // 選んだ武器が乗っているスロットだけ展開。KDA は a1/b1 のみ値あり。
+            let wph = vec!["?"; f.weapon_keys.len()].join(",");
+            let slot_sqls: Vec<String> = [
+                ("a1_weapon_id", "alpha", "a1_kill", "a1_death", "a1_assist", "a1_inked"),
+                ("a2_weapon_id", "alpha", "NULL", "NULL", "NULL", "NULL"),
+                ("a3_weapon_id", "alpha", "NULL", "NULL", "NULL", "NULL"),
+                ("a4_weapon_id", "alpha", "NULL", "NULL", "NULL", "NULL"),
+                ("b1_weapon_id", "bravo", "b1_kill", "b1_death", "b1_assist", "b1_inked"),
+                ("b2_weapon_id", "bravo", "NULL", "NULL", "NULL", "NULL"),
+                ("b3_weapon_id", "bravo", "NULL", "NULL", "NULL", "NULL"),
+                ("b4_weapon_id", "bravo", "NULL", "NULL", "NULL", "NULL"),
+            ]
+            .into_iter()
+            .map(|(wid, team, k, d, a, ink)| {
+                format!(
+                    "SELECT eb.map_id AS mid, \
+                            CASE WHEN eb.win_team = '{team}' THEN 1.0 ELSE 0.0 END AS won, \
+                            {k} AS k, {d} AS d, {a} AS a, {ink} AS ink \
+                     FROM env_battles eb \
+                     JOIN weapon wk ON wk.id = eb.{wid} AND wk.key IN ({wph}) \
+                     {where}",
+                    team = team, k = k, d = d, a = a, ink = ink, wid = wid, wph = wph, where = where_clause,
+                )
+            })
+            .collect();
+            let sql = format!(
+                r#"
+                WITH app AS (
+                    {app}
+                )
+                SELECT mid,
+                       AVG(won) AS win_rate,
+                       AVG(k)   AS avg_kill,
+                       AVG(d)   AS avg_death,
+                       AVG(a)   AS avg_assist,
+                       AVG(ink) AS avg_inked
+                FROM app
+                GROUP BY mid
+                "#,
+                app = slot_sqls.join("\n                UNION ALL\n                "),
+            );
+            // 各スロット: weapon_keys バインド + EnvFilters バインド
+            let mut q = sqlx::query(&sql);
+            for _ in 0..8 {
+                for v in &f.weapon_keys { q = q.bind(v); }
+                q = bind_env_filters(q, &f);
+            }
+            let wrows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
+            for row in wrows {
+                let mid: i64 = row.get("mid");
+                weapon_stats.insert(
+                    mid,
+                    (
+                        row.try_get::<Option<f64>, _>("win_rate").unwrap_or(None),
+                        row.try_get::<Option<f64>, _>("avg_kill").unwrap_or(None),
+                        row.try_get::<Option<f64>, _>("avg_death").unwrap_or(None),
+                        row.try_get::<Option<f64>, _>("avg_assist").unwrap_or(None),
+                        row.try_get::<Option<f64>, _>("avg_inked").unwrap_or(None),
+                    ),
+                );
+            }
+        }
+
         let mut result = Vec::new();
         for row in rows {
+            let mid: i64 = row.get("mid");
+            let (win_rate, avg_kill, avg_death, avg_assist, avg_inked) =
+                weapon_stats.get(&mid).copied().unwrap_or((None, None, None, None, None));
             result.push(EnvScatterStat {
                 key:          row.get("key"),
                 icon_name:    row.try_get::<Option<String>, _>("icon_name").unwrap_or(None),
                 n:            row.get("n"),
                 pick_rate:    None,
-                win_rate:     None,
-                avg_kill:     None,
-                avg_death:    None,
-                avg_assist:   None,
-                avg_inked:    None,
-                ko_rate:      row.try_get::<Option<f64>, _>("ko_rate").unwrap_or(None),
+                win_rate,
+                avg_kill,
+                avg_death,
+                avg_assist,
+                avg_inked,
+                ko_rate:      None,
                 avg_ink_self: row.try_get::<Option<f64>, _>("avg_ink_self").unwrap_or(None),
                 avg_ink_opp:  row.try_get::<Option<f64>, _>("avg_ink_opp").unwrap_or(None),
                 avg_count:    row.try_get::<Option<f64>, _>("avg_count").unwrap_or(None),
@@ -3945,7 +4039,8 @@ pub async fn env_matrix_stats(
     cell_metric:  String,
     lobby_keys:   Option<Vec<String>>,
     rule_keys:    Option<Vec<String>>,
-    stage_key:    Option<String>,
+    stage_keys:   Option<Vec<String>>,
+    weapon_keys:  Option<Vec<String>>,
     since:        Option<String>,
     until:        Option<String>,
     game_vers:    Option<Vec<String>>,
@@ -3956,7 +4051,9 @@ pub async fn env_matrix_stats(
     let f = EnvFilters {
         lobby_keys:   lobby_keys.unwrap_or_default(),
         rule_keys:    rule_keys.unwrap_or_default(),
-        stage_key, since, until,
+        stage_keys:   stage_keys.unwrap_or_default(),
+        weapon_keys:  weapon_keys.unwrap_or_default(),
+        since, until,
         game_vers:    game_vers.unwrap_or_default(),
         poster_ranks: poster_ranks.unwrap_or_default(),
         power_min, power_max,
@@ -4298,6 +4395,73 @@ pub async fn env_ranks(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvRank>, Str
             .then_with(|| a.poster_rank.cmp(&b.poster_rank))
     });
     Ok(result)
+}
+
+/// 環境分析の武器/ステージ絞り込み用の 1 選択肢（#477）。
+#[derive(Debug, Serialize)]
+pub struct EnvFilterOption {
+    pub key:   String,
+    pub label: String,
+    pub n:     i64,
+}
+
+/// env_battles に登場する武器をピック数降順で返す（絞り込み UI 用・#477）。
+#[tauri::command]
+pub async fn env_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOption>, String> {
+    let rows = sqlx::query(
+        r#"
+        SELECT w.key AS key,
+               COALESCE(NULLIF(w.name_ja, ''), w.key) AS label,
+               COUNT(*) AS n
+        FROM env_battles eb
+        JOIN weapon w ON w.id IN (
+            eb.a1_weapon_id, eb.a2_weapon_id, eb.a3_weapon_id, eb.a4_weapon_id,
+            eb.b1_weapon_id, eb.b2_weapon_id, eb.b3_weapon_id, eb.b4_weapon_id
+        )
+        GROUP BY w.id
+        ORDER BY n DESC
+        "#,
+    )
+    .fetch_all(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| EnvFilterOption {
+            key:   row.get("key"),
+            label: row.get("label"),
+            n:     row.get("n"),
+        })
+        .collect())
+}
+
+/// env_battles に登場するステージをバトル数降順で返す（絞り込み UI 用・#477）。
+#[tauri::command]
+pub async fn env_stages(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOption>, String> {
+    let rows = sqlx::query(
+        r#"
+        SELECT m.key AS key,
+               COALESCE(NULLIF(m.name_ja, ''), m.key) AS label,
+               COUNT(*) AS n
+        FROM env_battles eb
+        JOIN map m ON m.id = eb.map_id
+        GROUP BY m.id
+        ORDER BY n DESC
+        "#,
+    )
+    .fetch_all(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| EnvFilterOption {
+            key:   row.get("key"),
+            label: row.get("label"),
+            n:     row.get("n"),
+        })
+        .collect())
 }
 
 // ---------------------------------------------------------------------------

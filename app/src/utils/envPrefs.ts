@@ -33,6 +33,10 @@ export interface EnvPrefs {
   customUntil: string
   lobbyKeys:   string[]
   ruleKeys:    string[]
+  /** 武器キー（weapon.key）複数。空 = 絞り込まない（#477）。 */
+  weaponKeys:  string[]
+  /** ステージキー（map.key）複数。空 = 絞り込まない（#477）。 */
+  stageKeys:   string[]
   gameVers:    string[]
   posterRanks: string[]
   powerMin:    string
@@ -56,6 +60,8 @@ export const DEFAULT_ENV_PREFS: EnvPrefs = {
   customUntil: '',
   lobbyKeys:   [],
   ruleKeys:    [],
+  weaponKeys:  [],
+  stageKeys:   [],
   gameVers:    [],
   posterRanks: [],
   powerMin:    '',
@@ -103,6 +109,8 @@ export function loadEnvPrefs(): EnvPrefs {
       customUntil: str(p.customUntil, d.customUntil),
       lobbyKeys:   strArray(p.lobbyKeys, d.lobbyKeys),
       ruleKeys:    strArray(p.ruleKeys, d.ruleKeys),
+      weaponKeys:  strArray(p.weaponKeys, d.weaponKeys),
+      stageKeys:   strArray(p.stageKeys, d.stageKeys),
       gameVers:    strArray(p.gameVers, d.gameVers),
       posterRanks: strArray(p.posterRanks, d.posterRanks),
       powerMin:    str(p.powerMin, d.powerMin),

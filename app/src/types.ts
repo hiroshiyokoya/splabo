@@ -436,6 +436,13 @@ export interface EnvRank {
   n:           number
 }
 
+/** env_weapons / env_stages の 1 件（#477）。 */
+export interface EnvFilterOption {
+  key:   string
+  label: string
+  n:     number
+}
+
 export interface ChartSpec {
   chartType: 'bar' | 'line' | 'scatter' | 'pie'
   title: string
@@ -562,8 +569,8 @@ export interface CustomChart {
   /** shape='heatmap' で Y 軸を「数値メトリクス bin」にする場合のメトリクス。 */
   yNumericMetric?: BattleNumericMetric
   yBinWidth?:      number
-  /** shape='scatter' で 1 ドット = 何の単位か。バトル / 武器 / ステージ。 */
-  dotUnit?:     'battle' | 'weapon' | 'stage'
+  /** shape='scatter' で 1 ドット = 何の単位か。'battle' 以外は db_grouped_stats の groupBy と同じキー。 */
+  dotUnit?:     ScatterDotUnit
   /** scatter の X 軸メトリクス。ドット単位がバトルなら BattleMetricKey、カテゴリなら MetricKey。 */
   xMetric?:     string
   /** scatter の Y 軸メトリクス。 */
@@ -650,7 +657,21 @@ export const BATTLE_METRIC_LABELS: Record<BattleMetricKey, string> = {
   special:       'スペシャル',
 }
 
-/** カテゴリ単位 (武器/ステージ) の散布図で使えるメトリクス。 */
+/** scatter の 1 ドット単位。'battle' 以外は db_grouped_stats の groupBy と同じキー。 */
+export type ScatterDotUnit =
+  | 'battle'
+  | 'weapon'
+  | 'stage'
+  | 'weapon_category'
+  | 'sub_weapon'
+  | 'special_weapon'
+
+/** ChartConfigModal のドット単位選択肢（表示順）。 */
+export const SCATTER_DOT_UNITS: ScatterDotUnit[] = [
+  'battle', 'weapon', 'stage', 'weapon_category', 'sub_weapon', 'special_weapon',
+]
+
+/** カテゴリ集計単位の散布図で使えるメトリクス（武器 / ステージ / サブ / スペシャル / 武器カテゴリ共通）。 */
 export const SCATTER_AGG_METRIC_KEYS: MetricKey[] = [
   'total', 'wins', 'win_rate',
   'avg_kill', 'avg_assist', 'avg_contrib_kill', 'avg_death', 'avg_kd', 'avg_contrib_kd',
@@ -658,7 +679,7 @@ export const SCATTER_AGG_METRIC_KEYS: MetricKey[] = [
 ]
 
 /** ドット単位ごとの「X 軸 / Y 軸 / サイズ」で選べるメトリクスキー一覧。 */
-export function scatterMetricOptions(dotUnit: 'battle' | 'weapon' | 'stage'): { key: string; label: string }[] {
+export function scatterMetricOptions(dotUnit: ScatterDotUnit): { key: string; label: string }[] {
   if (dotUnit === 'battle') {
     return (Object.keys(BATTLE_METRIC_LABELS) as BattleMetricKey[]).map(k => ({ key: k, label: BATTLE_METRIC_LABELS[k] }))
   }
@@ -798,7 +819,7 @@ export function autoChartTitle(spec: {
   metric?:          MetricKey
   /** shape='line' の複数系列（#436）。指定があれば metric より優先する。 */
   metrics?:         MetricKey[]
-  dotUnit?:         'battle' | 'weapon' | 'stage'
+  dotUnit?:         ScatterDotUnit
   xMetric?:         string
   yMetric?:         string
   xNumericMetric?:  BattleNumericMetric
@@ -822,7 +843,11 @@ export function autoChartTitle(spec: {
     return `${x} × ${y}: ${metricLabel}`
   }
   if (spec.shape === 'scatter') {
-    const unit = spec.dotUnit === 'battle' ? 'バトル' : spec.dotUnit === 'stage' ? 'ステージ' : '武器'
+    const unit = spec.dotUnit === 'battle'
+      ? 'バトル'
+      : spec.dotUnit
+        ? GROUP_BY_LABELS[spec.dotUnit]
+        : GROUP_BY_LABELS.weapon
     const labelOf = (k?: string): string => {
       if (!k) return '?'
       if (k in BATTLE_METRIC_LABELS) return BATTLE_METRIC_LABELS[k as BattleMetricKey]
@@ -888,6 +913,11 @@ export const GROUP_BY_LABELS: Record<GroupByKey, string> = {
   three_day:       '3 日',
   week:            '週',
   month:           '月',
+}
+
+/** scatter のドット単位ラベル（GROUP_BY_LABELS と battle のみ例外）。 */
+export function scatterDotUnitLabel(dotUnit: ScatterDotUnit): string {
+  return dotUnit === 'battle' ? 'バトル' : GROUP_BY_LABELS[dotUnit]
 }
 
 export const METRIC_LABELS: Record<MetricKey, string> = {
