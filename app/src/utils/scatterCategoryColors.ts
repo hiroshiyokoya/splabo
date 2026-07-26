@@ -1,5 +1,5 @@
 import type { BattleRow } from '../types'
-import type { ColorLegend } from '../components/charts/ScatterChart'
+import type { ColorLegend, ScatterMarkerShape } from '../components/charts/ScatterChart'
 
 /** 散布図のカテゴリ色分けキー（GROUP_BY_LABELS のキーと一致）。 */
 export const SCATTER_CATEGORY_COLOR_KEYS = ['weapon_category', 'sub_weapon', 'special_weapon'] as const
@@ -20,31 +20,29 @@ export const UNCLASSIFIED_CATEGORY = '(未分類)'
 export const UNKNOWN_WEAPON_PART   = '(不明)'
 
 /**
- * カテゴリ色パレット（暗背景向け）。
- * 隣接インデックス同士の色相が遠くなるよう並べ、青系の密集を避けて緑・ライムを厚めにしている。
+ * カテゴリ用の少数色（色相が大きく離れているものだけ）。
+ * 同じ色は別の形と組み合わせて使うので、緑や青を何色も並べない。
  */
-const SCATTER_CATEGORY_PALETTE = [
+const CATEGORY_COLORS = [
   '#ef4444', // red
-  '#22c55e', // green
-  '#3b82f6', // blue（青はこれと indigo のみ）
+  '#3b82f6', // blue
   '#eab308', // yellow
   '#a855f7', // purple
   '#f97316', // orange
   '#14b8a6', // teal
-  '#ec4899', // pink
-  '#84cc16', // lime
-  '#6366f1', // indigo
-  '#d97706', // amber
-  '#10b981', // emerald
-  '#d946ef', // fuchsia
-  '#f43f5e', // rose
-  '#65a30d', // olive
-  '#7c3aed', // violet
-  '#fbbf24', // gold
-  '#4ade80', // bright green
-  '#e879f9', // light magenta
-  '#fb923c', // light orange
 ]
+
+/** カテゴリ用のマーカー形。色と直交する第2軸。 */
+export const CATEGORY_SHAPES: ScatterMarkerShape[] = [
+  'circle',
+  'square',
+  'triangle',
+  'diamond',
+  'cross',
+  'star',
+]
+
+export type CategoryStyle = { color: string; shape: ScatterMarkerShape }
 
 function hashString(s: string): number {
   let h = 0
@@ -56,39 +54,55 @@ function isFallbackLabel(name: string): boolean {
   return name === UNCLASSIFIED_CATEGORY || name === UNKNOWN_WEAPON_PART
 }
 
-/** 出現カテゴリを一意化して日本語順に並べる（色割当・凡例の共通キー）。 */
+/** 出現カテゴリを一意化して日本語順に並べる（割当・凡例の共通キー）。 */
 export function uniqueSortedCategories(categories: readonly string[]): string[] {
   return [...new Set(categories.map(c => c.trim() || UNCLASSIFIED_CATEGORY))]
     .sort((a, b) => a.localeCompare(b, 'ja'))
 }
 
 /**
- * カテゴリ名 → CSS 色。同じ名前は常に同じ色。
- * `presentCategories` を渡すと、出現中カテゴリだけを日本語順に並べてパレット先頭から割り当てる
- * （ハッシュだと近い色同士が偶然隣り合うのを避ける）。
+ * カテゴリ名 → { color, shape }。
+ * 出現中カテゴリを日本語順に並べ、`色 = i % C` / `形 = ⌊i / C⌋` で組み合わせる。
+ * 同じ色は別の形、同じ形は別の色になるので、色だけ・形だけの見分けに頼らない。
  */
-export function categoryColorOf(name: string, presentCategories?: readonly string[]): string {
+export function categoryStyleOf(name: string, presentCategories?: readonly string[]): CategoryStyle {
   const trimmed = name.trim()
   if (!trimmed || isFallbackLabel(trimmed)) {
-    return 'var(--text-muted)'
+    return { color: 'var(--text-muted)', shape: 'circle' }
   }
+
+  let idx: number
   if (presentCategories && presentCategories.length > 0) {
     const colored = uniqueSortedCategories(presentCategories).filter(c => !isFallbackLabel(c))
-    const idx = colored.indexOf(trimmed)
-    if (idx >= 0) {
-      return SCATTER_CATEGORY_PALETTE[idx % SCATTER_CATEGORY_PALETTE.length]
-    }
+    const found = colored.indexOf(trimmed)
+    idx = found >= 0 ? found : hashString(trimmed)
+  } else {
+    idx = hashString(trimmed)
   }
-  return SCATTER_CATEGORY_PALETTE[hashString(trimmed) % SCATTER_CATEGORY_PALETTE.length]
+
+  const nColor = CATEGORY_COLORS.length
+  return {
+    color: CATEGORY_COLORS[idx % nColor],
+    shape: CATEGORY_SHAPES[Math.floor(idx / nColor) % CATEGORY_SHAPES.length],
+  }
 }
 
-/** 出現中カテゴリだけ並べた凡例（折り返し表示）。 */
+/** @deprecated categoryStyleOf を使う。色のみが必要な互換用。 */
+export function categoryColorOf(name: string, presentCategories?: readonly string[]): string {
+  return categoryStyleOf(name, presentCategories).color
+}
+
+/** 出現中カテゴリの色×形凡例。 */
 export function buildCategoryColorLegend(label: string, categories: string[]): ColorLegend {
   const sorted = uniqueSortedCategories(categories)
   return {
     label,
     layout: 'chips',
-    items: sorted.map(cat => ({ label: cat, color: categoryColorOf(cat, sorted) })),
+    encoding: 'color_shape',
+    items: sorted.map(cat => {
+      const style = categoryStyleOf(cat, sorted)
+      return { label: cat, color: style.color, shape: style.shape }
+    }),
   }
 }
 

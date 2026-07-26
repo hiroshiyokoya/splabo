@@ -26,7 +26,7 @@ import { MultiSelect } from './MultiSelect'
 import { rateCellColor, sequentialCellColor, AXIS_MIN_TOTAL_SAMPLES } from '../utils/heatmapColors'
 import { loadEnvPrefs, saveEnvPrefs, DEFAULT_ENV_PREFS } from '../utils/envPrefs'
 import {
-  SCATTER_CATEGORY_COLOR_KEYS, isScatterCategoryColorKey, categoryColorOf,
+  SCATTER_CATEGORY_COLOR_KEYS, isScatterCategoryColorKey, categoryStyleOf,
   buildCategoryColorLegend, categoryValueForEnvStat,
 } from '../utils/scatterCategoryColors'
 
@@ -642,6 +642,7 @@ export function EnvAnalysis() {
     const sv = sizeM ? sizeM.get(s) : null
     const cv = colorM ? colorM.get(s) : null
     const catVal = isCatColor ? categoryValueForEnvStat(s, colorKey) : null
+    const catStyle = isCatColor && catVal ? categoryStyleOf(catVal, presentCategories) : null
     const metricRows = dedupeMetricRows([
       { key: xM.key,    row: { label: xM.label, value: x == null ? '—' : xM.fmt(x) } },
       { key: yM.key,    row: { label: yM.label, value: y == null ? '—' : yM.fmt(y) } },
@@ -653,7 +654,8 @@ export function EnvAnalysis() {
       name: s.key,
       x, y,
       size: sv,
-      color: isCatColor ? categoryColorOf(catVal!, presentCategories) : pointColor(cv),
+      color: catStyle ? catStyle.color : pointColor(cv),
+      markerShape: catStyle?.shape,
       // アイコンは **表示名ではなく BE が返した正式名（icon_name）** で引く（#412）。
       // 表示名（= key）はローカルマスターに無い武器だとスラッグのままで、当たらないパスを
       // 取りに行ってしまう。未ロード / 画像なしは undefined でアイコンなしになる。
@@ -894,7 +896,7 @@ export function EnvAnalysis() {
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                   </select>
                 </label>
-                <label>色
+                <label>色・形
                   <select value={colorKey} onChange={e => setColorKey(e.target.value)}>
                     <option value="">なし</option>
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}

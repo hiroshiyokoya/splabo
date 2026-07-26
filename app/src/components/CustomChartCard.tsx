@@ -19,7 +19,7 @@ import {
 } from './charts/ScatterChart'
 import { rateCellColor, sequentialCellColor } from '../utils/heatmapColors'
 import {
-  isScatterCategoryColorKey, categoryColorOf, buildCategoryColorLegend,
+  isScatterCategoryColorKey, categoryStyleOf, buildCategoryColorLegend,
   categoryValueForWeaponName, categoryValueForBattle, type WeaponMeta,
 } from '../utils/scatterCategoryColors'
 
@@ -111,16 +111,18 @@ function buildAggScatterPoints(
     const size = sizeKey ? getMetric(d, sizeKey as MetricKey) : null
     const colorVal = colorKey && !isCatColor ? getMetric(d, colorKey as MetricKey) : null
     const catVal = isCatColor ? categoryValueForWeaponName(d.name, colorKey, weaponMeta) : null
+    const catStyle = isCatColor && catVal ? categoryStyleOf(catVal, categories) : null
     return {
       name:  d.name,
       x,
       y,
       size,
-      color: isCatColor
-        ? categoryColorOf(catVal!, categories)
+      color: catStyle
+        ? catStyle.color
         : colorKey
           ? colorOfValue(colorVal, colorIsRate, cmin, cmax, colorKey as MetricKey)
           : 'var(--accent)',
+      markerShape: catStyle?.shape,
       tooltipRows: dedupeRows([
         { key: xKey, row: () => ({ label: metricLabelOf(xKey), value: formatMetric(x, xKey as MetricKey) }) },
         { key: yKey, row: () => ({ label: metricLabelOf(yKey), value: formatMetric(y, yKey as MetricKey) }) },
@@ -175,12 +177,15 @@ function buildBattleScatterPoints(
     const size = sizeKey ? getBattleMetric(b, sizeKey as BattleMetricKey) : null
     const catVal = isCatColor ? categoryValueForBattle(b, colorKey, weaponMeta) : null
     let color = 'var(--accent)'
+    let markerShape: ScatterPoint['markerShape']
     if (colorKey === 'win_lose') {
       color = b.result === 'win'  ? 'var(--win)'
             : b.result === 'lose' ? 'var(--lose)'
             : 'var(--draw)'
-    } else if (isCatColor) {
-      color = categoryColorOf(catVal!, categories)
+    } else if (isCatColor && catVal) {
+      const style = categoryStyleOf(catVal, categories)
+      color = style.color
+      markerShape = style.shape
     } else if (colorKey) {
       // バトル単位の連続値メトリクス。min/max は呼び出しごとに簡易計算 (ここでは accent 単色)
       color = 'var(--accent)'
@@ -193,6 +198,7 @@ function buildBattleScatterPoints(
       y: applyJitter(y),
       size,
       color,
+      markerShape,
       // 重なり判定: 元の (x, y) が同じ点を 1 グループに
       groupKey: `${x ?? 'null'}|${y ?? 'null'}`,
       // 複数件表示時の 1 行: 日付・武器・勝敗
