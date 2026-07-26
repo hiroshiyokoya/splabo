@@ -155,11 +155,19 @@ const CELL_METRICS: CellMetric[] = [
 // ルールを次元にしたときの並び順（ガチ系を先・ナワバリを最後）。
 const RULE_HEATMAP_ORDER = ['area', 'yagura', 'hoko', 'asari', 'nawabari']
 
+/** 8 スロット集計が必要なヒートマップ次元（#481）。 */
+const WEAPON_SLOT_DIMS = ['weapon', 'weapon_category', 'sub_weapon', 'special_weapon'] as const
+const isWeaponSlotDim = (dim: string) =>
+  (WEAPON_SLOT_DIMS as readonly string[]).includes(dim)
+
 const DIM_OPTIONS = [
-  { key: 'weapon', label: '武器' },
-  { key: 'stage',  label: 'ステージ' },
-  { key: 'rule',   label: 'ルール' },
-  { key: 'lobby',  label: 'ロビー' },
+  { key: 'weapon',          label: GROUP_BY_LABELS.weapon },
+  { key: 'weapon_category', label: GROUP_BY_LABELS.weapon_category },
+  { key: 'sub_weapon',      label: GROUP_BY_LABELS.sub_weapon },
+  { key: 'special_weapon',  label: GROUP_BY_LABELS.special_weapon },
+  { key: 'stage',           label: GROUP_BY_LABELS.stage },
+  { key: 'rule',            label: GROUP_BY_LABELS.rule },
+  { key: 'lobby',           label: GROUP_BY_LABELS.mode },
 ]
 
 // ステージ正式名 → 短縮名（コミュニティ通称）。未知のキーはそのまま返す。
@@ -376,11 +384,11 @@ export function EnvAnalysis() {
   }, [groupBy, weaponKeys, xKey, yKey, sizeKey, colorKey])
 
   // ヒートマップ次元を変えたらセル指標の妥当性を保つ
-  const weaponInvolved = rowDim === 'weapon' || colDim === 'weapon'
-  const bothWeapon     = rowDim === 'weapon' && colDim === 'weapon'
+  const weaponSlotInvolved = isWeaponSlotDim(rowDim) || isWeaponSlotDim(colDim)
+  const bothWeaponSlot     = isWeaponSlotDim(rowDim) && isWeaponSlotDim(colDim)
   const allowedCellMetrics = useMemo(
-    () => CELL_METRICS.filter(m => (weaponInvolved && !bothWeapon ? m.weapon : !weaponInvolved ? !m.weapon : false)),
-    [weaponInvolved, bothWeapon],
+    () => CELL_METRICS.filter(m => (weaponSlotInvolved && !bothWeaponSlot ? m.weapon : !weaponSlotInvolved ? !m.weapon : false)),
+    [weaponSlotInvolved, bothWeaponSlot],
   )
   useEffect(() => {
     if (allowedCellMetrics.length > 0 && !allowedCellMetrics.some(m => m.key === cellMetric)) {
@@ -466,7 +474,7 @@ export function EnvAnalysis() {
         setScatterData(rows)
         setScatterAxis(groupBy)   // 行と軸は必ずセットで更新する（#412）
       } else {
-        if (bothWeapon) { setMatrixData([]); setRowMarginals([]); setColMarginals([]); return }
+        if (bothWeaponSlot) { setMatrixData([]); setRowMarginals([]); setColMarginals([]); return }
         // 次元を変えた直後、セル指標が新しい次元にまだ整合していない一瞬は取得しない
         // （直後に走る useEffect が cellMetric を有効値へ補正し、再取得される）。
         if (!allowedCellMetrics.some(m => m.key === cellMetric)) return
@@ -487,7 +495,7 @@ export function EnvAnalysis() {
     } finally {
       setLoading(false)
     }
-  }, [hasData, vizMode, groupBy, lobbyKeys, ruleKeys, range, rowDim, colDim, cellMetric, bothWeapon, allowedCellMetrics, extFilters])
+  }, [hasData, vizMode, groupBy, lobbyKeys, ruleKeys, range, rowDim, colDim, cellMetric, bothWeaponSlot, allowedCellMetrics, extFilters])
 
   useEffect(() => { loadStatus() }, [loadStatus])
   useEffect(() => { loadData() }, [loadData])
