@@ -3640,13 +3640,14 @@ pub async fn env_scatter_stats(
     let where_clause = build_env_where(&f);
 
     if group_by == "stage" {
-        // ステージ集計: 勝率は約 50% で無意味なので使わず、ステージで意味のある指標を出す。
-        let sql = format!(
+        // ステージ固有指標（バトル単位）。KO率は出さない（#478）。
+        // 勝率・KDA は武器絞り込み時だけスロット展開で算出（未選択だと両チーム平均で約50%になり無意味）。
+        let battle_sql = format!(
             r#"
-            SELECT COALESCE(m.name_ja, m.key) AS key,
+            SELECT eb.map_id AS mid,
+                   COALESCE(m.name_ja, m.key) AS key,
                    m.name_ja AS icon_name,
                    COUNT(*) AS n,
-                   AVG(CASE WHEN eb.knockout = 1 THEN 1.0 ELSE 0.0 END) AS ko_rate,
                    AVG(eb.alpha_ink_percent) AS avg_ink_self,
                    AVG(eb.bravo_ink_percent) AS avg_ink_opp,
                    AVG((COALESCE(eb.alpha_count,0) + COALESCE(eb.bravo_count,0)) / 2.0) AS avg_count
@@ -3659,21 +3660,92 @@ pub async fn env_scatter_stats(
             "#,
             where = where_clause,
         );
-        let q = bind_env_filters(sqlx::query(&sql), &f);
+        let q = bind_env_filters(sqlx::query(&battle_sql), &f);
         let rows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
+
+        // map_id → 勝率/KDA（武器フィルタがあるときだけ埋める）
+        let mut weapon_stats: std::collections::HashMap<i64, (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<f64>)> =
+            std::collections::HashMap::new();
+        if !f.weapon_keys.is_empty() {
+            // 選んだ武器が乗っているスロットだけ展開。KDA は a1/b1 のみ値あり。
+            let wph = vec!["?"; f.weapon_keys.len()].join(",");
+            let slot_sqls: Vec<String> = [
+                ("a1_weapon_id", "alpha", "a1_kill", "a1_death", "a1_assist", "a1_inked"),
+                ("a2_weapon_id", "alpha", "NULL", "NULL", "NULL", "NULL"),
+                ("a3_weapon_id", "alpha", "NULL", "NULL", "NULL", "NULL"),
+                ("a4_weapon_id", "alpha", "NULL", "NULL", "NULL", "NULL"),
+                ("b1_weapon_id", "bravo", "b1_kill", "b1_death", "b1_assist", "b1_inked"),
+                ("b2_weapon_id", "bravo", "NULL", "NULL", "NULL", "NULL"),
+                ("b3_weapon_id", "bravo", "NULL", "NULL", "NULL", "NULL"),
+                ("b4_weapon_id", "bravo", "NULL", "NULL", "NULL", "NULL"),
+            ]
+            .into_iter()
+            .map(|(wid, team, k, d, a, ink)| {
+                format!(
+                    "SELECT eb.map_id AS mid, \
+                            CASE WHEN eb.win_team = '{team}' THEN 1.0 ELSE 0.0 END AS won, \
+                            {k} AS k, {d} AS d, {a} AS a, {ink} AS ink \
+                     FROM env_battles eb \
+                     JOIN weapon wk ON wk.id = eb.{wid} AND wk.key IN ({wph}) \
+                     {where}",
+                    team = team, k = k, d = d, a = a, ink = ink, wid = wid, wph = wph, where = where_clause,
+                )
+            })
+            .collect();
+            let sql = format!(
+                r#"
+                WITH app AS (
+                    {app}
+                )
+                SELECT mid,
+                       AVG(won) AS win_rate,
+                       AVG(k)   AS avg_kill,
+                       AVG(d)   AS avg_death,
+                       AVG(a)   AS avg_assist,
+                       AVG(ink) AS avg_inked
+                FROM app
+                GROUP BY mid
+                "#,
+                app = slot_sqls.join("\n                UNION ALL\n                "),
+            );
+            // 各スロット: weapon_keys バインド + EnvFilters バインド
+            let mut q = sqlx::query(&sql);
+            for _ in 0..8 {
+                for v in &f.weapon_keys { q = q.bind(v); }
+                q = bind_env_filters(q, &f);
+            }
+            let wrows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
+            for row in wrows {
+                let mid: i64 = row.get("mid");
+                weapon_stats.insert(
+                    mid,
+                    (
+                        row.try_get::<Option<f64>, _>("win_rate").unwrap_or(None),
+                        row.try_get::<Option<f64>, _>("avg_kill").unwrap_or(None),
+                        row.try_get::<Option<f64>, _>("avg_death").unwrap_or(None),
+                        row.try_get::<Option<f64>, _>("avg_assist").unwrap_or(None),
+                        row.try_get::<Option<f64>, _>("avg_inked").unwrap_or(None),
+                    ),
+                );
+            }
+        }
+
         let mut result = Vec::new();
         for row in rows {
+            let mid: i64 = row.get("mid");
+            let (win_rate, avg_kill, avg_death, avg_assist, avg_inked) =
+                weapon_stats.get(&mid).copied().unwrap_or((None, None, None, None, None));
             result.push(EnvScatterStat {
                 key:          row.get("key"),
                 icon_name:    row.try_get::<Option<String>, _>("icon_name").unwrap_or(None),
                 n:            row.get("n"),
                 pick_rate:    None,
-                win_rate:     None,
-                avg_kill:     None,
-                avg_death:    None,
-                avg_assist:   None,
-                avg_inked:    None,
-                ko_rate:      row.try_get::<Option<f64>, _>("ko_rate").unwrap_or(None),
+                win_rate,
+                avg_kill,
+                avg_death,
+                avg_assist,
+                avg_inked,
+                ko_rate:      None,
                 avg_ink_self: row.try_get::<Option<f64>, _>("avg_ink_self").unwrap_or(None),
                 avg_ink_opp:  row.try_get::<Option<f64>, _>("avg_ink_opp").unwrap_or(None),
                 avg_count:    row.try_get::<Option<f64>, _>("avg_count").unwrap_or(None),
