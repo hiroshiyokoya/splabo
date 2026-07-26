@@ -470,39 +470,41 @@ body {
   opacity: 0.85;
 }
 
-/* 画像右上の splabo ブランディング。通常は非表示。キャプチャ中だけパネル右上に重ねる。 */
-.panel-export-brand {
+/* 画像右上の splabo ロゴと右下のクレジット。通常は非表示。キャプチャ中だけ重ねる。 */
+.panel-export-logo,
+.panel-export-credit {
   display: none;
 }
 .is-exporting {
   position: relative;
 }
-.is-exporting .panel-export-brand {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
+.is-exporting .panel-export-logo {
+  display: block;
   position: absolute;
   top: 12px;
   right: 14px;
-  z-index: 2;
-  pointer-events: none;
-}
-.is-exporting .panel-export-logo {
-  display: block;
   height: 44px;
   width: auto;
+  z-index: 2;
+  pointer-events: none;
   opacity: 0.95;
 }
-.is-exporting .panel-export-github {
-  font-size: 10px;
+/* パネル下端の余白（padding 16px）内に収める。本文とは重ならない。 */
+.is-exporting .panel-export-credit {
+  display: block;
+  position: absolute;
+  right: 14px;
+  bottom: 3px;
+  z-index: 2;
+  pointer-events: none;
+  font-size: 9px;
   line-height: 1.2;
   color: var(--text-muted);
-  letter-spacing: 0.01em;
+  letter-spacing: 0.02em;
   white-space: nowrap;
   opacity: 0.9;
 }
-/* ロゴ＋ URL 幅ぶんタイトルを避ける（高さ 44px × アスペクト ≈ 116px + 余白）。 */
+/* ロゴ幅ぶんタイトルを避ける（高さ 44px × アスペクト ≈ 116px + 余白）。 */
 .is-exporting .chart-card-header,
 .is-exporting .env-chart-title-row {
   padding-right: 140px;

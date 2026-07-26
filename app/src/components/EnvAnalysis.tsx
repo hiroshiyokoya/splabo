@@ -167,9 +167,9 @@ const POSTER_EXCLUDED_NOTE = `※ ${POSTER_EXCLUDED_TEXT}。`
 /** 画像に焼き込む注釈（#500）。パネル上の長文をそのまま入れるとレイアウトが崩れるので、
  *  出典・足切り・母数だけの 1 行に抑える。 */
 const SCATTER_EXPORT_NOTE =
-  `出典: stat.ink（ユーザー投稿）／50 サンプル未満は非表示／${POSTER_EXCLUDED_TEXT}`
+  `出典: stat.ink／50 サンプル未満は非表示／${POSTER_EXCLUDED_TEXT}`
 const heatmapExportNote = (kda: boolean) =>
-  `出典: stat.ink（ユーザー投稿）／${kda ? 20 : 30} サンプル未満のセルは非表示／${POSTER_EXCLUDED_TEXT}`
+  `出典: stat.ink／${kda ? 20 : 30} サンプル未満のセルは非表示／${POSTER_EXCLUDED_TEXT}`
 
 /** スロット単位の集計が必要なヒートマップ次元（#481）。 */
 const WEAPON_SLOT_DIMS = ['weapon', 'weapon_category', 'sub_weapon', 'special_weapon'] as const
