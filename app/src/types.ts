@@ -362,6 +362,9 @@ export interface EnvStatus {
   min_date:   string | null
   max_date:   string | null
   total_rows: number
+  /** 取り込み済みデータが 7 人分のキル系記録を持っているか（#501）。
+   *  v0.9.7 より前に取り込んだ行は投稿者と相手 1 人分しか記録が無い。 */
+  full_kda:   boolean
 }
 
 /** env_scatter_stats コマンドの返却 1 行分（#187）。
@@ -430,7 +433,7 @@ export interface EnvVersion {
   max_date: string | null
 }
 
-/** env_ranks コマンドの 1 件（#189）。投稿者（A1）のウデマエ帯。 */
+/** env_ranks コマンドの 1 件（#189）。投稿者のウデマエ帯。 */
 export interface EnvRank {
   poster_rank: string
   n:           number
