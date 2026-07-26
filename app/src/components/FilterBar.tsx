@@ -1,39 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { Filters, Period, WeaponRecord } from '../types'
+import type { Filters, WeaponRecord } from '../types'
 import { resultLabel } from '../types'
 import { MultiSelect } from './MultiSelect'
+import { LOBBY_OPTIONS, RULE_OPTIONS, PERIOD_OPTIONS } from '../utils/filterSummary'
 
 // #190: モード/ルールは複数選択（OR）。モードのキーは lobby.key に一致させ、
 // バンカラ/フェスは オープン/チャレンジ を個別に選べるようにする（循環ボタン廃止）。
-const MODE_OPTIONS = [
-  { key: 'regular',             label: 'レギュラー' },
-  { key: 'bankara_open',        label: 'バンカラ(オープン)' },
-  { key: 'bankara_challenge',   label: 'バンカラ(チャレンジ)' },
-  { key: 'xmatch',              label: 'Xマッチ' },
-  { key: 'splatfest_open',      label: 'フェス(オープン)' },
-  { key: 'splatfest_challenge', label: 'フェス(チャレンジ)' },
-  { key: 'event',               label: 'イベント' },
-]
-const RULE_OPTIONS = [
-  { key: 'turf_war', label: 'ナワバリ' },
-  { key: 'area',     label: 'ガチエリア' },
-  { key: 'yagura',   label: 'ガチヤグラ' },
-  { key: 'hoko',     label: 'ガチホコ' },
-  { key: 'asari',    label: 'ガチアサリ' },
-]
+// 選択肢の定義は画像保存の条件キャプション（#500）と共用する。文言がぶれると
+// 「画面と保存画像で条件表記が違う」ことになるため、片方だけ直せない場所に置いてある。
+const MODE_OPTIONS = LOBBY_OPTIONS
 const RESULTS = ['win', 'lose', 'draw']
 
 interface StageInfo { id: string; name: string }
-const PERIODS: { id: Period; label: string }[] = [
-  { id: 'all',            label: '全期間' },
-  { id: 'current_season', label: '今シーズン' },
-  { id: '1y',             label: '1年' },
-  { id: '180d',           label: '180日' },
-  { id: '30d',            label: '30日' },
-  { id: '7d',             label: '7日' },
-  { id: 'custom',         label: 'カスタム' },
-]
+const PERIODS = PERIOD_OPTIONS
 
 interface Props {
   filters: Filters

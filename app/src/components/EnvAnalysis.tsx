@@ -29,6 +29,9 @@ import {
   SCATTER_CATEGORY_COLOR_KEYS, isScatterCategoryColorKey, categoryStyleOf,
   buildCategoryColorLegend, categoryValueForEnvStat,
 } from '../utils/scatterCategoryColors'
+import { PanelExportButton, PanelExportCaption, PanelExportLogo, PanelExportNote } from './PanelExport'
+import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
+import { joinConditions, joinValues } from '../utils/filterSummary'
 
 const LOBBY_OPTIONS = [
   { key: '',                  label: 'すべてのロビー' },
@@ -155,9 +158,18 @@ const CELL_METRICS: CellMetric[] = [
 // ルールを次元にしたときの並び順（ガチ系を先・ナワバリを最後）。
 const RULE_HEATMAP_ORDER = ['area', 'yagura', 'hoko', 'asari', 'nawabari']
 
-/** 投稿者除外の共通注記（#501）。散布図・ヒートマップで同じ文言を使う。
- *  stat.ink の全体統計と同じく、投稿者本人を母数から外して残り 7 人で集計している。 */
-const POSTER_EXCLUDED_NOTE = '※ 集計は投稿者を除く 7 人分です（stat.ink の全体統計と同じ）。'
+/** 投稿者除外の説明（#501）。stat.ink の全体統計と同じく、投稿者本人を母数から外して
+ *  残り 7 人で集計している。散布図・ヒートマップ・保存画像で同じ文言を使う。 */
+const POSTER_EXCLUDED_TEXT = '集計は投稿者を除く 7 人分（stat.ink の全体統計と同じ）'
+/** 画面の注釈用。 */
+const POSTER_EXCLUDED_NOTE = `※ ${POSTER_EXCLUDED_TEXT}。`
+
+/** 画像に焼き込む注釈（#500）。パネル上の長文をそのまま入れるとレイアウトが崩れるので、
+ *  出典・足切り・母数だけの 1 行に抑える。 */
+const SCATTER_EXPORT_NOTE =
+  `出典: stat.ink／50 サンプル未満は非表示／${POSTER_EXCLUDED_TEXT}`
+const heatmapExportNote = (kda: boolean) =>
+  `出典: stat.ink／${kda ? 20 : 30} サンプル未満のセルは非表示／${POSTER_EXCLUDED_TEXT}`
 
 /** スロット単位の集計が必要なヒートマップ次元（#481）。 */
 const WEAPON_SLOT_DIMS = ['weapon', 'weapon_category', 'sub_weapon', 'special_weapon'] as const
@@ -311,6 +323,27 @@ export function EnvAnalysis() {
     setCustomSince('')
     setCustomUntil('')
   }
+
+  // 画像保存（#500）。共通フィルタはパネルの外にあるので、画像には条件を焼き込む。
+  const scatterPanelRef = useRef<HTMLDivElement>(null)
+  const heatmapPanelRef = useRef<HTMLDivElement>(null)
+  const envFilterSummary = useMemo(() => {
+    const optLabel = (opts: { key: string; label: string }[], k: string) =>
+      opts.find(o => o.key === k)?.label ?? k
+    return joinConditions([
+      ['期間', period === 'custom'
+        ? `${customSince || '—'}〜${customUntil || '—'}`
+        : (PERIOD_OPTIONS.find(o => o.key === period)?.label ?? period)],
+      ['ロビー',     lobbyKeys.length ? joinValues(lobbyKeys.map(k => LOBBY_LABEL[k] ?? k)) : null],
+      ['ルール',     ruleKeys.length ? joinValues(ruleKeys.map(k => RULE_LABEL[k] ?? k)) : null],
+      ['武器',       weaponKeys.length ? joinValues(weaponKeys.map(k => optLabel(weaponOptions, k))) : null],
+      ['ステージ',   stageKeys.length ? joinValues(stageKeys.map(k => optLabel(stageOptions, k))) : null],
+      ['バージョン', gameVers.length ? joinValues(gameVers.map(formatGameVer)) : null],
+      ['ウデマエ',   posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
+      ['Xパワー',    (powerMin || powerMax) ? `${powerMin || '—'}〜${powerMax || '—'}` : null],
+    ])
+  }, [period, customSince, customUntil, lobbyKeys, ruleKeys, weaponKeys, stageKeys,
+      weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax])
 
   // 可視化モード
   const [vizMode, setVizMode] = useState<'scatter' | 'heatmap'>(prefs.vizMode)
@@ -920,8 +953,17 @@ export function EnvAnalysis() {
                 </label>
               </div>
 
-              <div className="env-chart-section">
-                <h3 className="env-chart-title">{xM.label} vs {yM.label}（{groupBy === 'weapon' ? '武器別' : 'ステージ別'}）</h3>
+              <div className="env-chart-section" ref={scatterPanelRef}>
+                <PanelExportLogo />
+                <div className="env-chart-title-row">
+                  <h3 className="env-chart-title">{xM.label} vs {yM.label}（{groupBy === 'weapon' ? '武器別' : 'ステージ別'}）</h3>
+                  <PanelExportButton
+                    targetRef={scatterPanelRef}
+                    screen="環境分析"
+                    panel={`${groupBy === 'weapon' ? '武器' : 'ステージ'}散布図 ${xM.label}×${yM.label}`}
+                  />
+                </div>
+                <PanelExportCaption conditions={envFilterSummary} />
                 {points.length === 0 ? (
                   <p className="env-no-data">条件に一致するデータがありません（50 サンプル未満は非表示）</p>
                 ) : (
@@ -941,13 +983,14 @@ export function EnvAnalysis() {
                     height={440}
                   />
                 )}
-                <p className="env-chart-note">
+                <p className={`env-chart-note ${EXPORT_HIDE_CLASS}`}>
                   50 サンプル未満は非表示。各点にマウスオーバーで詳細表示。
                   {groupBy === 'stage' && weaponKeys.length === 0 &&
                     ' ※勝率・キル系は武器を絞り込むと選べます。'}
                   {' '}{POSTER_EXCLUDED_NOTE}
                   {usesKda && !status.full_kda && ' キル系は再取得前のデータでは 1 人分のみが母数です。'}
                 </p>
+                <PanelExportNote note={SCATTER_EXPORT_NOTE} />
               </div>
             </>
           ) : (
@@ -970,18 +1013,25 @@ export function EnvAnalysis() {
                 </label>
               </div>
 
-              <div className="env-chart-section">
+              <div className="env-chart-section" ref={heatmapPanelRef}>
+                <PanelExportLogo />
                 <div className="env-chart-title-row">
                   <h3 className="env-chart-title">{dimLabel(rowDim)} × {dimLabel(colDim)}（{cm.label}）</h3>
                   {heatmapSortCol && (
                     <button
                       type="button"
-                      className="env-heatmap-sort-reset"
+                      className={`env-heatmap-sort-reset ${EXPORT_HIDE_CLASS}`}
                       onClick={clearHeatmapSort}
                       title="列クリックによる並べ替えを解除し、サンプル数順などの既定並びに戻す"
                     >既定の並び</button>
                   )}
+                  <PanelExportButton
+                    targetRef={heatmapPanelRef}
+                    screen="環境分析"
+                    panel={`ヒートマップ ${dimLabel(rowDim)}×${dimLabel(colDim)} ${cm.label}`}
+                  />
                 </div>
+                <PanelExportCaption conditions={envFilterSummary} />
                 {bothWeaponSlot ? (
                   <p className="env-no-data">武器 × 武器は非対応です。一方をステージ/ルール/ロビーにしてください。</p>
                 ) : (
@@ -1007,7 +1057,7 @@ export function EnvAnalysis() {
                     axisRelative={cellMetric === 'battles'}
                   />
                 )}
-                <p className="env-chart-note">
+                <p className={`env-chart-note ${EXPORT_HIDE_CLASS}`}>
                   {KDA_CELL_KEYS.includes(cellMetric) ? '20' : '30'} サンプル未満のセルは非表示。セルにマウスオーバーで件数を表示。
                   列見出しをクリックすると、その列の値で行を並べ替えられます（再クリックで昇順/降順切替）。
                   {cellMetric === 'win_rate' && ' 勝率は 50% を中心に赤(低)〜青(高)。'}
@@ -1020,6 +1070,7 @@ export function EnvAnalysis() {
                     ? ' 行・列の見出し色は、その軸の合計バトル数（軸内で最大を最も濃く）です。'
                     : ' 行・列の見出し色は、その軸の全バトルから算出した値です（非表示のセルも含むので、交差する軸を変えても同じ値になります）。'}
                 </p>
+                <PanelExportNote note={heatmapExportNote(KDA_CELL_KEYS.includes(cellMetric))} />
               </div>
             </>
           )}
