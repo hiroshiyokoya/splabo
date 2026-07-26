@@ -166,8 +166,6 @@ function scatterPointShape(props: {
   payload?: ScatterPoint
   /** ツールチップ対象の点。カーソルが写らない画像保存でも対応点が分かるように強調する。 */
   active?: boolean
-  /** 別の点がアクティブなとき、対象外を沈めて対比を付ける。 */
-  dimmed?: boolean
 }) {
   const cx = props.cx ?? 0
   const cy = props.cy ?? 0
@@ -177,7 +175,7 @@ function scatterPointShape(props: {
   const baseOpacity = props.fillOpacity ?? 0.55
   const common = {
     fill: props.fill ?? props.payload?.color ?? 'var(--accent)',
-    fillOpacity: props.active ? Math.min(1, baseOpacity + 0.4) : props.dimmed ? baseOpacity * 0.28 : baseOpacity,
+    fillOpacity: props.active ? Math.min(1, baseOpacity + 0.4) : baseOpacity,
     stroke: props.active ? 'var(--text)' : (props.stroke ?? 'var(--surface)'),
     strokeWidth: props.active ? 2 : (props.strokeWidth ?? 0.5),
   }
@@ -782,7 +780,6 @@ export function ScatterChart({
             ...props,
             fillOpacity,
             active: sameScatterAnchor(props, active as { cx?: number; cy?: number } | null),
-            dimmed: active != null && !sameScatterAnchor(props, active as { cx?: number; cy?: number } | null),
           })}
           onMouseEnter={(p: any) => {
             // 同じ点へ入り直した場合も再計測するため、新しいオブジェクトとして保持する。
