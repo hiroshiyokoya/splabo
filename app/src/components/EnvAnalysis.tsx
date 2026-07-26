@@ -99,11 +99,27 @@ const WEAPON_METRICS: ScatterMetric[] = [
 ]
 
 const STAGE_METRICS: ScatterMetric[] = [
-  { key: 'ko_rate',      label: 'KO率',        rate01: true,  fmt: pct,    get: field('ko_rate') },
+  // 勝率・KDA は武器絞り込み時だけ BE が埋める（#478）。未選択時は点が null で落ちる。
+  { key: 'win_rate',   label: '勝率',       rate01: true,  fmt: pct,  get: field('win_rate') },
+  { key: 'avg_kill',   label: '平均キル',   rate01: false, fmt: num2, get: field('avg_kill'),   kda: true },
+  { key: 'avg_assist', label: '平均アシスト', rate01: false, fmt: num2, get: field('avg_assist'), kda: true },
+  { key: 'contrib_kill', label: '平均貢献キル', rate01: false, fmt: num2, kda: true,
+    get: (s) => (s.avg_kill != null && s.avg_assist != null) ? s.avg_kill + s.avg_assist : null },
+  { key: 'avg_death',  label: '平均デス',   rate01: false, fmt: num2, get: field('avg_death'),  kda: true },
+  { key: 'kill_ratio', label: 'キルレ',     rate01: false, fmt: num2, kda: true,
+    get: (s) => (s.avg_kill != null && s.avg_death != null && s.avg_death > 0) ? s.avg_kill / s.avg_death : null },
+  { key: 'contrib_ratio', label: '貢献キルレ', rate01: false, fmt: num2, kda: true,
+    get: (s) => (s.avg_kill != null && s.avg_assist != null && s.avg_death != null && s.avg_death > 0)
+      ? (s.avg_kill + s.avg_assist) / s.avg_death : null },
   { key: 'avg_count',    label: '平均カウント', rate01: false, fmt: num1,   get: field('avg_count') },
   { key: 'avg_ink_self', label: '自分側 塗り%', rate01: false, fmt: pct100, get: field('avg_ink_self') },
   { key: 'avg_ink_opp',  label: '相手側 塗り%', rate01: false, fmt: pct100, get: field('avg_ink_opp') },
 ]
+
+/** ステージ散布図で武器未選択だと無意味な指標（#478）。 */
+const STAGE_WEAPON_ONLY = new Set([
+  'win_rate', 'avg_kill', 'avg_assist', 'contrib_kill', 'avg_death', 'kill_ratio', 'contrib_ratio',
+])
 
 // ヒートマップのセル指標
 type CellMetricKey =
@@ -335,9 +351,26 @@ export function EnvAnalysis() {
     if (prevGroupBy.current === groupBy) return   // マウント / 変化なし
     prevGroupBy.current = groupBy
     if (groupBy === 'weapon') { setXKey('pick_rate'); setYKey('win_rate') }
-    else                      { setXKey('ko_rate');   setYKey('avg_count') }
+    else                      { setXKey('avg_ink_self'); setYKey('avg_count') }
     setSizeKey(''); setColorKey('')   // 指標セットが変わるのでサイズ/色はリセット（#406）
   }, [groupBy])
+
+  // ステージ軸で武器フィルタが空のとき、勝率・KDA が選ばれていたらステージ固有指標へ戻す（#478）。
+  // 武器を選んだ直後は勝率 vs キルレを既定にする。
+  const prevWeaponFilter = useRef(weaponKeys.length > 0)
+  useEffect(() => {
+    if (groupBy !== 'stage') { prevWeaponFilter.current = weaponKeys.length > 0; return }
+    const hasW = weaponKeys.length > 0
+    if (!hasW) {
+      if (STAGE_WEAPON_ONLY.has(xKey)) setXKey('avg_ink_self')
+      if (STAGE_WEAPON_ONLY.has(yKey)) setYKey('avg_count')
+      if (STAGE_WEAPON_ONLY.has(sizeKey)) setSizeKey('')
+      if (STAGE_WEAPON_ONLY.has(colorKey)) setColorKey('')
+    } else if (!prevWeaponFilter.current) {
+      setXKey('win_rate'); setYKey('kill_ratio')
+    }
+    prevWeaponFilter.current = hasW
+  }, [groupBy, weaponKeys, xKey, yKey, sizeKey, colorKey])
 
   // ヒートマップ次元を変えたらセル指標の妥当性を保つ
   const weaponInvolved = rowDim === 'weapon' || colDim === 'weapon'
@@ -528,7 +561,13 @@ export function EnvAnalysis() {
   }
 
   // 散布図ポイント生成
-  const metrics = groupBy === 'weapon' ? WEAPON_METRICS : STAGE_METRICS
+  const stageWeaponReady = groupBy === 'stage' && weaponKeys.length > 0
+  const metrics = useMemo(() => {
+    if (groupBy === 'weapon') return WEAPON_METRICS
+    // 武器未選択時は勝率・KDA を選択肢から外す（#478）
+    if (!stageWeaponReady) return STAGE_METRICS.filter(m => !STAGE_WEAPON_ONLY.has(m.key))
+    return STAGE_METRICS
+  }, [groupBy, stageWeaponReady])
   const xM = metrics.find(m => m.key === xKey) ?? metrics[0]
   const yM = metrics.find(m => m.key === yKey) ?? metrics[1]
   // ログスケールの可否（#473）。設定が残っていても不可の指標では効かせない。
@@ -856,6 +895,8 @@ export function EnvAnalysis() {
                 )}
                 <p className="env-chart-note">
                   50 サンプル未満は非表示。各点にマウスオーバーで詳細表示。
+                  {groupBy === 'stage' && weaponKeys.length === 0 &&
+                    ' ※勝率・キル系は武器を絞り込むと選べます。'}
                   {usesKda && ' ※KDA系の指標は記録のある A1・B1（投稿者・相手代表）を母数にしています。'}
                 </p>
               </div>
