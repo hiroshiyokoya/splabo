@@ -403,6 +403,73 @@ body {
 }
 .custom-chart-card { touch-action: none; }
 
+/* ---------------------------------------------------------------------------
+   パネルの画像保存（#500）
+   ダッシュボードと環境分析で同じ見た目にするため、ここに一本化する。
+   --------------------------------------------------------------------------- */
+
+/* ヘッダ右端の保存ボタン。既存のアイコンボタン（⚙ / ✕）と寸法を揃える。 */
+.panel-export-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.panel-export-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--surface2);
+}
+.panel-export-btn:disabled { cursor: progress; opacity: 0.6; }
+.panel-export-btn__spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: panel-export-spin 0.7s linear infinite;
+}
+@keyframes panel-export-spin { to { transform: rotate(360deg); } }
+
+/* ヘッダ右側（並び替えボタン＋保存ボタン）をひとまとめにする。 */
+.chart-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 画像にだけ入る条件キャプションと注釈。画面では場所を取らない。 */
+.panel-export-caption,
+.panel-export-note {
+  display: none;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  /* 条件が長くても打ち切る。画像内で条件文がグラフを押しつぶさないようにする。 */
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+}
+.is-exporting .panel-export-caption {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  margin: -8px 0 12px;
+}
+.is-exporting .panel-export-note {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  margin-top: 8px;
+  opacity: 0.85;
+}
+
 .dashboard-add-row {
   display: flex;
   justify-content: center;

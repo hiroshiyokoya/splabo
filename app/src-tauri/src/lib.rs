@@ -15,6 +15,7 @@ pub mod gear;
 pub mod gear_crypto;
 pub mod http;
 pub mod icon_manifest;
+pub mod image_export;
 pub mod images;
 pub mod migration;
 pub mod nxapi;
@@ -68,6 +69,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_deep_link::init())
+        // パネル画像の保存先を選ばせるためのダイアログ（#500）。呼び出しは Rust 側だけ。
+        .plugin(tauri_plugin_dialog::init())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let enabled = window.app_handle()
@@ -104,6 +107,7 @@ pub fn run() {
             db::db_list_weapons,
             db::backfill_battle_players,
             images::read_image,
+            image_export::save_panel_image,
             fetch_battles_full,
             is_fetching,
             fetch_weapons,

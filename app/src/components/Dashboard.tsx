@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import {
@@ -20,6 +20,9 @@ import { CustomChartCard } from './CustomChartCard'
 import { ChartConfigModal } from './ChartConfigModal'
 import { loadCustomCharts, saveCustomCharts, generateChartId } from '../utils/customCharts'
 import type { WeaponMeta } from '../utils/scatterCategoryColors'
+import { PanelExportButton, PanelExportCaption } from './PanelExport'
+import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
+import { describeFilters, useStageNames } from '../utils/filterSummary'
 
 const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
@@ -114,6 +117,10 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+
+  // 画像保存に焼き込む条件（#500）。FilterBar は画面上部にあり画像には写らない。
+  const stageNames    = useStageNames()
+  const filterSummary = useMemo(() => describeFilters(filters, stageNames), [filters, stageNames])
 
   useEffect(() => {
     const { since, until } = filtersToRange(filters)
@@ -290,20 +297,20 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
           </div>
 
           <div className="chart-grid">
-            <ChartCard title="武器別 バトル数 & 勝率" sortBy={weaponSort} onSortChange={setWeaponSort}>
+            <ChartCard title="武器別 バトル数 & 勝率" sortBy={weaponSort} onSortChange={setWeaponSort} filterSummary={filterSummary}>
               <WinRateChart data={sorted(summary.by_weapon.slice(0, 14), weaponSort)} height={260} images={weaponImages} hoverImageSize={64} />
             </ChartCard>
 
-            <ChartCard title="ステージ別 バトル数 & 勝率" sortBy={stageSort} onSortChange={setStageSort}>
+            <ChartCard title="ステージ別 バトル数 & 勝率" sortBy={stageSort} onSortChange={setStageSort} filterSummary={filterSummary}>
               {/* ステージは現状 25 種程度で全件表示が望ましい（武器のような大量マスターと違い slice 不要）。 */}
               <WinRateChart data={sorted(summary.by_stage, stageSort)} height={260} images={new Map()} nameTransform={stageAbbr} tickAngle={30} />
             </ChartCard>
 
-            <ChartCard title="ルール別 バトル数 & 勝率" sortBy={ruleSort} onSortChange={setRuleSort}>
+            <ChartCard title="ルール別 バトル数 & 勝率" sortBy={ruleSort} onSortChange={setRuleSort} filterSummary={filterSummary}>
               <WinRateChart data={sorted(summary.by_rule, ruleSort)} height={220} images={new Map()} nameTransform={ruleLabel} />
             </ChartCard>
 
-            <ChartCard title="ロビー別 バトル数 & 勝率" sortBy={modeSort} onSortChange={setModeSort}>
+            <ChartCard title="ロビー別 バトル数 & 勝率" sortBy={modeSort} onSortChange={setModeSort} filterSummary={filterSummary}>
               <WinRateChart data={sorted(summary.by_mode, modeSort)} height={220} images={new Map()} nameTransform={modeLabel} />
             </ChartCard>
 
@@ -336,6 +343,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
                       weaponMeta={weaponMeta}
                       since={filterSince}
                       until={filterUntil}
+                      filterSummary={filterSummary}
                     />
                   )
                 })}
@@ -343,7 +351,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
             </DndContext>
 
             {aiChart && (
-              <ChartCard title={aiChart.title}>
+              <ChartCard title={aiChart.title} filterSummary={filterSummary}>
                 <AiChartRenderer spec={aiChart} />
               </ChartCard>
             )}
@@ -613,34 +621,41 @@ function StatCard({ label, value, valueColor, small }: { label: string; value: s
 }
 
 function ChartCard({
-  title, children, sortBy, onSortChange,
+  title, children, sortBy, onSortChange, filterSummary,
 }: {
   title: string
   children: React.ReactNode
   sortBy?: SortBy
   onSortChange?: (s: SortBy) => void
+  /** 画像保存時に焼き込む絞り込み条件（#500）。 */
+  filterSummary: string
 }) {
+  const cardRef = useRef<HTMLDivElement>(null)
   return (
-    <div className="chart-card">
+    <div className="chart-card" ref={cardRef}>
       <div className="chart-card-header">
         <h3 className="chart-title">{title}</h3>
-        {onSortChange && (
-          <div className="chart-sort-btns">
-            <button
-              className={`chart-sort-btn${sortBy === 'total' ? ' active' : ''}`}
-              onClick={() => onSortChange('total')}
-            >バトル数</button>
-            <button
-              className={`chart-sort-btn${sortBy === 'wins' ? ' active' : ''}`}
-              onClick={() => onSortChange('wins')}
-            >勝数</button>
-            <button
-              className={`chart-sort-btn${sortBy === 'win_rate' ? ' active' : ''}`}
-              onClick={() => onSortChange('win_rate')}
-            >勝率</button>
-          </div>
-        )}
+        <div className="chart-card-actions">
+          {onSortChange && (
+            <div className={`chart-sort-btns ${EXPORT_HIDE_CLASS}`}>
+              <button
+                className={`chart-sort-btn${sortBy === 'total' ? ' active' : ''}`}
+                onClick={() => onSortChange('total')}
+              >バトル数</button>
+              <button
+                className={`chart-sort-btn${sortBy === 'wins' ? ' active' : ''}`}
+                onClick={() => onSortChange('wins')}
+              >勝数</button>
+              <button
+                className={`chart-sort-btn${sortBy === 'win_rate' ? ' active' : ''}`}
+                onClick={() => onSortChange('win_rate')}
+              >勝率</button>
+            </div>
+          )}
+          <PanelExportButton targetRef={cardRef} screen="ダッシュボード" panel={title} />
+        </div>
       </div>
+      <PanelExportCaption conditions={filterSummary} />
       {children}
     </div>
   )
