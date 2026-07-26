@@ -3897,9 +3897,26 @@ fn fold_marginals(inputs: &[MarginalInput], axis: Axis) -> Vec<EnvMatrixMarginal
     }).collect()
 }
 
+/// 8 スロット集計が必要な次元（weapon およびその属性軸）。
+fn is_weapon_slot_dim(dim: &str) -> bool {
+    matches!(dim, "weapon" | "weapon_category" | "sub_weapon" | "special_weapon")
+}
+
+/// weapon テーブル上の GROUP BY / SELECT 用キー式（#481）。
+/// マスターに和名列が無い属性は key をそのまま返す（FE の GROUP_BY_LABELS と整合）。
+fn weapon_slot_key_expr(dim: &str) -> Option<&'static str> {
+    match dim {
+        "weapon"          => Some("w.key"),
+        "weapon_category" => Some("COALESCE(NULLIF(w.category_key, ''), '(未分類)')"),
+        "sub_weapon"      => Some("COALESCE(w.sub_key, '(不明)')"),
+        "special_weapon"  => Some("COALESCE(w.special_key, '(不明)')"),
+        _                 => None,
+    }
+}
+
 /// 集計次元（battle レベル）→ (env_battles の id カラム, マスターテーブル名, 表示ラベル列)。
 /// map は key が数値 ID / スラッグなので name_ja を表示に使う。rule / lobby は key（FE で和名化）。
-/// weapon はスロット集計が必要なため別扱い（ここでは None）。
+/// weapon 系はスロット集計が必要なため別扱い（ここでは None）。
 fn matrix_dim(dim: &str) -> Option<(&'static str, &'static str, &'static str)> {
     match dim {
         "stage" => Some(("map_id",   "map",   "name_ja")),
@@ -3912,9 +3929,10 @@ fn matrix_dim(dim: &str) -> Option<(&'static str, &'static str, &'static str)> {
 /// 環境データのマトリクス（ヒートマップ）集計。
 ///
 /// - `cell_metric` = "win_rate" | "pick_rate" | "avg_kill" | "avg_death" | "avg_assist"
-///   | "avg_inked" | "kill_ratio" | "contrib_kill" | "contrib_ratio" … 行/列の **一方が weapon** であること
-///   （武器のそのカテゴリでの勝率 / ピック率 / KDA 系）。KDA 系は a1/b1 のみ母数。
-/// - `cell_metric` = "ko_rate" | "battles"   … 行/列とも **weapon 以外**（バトルレベル指標）
+///   | "avg_inked" | "kill_ratio" | "contrib_kill" | "contrib_ratio" … 行/列の **一方が
+///   weapon / weapon_category / sub_weapon / special_weapon** であること
+///   （スロット単位の勝率 / ピック率 / KDA 系）。KDA 系は a1/b1 のみ母数。
+/// - `cell_metric` = "ko_rate" | "battles"   … 行/列とも **weapon 系以外**（バトルレベル指標）
 ///
 /// セルはサンプル不足を落として返すが、行・列の周辺集計（marginals）は
 /// **足切り前の全グループ**から算出して一緒に返す（#411）。軸ラベルの色付けに使う。
@@ -3954,13 +3972,19 @@ pub async fn env_matrix_stats(
     let weapon_centric = cell_metric == "win_rate" || cell_metric == "pick_rate" || kda_based;
 
     if weapon_centric {
-        // 行・列のうち厳密に一方が weapon であること。
-        let weapon_is_row = row_dim == "weapon";
-        let weapon_is_col = col_dim == "weapon";
-        if weapon_is_row == weapon_is_col {
-            return Err("この指標は行・列の一方を weapon にしてください".to_string());
+        // 行・列のうち厳密に一方が weapon 系（8 スロット集計）であること。
+        let slot_is_row = is_weapon_slot_dim(&row_dim);
+        let slot_is_col = is_weapon_slot_dim(&col_dim);
+        if slot_is_row == slot_is_col {
+            return Err(
+                "この指標は行・列の一方を weapon / weapon_category / sub_weapon / special_weapon にしてください"
+                    .to_string(),
+            );
         }
-        let other_dim = if weapon_is_row { &col_dim } else { &row_dim };
+        let slot_dim = if slot_is_row { &row_dim } else { &col_dim };
+        let other_dim = if slot_is_row { &col_dim } else { &row_dim };
+        let slot_key_expr = weapon_slot_key_expr(slot_dim)
+            .ok_or_else(|| format!("未知の集計次元: {slot_dim}"))?;
         let (oid_col, omaster, olabel) = matrix_dim(other_dim)
             .ok_or_else(|| format!("未知の集計次元: {other_dim}"))?;
 
@@ -3985,7 +4009,7 @@ pub async fn env_matrix_stats(
                 {app}
             ),
             otot AS (SELECT eb.{oid} AS oid, COUNT(*) AS c FROM env_battles eb {where} GROUP BY eb.{oid})
-            SELECT w.key  AS weapon_key,
+            SELECT {slot_key} AS slot_key,
                    om.{olabel} AS other_key,
                    COUNT(*) AS n,
                    COUNT(app.k) AS n_kda,
@@ -4002,10 +4026,10 @@ pub async fn env_matrix_stats(
             JOIN {omaster} om ON om.id = app.oid
             JOIN otot ON otot.oid = app.oid
             WHERE app.wid IS NOT NULL AND app.oid IS NOT NULL
-            GROUP BY app.wid, app.oid
+            GROUP BY {slot_key}, app.oid
             "#,
             app = app, oid = oid_col, omaster = omaster, olabel = olabel,
-            where = where_clause,
+            slot_key = slot_key_expr, where = where_clause,
         );
 
         // バインド: スロット 8 回 + otot 1 回。
@@ -4021,7 +4045,7 @@ pub async fn env_matrix_stats(
         let mut cells  = Vec::new();
         let mut inputs = Vec::new();
         for row in rows {
-            let weapon_key: String = row.get("weapon_key");
+            let slot_key: String = row.get("slot_key");
             let other_key:  String = row.get("other_key");
             // SUM/演算列は REAL に寄せているが、万一 integer が来ても落ちないようにする（#458）。
             // 以前の `try_get::<Option<f64>>().unwrap_or(None)` は型不一致を握りつぶして 0 にしていた。
@@ -4046,10 +4070,10 @@ pub async fn env_matrix_stats(
             // KDA 系はキル母数、それ以外は 8 スロット合算を件数として返す。
             let n = if kda_based { raw.n_kda } else { raw.n };
             let agg = cell_agg(&cell_metric, &raw);
-            let (row_key, col_key) = if weapon_is_row {
-                (weapon_key, other_key)
+            let (row_key, col_key) = if slot_is_row {
+                (slot_key, other_key)
             } else {
-                (other_key, weapon_key)
+                (other_key, slot_key)
             };
             // 周辺集計には足切り前の全グループを渡す（#411）。
             inputs.push(MarginalInput {
@@ -4062,19 +4086,22 @@ pub async fn env_matrix_stats(
 
         let mut row_marginals = fold_marginals(&inputs, Axis::Row);
         let mut col_marginals = fold_marginals(&inputs, Axis::Col);
-        // ピック率は「武器のシェア」なので、武器以外の軸へ射影するとどのキーでも
-        // Σシェア＝一定（武器で割り切った合計）になり、軸間の差が出ない。
+        // ピック率は「武器のシェア」なので、weapon 系以外の軸へ射影するとどのキーでも
+        // Σシェア＝一定（スロットで割り切った合計）になり、軸間の差が出ない。
         // 情報の無い値に色を付けても誤読させるだけなので値なし（＝既定色）にする。
         if cell_metric == "pick_rate" {
-            let flat = if weapon_is_row { &mut col_marginals } else { &mut row_marginals };
+            let flat = if slot_is_row { &mut col_marginals } else { &mut row_marginals };
             for m in flat.iter_mut() { m.value = None; }
         }
         return Ok(EnvMatrixStats { cells, row_marginals, col_marginals });
     }
 
-    // バトルレベル × バトルレベル（weapon を含まない）。
-    if row_dim == "weapon" || col_dim == "weapon" {
-        return Err("ko_rate/battles は weapon 以外の次元同士で指定してください".to_string());
+    // バトルレベル × バトルレベル（weapon 系を含まない）。
+    if is_weapon_slot_dim(&row_dim) || is_weapon_slot_dim(&col_dim) {
+        return Err(
+            "ko_rate/battles は weapon / weapon_category / sub_weapon / special_weapon 以外の次元同士で指定してください"
+                .to_string(),
+        );
     }
     let (row_col, rmaster, rlabel) = matrix_dim(&row_dim).ok_or_else(|| format!("未知の集計次元: {row_dim}"))?;
     let (col_col, cmaster, clabel) = matrix_dim(&col_dim).ok_or_else(|| format!("未知の集計次元: {col_dim}"))?;
