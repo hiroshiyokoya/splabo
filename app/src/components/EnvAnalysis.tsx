@@ -29,7 +29,7 @@ import {
   SCATTER_CATEGORY_COLOR_KEYS, isScatterCategoryColorKey, categoryStyleOf,
   buildCategoryColorLegend, categoryValueForEnvStat,
 } from '../utils/scatterCategoryColors'
-import { PanelExportButton, PanelExportCaption, PanelExportNote } from './PanelExport'
+import { PanelExportButton, PanelExportCaption, PanelExportLogo, PanelExportNote } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import { joinConditions, joinValues } from '../utils/filterSummary'
 
@@ -954,6 +954,7 @@ export function EnvAnalysis() {
               </div>
 
               <div className="env-chart-section" ref={scatterPanelRef}>
+                <PanelExportLogo />
                 <div className="env-chart-title-row">
                   <h3 className="env-chart-title">{xM.label} vs {yM.label}（{groupBy === 'weapon' ? '武器別' : 'ステージ別'}）</h3>
                   <PanelExportButton
@@ -1013,6 +1014,7 @@ export function EnvAnalysis() {
               </div>
 
               <div className="env-chart-section" ref={heatmapPanelRef}>
+                <PanelExportLogo />
                 <div className="env-chart-title-row">
                   <h3 className="env-chart-title">{dimLabel(rowDim)} × {dimLabel(colDim)}（{cm.label}）</h3>
                   {heatmapSortCol && (

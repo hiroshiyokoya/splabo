@@ -22,7 +22,7 @@ import {
   isScatterCategoryColorKey, categoryStyleOf, buildCategoryColorLegend,
   categoryValueForWeaponName, categoryValueForBattle, type WeaponMeta,
 } from '../utils/scatterCategoryColors'
-import { PanelExportButton, PanelExportCaption } from './PanelExport'
+import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 
 /** 1 バトル単位の散布図メトリクス値を BattleRow から計算する。 */
@@ -412,6 +412,7 @@ export function CustomChartCard({
 
   return (
     <div className={`chart-card custom-chart-card${spanClass ? ` ${spanClass}` : ''}`} ref={setRefs} style={style}>
+      <PanelExportLogo />
       {/* 上段：ドラッグ・設定・削除・画像保存（カスタムグラフ専用）。
           こうすることで下の chart-card-header は固定 4 グラフと同じ「title | 並び替え」レイアウトになる。 */}
       <div className={`custom-chart-toprow ${EXPORT_HIDE_CLASS}`}>

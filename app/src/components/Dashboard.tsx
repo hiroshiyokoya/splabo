@@ -20,7 +20,7 @@ import { CustomChartCard } from './CustomChartCard'
 import { ChartConfigModal } from './ChartConfigModal'
 import { loadCustomCharts, saveCustomCharts, generateChartId } from '../utils/customCharts'
 import type { WeaponMeta } from '../utils/scatterCategoryColors'
-import { PanelExportButton, PanelExportCaption } from './PanelExport'
+import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import { describeFilters, useStageNames } from '../utils/filterSummary'
 
@@ -633,6 +633,7 @@ function ChartCard({
   const cardRef = useRef<HTMLDivElement>(null)
   return (
     <div className="chart-card" ref={cardRef}>
+      <PanelExportLogo />
       <div className="chart-card-header">
         <h3 className="chart-title">{title}</h3>
         <div className="chart-card-actions">

@@ -470,6 +470,31 @@ body {
   opacity: 0.85;
 }
 
+/* 画像右上の splabo ロゴ。通常は非表示。キャプチャ中だけパネル右上に重ねる。 */
+.panel-export-logo {
+  display: none;
+}
+.is-exporting {
+  position: relative;
+}
+.is-exporting .panel-export-logo {
+  display: block;
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  height: 28px;
+  width: auto;
+  z-index: 2;
+  pointer-events: none;
+  /* 操作ボタンがあった位置に被せるので、タイトルが長いときも押し出さない。 */
+  opacity: 0.95;
+}
+/* ロゴ幅ぶんタイトルを避ける（高さ 28px × アスペクト ≈ 74px + 余白）。 */
+.is-exporting .chart-card-header,
+.is-exporting .env-chart-title-row {
+  padding-right: 90px;
+}
+
 .dashboard-add-row {
   display: flex;
   justify-content: center;
