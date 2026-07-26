@@ -1,6 +1,9 @@
 /** 複数選択ドロップダウン（#189 で導入 → #190 で共有化）。
  *  `<details>` でメニュー開閉を担い、各項目はチェックボックスでトグルする。
- *  選択ゼロ件で `allLabel`、1 件で項目名、2 件以上で「N 件選択」をサマリ表示。 */
+ *  選択ゼロ件で `allLabel`、1 件で項目名、2 件以上で「N 件選択」をサマリ表示。
+ *  メニュー外クリックで閉じる（#475）。FilterBar の武器/ステージピッカーと同じ作法。 */
+
+import { useEffect, useRef } from 'react'
 
 export interface MultiSelectOption { key: string; label: string; short?: string }
 
@@ -11,6 +14,19 @@ export function MultiSelect({ label, allLabel, options, selected, onChange }: {
   selected: string[]
   onChange: (next: string[]) => void
 }) {
+  const detailsRef = useRef<HTMLDetailsElement>(null)
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      const el = detailsRef.current
+      if (!el?.open) return
+      if (el.contains(e.target as Node)) return
+      el.open = false
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   const toggle = (k: string) =>
     onChange(selected.includes(k) ? selected.filter(x => x !== k) : [...selected, k])
 
@@ -23,7 +39,7 @@ export function MultiSelect({ label, allLabel, options, selected, onChange }: {
 
   return (
     <label className="env-multiselect-label">{label}
-      <details className="env-multiselect">
+      <details ref={detailsRef} className="env-multiselect">
         <summary>{summary}</summary>
         <div className="env-multiselect-menu">
           {options.length === 0 ? (
