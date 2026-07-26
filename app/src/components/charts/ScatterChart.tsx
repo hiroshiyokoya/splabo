@@ -210,11 +210,24 @@ type ObstacleRect = { left: number; top: number; right: number; bottom: number }
 const TOOLTIP_GAP = 14
 const TOOLTIP_EDGE_PAD = 6
 const DOT_AVOID_PAD = 4
+/** アクティブ点（ハロー込み）とツールチップの間に最低限空ける余白。 */
+const ANCHOR_CLEARANCE = 8
+
+function rectsOverlap(
+  a: { left: number; top: number; right: number; bottom: number },
+  b: { left: number; top: number; right: number; bottom: number },
+): { overlap: boolean; area: number } {
+  const overlapW = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left))
+  const overlapH = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
+  const area = overlapW * overlapH
+  return { overlap: area > 0, area }
+}
 
 /**
  * ホバー点の上下左右から、ドットを最も隠さないツールチップ位置を選ぶ（#497）。
  *
  * 優先順位:
+ * 0. **自分のドットを隠さない**（端補正でスライドしても被らない方向を最優先）
  * 1. 重なるドット数が少ない
  * 2. 重なり面積が小さい
  * 3. 端からはみ出さないための補正量が小さい
@@ -228,6 +241,8 @@ export function chooseScatterTooltipPlacement({
   chartWidth,
   chartHeight,
   obstacles,
+  anchorObstacle,
+  gap = TOOLTIP_GAP,
 }: {
   anchorX: number
   anchorY: number
@@ -236,6 +251,10 @@ export function chooseScatterTooltipPlacement({
   chartWidth: number
   chartHeight: number
   obstacles: ObstacleRect[]
+  /** ツールチップ対象のドット。他点より優先して絶対に隠さない。 */
+  anchorObstacle?: ObstacleRect | null
+  /** ドット外縁からツールチップまでの距離。ハロー込みサイズに合わせて呼び出し側が広げる。 */
+  gap?: number
 }): TooltipPlacement {
   const candidates: {
     direction: TooltipDirection
@@ -244,10 +263,10 @@ export function chooseScatterTooltipPlacement({
     dx: number
     dy: number
   }[] = [
-    { direction: 'right',  left: anchorX + TOOLTIP_GAP,                top: anchorY - tooltipHeight / 2, dx:  1, dy:  0 },
-    { direction: 'left',   left: anchorX - TOOLTIP_GAP - tooltipWidth, top: anchorY - tooltipHeight / 2, dx: -1, dy:  0 },
-    { direction: 'bottom', left: anchorX - tooltipWidth / 2,           top: anchorY + TOOLTIP_GAP,      dx:  0, dy:  1 },
-    { direction: 'top',    left: anchorX - tooltipWidth / 2,           top: anchorY - TOOLTIP_GAP - tooltipHeight, dx: 0, dy: -1 },
+    { direction: 'right',  left: anchorX + gap,                top: anchorY - tooltipHeight / 2, dx:  1, dy:  0 },
+    { direction: 'left',   left: anchorX - gap - tooltipWidth, top: anchorY - tooltipHeight / 2, dx: -1, dy:  0 },
+    { direction: 'bottom', left: anchorX - tooltipWidth / 2,   top: anchorY + gap,              dx:  0, dy:  1 },
+    { direction: 'top',    left: anchorX - tooltipWidth / 2,   top: anchorY - gap - tooltipHeight, dx: 0, dy: -1 },
   ]
 
   const maxLeft = Math.max(TOOLTIP_EDGE_PAD, chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD)
@@ -255,24 +274,36 @@ export function chooseScatterTooltipPlacement({
   const outwardX = (anchorX - chartWidth / 2) / Math.max(chartWidth / 2, 1)
   const outwardY = (anchorY - chartHeight / 2) / Math.max(chartHeight / 2, 1)
 
+  const anchorAvoid = anchorObstacle
+    ? {
+        left:   anchorObstacle.left - DOT_AVOID_PAD,
+        top:    anchorObstacle.top - DOT_AVOID_PAD,
+        right:  anchorObstacle.right + DOT_AVOID_PAD,
+        bottom: anchorObstacle.bottom + DOT_AVOID_PAD,
+      }
+    : null
+
   const scored = candidates.map(candidate => {
     const left = Math.min(Math.max(candidate.left, TOOLTIP_EDGE_PAD), maxLeft)
     const top = Math.min(Math.max(candidate.top, TOOLTIP_EDGE_PAD), maxTop)
-    const right = left + tooltipWidth
-    const bottom = top + tooltipHeight
+    const tip = { left, top, right: left + tooltipWidth, bottom: top + tooltipHeight }
+
+    // 自分の点を隠すかどうかは他ドットより重い。端へ寄せた結果の被りもここで拾う。
+    const anchorHit = anchorAvoid ? rectsOverlap(tip, anchorAvoid) : { overlap: false, area: 0 }
 
     let overlapCount = 0
     let overlapArea = 0
     for (const dot of obstacles) {
-      const dotLeft = dot.left - DOT_AVOID_PAD
-      const dotTop = dot.top - DOT_AVOID_PAD
-      const dotRight = dot.right + DOT_AVOID_PAD
-      const dotBottom = dot.bottom + DOT_AVOID_PAD
-      const overlapW = Math.max(0, Math.min(right, dotRight) - Math.max(left, dotLeft))
-      const overlapH = Math.max(0, Math.min(bottom, dotBottom) - Math.max(top, dotTop))
-      if (overlapW > 0 && overlapH > 0) {
+      const expanded = {
+        left:   dot.left - DOT_AVOID_PAD,
+        top:    dot.top - DOT_AVOID_PAD,
+        right:  dot.right + DOT_AVOID_PAD,
+        bottom: dot.bottom + DOT_AVOID_PAD,
+      }
+      const hit = rectsOverlap(tip, expanded)
+      if (hit.overlap) {
         overlapCount += 1
-        overlapArea += overlapW * overlapH
+        overlapArea += hit.area
       }
     }
 
@@ -282,6 +313,8 @@ export function chooseScatterTooltipPlacement({
       left,
       top,
       direction: candidate.direction,
+      anchorCovered: anchorHit.overlap ? 1 : 0,
+      anchorOverlapArea: anchorHit.area,
       overlapCount,
       overlapArea,
       clampDistance,
@@ -291,6 +324,8 @@ export function chooseScatterTooltipPlacement({
 
   // 数値の重み付けではなく辞書順で比較し、上記の優先順位を厳密に守る。
   scored.sort((a, b) =>
+    a.anchorCovered - b.anchorCovered ||
+    a.anchorOverlapArea - b.anchorOverlapArea ||
     a.overlapCount - b.overlapCount ||
     a.overlapArea - b.overlapArea ||
     a.clampDistance - b.clampDistance ||
@@ -635,6 +670,7 @@ export function ScatterChart({
 
   // ツールチップを一度 hidden で描画して実寸を測り、上下左右の最適位置へ移す。
   // マーカーも DOM の実寸を読むため、形・サイズ指標の有無にかかわらず避けられる（#497）。
+  // 自分の点（ハロー込み）は他点より優先して隠さない。
   useLayoutEffect(() => {
     const area = areaRef.current
     const tooltip = tooltipRef.current
@@ -645,17 +681,35 @@ export function ScatterChart({
     const areaRect = area.getBoundingClientRect()
     const tooltipRect = tooltip.getBoundingClientRect()
 
-    const obstacles = [...area.querySelectorAll<SVGGElement>('[data-scatter-point="true"]')]
-      .map(marker => {
-        const rect = marker.getBoundingClientRect()
-        return {
-          left: rect.left - areaRect.left,
-          top: rect.top - areaRect.top,
-          right: rect.right - areaRect.left,
-          bottom: rect.bottom - areaRect.top,
+    const toLocal = (rect: DOMRect): ObstacleRect => ({
+      left:   rect.left - areaRect.left,
+      top:    rect.top - areaRect.top,
+      right:  rect.right - areaRect.left,
+      bottom: rect.bottom - areaRect.top,
+    })
+
+    const markers = [...area.querySelectorAll<SVGGElement>('[data-scatter-point="true"]')]
+    const activeMarker = area.querySelector<SVGGElement>('[data-scatter-active="true"]')
+    const anchorObstacle = activeMarker
+      ? toLocal(activeMarker.getBoundingClientRect())
+      : {
+          left:   anchorX - 6,
+          top:    anchorY - 6,
+          right:  anchorX + 6,
+          bottom: anchorY + 6,
         }
-      })
-      // アクティブ点自身と、完全に同じ座標に重なった兄弟点は障害物から除く。
+
+    // ハロー込みの外接円半径＋余白。固定 14px だと大きいドットにツールチップが被る。
+    const anchorHalf = Math.max(
+      (anchorObstacle.right - anchorObstacle.left) / 2,
+      (anchorObstacle.bottom - anchorObstacle.top) / 2,
+    )
+    const gap = Math.max(TOOLTIP_GAP, Math.ceil(anchorHalf + ANCHOR_CLEARANCE))
+
+    const obstacles = markers
+      .map(marker => toLocal(marker.getBoundingClientRect()))
+      // アクティブ点自身と、完全に同じ座標に重なった兄弟点は通常障害物から除く
+      // （自分への被りは anchorObstacle 側で最優先に扱う）。
       .filter(rect => {
         const centerX = (rect.left + rect.right) / 2
         const centerY = (rect.top + rect.bottom) / 2
@@ -670,6 +724,8 @@ export function ScatterChart({
       chartWidth: area.clientWidth,
       chartHeight: height,
       obstacles,
+      anchorObstacle,
+      gap,
     }))
   }, [active, hoverSiblings.length, height])
 
