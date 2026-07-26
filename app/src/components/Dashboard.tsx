@@ -13,12 +13,13 @@ import {
 import {
   SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable'
-import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats, BattleRow, GroupedStatsRow, GroupedStatsRow2D, CustomChart, GroupByKey } from '../types'
+import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats, BattleRow, GroupedStatsRow, GroupedStatsRow2D, CustomChart, GroupByKey, WeaponRecord } from '../types'
 import { BATTLE_NUMERIC_DEFAULT_BIN } from '../types'
 import { filtersToRange, stageAbbr, modeLabel, ruleLabel, avgKillRatio, modeFilterArg, ruleFilterArg } from '../types'
 import { CustomChartCard } from './CustomChartCard'
 import { ChartConfigModal } from './ChartConfigModal'
 import { loadCustomCharts, saveCustomCharts, generateChartId } from '../utils/customCharts'
+import type { WeaponMeta } from '../utils/scatterCategoryColors'
 
 const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
@@ -103,6 +104,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
+  const [weaponMeta, setWeaponMeta] = useState<Map<string, WeaponMeta>>(new Map())
   const [weaponSort, setWeaponSort] = useState<SortBy>('total')
   const [stageSort, setStageSort] = useState<SortBy>('total')
   const [ruleSort, setRuleSort] = useState<SortBy>('total')
@@ -195,6 +197,13 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
 
   // Load weapon images once
   useEffect(() => {
+    invoke<WeaponRecord[]>('db_list_weapons').then(list => {
+      setWeaponMeta(new Map(list.map(w => [w.name, {
+        category: w.category,
+        sub_weapon: w.sub_weapon,
+        special_weapon: w.special_weapon,
+      }])))
+    }).catch(console.error)
     invoke<string[]>('db_weapons_used').then(weapons => {
       Promise.all(
         weapons.map(name =>
@@ -324,6 +333,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
                       onEdit={() => handleEdit(c.id)}
                       onDelete={() => handleDelete(c.id)}
                       weaponImages={weaponImages}
+                      weaponMeta={weaponMeta}
                       since={filterSince}
                       until={filterUntil}
                     />

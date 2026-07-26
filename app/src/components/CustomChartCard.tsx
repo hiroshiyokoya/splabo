@@ -5,7 +5,7 @@ import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, Metric
 import {
   stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric, chartMetrics,
   METRIC_LABELS, BATTLE_METRIC_LABELS, BATTLE_NUMERIC_METRIC_LABELS,
-  GROUP_BY_LABELS, formatMetric,
+  GROUP_BY_LABELS, formatMetric, type GroupByKey,
 } from '../types'
 import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
@@ -18,6 +18,10 @@ import {
   type ScatterPoint, type SizeLegend, type ColorLegend,
 } from './charts/ScatterChart'
 import { rateCellColor, sequentialCellColor } from '../utils/heatmapColors'
+import {
+  isScatterCategoryColorKey, categoryColorOf, buildCategoryColorLegend,
+  categoryValueForWeaponName, categoryValueForBattle, type WeaponMeta,
+} from '../utils/scatterCategoryColors'
 
 /** 1 バトル単位の散布図メトリクス値を BattleRow から計算する。 */
 function getBattleMetric(b: BattleRow, k: BattleMetricKey): number | null {
@@ -36,6 +40,7 @@ function getBattleMetric(b: BattleRow, k: BattleMetricKey): number | null {
 /** メトリクスキーから表示ラベル取得。バトル系・集計系の両方を扱う。 */
 function metricLabelOf(k: string): string {
   if (k === 'win_lose')                  return '勝敗'
+  if (k in GROUP_BY_LABELS)             return GROUP_BY_LABELS[k as GroupByKey]
   if (k in BATTLE_METRIC_LABELS)         return BATTLE_METRIC_LABELS[k as BattleMetricKey]
   if (k in METRIC_LABELS)                return METRIC_LABELS[k as MetricKey]
   return k
@@ -82,12 +87,14 @@ type ScatterBundle = { points: ScatterPoint[]; sizeLegend: SizeLegend | null; co
 function buildAggScatterPoints(
   data: GroupedStatsRow[],
   xKey: string, yKey: string, sizeKey?: string, colorKey?: string,
+  weaponMeta?: Map<string, WeaponMeta>,
 ): ScatterBundle {
   const filtered = data.filter(d => d.total > 0)
-  // 色マッピング用 min/max
+  const isCatColor = isScatterCategoryColorKey(colorKey)
+  // 色マッピング用 min/max（連続値のみ）
   const colorIsRate = colorKey === 'win_rate'
   let cmin = Infinity, cmax = -Infinity
-  if (colorKey) {
+  if (colorKey && !isCatColor) {
     for (const d of filtered) {
       const v = getMetric(d, colorKey as MetricKey)
       if (v === null) continue
@@ -95,22 +102,31 @@ function buildAggScatterPoints(
       if (v > cmax) cmax = v
     }
   }
+  const categories: string[] = []
   const points = filtered.map(d => {
     const x = getMetric(d, xKey as MetricKey)
     const y = getMetric(d, yKey as MetricKey)
     const size = sizeKey ? getMetric(d, sizeKey as MetricKey) : null
-    const colorVal = colorKey ? getMetric(d, colorKey as MetricKey) : null
+    const colorVal = colorKey && !isCatColor ? getMetric(d, colorKey as MetricKey) : null
+    const catVal = isCatColor ? categoryValueForWeaponName(d.name, colorKey, weaponMeta) : null
+    if (catVal) categories.push(catVal)
     return {
       name:  d.name,
       x,
       y,
       size,
-      color: colorKey ? colorOfValue(colorVal, colorIsRate, cmin, cmax, colorKey as MetricKey) : 'var(--accent)',
+      color: isCatColor
+        ? categoryColorOf(catVal!)
+        : colorKey
+          ? colorOfValue(colorVal, colorIsRate, cmin, cmax, colorKey as MetricKey)
+          : 'var(--accent)',
       tooltipRows: dedupeRows([
         { key: xKey, row: () => ({ label: metricLabelOf(xKey), value: formatMetric(x, xKey as MetricKey) }) },
         { key: yKey, row: () => ({ label: metricLabelOf(yKey), value: formatMetric(y, yKey as MetricKey) }) },
         { key: sizeKey, row: () => ({ label: metricLabelOf(sizeKey!), value: formatMetric(size, sizeKey as MetricKey), muted: true }) },
-        { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: formatMetric(colorVal, colorKey as MetricKey), muted: true }) },
+        isCatColor
+          ? { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: catVal!, muted: true }) }
+          : { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: formatMetric(colorVal, colorKey as MetricKey), muted: true }) },
       ]),
     }
   })
@@ -119,15 +135,16 @@ function buildAggScatterPoints(
     sizeLegend: sizeKey
       ? buildSizeLegend(metricLabelOf(sizeKey), points.map(p => p.size), v => formatMetric(v, sizeKey as MetricKey))
       : null,
-    // 色は本体と **同じ colorOfValue に同じ cmin/cmax** を渡す。別々に作ると凡例が嘘になる。
-    colorLegend: colorKey
-      ? buildColorLegend(
-          metricLabelOf(colorKey),
-          filtered.map(d => getMetric(d, colorKey as MetricKey)),
-          v => formatMetric(v, colorKey as MetricKey),
-          v => colorOfValue(v, colorIsRate, cmin, cmax, colorKey as MetricKey),
-        )
-      : null,
+    colorLegend: isCatColor
+      ? buildCategoryColorLegend(metricLabelOf(colorKey!), categories)
+      : colorKey
+        ? buildColorLegend(
+            metricLabelOf(colorKey),
+            filtered.map(d => getMetric(d, colorKey as MetricKey)),
+            v => formatMetric(v, colorKey as MetricKey),
+            v => colorOfValue(v, colorIsRate, cmin, cmax, colorKey as MetricKey),
+          )
+        : null,
   }
 }
 
@@ -142,19 +159,26 @@ const fmtBattle = (v: number | null): string =>
 function buildBattleScatterPoints(
   data: BattleRow[],
   xKey: string, yKey: string, sizeKey?: string, colorKey?: string,
+  weaponMeta?: Map<string, WeaponMeta>,
 ): ScatterBundle {
   const jitter = () => (Math.random() - 0.5) * 0.3  // ±0.15
   const applyJitter = (v: number | null): number | null =>
     v === null ? null : Math.max(0, v + jitter())
+  const isCatColor = isScatterCategoryColorKey(colorKey)
+  const categories: string[] = []
   const points = data.map(b => {
     const x = getBattleMetric(b, xKey as BattleMetricKey)
     const y = getBattleMetric(b, yKey as BattleMetricKey)
     const size = sizeKey ? getBattleMetric(b, sizeKey as BattleMetricKey) : null
+    const catVal = isCatColor ? categoryValueForBattle(b, colorKey, weaponMeta) : null
+    if (catVal) categories.push(catVal)
     let color = 'var(--accent)'
     if (colorKey === 'win_lose') {
       color = b.result === 'win'  ? 'var(--win)'
             : b.result === 'lose' ? 'var(--lose)'
             : 'var(--draw)'
+    } else if (isCatColor) {
+      color = categoryColorOf(catVal!)
     } else if (colorKey) {
       // バトル単位の連続値メトリクス。min/max は呼び出しごとに簡易計算 (ここでは accent 単色)
       color = 'var(--accent)'
@@ -180,7 +204,9 @@ function buildBattleScatterPoints(
         colorKey === 'win_lose'
           // 勝敗はメトリクスではないので、サイズ等と衝突しない専用キーで持つ
           ? { key: 'win_lose', row: () => ({ label: '勝敗', value: b.result, muted: true }) }
-          : { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: fmtBattle(getBattleMetric(b, colorKey as BattleMetricKey)), muted: true }) },
+          : isCatColor
+            ? { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: catVal!, muted: true }) }
+            : { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: fmtBattle(getBattleMetric(b, colorKey as BattleMetricKey)), muted: true }) },
       ]),
     }
   })
@@ -189,16 +215,15 @@ function buildBattleScatterPoints(
     sizeLegend: sizeKey
       ? buildSizeLegend(metricLabelOf(sizeKey), points.map(p => p.size), fmtBattle)
       : null,
-    // 勝敗だけは色が 3 値で決まるので、そのまま並べる。
-    // それ以外の色メトリクスは本体が accent 単色のまま（上の分岐参照）なので、
-    // 凡例を出すと「色が値を表している」という嘘になる。出さない。
     colorLegend: colorKey === 'win_lose'
-      ? { label: '勝敗', items: [
+      ? { label: '勝敗', layout: 'chips', items: [
           { label: '勝', color: 'var(--win)' },
           { label: '負', color: 'var(--lose)' },
           { label: '分', color: 'var(--draw)' },
         ] }
-      : null,
+      : isCatColor
+        ? buildCategoryColorLegend(metricLabelOf(colorKey!), categories)
+        : null,
   }
 }
 
@@ -311,7 +336,7 @@ function sortAndSlice(rows: GroupedStatsRow[], sortKey: MetricKey | null): Group
  *   （stacked_winrate / attack_defense のとき）。
  */
 export function CustomChartCard({
-  chart, data, data2d, battleData, onEdit, onDelete, weaponImages, since = null, until = null,
+  chart, data, data2d, battleData, onEdit, onDelete, weaponImages, weaponMeta, since = null, until = null,
 }: {
   chart:    CustomChart
   data:     GroupedStatsRow[]
@@ -323,6 +348,8 @@ export function CustomChartCard({
   onDelete: () => void
   /** 武器名 → 画像 URL の対応。X 軸が `weapon` のときラベルをアイコンに置換する。 */
   weaponImages?: Map<string, string>
+  /** 武器名 → カテゴリ/サブ/スペシャル。散布図のカテゴリ色分け（#480）用。 */
+  weaponMeta?: Map<string, WeaponMeta>
   /** カレンダー用。FilterBar の期間（#461）。 */
   since?:   string | null
   until?:   string | null
@@ -390,7 +417,7 @@ export function CustomChartCard({
           </div>
         )}
       </div>
-      {renderChartBody(chart, sliced, data2d, battleData, nameTransform, tickAngle, weaponImages, since, until)}
+      {renderChartBody(chart, sliced, data2d, battleData, nameTransform, tickAngle, weaponImages, weaponMeta, since, until)}
     </div>
   )
 }
@@ -406,6 +433,7 @@ function renderChartBody(
   nameTransform: ((s: string) => string) | undefined,
   tickAngle:     number | undefined,
   weaponImages:  Map<string, string> | undefined,
+  weaponMeta:    Map<string, WeaponMeta> | undefined,
   since:         string | null,
   until:         string | null,
 ): ReactNode {
@@ -442,8 +470,8 @@ function renderChartBody(
     }
     const isBattle = chart.dotUnit === 'battle'
     const { points, sizeLegend, colorLegend } = isBattle
-      ? buildBattleScatterPoints(battleData ?? [], chart.xMetric, chart.yMetric, chart.sizeMetric, chart.colorMetric)
-      : buildAggScatterPoints(data, chart.xMetric, chart.yMetric, chart.sizeMetric, chart.colorMetric)
+      ? buildBattleScatterPoints(battleData ?? [], chart.xMetric, chart.yMetric, chart.sizeMetric, chart.colorMetric, weaponMeta)
+      : buildAggScatterPoints(data, chart.xMetric, chart.yMetric, chart.sizeMetric, chart.colorMetric, weaponMeta)
     return (
       <ScatterChart
         points={points}

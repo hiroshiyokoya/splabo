@@ -5,6 +5,7 @@ import {
   IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, scatterMetricOptions,
   BATTLE_NUMERIC_METRIC_LABELS, BATTLE_NUMERIC_DEFAULT_BIN, axisGroupOf, AXIS_GROUP_LABELS, chartMetrics,
 } from '../types'
+import { SCATTER_CATEGORY_COLOR_KEYS } from '../utils/scatterCategoryColors'
 
 /**
  * 比率メトリクスか (#381)。**ログスケールを無効化する判定**に使う。
@@ -506,11 +507,16 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                   {scatterMetricOptions(dotUnit).map(o => (
                     <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
+                  {(dotUnit === 'weapon' || dotUnit === 'battle') && SCATTER_CATEGORY_COLOR_KEYS.map(k => (
+                    <option key={k} value={k}>{GROUP_BY_LABELS[k]}</option>
+                  ))}
                 </select>
                 <p className="form-hint">
                   {dotUnit === 'battle'
-                    ? '勝敗を選ぶと勝/負/分で 3 色に塗り分け。'
-                    : '勝率は divergent (赤↔青)、それ以外は accent の濃淡。'}
+                    ? '勝敗、または武器カテゴリ・サブ・スペシャルで色分けできます。'
+                    : dotUnit === 'weapon'
+                      ? '数値指標のほか、武器カテゴリ・サブ・スペシャルで色分けできます。'
+                      : '勝率は divergent (赤↔青)、それ以外は accent の濃淡。'}
                 </p>
               </div>
             </>
