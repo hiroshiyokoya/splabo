@@ -960,7 +960,7 @@ export function EnvAnalysis() {
                     >既定の並び</button>
                   )}
                 </div>
-                {bothWeapon ? (
+                {bothWeaponSlot ? (
                   <p className="env-no-data">武器 × 武器は非対応です。一方をステージ/ルール/ロビーにしてください。</p>
                 ) : (
                   <Heatmap
