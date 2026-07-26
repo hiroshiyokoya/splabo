@@ -1,7 +1,9 @@
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { flushSync } from 'react-dom'
 import {
   ScatterChart as RScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts'
+import { PANEL_EXPORT_PREPARE_EVENT } from '../../utils/panelExport'
 
 /**
  * 散布図 (presentational)。
@@ -145,6 +147,15 @@ function markerElement(
   }
 }
 
+/** Recharts のホバー/クリック payload と描画 props が同じ点か（座標で判定）。 */
+function sameScatterAnchor(
+  a: { cx?: number; cy?: number } | null | undefined,
+  b: { cx?: number; cy?: number } | null | undefined,
+): boolean {
+  if (!a || !b || a.cx == null || a.cy == null || b.cx == null || b.cy == null) return false
+  return Math.abs(a.cx - b.cx) < 0.5 && Math.abs(a.cy - b.cy) < 0.5
+}
+
 /** Recharts Scatter の shape コールバック。payload.markerShape を読む。 */
 function scatterPointShape(props: {
   cx?: number
@@ -155,39 +166,78 @@ function scatterPointShape(props: {
   stroke?: string
   strokeWidth?: number
   payload?: ScatterPoint
+  /** ツールチップ対象の点。カーソルが写らない画像保存でも対応点が分かるように強調する。 */
+  active?: boolean
 }) {
   const cx = props.cx ?? 0
   const cy = props.cy ?? 0
   const area = props.size ?? 120
   const r = Math.sqrt(Math.max(area, 0) / Math.PI)
   const shape = props.payload?.markerShape ?? 'circle'
+  const baseOpacity = props.fillOpacity ?? 0.55
   const common = {
     fill: props.fill ?? props.payload?.color ?? 'var(--accent)',
-    fillOpacity: props.fillOpacity ?? 0.55,
-    stroke: props.stroke ?? 'var(--surface)',
-    strokeWidth: props.strokeWidth ?? 0.5,
+    fillOpacity: props.active ? Math.min(1, baseOpacity + 0.4) : baseOpacity,
+    stroke: props.active ? 'var(--text)' : (props.stroke ?? 'var(--surface)'),
+    strokeWidth: props.active ? 2 : (props.strokeWidth ?? 0.5),
   }
   // data 属性はツールチップ配置時に描画済みドットの実座標を読むために使う（#497）。
   // g で包んで Recharts のヒット領域も保つ。
-  return <g data-scatter-point="true">{markerElement(shape, cx, cy, r, common)}</g>
+  // アクティブ点は外側にハローを足して、画像にカーソルが無くても対応点が分かるようにする。
+  return (
+    <g data-scatter-point="true" data-scatter-active={props.active ? 'true' : undefined}>
+      {props.active && (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={r + 4}
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth={2}
+          opacity={0.95}
+          pointerEvents="none"
+        />
+      )}
+      {markerElement(shape, cx, cy, r, common)}
+    </g>
+  )
 }
 
-type TooltipDirection = 'right' | 'left' | 'bottom' | 'top'
+type TooltipDirection =
+  | 'right' | 'left' | 'bottom' | 'top'
+  | 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left'
 type TooltipPlacement = { left: number; top: number; direction: TooltipDirection }
 type ObstacleRect = { left: number; top: number; right: number; bottom: number }
 
 const TOOLTIP_GAP = 14
 const TOOLTIP_EDGE_PAD = 6
 const DOT_AVOID_PAD = 4
+/** 画像保存時はドット同士の隙間を広めに見て、被りゼロを狙いやすくする。 */
+const EXPORT_DOT_AVOID_PAD = 10
+/** アクティブ点（ハロー込み）とツールチップの間に最低限空ける余白。 */
+const ANCHOR_CLEARANCE = 8
+
+function rectsOverlap(
+  a: { left: number; top: number; right: number; bottom: number },
+  b: { left: number; top: number; right: number; bottom: number },
+): { overlap: boolean; area: number } {
+  const overlapW = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left))
+  const overlapH = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
+  const area = overlapW * overlapH
+  return { overlap: area > 0, area }
+}
 
 /**
- * ホバー点の上下左右から、ドットを最も隠さないツールチップ位置を選ぶ（#497）。
+ * ホバー点の周囲から、ドットを最も隠さないツールチップ位置を選ぶ（#497）。
  *
  * 優先順位:
+ * 0. **自分のドットを隠さない**（端補正でスライドしても被らない方向を最優先）
  * 1. 重なるドット数が少ない
  * 2. 重なり面積が小さい
  * 3. 端からはみ出さないための補正量が小さい
  * 4. 同程度ならグラフ中心から外側へ向かう
+ *
+ * `richCandidates`（画像保存時）では斜め・遠めの候補も足して、他ドットとの被りゼロを狙いやすくする。
  */
 export function chooseScatterTooltipPlacement({
   anchorX,
@@ -197,6 +247,10 @@ export function chooseScatterTooltipPlacement({
   chartWidth,
   chartHeight,
   obstacles,
+  anchorObstacle,
+  gap = TOOLTIP_GAP,
+  dotAvoidPad = DOT_AVOID_PAD,
+  richCandidates = false,
 }: {
   anchorX: number
   anchorY: number
@@ -205,7 +259,17 @@ export function chooseScatterTooltipPlacement({
   chartWidth: number
   chartHeight: number
   obstacles: ObstacleRect[]
+  /** ツールチップ対象のドット。他点より優先して絶対に隠さない。 */
+  anchorObstacle?: ObstacleRect | null
+  /** ドット外縁からツールチップまでの距離。ハロー込みサイズに合わせて呼び出し側が広げる。 */
+  gap?: number
+  /** 他ドットを避けるときの外縁パディング。 */
+  dotAvoidPad?: number
+  /** 斜め・遠め候補を足す（画像保存向け）。 */
+  richCandidates?: boolean
 }): TooltipPlacement {
+  const g = gap
+  const g2 = gap * 2
   const candidates: {
     direction: TooltipDirection
     left: number
@@ -213,35 +277,65 @@ export function chooseScatterTooltipPlacement({
     dx: number
     dy: number
   }[] = [
-    { direction: 'right',  left: anchorX + TOOLTIP_GAP,                top: anchorY - tooltipHeight / 2, dx:  1, dy:  0 },
-    { direction: 'left',   left: anchorX - TOOLTIP_GAP - tooltipWidth, top: anchorY - tooltipHeight / 2, dx: -1, dy:  0 },
-    { direction: 'bottom', left: anchorX - tooltipWidth / 2,           top: anchorY + TOOLTIP_GAP,      dx:  0, dy:  1 },
-    { direction: 'top',    left: anchorX - tooltipWidth / 2,           top: anchorY - TOOLTIP_GAP - tooltipHeight, dx: 0, dy: -1 },
+    { direction: 'right',  left: anchorX + g,                top: anchorY - tooltipHeight / 2, dx:  1, dy:  0 },
+    { direction: 'left',   left: anchorX - g - tooltipWidth, top: anchorY - tooltipHeight / 2, dx: -1, dy:  0 },
+    { direction: 'bottom', left: anchorX - tooltipWidth / 2, top: anchorY + g,                dx:  0, dy:  1 },
+    { direction: 'top',    left: anchorX - tooltipWidth / 2, top: anchorY - g - tooltipHeight, dx:  0, dy: -1 },
   ]
+  if (richCandidates) {
+    candidates.push(
+      { direction: 'top-right',    left: anchorX + g,                top: anchorY - g - tooltipHeight, dx:  1, dy: -1 },
+      { direction: 'top-left',     left: anchorX - g - tooltipWidth, top: anchorY - g - tooltipHeight, dx: -1, dy: -1 },
+      { direction: 'bottom-right', left: anchorX + g,                top: anchorY + g,                dx:  1, dy:  1 },
+      { direction: 'bottom-left',  left: anchorX - g - tooltipWidth, top: anchorY + g,                dx: -1, dy:  1 },
+      // 密集時用に、軸方向へさらに離した候補。
+      { direction: 'right',  left: anchorX + g2,                top: anchorY - tooltipHeight / 2, dx:  1, dy:  0 },
+      { direction: 'left',   left: anchorX - g2 - tooltipWidth, top: anchorY - tooltipHeight / 2, dx: -1, dy:  0 },
+      { direction: 'bottom', left: anchorX - tooltipWidth / 2,  top: anchorY + g2,               dx:  0, dy:  1 },
+      { direction: 'top',    left: anchorX - tooltipWidth / 2,  top: anchorY - g2 - tooltipHeight, dx: 0, dy: -1 },
+      // 近傍がすべて他ドットに被るとき用に、プロット四隅へ退避。
+      { direction: 'top-right',    left: chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD, top: TOOLTIP_EDGE_PAD, dx:  1, dy: -1 },
+      { direction: 'top-left',     left: TOOLTIP_EDGE_PAD, top: TOOLTIP_EDGE_PAD, dx: -1, dy: -1 },
+      { direction: 'bottom-right', left: chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD, top: chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD, dx:  1, dy:  1 },
+      { direction: 'bottom-left',  left: TOOLTIP_EDGE_PAD, top: chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD, dx: -1, dy:  1 },
+    )
+  }
 
   const maxLeft = Math.max(TOOLTIP_EDGE_PAD, chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD)
   const maxTop = Math.max(TOOLTIP_EDGE_PAD, chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD)
   const outwardX = (anchorX - chartWidth / 2) / Math.max(chartWidth / 2, 1)
   const outwardY = (anchorY - chartHeight / 2) / Math.max(chartHeight / 2, 1)
 
+  const anchorAvoid = anchorObstacle
+    ? {
+        left:   anchorObstacle.left - dotAvoidPad,
+        top:    anchorObstacle.top - dotAvoidPad,
+        right:  anchorObstacle.right + dotAvoidPad,
+        bottom: anchorObstacle.bottom + dotAvoidPad,
+      }
+    : null
+
   const scored = candidates.map(candidate => {
     const left = Math.min(Math.max(candidate.left, TOOLTIP_EDGE_PAD), maxLeft)
     const top = Math.min(Math.max(candidate.top, TOOLTIP_EDGE_PAD), maxTop)
-    const right = left + tooltipWidth
-    const bottom = top + tooltipHeight
+    const tip = { left, top, right: left + tooltipWidth, bottom: top + tooltipHeight }
+
+    // 自分の点を隠すかどうかは他ドットより重い。端へ寄せた結果の被りもここで拾う。
+    const anchorHit = anchorAvoid ? rectsOverlap(tip, anchorAvoid) : { overlap: false, area: 0 }
 
     let overlapCount = 0
     let overlapArea = 0
     for (const dot of obstacles) {
-      const dotLeft = dot.left - DOT_AVOID_PAD
-      const dotTop = dot.top - DOT_AVOID_PAD
-      const dotRight = dot.right + DOT_AVOID_PAD
-      const dotBottom = dot.bottom + DOT_AVOID_PAD
-      const overlapW = Math.max(0, Math.min(right, dotRight) - Math.max(left, dotLeft))
-      const overlapH = Math.max(0, Math.min(bottom, dotBottom) - Math.max(top, dotTop))
-      if (overlapW > 0 && overlapH > 0) {
+      const expanded = {
+        left:   dot.left - dotAvoidPad,
+        top:    dot.top - dotAvoidPad,
+        right:  dot.right + dotAvoidPad,
+        bottom: dot.bottom + dotAvoidPad,
+      }
+      const hit = rectsOverlap(tip, expanded)
+      if (hit.overlap) {
         overlapCount += 1
-        overlapArea += overlapW * overlapH
+        overlapArea += hit.area
       }
     }
 
@@ -251,6 +345,8 @@ export function chooseScatterTooltipPlacement({
       left,
       top,
       direction: candidate.direction,
+      anchorCovered: anchorHit.overlap ? 1 : 0,
+      anchorOverlapArea: anchorHit.area,
       overlapCount,
       overlapArea,
       clampDistance,
@@ -260,6 +356,8 @@ export function chooseScatterTooltipPlacement({
 
   // 数値の重み付けではなく辞書順で比較し、上記の優先順位を厳密に守る。
   scored.sort((a, b) =>
+    a.anchorCovered - b.anchorCovered ||
+    a.anchorOverlapArea - b.anchorOverlapArea ||
     a.overlapCount - b.overlapCount ||
     a.overlapArea - b.overlapArea ||
     a.clampDistance - b.clampDistance ||
@@ -308,7 +406,7 @@ export const isLogPlottable = (v: number | null): v is number =>
  * ログ軸はログ空間がピクセルに線形対応するので、余白も加算ではなく**乗除**で作る。
  * span に対する割合で広げるので、データの桁数によらず見た目の余白が一定になる。
  */
-const LOG_PAD_RATIO = 0.05  // 軸長に対する片側の余白
+const LOG_PAD_RATIO = 0.12  // 選択ハロー込みでも端で切れないよう、少し広めに取る
 
 export function logDomain(values: number[]): [number, number] | null {
   const usable = values.filter(v => Number.isFinite(v) && v > 0)
@@ -372,6 +470,37 @@ export function logTicks(domain: [number, number], maxTicks = 10): number[] | nu
  *  🔴 凡例の円と実際のドットを一致させるため、ZAxis に渡す range と凡例の面積計算は
  *  **必ずこの定数を共有する**。片方だけ変えると凡例が嘘になる。 */
 export const SIZE_AREA_RANGE: [number, number] = [40, 600]
+
+/**
+ * 軸端に確保する描画余白（px）。
+ *
+ * 最大ドットは area=600 → 半径約 13.8px。選択時はさらにハロー 4px＋線幅・角形の対角が付くため、
+ * 28px 確保する。あわせてドメイン側も広げて、clipPath 内に収める。
+ */
+const SCATTER_EDGE_PADDING = 28
+
+/**
+ * 線形ドメインを値空間で広げ、上下限の点が軸線・clip に乗らないようにする。
+ * （Axis padding だけだとログ軸の clip や nice tick の都合で足りないことがある）
+ */
+function expandLinearDomain(
+  domain: [number, number] | undefined,
+  opts: { rate01?: boolean } = {},
+): [number, number] | undefined {
+  if (!domain) return undefined
+  const [lo, hi] = domain
+  const span = Math.max(hi - lo, opts.rate01 ? 0.05 : 1e-6)
+  const pad = span * 0.1
+  let nlo = lo - pad
+  let nhi = hi + pad
+  if (opts.rate01) {
+    nlo = Math.max(0, nlo)
+    nhi = Math.min(1, nhi)
+  } else if (lo >= 0) {
+    nlo = Math.max(0, nlo)
+  }
+  return [nlo, nhi]
+}
 
 /** 有限な値だけの min/max。値が無いときは null。 */
 function finiteRange(values: (number | null | undefined)[]): { min: number; max: number } | null {
@@ -544,9 +673,14 @@ export function ScatterChart({
   colorLegend?: ColorLegend | null
 }) {
   const [hover, setHover] = useState<ScatterPoint | null>(null)
+  // クリックでピン留め。保存ボタンへマウスを移してもツールチップが消えないようにする。
+  const [pinned, setPinned] = useState<ScatterPoint | null>(null)
   const [tooltipPlacement, setTooltipPlacement] = useState<TooltipPlacement | null>(null)
+  // 画像保存直前に立てる。配置を斜め・遠め候補込みでやり直す。
+  const [exportLayout, setExportLayout] = useState(false)
   const areaRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
+  const active = hover ?? pinned
 
   // X / Y どちらか null は描画対象外
   const plotted = useMemo(() => points.filter(p => p.x !== null && p.y !== null), [points])
@@ -580,6 +714,15 @@ export function ScatterChart({
   const xLog = xLogDomain !== null
   const yLog = yLogDomain !== null
 
+  // 端のマーカーが切れないよう、線形ドメインは値空間でも少し広げる。
+  // ログ軸は logDomain 側の余白を使う。
+  const xAxisDomain = xLogDomain
+    ?? expandLinearDomain(xDomain, { rate01: xIsRate })
+    ?? (xIsRate ? expandLinearDomain([0, 1], { rate01: true }) : undefined)
+  const yAxisDomain = yLogDomain
+    ?? expandLinearDomain(yDomain, { rate01: yIsRate })
+    ?? (yIsRate ? expandLinearDomain([0, 1], { rate01: true }) : undefined)
+
   // groupKey → siblings: 重なり判定用に同一 groupKey の点を集約
   const siblings = useMemo(() => {
     const m = new Map<string, ScatterPoint[]>()
@@ -592,7 +735,7 @@ export function ScatterChart({
     return m
   }, [drawable])
 
-  const hoverSiblings = hover?.groupKey ? (siblings.get(hover.groupKey) ?? [hover]) : (hover ? [hover] : [])
+  const hoverSiblings = active?.groupKey ? (siblings.get(active.groupKey) ?? [active]) : (active ? [active] : [])
   const ROW_LIMIT = 12
 
   // サイズ範囲 (sqrt スケール)。指定なしは ZAxis で一定サイズ。
@@ -601,27 +744,46 @@ export function ScatterChart({
 
   // ツールチップを一度 hidden で描画して実寸を測り、上下左右の最適位置へ移す。
   // マーカーも DOM の実寸を読むため、形・サイズ指標の有無にかかわらず避けられる（#497）。
+  // 自分の点（ハロー込み）は他点より優先して隠さない。
   useLayoutEffect(() => {
     const area = areaRef.current
     const tooltip = tooltipRef.current
-    if (!hover || !area || !tooltip) return
+    if (!active || !area || !tooltip) return
 
-    const anchorX = (hover as unknown as { cx?: number }).cx ?? 0
-    const anchorY = (hover as unknown as { cy?: number }).cy ?? 0
+    const anchorX = (active as unknown as { cx?: number }).cx ?? 0
+    const anchorY = (active as unknown as { cy?: number }).cy ?? 0
     const areaRect = area.getBoundingClientRect()
     const tooltipRect = tooltip.getBoundingClientRect()
 
-    const obstacles = [...area.querySelectorAll<SVGGElement>('[data-scatter-point="true"]')]
-      .map(marker => {
-        const rect = marker.getBoundingClientRect()
-        return {
-          left: rect.left - areaRect.left,
-          top: rect.top - areaRect.top,
-          right: rect.right - areaRect.left,
-          bottom: rect.bottom - areaRect.top,
+    const toLocal = (rect: DOMRect): ObstacleRect => ({
+      left:   rect.left - areaRect.left,
+      top:    rect.top - areaRect.top,
+      right:  rect.right - areaRect.left,
+      bottom: rect.bottom - areaRect.top,
+    })
+
+    const markers = [...area.querySelectorAll<SVGGElement>('[data-scatter-point="true"]')]
+    const activeMarker = area.querySelector<SVGGElement>('[data-scatter-active="true"]')
+    const anchorObstacle = activeMarker
+      ? toLocal(activeMarker.getBoundingClientRect())
+      : {
+          left:   anchorX - 6,
+          top:    anchorY - 6,
+          right:  anchorX + 6,
+          bottom: anchorY + 6,
         }
-      })
-      // ホバー点自身と、完全に同じ座標に重なった兄弟点は障害物から除く。
+
+    // ハロー込みの外接円半径＋余白。固定 14px だと大きいドットにツールチップが被る。
+    const anchorHalf = Math.max(
+      (anchorObstacle.right - anchorObstacle.left) / 2,
+      (anchorObstacle.bottom - anchorObstacle.top) / 2,
+    )
+    const gap = Math.max(TOOLTIP_GAP, Math.ceil(anchorHalf + ANCHOR_CLEARANCE))
+
+    const obstacles = markers
+      .map(marker => toLocal(marker.getBoundingClientRect()))
+      // アクティブ点自身と、完全に同じ座標に重なった兄弟点は通常障害物から除く
+      // （自分への被りは anchorObstacle 側で最優先に扱う）。
       .filter(rect => {
         const centerX = (rect.left + rect.right) / 2
         const centerY = (rect.top + rect.bottom) / 2
@@ -636,20 +798,60 @@ export function ScatterChart({
       chartWidth: area.clientWidth,
       chartHeight: height,
       obstacles,
+      anchorObstacle,
+      gap,
+      dotAvoidPad: exportLayout ? EXPORT_DOT_AVOID_PAD : DOT_AVOID_PAD,
+      richCandidates: exportLayout,
     }))
-  }, [hover, hoverSiblings.length, height])
+  }, [active, hoverSiblings.length, height, exportLayout])
 
-  const clearHover = () => {
-    setHover(null)
-    setTooltipPlacement(null)
-  }
+  // チャート上から保存ボタンへ移ってもツールチップを残す。
+  // 消すのは「パネル全体」から出たときだけ（.chart-card / .env-chart-section）。
+  const pinnedRef = useRef(pinned)
+  pinnedRef.current = pinned
+  useEffect(() => {
+    const area = areaRef.current
+    if (!area) return
+    const panel = area.closest('.chart-card, .env-chart-section')
+    if (!panel) return
+
+    const onPanelLeave = (e: Event) => {
+      const related = (e as MouseEvent).relatedTarget as Node | null
+      if (related && panel.contains(related)) return
+      setHover(null)
+      // ピン留め中はパネル外でも残す（明示クリック解除まで）。
+      if (!pinnedRef.current) setTooltipPlacement(null)
+    }
+    const onExportPrepare = () => {
+      // キャプチャ前に同期で配置し直す（次フレーム待ちだけでは React 更新が間に合わない）。
+      flushSync(() => setExportLayout(true))
+    }
+    panel.addEventListener('mouseleave', onPanelLeave)
+    panel.addEventListener(PANEL_EXPORT_PREPARE_EVENT, onExportPrepare)
+    return () => {
+      panel.removeEventListener('mouseleave', onPanelLeave)
+      panel.removeEventListener(PANEL_EXPORT_PREPARE_EVENT, onExportPrepare)
+    }
+  }, [])
+
+  // 保存が終わって is-exporting が外れたら、通常の配置モードに戻す。
+  useEffect(() => {
+    const area = areaRef.current
+    if (!area) return
+    const panel = area.closest('.chart-card, .env-chart-section')
+    if (!panel) return
+    const obs = new MutationObserver(() => {
+      if (!panel.classList.contains('is-exporting')) setExportLayout(false)
+    })
+    obs.observe(panel, { attributes: true, attributeFilter: ['class'] })
+    return () => obs.disconnect()
+  }, [])
 
   return (
     <div className="chart-hover-area" ref={areaRef} style={{ position: 'relative' }}>
     <ResponsiveContainer width="100%" height={height}>
       <RScatterChart
-        margin={{ top: 4, right: 8, left: 0, bottom: 24 }}
-        onMouseLeave={clearHover}
+        margin={{ top: 20, right: 18, left: 0, bottom: 28 }}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         {/* ログ軸では 0 以下の基準線は載らない（extendDomain で軸ごと壊れるため出さない）。 */}
@@ -663,11 +865,12 @@ export function ScatterChart({
           type="number"
           dataKey="x"
           name={xLabel}
+          padding={{ left: SCATTER_EDGE_PADDING, right: SCATTER_EDGE_PADDING }}
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           tickFormatter={xIsRate ? fmtRateTick : fmtTick}
           scale={xLog ? 'log' : 'auto'}
           allowDataOverflow={xLog}
-          domain={xLogDomain ?? xDomain ?? (xIsRate ? [0, 1] : ['auto', 'auto'])}
+          domain={xAxisDomain ?? ['auto', 'auto']}
           ticks={xTicks ?? undefined}
           label={{ value: xLabel, position: 'insideBottom', offset: -10, fill: 'var(--text)', fontSize: 11, fontWeight: 600 } as object}
         />
@@ -675,23 +878,35 @@ export function ScatterChart({
           type="number"
           dataKey="y"
           name={yLabel}
+          padding={{ top: SCATTER_EDGE_PADDING, bottom: SCATTER_EDGE_PADDING }}
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           width={56}
           tickFormatter={yIsRate ? fmtRateTick : fmtTick}
           scale={yLog ? 'log' : 'auto'}
           allowDataOverflow={yLog}
-          domain={yLogDomain ?? yDomain ?? (yIsRate ? [0, 1] : ['auto', 'auto'])}
+          domain={yAxisDomain ?? ['auto', 'auto']}
           ticks={yTicks ?? undefined}
           label={{ value: yLabel, angle: -90, position: 'insideLeft', offset: 12, fill: 'var(--text)', fontSize: 11, fontWeight: 600, style: { textAnchor: 'middle' } } as object}
         />
         <ZAxis type="number" dataKey="size" range={zRange} />
         <Scatter
           data={drawable}
-          shape={scatterPointShape}
+          shape={(props: any) => scatterPointShape({
+            ...props,
+            fillOpacity,
+            active: sameScatterAnchor(props, active as { cx?: number; cy?: number } | null),
+          })}
           onMouseEnter={(p: any) => {
             // 同じ点へ入り直した場合も再計測するため、新しいオブジェクトとして保持する。
             setTooltipPlacement(null)
             setHover({ ...p })
+          }}
+          onClick={(p: any) => {
+            // クリックでピン留め／再クリックで解除。画像保存前に点を固定できる。
+            const next = { ...p }
+            setPinned(prev => sameScatterAnchor(prev as { cx?: number; cy?: number } | null, next) ? null : next)
+            setTooltipPlacement(null)
+            setHover(next)
           }}
           isAnimationActive={false}
         >
@@ -716,10 +931,10 @@ export function ScatterChart({
         {droppedByLog} 件を非表示（ログ軸に載らない 0 以下・∞）
       </div>
     )}
-    {hover && (() => {
-      // 初回はホバー点位置へ hidden で描画し、useLayoutEffect で実寸計測後に表示する。
-      const hx = (hover as unknown as { cx?: number }).cx ?? 0
-      const hy = (hover as unknown as { cy?: number }).cy ?? 0
+    {active && (() => {
+      // 初回はアクティブ点位置へ hidden で描画し、useLayoutEffect で実寸計測後に表示する。
+      const hx = (active as unknown as { cx?: number }).cx ?? 0
+      const hy = (active as unknown as { cy?: number }).cy ?? 0
       const tipStyle: CSSProperties = {
         position: 'absolute',
         left: tooltipPlacement?.left ?? hx,
@@ -740,7 +955,7 @@ export function ScatterChart({
         {hoverSiblings.length > 1 ? (
           <>
             {/* 重なってる全件: 共通の x/y 等を 1 回 + 各点の rowText を並べる */}
-            <div className="hover-tt-title">{hover.tooltipRows.slice(0, 2).map(r => `${r.label} ${r.value}`).join(' / ')} <span className="hover-tt-row--muted">({hoverSiblings.length} 件)</span></div>
+            <div className="hover-tt-title">{active.tooltipRows.slice(0, 2).map(r => `${r.label} ${r.value}`).join(' / ')} <span className="hover-tt-row--muted">({hoverSiblings.length} 件)</span></div>
             {hoverSiblings.slice(0, ROW_LIMIT).map((p, i) => (
               <div key={i} className="hover-tt-row hover-tt-row--muted">{p.rowText ?? p.name}</div>
             ))}
@@ -751,10 +966,10 @@ export function ScatterChart({
         ) : (
           <>
             <div className="hover-tt-title">
-              {hover.iconUrl && <img className="hover-tt-icon" src={hover.iconUrl} alt="" />}
-              {hover.name}
+              {active.iconUrl && <img className="hover-tt-icon" src={active.iconUrl} alt="" />}
+              {active.name}
             </div>
-            {hover.tooltipRows.map((r, i) => (
+            {active.tooltipRows.map((r, i) => (
               <div key={i} className={r.muted ? 'hover-tt-row hover-tt-row--muted' : 'hover-tt-row'}>
                 {r.label}: {r.value}
               </div>

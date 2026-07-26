@@ -42,6 +42,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 tiny_http = { workspace = true }
 mdns-sd = { workspace = true }
 if-addrs = { workspace = true }
+tauri-plugin-dialog = "2"
 
 # Windows のみ: コンパニオン接続の自己診断（#363・companion.rs の detect_network_category）。
 # Network List Manager（COM）でネットワークプロファイル（Public/Private/Domain）を判定する。

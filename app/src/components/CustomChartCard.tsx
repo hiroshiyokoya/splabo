@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, MetricKey, BattleMetricKey } from '../types'
@@ -22,6 +22,8 @@ import {
   isScatterCategoryColorKey, categoryStyleOf, buildCategoryColorLegend,
   categoryValueForWeaponName, categoryValueForBattle, type WeaponMeta,
 } from '../utils/scatterCategoryColors'
+import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
+import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 
 /** 1 バトル単位の散布図メトリクス値を BattleRow から計算する。 */
 function getBattleMetric(b: BattleRow, k: BattleMetricKey): number | null {
@@ -344,7 +346,8 @@ function sortAndSlice(rows: GroupedStatsRow[], sortKey: MetricKey | null): Group
  *   （stacked_winrate / attack_defense のとき）。
  */
 export function CustomChartCard({
-  chart, data, data2d, battleData, onEdit, onDelete, weaponImages, weaponMeta, since = null, until = null,
+  chart, data, data2d, battleData, onEdit, onDelete, weaponImages, weaponMeta,
+  since = null, until = null, filterSummary = '',
 }: {
   chart:    CustomChart
   data:     GroupedStatsRow[]
@@ -361,6 +364,8 @@ export function CustomChartCard({
   /** カレンダー用。FilterBar の期間（#461）。 */
   since?:   string | null
   until?:   string | null
+  /** 画像保存時に焼き込む絞り込み条件（#500）。 */
+  filterSummary?: string
 }) {
   const sortable = useSortable({ id: chart.id })
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable
@@ -396,11 +401,21 @@ export function CustomChartCard({
   // #401: チャート種別・データ規模から決めるグリッドスパン（standard / wide / full）。
   const spanClass = SPAN_CLASS[chartSpan(chart, data, data2d)]
 
+  // 画像保存（#500）。dnd-kit の ref と両立させるため、コールバック ref で両方へ渡す。
+  // 毎レンダーで関数が変わると React が ref を付け外しして dnd-kit の登録が揺れるので固定する。
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  const setRefs = useCallback((el: HTMLDivElement | null) => {
+    setNodeRef(el)
+    cardRef.current = el
+  }, [setNodeRef])
+  const title = autoChartTitle(chart)
+
   return (
-    <div className={`chart-card custom-chart-card${spanClass ? ` ${spanClass}` : ''}`} ref={setNodeRef} style={style}>
-      {/* 上段：ドラッグ・設定・削除（カスタムグラフ専用）。
+    <div className={`chart-card custom-chart-card${spanClass ? ` ${spanClass}` : ''}`} ref={setRefs} style={style}>
+      <PanelExportLogo />
+      {/* 上段：ドラッグ・設定・削除・画像保存（カスタムグラフ専用）。
           こうすることで下の chart-card-header は固定 4 グラフと同じ「title | 並び替え」レイアウトになる。 */}
-      <div className="custom-chart-toprow">
+      <div className={`custom-chart-toprow ${EXPORT_HIDE_CLASS}`}>
         <button
           className="custom-chart-handle"
           {...attributes}
@@ -408,13 +423,14 @@ export function CustomChartCard({
           aria-label="並び替え"
           title="ドラッグで並び替え"
         >⋮⋮</button>
+        <PanelExportButton targetRef={cardRef} screen="ダッシュボード" panel={title} />
         <button className="custom-chart-btn" onClick={onEdit}   aria-label="設定" title="設定">⚙</button>
         <button className="custom-chart-btn" onClick={onDelete} aria-label="削除" title="削除">✕</button>
       </div>
       <div className="chart-card-header">
-        <h3 className="chart-title">{autoChartTitle(chart)}</h3>
+        <h3 className="chart-title">{title}</h3>
         {sortOptions.length > 0 && (
-          <div className="chart-sort-btns">
+          <div className={`chart-sort-btns ${EXPORT_HIDE_CLASS}`}>
             {sortOptions.map(o => (
               <button
                 key={o.key}
@@ -425,6 +441,7 @@ export function CustomChartCard({
           </div>
         )}
       </div>
+      <PanelExportCaption conditions={filterSummary} />
       {renderChartBody(chart, sliced, data2d, battleData, nameTransform, tickAngle, weaponImages, weaponMeta, since, until)}
     </div>
   )
