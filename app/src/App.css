@@ -470,29 +470,42 @@ body {
   opacity: 0.85;
 }
 
-/* 画像右上の splabo ロゴ。通常は非表示。キャプチャ中だけパネル右上に重ねる。 */
-.panel-export-logo {
+/* 画像右上の splabo ブランディング。通常は非表示。キャプチャ中だけパネル右上に重ねる。 */
+.panel-export-brand {
   display: none;
 }
 .is-exporting {
   position: relative;
 }
-.is-exporting .panel-export-logo {
-  display: block;
+.is-exporting .panel-export-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
   position: absolute;
-  top: 14px;
+  top: 12px;
   right: 14px;
-  height: 28px;
-  width: auto;
   z-index: 2;
   pointer-events: none;
-  /* 操作ボタンがあった位置に被せるので、タイトルが長いときも押し出さない。 */
+}
+.is-exporting .panel-export-logo {
+  display: block;
+  height: 44px;
+  width: auto;
   opacity: 0.95;
 }
-/* ロゴ幅ぶんタイトルを避ける（高さ 28px × アスペクト ≈ 74px + 余白）。 */
+.is-exporting .panel-export-github {
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  opacity: 0.9;
+}
+/* ロゴ＋ URL 幅ぶんタイトルを避ける（高さ 44px × アスペクト ≈ 116px + 余白）。 */
 .is-exporting .chart-card-header,
 .is-exporting .env-chart-title-row {
-  padding-right: 90px;
+  padding-right: 140px;
 }
 
 .dashboard-add-row {

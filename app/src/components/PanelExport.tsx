@@ -3,11 +3,14 @@
  *
  * - `PanelExportButton` … パネルのヘッダに置く保存ボタン。押すと保存ダイアログが出る。
  * - `PanelExportCaption` … 画像にだけ入る「タイトル下の絞り込み条件」ブロック。
- * - `PanelExportLogo`   … 画像にだけ入る右上の splabo ロゴ。
+ * - `PanelExportLogo`   … 画像にだけ入る右上の splabo ロゴ＋ GitHub URL。
  *   画面では非表示（`.is-exporting` のときだけ表示）なので、通常のレイアウトは変わらない。
  */
 import { useState, type RefObject } from 'react'
 import { EXPORT_HIDE_CLASS, savePanelAsJpeg } from '../utils/panelExport'
+
+/** 保存画像に焼き込むリポジトリ URL（スキーム無しの方が画像内で読みやすい）。 */
+const SPLABO_GITHUB = 'github.com/hiroshiyokoya/splabo'
 
 interface ButtonProps {
   /** キャプチャ対象（パネルの外枠）。 */
@@ -76,17 +79,19 @@ export function PanelExportNote({ note }: { note: string }) {
 }
 
 /**
- * 画像右上に焼き込む splabo ロゴ。
- * キャプチャ対象パネルの直下（またはパネル内のどこか）に置けば、`.is-exporting` 中だけ右上に出る。
+ * 画像右上に焼き込む splabo ブランディング（ロゴ＋ GitHub URL）。
+ * キャプチャ対象パネル内に置けば、`.is-exporting` 中だけ右上に出る。
  */
 export function PanelExportLogo() {
   return (
-    <img
-      className="panel-export-logo"
-      src="/splabo-logo.png"
-      alt=""
-      aria-hidden="true"
-      draggable={false}
-    />
+    <div className="panel-export-brand" aria-hidden="true">
+      <img
+        className="panel-export-logo"
+        src="/splabo-logo.png"
+        alt=""
+        draggable={false}
+      />
+      <div className="panel-export-github">{SPLABO_GITHUB}</div>
+    </div>
   )
 }
