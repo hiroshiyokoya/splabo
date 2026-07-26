@@ -38,7 +38,7 @@ export interface Filters {
 }
 
 export const DEFAULT_FILTERS: Filters = {
-  period: 'all',
+  period: 'current_season',
   mode: [],
   rule: [],
   result: null,
