@@ -466,6 +466,14 @@ export function logTicks(domain: [number, number], maxTicks = 10): number[] | nu
  *  **必ずこの定数を共有する**。片方だけ変えると凡例が嘘になる。 */
 export const SIZE_AREA_RANGE: [number, number] = [40, 600]
 
+/**
+ * 軸端に確保する描画余白（px）。
+ *
+ * 最大ドットは area=600 → 半径約 13.8px。選択時はさらにハロー 4px＋線幅が付くため、
+ * 22px あれば上下限・左右端の点もプロット領域内に収まり、SVG / clipPath で切れない。
+ */
+const SCATTER_EDGE_PADDING = 22
+
 /** 有限な値だけの min/max。値が無いときは null。 */
 function finiteRange(values: (number | null | undefined)[]): { min: number; max: number } | null {
   let mn = Infinity, mx = -Infinity
@@ -820,6 +828,7 @@ export function ScatterChart({
           type="number"
           dataKey="x"
           name={xLabel}
+          padding={{ left: SCATTER_EDGE_PADDING, right: SCATTER_EDGE_PADDING }}
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           tickFormatter={xIsRate ? fmtRateTick : fmtTick}
           scale={xLog ? 'log' : 'auto'}
@@ -832,6 +841,7 @@ export function ScatterChart({
           type="number"
           dataKey="y"
           name={yLabel}
+          padding={{ top: SCATTER_EDGE_PADDING, bottom: SCATTER_EDGE_PADDING }}
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           width={56}
           tickFormatter={yIsRate ? fmtRateTick : fmtTick}
