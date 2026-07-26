@@ -145,6 +145,15 @@ function markerElement(
   }
 }
 
+/** Recharts のホバー/クリック payload と描画 props が同じ点か（座標で判定）。 */
+function sameScatterAnchor(
+  a: { cx?: number; cy?: number } | null | undefined,
+  b: { cx?: number; cy?: number } | null | undefined,
+): boolean {
+  if (!a || !b || a.cx == null || a.cy == null || b.cx == null || b.cy == null) return false
+  return Math.abs(a.cx - b.cx) < 0.5 && Math.abs(a.cy - b.cy) < 0.5
+}
+
 /** Recharts Scatter の shape コールバック。payload.markerShape を読む。 */
 function scatterPointShape(props: {
   cx?: number
@@ -155,21 +164,43 @@ function scatterPointShape(props: {
   stroke?: string
   strokeWidth?: number
   payload?: ScatterPoint
+  /** ツールチップ対象の点。カーソルが写らない画像保存でも対応点が分かるように強調する。 */
+  active?: boolean
+  /** 別の点がアクティブなとき、対象外を沈めて対比を付ける。 */
+  dimmed?: boolean
 }) {
   const cx = props.cx ?? 0
   const cy = props.cy ?? 0
   const area = props.size ?? 120
   const r = Math.sqrt(Math.max(area, 0) / Math.PI)
   const shape = props.payload?.markerShape ?? 'circle'
+  const baseOpacity = props.fillOpacity ?? 0.55
   const common = {
     fill: props.fill ?? props.payload?.color ?? 'var(--accent)',
-    fillOpacity: props.fillOpacity ?? 0.55,
-    stroke: props.stroke ?? 'var(--surface)',
-    strokeWidth: props.strokeWidth ?? 0.5,
+    fillOpacity: props.active ? Math.min(1, baseOpacity + 0.4) : props.dimmed ? baseOpacity * 0.28 : baseOpacity,
+    stroke: props.active ? 'var(--text)' : (props.stroke ?? 'var(--surface)'),
+    strokeWidth: props.active ? 2 : (props.strokeWidth ?? 0.5),
   }
   // data 属性はツールチップ配置時に描画済みドットの実座標を読むために使う（#497）。
   // g で包んで Recharts のヒット領域も保つ。
-  return <g data-scatter-point="true">{markerElement(shape, cx, cy, r, common)}</g>
+  // アクティブ点は外側にハローを足して、画像にカーソルが無くても対応点が分かるようにする。
+  return (
+    <g data-scatter-point="true" data-scatter-active={props.active ? 'true' : undefined}>
+      {props.active && (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={r + 4}
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth={2}
+          opacity={0.95}
+          pointerEvents="none"
+        />
+      )}
+      {markerElement(shape, cx, cy, r, common)}
+    </g>
+  )
 }
 
 type TooltipDirection = 'right' | 'left' | 'bottom' | 'top'
@@ -544,9 +575,12 @@ export function ScatterChart({
   colorLegend?: ColorLegend | null
 }) {
   const [hover, setHover] = useState<ScatterPoint | null>(null)
+  // クリックでピン留め。保存ボタンへマウスを移してもツールチップが消えないようにする。
+  const [pinned, setPinned] = useState<ScatterPoint | null>(null)
   const [tooltipPlacement, setTooltipPlacement] = useState<TooltipPlacement | null>(null)
   const areaRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
+  const active = hover ?? pinned
 
   // X / Y どちらか null は描画対象外
   const plotted = useMemo(() => points.filter(p => p.x !== null && p.y !== null), [points])
@@ -592,7 +626,7 @@ export function ScatterChart({
     return m
   }, [drawable])
 
-  const hoverSiblings = hover?.groupKey ? (siblings.get(hover.groupKey) ?? [hover]) : (hover ? [hover] : [])
+  const hoverSiblings = active?.groupKey ? (siblings.get(active.groupKey) ?? [active]) : (active ? [active] : [])
   const ROW_LIMIT = 12
 
   // サイズ範囲 (sqrt スケール)。指定なしは ZAxis で一定サイズ。
@@ -604,10 +638,10 @@ export function ScatterChart({
   useLayoutEffect(() => {
     const area = areaRef.current
     const tooltip = tooltipRef.current
-    if (!hover || !area || !tooltip) return
+    if (!active || !area || !tooltip) return
 
-    const anchorX = (hover as unknown as { cx?: number }).cx ?? 0
-    const anchorY = (hover as unknown as { cy?: number }).cy ?? 0
+    const anchorX = (active as unknown as { cx?: number }).cx ?? 0
+    const anchorY = (active as unknown as { cy?: number }).cy ?? 0
     const areaRect = area.getBoundingClientRect()
     const tooltipRect = tooltip.getBoundingClientRect()
 
@@ -621,7 +655,7 @@ export function ScatterChart({
           bottom: rect.bottom - areaRect.top,
         }
       })
-      // ホバー点自身と、完全に同じ座標に重なった兄弟点は障害物から除く。
+      // アクティブ点自身と、完全に同じ座標に重なった兄弟点は障害物から除く。
       .filter(rect => {
         const centerX = (rect.left + rect.right) / 2
         const centerY = (rect.top + rect.bottom) / 2
@@ -637,11 +671,12 @@ export function ScatterChart({
       chartHeight: height,
       obstacles,
     }))
-  }, [hover, hoverSiblings.length, height])
+  }, [active, hoverSiblings.length, height])
 
   const clearHover = () => {
     setHover(null)
-    setTooltipPlacement(null)
+    // ピン留め中はツールチップ位置を維持（保存ボタンへ移るとき用）。
+    if (!pinned) setTooltipPlacement(null)
   }
 
   return (
@@ -687,11 +722,23 @@ export function ScatterChart({
         <ZAxis type="number" dataKey="size" range={zRange} />
         <Scatter
           data={drawable}
-          shape={scatterPointShape}
+          shape={(props: any) => scatterPointShape({
+            ...props,
+            fillOpacity,
+            active: sameScatterAnchor(props, active as { cx?: number; cy?: number } | null),
+            dimmed: active != null && !sameScatterAnchor(props, active as { cx?: number; cy?: number } | null),
+          })}
           onMouseEnter={(p: any) => {
             // 同じ点へ入り直した場合も再計測するため、新しいオブジェクトとして保持する。
             setTooltipPlacement(null)
             setHover({ ...p })
+          }}
+          onClick={(p: any) => {
+            // クリックでピン留め／再クリックで解除。画像保存前に点を固定できる。
+            const next = { ...p }
+            setPinned(prev => sameScatterAnchor(prev as { cx?: number; cy?: number } | null, next) ? null : next)
+            setTooltipPlacement(null)
+            setHover(next)
           }}
           isAnimationActive={false}
         >
@@ -716,10 +763,10 @@ export function ScatterChart({
         {droppedByLog} 件を非表示（ログ軸に載らない 0 以下・∞）
       </div>
     )}
-    {hover && (() => {
-      // 初回はホバー点位置へ hidden で描画し、useLayoutEffect で実寸計測後に表示する。
-      const hx = (hover as unknown as { cx?: number }).cx ?? 0
-      const hy = (hover as unknown as { cy?: number }).cy ?? 0
+    {active && (() => {
+      // 初回はアクティブ点位置へ hidden で描画し、useLayoutEffect で実寸計測後に表示する。
+      const hx = (active as unknown as { cx?: number }).cx ?? 0
+      const hy = (active as unknown as { cy?: number }).cy ?? 0
       const tipStyle: CSSProperties = {
         position: 'absolute',
         left: tooltipPlacement?.left ?? hx,
@@ -740,7 +787,7 @@ export function ScatterChart({
         {hoverSiblings.length > 1 ? (
           <>
             {/* 重なってる全件: 共通の x/y 等を 1 回 + 各点の rowText を並べる */}
-            <div className="hover-tt-title">{hover.tooltipRows.slice(0, 2).map(r => `${r.label} ${r.value}`).join(' / ')} <span className="hover-tt-row--muted">({hoverSiblings.length} 件)</span></div>
+            <div className="hover-tt-title">{active.tooltipRows.slice(0, 2).map(r => `${r.label} ${r.value}`).join(' / ')} <span className="hover-tt-row--muted">({hoverSiblings.length} 件)</span></div>
             {hoverSiblings.slice(0, ROW_LIMIT).map((p, i) => (
               <div key={i} className="hover-tt-row hover-tt-row--muted">{p.rowText ?? p.name}</div>
             ))}
@@ -751,10 +798,10 @@ export function ScatterChart({
         ) : (
           <>
             <div className="hover-tt-title">
-              {hover.iconUrl && <img className="hover-tt-icon" src={hover.iconUrl} alt="" />}
-              {hover.name}
+              {active.iconUrl && <img className="hover-tt-icon" src={active.iconUrl} alt="" />}
+              {active.name}
             </div>
-            {hover.tooltipRows.map((r, i) => (
+            {active.tooltipRows.map((r, i) => (
               <div key={i} className={r.muted ? 'hover-tt-row hover-tt-row--muted' : 'hover-tt-row'}>
                 {r.label}: {r.value}
               </div>
