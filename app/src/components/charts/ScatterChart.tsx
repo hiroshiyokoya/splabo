@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   ScatterChart as RScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts'
@@ -167,8 +167,106 @@ function scatterPointShape(props: {
     stroke: props.stroke ?? 'var(--surface)',
     strokeWidth: props.strokeWidth ?? 0.5,
   }
-  // g で包んで Recharts のヒット領域を保つ
-  return <g>{markerElement(shape, cx, cy, r, common)}</g>
+  // data 属性はツールチップ配置時に描画済みドットの実座標を読むために使う（#497）。
+  // g で包んで Recharts のヒット領域も保つ。
+  return <g data-scatter-point="true">{markerElement(shape, cx, cy, r, common)}</g>
+}
+
+type TooltipDirection = 'right' | 'left' | 'bottom' | 'top'
+type TooltipPlacement = { left: number; top: number; direction: TooltipDirection }
+type ObstacleRect = { left: number; top: number; right: number; bottom: number }
+
+const TOOLTIP_GAP = 14
+const TOOLTIP_EDGE_PAD = 6
+const DOT_AVOID_PAD = 4
+
+/**
+ * ホバー点の上下左右から、ドットを最も隠さないツールチップ位置を選ぶ（#497）。
+ *
+ * 優先順位:
+ * 1. 重なるドット数が少ない
+ * 2. 重なり面積が小さい
+ * 3. 端からはみ出さないための補正量が小さい
+ * 4. 同程度ならグラフ中心から外側へ向かう
+ */
+export function chooseScatterTooltipPlacement({
+  anchorX,
+  anchorY,
+  tooltipWidth,
+  tooltipHeight,
+  chartWidth,
+  chartHeight,
+  obstacles,
+}: {
+  anchorX: number
+  anchorY: number
+  tooltipWidth: number
+  tooltipHeight: number
+  chartWidth: number
+  chartHeight: number
+  obstacles: ObstacleRect[]
+}): TooltipPlacement {
+  const candidates: {
+    direction: TooltipDirection
+    left: number
+    top: number
+    dx: number
+    dy: number
+  }[] = [
+    { direction: 'right',  left: anchorX + TOOLTIP_GAP,                top: anchorY - tooltipHeight / 2, dx:  1, dy:  0 },
+    { direction: 'left',   left: anchorX - TOOLTIP_GAP - tooltipWidth, top: anchorY - tooltipHeight / 2, dx: -1, dy:  0 },
+    { direction: 'bottom', left: anchorX - tooltipWidth / 2,           top: anchorY + TOOLTIP_GAP,      dx:  0, dy:  1 },
+    { direction: 'top',    left: anchorX - tooltipWidth / 2,           top: anchorY - TOOLTIP_GAP - tooltipHeight, dx: 0, dy: -1 },
+  ]
+
+  const maxLeft = Math.max(TOOLTIP_EDGE_PAD, chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD)
+  const maxTop = Math.max(TOOLTIP_EDGE_PAD, chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD)
+  const outwardX = (anchorX - chartWidth / 2) / Math.max(chartWidth / 2, 1)
+  const outwardY = (anchorY - chartHeight / 2) / Math.max(chartHeight / 2, 1)
+
+  const scored = candidates.map(candidate => {
+    const left = Math.min(Math.max(candidate.left, TOOLTIP_EDGE_PAD), maxLeft)
+    const top = Math.min(Math.max(candidate.top, TOOLTIP_EDGE_PAD), maxTop)
+    const right = left + tooltipWidth
+    const bottom = top + tooltipHeight
+
+    let overlapCount = 0
+    let overlapArea = 0
+    for (const dot of obstacles) {
+      const dotLeft = dot.left - DOT_AVOID_PAD
+      const dotTop = dot.top - DOT_AVOID_PAD
+      const dotRight = dot.right + DOT_AVOID_PAD
+      const dotBottom = dot.bottom + DOT_AVOID_PAD
+      const overlapW = Math.max(0, Math.min(right, dotRight) - Math.max(left, dotLeft))
+      const overlapH = Math.max(0, Math.min(bottom, dotBottom) - Math.max(top, dotTop))
+      if (overlapW > 0 && overlapH > 0) {
+        overlapCount += 1
+        overlapArea += overlapW * overlapH
+      }
+    }
+
+    const clampDistance = Math.abs(left - candidate.left) + Math.abs(top - candidate.top)
+    const outwardAlignment = candidate.dx * outwardX + candidate.dy * outwardY
+    return {
+      left,
+      top,
+      direction: candidate.direction,
+      overlapCount,
+      overlapArea,
+      clampDistance,
+      outwardAlignment,
+    }
+  })
+
+  // 数値の重み付けではなく辞書順で比較し、上記の優先順位を厳密に守る。
+  scored.sort((a, b) =>
+    a.overlapCount - b.overlapCount ||
+    a.overlapArea - b.overlapArea ||
+    a.clampDistance - b.clampDistance ||
+    b.outwardAlignment - a.outwardAlignment,
+  )
+  const best = scored[0]
+  return { left: best.left, top: best.top, direction: best.direction }
 }
 
 /** 目盛りラベルの小数を詰める（浮動小数の誤差も除去）。 */
@@ -446,7 +544,9 @@ export function ScatterChart({
   colorLegend?: ColorLegend | null
 }) {
   const [hover, setHover] = useState<ScatterPoint | null>(null)
+  const [tooltipPlacement, setTooltipPlacement] = useState<TooltipPlacement | null>(null)
   const areaRef = useRef<HTMLDivElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
 
   // X / Y どちらか null は描画対象外
   const plotted = useMemo(() => points.filter(p => p.x !== null && p.y !== null), [points])
@@ -499,12 +599,57 @@ export function ScatterChart({
   // 🔴 凡例と同じ定数を使う（SIZE_AREA_RANGE のコメント参照）。
   const zRange: [number, number] = hasSize ? SIZE_AREA_RANGE : [constSize, constSize]
 
+  // ツールチップを一度 hidden で描画して実寸を測り、上下左右の最適位置へ移す。
+  // マーカーも DOM の実寸を読むため、形・サイズ指標の有無にかかわらず避けられる（#497）。
+  useLayoutEffect(() => {
+    const area = areaRef.current
+    const tooltip = tooltipRef.current
+    if (!hover || !area || !tooltip) return
+
+    const anchorX = (hover as unknown as { cx?: number }).cx ?? 0
+    const anchorY = (hover as unknown as { cy?: number }).cy ?? 0
+    const areaRect = area.getBoundingClientRect()
+    const tooltipRect = tooltip.getBoundingClientRect()
+
+    const obstacles = [...area.querySelectorAll<SVGGElement>('[data-scatter-point="true"]')]
+      .map(marker => {
+        const rect = marker.getBoundingClientRect()
+        return {
+          left: rect.left - areaRect.left,
+          top: rect.top - areaRect.top,
+          right: rect.right - areaRect.left,
+          bottom: rect.bottom - areaRect.top,
+        }
+      })
+      // ホバー点自身と、完全に同じ座標に重なった兄弟点は障害物から除く。
+      .filter(rect => {
+        const centerX = (rect.left + rect.right) / 2
+        const centerY = (rect.top + rect.bottom) / 2
+        return Math.abs(centerX - anchorX) > 1 || Math.abs(centerY - anchorY) > 1
+      })
+
+    setTooltipPlacement(chooseScatterTooltipPlacement({
+      anchorX,
+      anchorY,
+      tooltipWidth: tooltipRect.width,
+      tooltipHeight: tooltipRect.height,
+      chartWidth: area.clientWidth,
+      chartHeight: height,
+      obstacles,
+    }))
+  }, [hover, hoverSiblings.length, height])
+
+  const clearHover = () => {
+    setHover(null)
+    setTooltipPlacement(null)
+  }
+
   return (
     <div className="chart-hover-area" ref={areaRef} style={{ position: 'relative' }}>
     <ResponsiveContainer width="100%" height={height}>
       <RScatterChart
         margin={{ top: 4, right: 8, left: 0, bottom: 24 }}
-        onMouseLeave={() => setHover(null)}
+        onMouseLeave={clearHover}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         {/* ログ軸では 0 以下の基準線は載らない（extendDomain で軸ごと壊れるため出さない）。 */}
@@ -543,7 +688,11 @@ export function ScatterChart({
         <Scatter
           data={drawable}
           shape={scatterPointShape}
-          onMouseEnter={(p: any) => setHover(p)}
+          onMouseEnter={(p: any) => {
+            // 同じ点へ入り直した場合も再計測するため、新しいオブジェクトとして保持する。
+            setTooltipPlacement(null)
+            setHover({ ...p })
+          }}
           isAnimationActive={false}
         >
           {drawable.map((p, i) => (
@@ -568,26 +717,26 @@ export function ScatterChart({
       </div>
     )}
     {hover && (() => {
-      // ホバー中のドット座標 (cx, cy) 付近にツールチップを出す。
-      // 端に近いときは内側へ反転させてはみ出しを防ぐ。
+      // 初回はホバー点位置へ hidden で描画し、useLayoutEffect で実寸計測後に表示する。
       const hx = (hover as unknown as { cx?: number }).cx ?? 0
       const hy = (hover as unknown as { cy?: number }).cy ?? 0
-      const w = areaRef.current?.clientWidth ?? 0
-      const h = areaRef.current?.clientHeight ?? height
-      const flipX = w > 0 && hx > w * 0.6
-      const flipY = h > 0 && hy > h * 0.6
       const tipStyle: CSSProperties = {
         position: 'absolute',
-        left: hx,
-        top: hy,
-        transform: `translate(${flipX ? 'calc(-100% - 14px)' : '14px'}, ${flipY ? 'calc(-100% - 10px)' : '10px'})`,
+        left: tooltipPlacement?.left ?? hx,
+        top: tooltipPlacement?.top ?? hy,
+        visibility: tooltipPlacement ? 'visible' : 'hidden',
         pointerEvents: 'none',
         minWidth: 160,
         maxWidth: 280,
         zIndex: 5,
       }
       return (
-      <div className="cal-tooltip" style={tipStyle}>
+      <div
+        ref={tooltipRef}
+        className="cal-tooltip"
+        style={tipStyle}
+        data-placement={tooltipPlacement?.direction}
+      >
         {hoverSiblings.length > 1 ? (
           <>
             {/* 重なってる全件: 共通の x/y 等を 1 回 + 各点の rowText を並べる */}
