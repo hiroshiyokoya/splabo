@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   ScatterChart as RScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts'
@@ -727,18 +727,32 @@ export function ScatterChart({
     }))
   }, [active, hoverSiblings.length, height])
 
-  const clearHover = () => {
-    setHover(null)
-    // ピン留め中はツールチップ位置を維持（保存ボタンへ移るとき用）。
-    if (!pinned) setTooltipPlacement(null)
-  }
+  // チャート上から保存ボタンへ移ってもツールチップを残す。
+  // 消すのは「パネル全体」から出たときだけ（.chart-card / .env-chart-section）。
+  const pinnedRef = useRef(pinned)
+  pinnedRef.current = pinned
+  useEffect(() => {
+    const area = areaRef.current
+    if (!area) return
+    const panel = area.closest('.chart-card, .env-chart-section')
+    if (!panel) return
+
+    const onPanelLeave = (e: Event) => {
+      const related = (e as MouseEvent).relatedTarget as Node | null
+      if (related && panel.contains(related)) return
+      setHover(null)
+      // ピン留め中はパネル外でも残す（明示クリック解除まで）。
+      if (!pinnedRef.current) setTooltipPlacement(null)
+    }
+    panel.addEventListener('mouseleave', onPanelLeave)
+    return () => panel.removeEventListener('mouseleave', onPanelLeave)
+  }, [])
 
   return (
     <div className="chart-hover-area" ref={areaRef} style={{ position: 'relative' }}>
     <ResponsiveContainer width="100%" height={height}>
       <RScatterChart
         margin={{ top: 4, right: 8, left: 0, bottom: 24 }}
-        onMouseLeave={clearHover}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         {/* ログ軸では 0 以下の基準線は載らない（extendDomain で軸ごと壊れるため出さない）。 */}
