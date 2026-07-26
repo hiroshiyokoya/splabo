@@ -873,7 +873,7 @@ export const GROUP_BY_LABELS: Record<GroupByKey, string> = {
   weapon:          '武器',
   stage:           'ステージ',
   rule:            'ルール',
-  mode:            'モード',
+  mode:            'ロビー',
   sub_weapon:      'サブ',
   special_weapon:  'スペシャル',
   weapon_category: '武器カテゴリ',

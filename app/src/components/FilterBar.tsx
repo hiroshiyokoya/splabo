@@ -117,8 +117,8 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
             </span>
           )}
         </FilterGroup>
-        <FilterGroup label="モード">
-          <MultiSelect label="" allLabel="全モード" options={MODE_OPTIONS}
+        <FilterGroup label="ロビー">
+          <MultiSelect label="" allLabel="すべてのロビー" options={MODE_OPTIONS}
                        selected={filters.mode} onChange={v => patch('mode', v)} />
         </FilterGroup>
         <FilterGroup label="ルール">

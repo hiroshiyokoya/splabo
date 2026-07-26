@@ -291,7 +291,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
         <p className="book-note">
           <span className="book-note__badge">全期間</span>
           <strong>Lv*</strong>（熟練度）・通算勝利数・総塗ポイントは任天堂から取得する累計値のため、
-          上のフィルター（期間・モード・ルール）を変えても<strong>全期間の値のまま</strong>です。
+          上のフィルター（期間・ロビー・ルール）を変えても<strong>全期間の値のまま</strong>です。
           バトル数・勝率・キルレ はフィルターに追従します。
         </p>
       )}

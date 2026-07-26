@@ -294,7 +294,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
               <WinRateChart data={sorted(summary.by_rule, ruleSort)} height={220} images={new Map()} nameTransform={ruleLabel} />
             </ChartCard>
 
-            <ChartCard title="モード別 バトル数 & 勝率" sortBy={modeSort} onSortChange={setModeSort}>
+            <ChartCard title="ロビー別 バトル数 & 勝率" sortBy={modeSort} onSortChange={setModeSort}>
               <WinRateChart data={sorted(summary.by_mode, modeSort)} height={220} images={new Map()} nameTransform={modeLabel} />
             </ChartCard>
 

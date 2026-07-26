@@ -167,7 +167,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
               <tr>
                 <th className="team-color-th"></th>
                 <SortTh col="played_at" label="日時"   orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
-                <th>モード</th>
+                <th>ロビー</th>
                 <th>ルール</th>
                 <th>ステージ</th>
                 <th>武器</th>
