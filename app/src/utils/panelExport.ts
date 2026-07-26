@@ -73,6 +73,17 @@ function cssVar(name: string, fallback: string): string {
   return v || fallback
 }
 
+/** `#rgb` / `#rrggbb` → `rgba(r,g,b,a)`。html-to-image 向けに半透明背景を確実に焼く。 */
+function hexToRgba(hex: string, alpha: number): string | null {
+  const h = hex.replace('#', '').trim()
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return null
+  const r = parseInt(full.slice(0, 2), 16)
+  const g = parseInt(full.slice(2, 4), 16)
+  const b = parseInt(full.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
 /** レイアウト変更（キャプション表示）が反映されてから描画するために 2 フレーム待つ。 */
 function nextFrames(): Promise<void> {
   return new Promise(resolve => {
@@ -86,11 +97,19 @@ function nextFrames(): Promise<void> {
  */
 export async function savePanelAsJpeg(node: HTMLElement, screen: string, panel: string): Promise<string | null> {
   node.classList.add(EXPORTING_CLASS)
+  const tooltipBgs: { el: HTMLElement; prev: string }[] = []
   try {
     // 保存した瞬間の版・日付を焼き込む（画面に出しっぱなしの古い日付にしない）。
     const credit = buildExportCredit(await appVersion())
     node.querySelectorAll('.panel-export-credit').forEach(el => {
       el.textContent = credit
+    })
+    // ツールチップ背景を rgba 半透明に（color-mix はラスタライズで落ちることがある）。
+    const tipBg = hexToRgba(cssVar('--surface', '#17172a'), 0.72)
+      ?? 'rgba(23, 23, 42, 0.72)'
+    node.querySelectorAll<HTMLElement>('.cal-tooltip').forEach(el => {
+      tooltipBgs.push({ el, prev: el.style.background })
+      el.style.background = tipBg
     })
     // 散布図ツールチップを「他ドットを避ける位置」へ載せ替える（リスナ側で flushSync）。
     node.dispatchEvent(new CustomEvent(PANEL_EXPORT_PREPARE_EVENT, { bubbles: false }))
@@ -111,6 +130,7 @@ export async function savePanelAsJpeg(node: HTMLElement, screen: string, panel: 
       dataBase64,
     })
   } finally {
+    tooltipBgs.forEach(({ el, prev }) => { el.style.background = prev })
     node.classList.remove(EXPORTING_CLASS)
   }
 }

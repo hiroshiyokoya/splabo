@@ -89,11 +89,21 @@
   min-width: 140px;
   z-index: 10;
 }
-/* 画像保存中は下のドットが透けて見えるよう半透明に（文字は不透明のまま）。 */
+/* 画像保存中は下のドットが透けて見えるよう半透明に。
+   color-mix は html-to-image のラスタライズで欠けることがあるので、
+   実際の背景色は panelExport がインラインの rgba で上書きする。 */
 .is-exporting .cal-tooltip {
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  background: transparent;
   border-color: color-mix(in srgb, var(--border) 70%, transparent);
-  box-shadow: 0 1px 4px color-mix(in srgb, #000 35%, transparent);
+  box-shadow: 0 1px 4px color-mix(in srgb, #000 25%, transparent);
+}
+
+/* 散布図の端マーカー（選択ハロー含む）が SVG clip で欠けないようにする。 */
+.chart-hover-area,
+.chart-hover-area .recharts-responsive-container,
+.chart-hover-area .recharts-wrapper,
+.chart-hover-area .recharts-surface {
+  overflow: visible !important;
 }
 
 /* カレンダー/ヒートマップのセル共通スタイル。SVG rect に適用（カレンダー本体・凡例バー共有）。

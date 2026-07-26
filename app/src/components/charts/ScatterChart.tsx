@@ -293,6 +293,11 @@ export function chooseScatterTooltipPlacement({
       { direction: 'left',   left: anchorX - g2 - tooltipWidth, top: anchorY - tooltipHeight / 2, dx: -1, dy:  0 },
       { direction: 'bottom', left: anchorX - tooltipWidth / 2,  top: anchorY + g2,               dx:  0, dy:  1 },
       { direction: 'top',    left: anchorX - tooltipWidth / 2,  top: anchorY - g2 - tooltipHeight, dx: 0, dy: -1 },
+      // 近傍がすべて他ドットに被るとき用に、プロット四隅へ退避。
+      { direction: 'top-right',    left: chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD, top: TOOLTIP_EDGE_PAD, dx:  1, dy: -1 },
+      { direction: 'top-left',     left: TOOLTIP_EDGE_PAD, top: TOOLTIP_EDGE_PAD, dx: -1, dy: -1 },
+      { direction: 'bottom-right', left: chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD, top: chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD, dx:  1, dy:  1 },
+      { direction: 'bottom-left',  left: TOOLTIP_EDGE_PAD, top: chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD, dx: -1, dy:  1 },
     )
   }
 
@@ -401,7 +406,7 @@ export const isLogPlottable = (v: number | null): v is number =>
  * ログ軸はログ空間がピクセルに線形対応するので、余白も加算ではなく**乗除**で作る。
  * span に対する割合で広げるので、データの桁数によらず見た目の余白が一定になる。
  */
-const LOG_PAD_RATIO = 0.05  // 軸長に対する片側の余白
+const LOG_PAD_RATIO = 0.12  // 選択ハロー込みでも端で切れないよう、少し広めに取る
 
 export function logDomain(values: number[]): [number, number] | null {
   const usable = values.filter(v => Number.isFinite(v) && v > 0)
@@ -469,10 +474,33 @@ export const SIZE_AREA_RANGE: [number, number] = [40, 600]
 /**
  * 軸端に確保する描画余白（px）。
  *
- * 最大ドットは area=600 → 半径約 13.8px。選択時はさらにハロー 4px＋線幅が付くため、
- * 22px あれば上下限・左右端の点もプロット領域内に収まり、SVG / clipPath で切れない。
+ * 最大ドットは area=600 → 半径約 13.8px。選択時はさらにハロー 4px＋線幅・角形の対角が付くため、
+ * 28px 確保する。あわせてドメイン側も広げて、clipPath 内に収める。
  */
-const SCATTER_EDGE_PADDING = 22
+const SCATTER_EDGE_PADDING = 28
+
+/**
+ * 線形ドメインを値空間で広げ、上下限の点が軸線・clip に乗らないようにする。
+ * （Axis padding だけだとログ軸の clip や nice tick の都合で足りないことがある）
+ */
+function expandLinearDomain(
+  domain: [number, number] | undefined,
+  opts: { rate01?: boolean } = {},
+): [number, number] | undefined {
+  if (!domain) return undefined
+  const [lo, hi] = domain
+  const span = Math.max(hi - lo, opts.rate01 ? 0.05 : 1e-6)
+  const pad = span * 0.1
+  let nlo = lo - pad
+  let nhi = hi + pad
+  if (opts.rate01) {
+    nlo = Math.max(0, nlo)
+    nhi = Math.min(1, nhi)
+  } else if (lo >= 0) {
+    nlo = Math.max(0, nlo)
+  }
+  return [nlo, nhi]
+}
 
 /** 有限な値だけの min/max。値が無いときは null。 */
 function finiteRange(values: (number | null | undefined)[]): { min: number; max: number } | null {
@@ -686,6 +714,15 @@ export function ScatterChart({
   const xLog = xLogDomain !== null
   const yLog = yLogDomain !== null
 
+  // 端のマーカーが切れないよう、線形ドメインは値空間でも少し広げる。
+  // ログ軸は logDomain 側の余白を使う。
+  const xAxisDomain = xLogDomain
+    ?? expandLinearDomain(xDomain, { rate01: xIsRate })
+    ?? (xIsRate ? expandLinearDomain([0, 1], { rate01: true }) : undefined)
+  const yAxisDomain = yLogDomain
+    ?? expandLinearDomain(yDomain, { rate01: yIsRate })
+    ?? (yIsRate ? expandLinearDomain([0, 1], { rate01: true }) : undefined)
+
   // groupKey → siblings: 重なり判定用に同一 groupKey の点を集約
   const siblings = useMemo(() => {
     const m = new Map<string, ScatterPoint[]>()
@@ -814,7 +851,7 @@ export function ScatterChart({
     <div className="chart-hover-area" ref={areaRef} style={{ position: 'relative' }}>
     <ResponsiveContainer width="100%" height={height}>
       <RScatterChart
-        margin={{ top: 4, right: 8, left: 0, bottom: 24 }}
+        margin={{ top: 20, right: 18, left: 0, bottom: 28 }}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         {/* ログ軸では 0 以下の基準線は載らない（extendDomain で軸ごと壊れるため出さない）。 */}
@@ -833,7 +870,7 @@ export function ScatterChart({
           tickFormatter={xIsRate ? fmtRateTick : fmtTick}
           scale={xLog ? 'log' : 'auto'}
           allowDataOverflow={xLog}
-          domain={xLogDomain ?? xDomain ?? (xIsRate ? [0, 1] : ['auto', 'auto'])}
+          domain={xAxisDomain ?? ['auto', 'auto']}
           ticks={xTicks ?? undefined}
           label={{ value: xLabel, position: 'insideBottom', offset: -10, fill: 'var(--text)', fontSize: 11, fontWeight: 600 } as object}
         />
@@ -847,7 +884,7 @@ export function ScatterChart({
           tickFormatter={yIsRate ? fmtRateTick : fmtTick}
           scale={yLog ? 'log' : 'auto'}
           allowDataOverflow={yLog}
-          domain={yLogDomain ?? yDomain ?? (yIsRate ? [0, 1] : ['auto', 'auto'])}
+          domain={yAxisDomain ?? ['auto', 'auto']}
           ticks={yTicks ?? undefined}
           label={{ value: yLabel, angle: -90, position: 'insideLeft', offset: 12, fill: 'var(--text)', fontSize: 11, fontWeight: 600, style: { textAnchor: 'middle' } } as object}
         />
