@@ -300,6 +300,9 @@ export function EnvAnalysis() {
   // 行・列の周辺集計（#411）。セルの足切りに影響されない値なので BE から受け取る。
   const [rowMarginals, setRowMarginals] = useState<EnvMatrixMarginal[]>([])
   const [colMarginals, setColMarginals] = useState<EnvMatrixMarginal[]>([])
+  // ヒートマップ列見出しクリックによる行ソート（#479）。永続化しない。
+  const [heatmapSortCol, setHeatmapSortCol] = useState<string | null>(null)
+  const [heatmapSortDir, setHeatmapSortDir] = useState<'asc' | 'desc'>('desc')
 
   const hasData = status !== null && status.total_rows > 0
 
@@ -342,6 +345,22 @@ export function EnvAnalysis() {
       setCellMetric(allowedCellMetrics[0].key)
     }
   }, [allowedCellMetrics, cellMetric])
+
+  // ヒートマップの軸・指標を変えたら列ソートを既定に戻す（#479）。
+  useEffect(() => {
+    setHeatmapSortCol(null)
+    setHeatmapSortDir('desc')
+  }, [rowDim, colDim, cellMetric])
+
+  function handleHeatmapColHeaderClick(colKey: string) {
+    if (heatmapSortCol === colKey) setHeatmapSortDir(d => (d === 'desc' ? 'asc' : 'desc'))
+    else { setHeatmapSortCol(colKey); setHeatmapSortDir('desc') }
+  }
+
+  function clearHeatmapSort() {
+    setHeatmapSortCol(null)
+    setHeatmapSortDir('desc')
+  }
 
   // 取得状況とシーズンレンジを読み込む
   const loadStatus = useCallback(async () => {
@@ -848,7 +867,17 @@ export function EnvAnalysis() {
               </div>
 
               <div className="env-chart-section">
-                <h3 className="env-chart-title">{dimLabel(rowDim)} × {dimLabel(colDim)}（{cm.label}）</h3>
+                <div className="env-chart-title-row">
+                  <h3 className="env-chart-title">{dimLabel(rowDim)} × {dimLabel(colDim)}（{cm.label}）</h3>
+                  {heatmapSortCol && (
+                    <button
+                      type="button"
+                      className="env-heatmap-sort-reset"
+                      onClick={clearHeatmapSort}
+                      title="列クリックによる並べ替えを解除し、サンプル数順などの既定並びに戻す"
+                    >既定の並び</button>
+                  )}
+                </div>
                 {bothWeapon ? (
                   <p className="env-no-data">武器 × 武器は非対応です。一方をステージ/ルール/ロビーにしてください。</p>
                 ) : (
@@ -865,6 +894,9 @@ export function EnvAnalysis() {
                     diagonalCols={colDim === 'stage'}
                     rowOrder={rowDim === 'rule' ? RULE_HEATMAP_ORDER : undefined}
                     colOrder={colDim === 'rule' ? RULE_HEATMAP_ORDER : undefined}
+                    sortColKey={heatmapSortCol}
+                    sortDir={heatmapSortDir}
+                    onColHeaderClick={handleHeatmapColHeaderClick}
                     rowValue={rowProj}
                     colValue={colProj}
                     // バトル数は合計なので、セルの min/max ではなく軸内の相対で色付けする（#411）。
@@ -873,6 +905,7 @@ export function EnvAnalysis() {
                 )}
                 <p className="env-chart-note">
                   {KDA_CELL_KEYS.includes(cellMetric) ? '20' : '30'} サンプル未満のセルは非表示。セルにマウスオーバーで件数を表示。
+                  列見出しをクリックすると、その列の値で行を並べ替えられます（再クリックで昇順/降順切替）。
                   {cellMetric === 'win_rate' && ' 勝率は 50% を中心に赤(低)〜青(高)。'}
                   {cellMetric === 'avg_death' && ' デスは多いほど濃い赤（少ないほど良い）。'}
                   {(cellMetric === 'kill_ratio' || cellMetric === 'contrib_ratio') && ' 1.0 を中心に赤(低)〜青(高)。'}

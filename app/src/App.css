@@ -2726,6 +2726,26 @@ body {
   padding: 16px;
 }
 .env-chart-title { font-size: 14px; font-weight: 600; margin: 0 0 12px; }
+.env-chart-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.env-chart-title-row .env-chart-title { margin: 0; }
+.env-heatmap-sort-reset {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.env-heatmap-sort-reset:hover { color: var(--text); border-color: var(--text-muted); }
 .env-chart-note { font-size: 11px; color: var(--text-muted); margin: 8px 0 0; }
 .env-no-data { color: var(--text-muted); font-size: 13px; padding: 40px; text-align: center; }
 
@@ -2809,6 +2829,17 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: center;
+}
+.env-heatmap-colhead.is-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.env-heatmap-colhead.is-sortable:hover {
+  background: var(--surface2);
+}
+.env-heatmap-colhead.is-sorted {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 /* 斜め列見出し（短縮ステージ名向け）#187 */
 .env-heatmap-colhead.is-diagonal {
