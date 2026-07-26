@@ -436,6 +436,13 @@ export interface EnvRank {
   n:           number
 }
 
+/** env_weapons / env_stages の 1 件（#477）。 */
+export interface EnvFilterOption {
+  key:   string
+  label: string
+  n:     number
+}
+
 export interface ChartSpec {
   chartType: 'bar' | 'line' | 'scatter' | 'pie'
   title: string
