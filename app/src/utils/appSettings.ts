@@ -41,6 +41,13 @@ export const THEMES: Theme[] = [
       '--stat-item-bg':          'rgba(0, 0, 0, 0.04)',
       '--stage-img-filter':      'brightness(0.92) saturate(0.85)',
       '--panel-label-tint':      '#1a1a1e',         // パネルラベルは暗い文字寄り
+      // Solarized アクセント（散布図カテゴリ色・#527）
+      '--scatter-cat-1':         '#dc322f', // red
+      '--scatter-cat-2':         '#268bd2', // blue
+      '--scatter-cat-3':         '#b58900', // yellow
+      '--scatter-cat-4':         '#6c71c4', // violet
+      '--scatter-cat-5':         '#cb4b16', // orange
+      '--scatter-cat-6':         '#2aa198', // cyan
     },
   },
   {
@@ -57,6 +64,13 @@ export const THEMES: Theme[] = [
       '--accent-fg':    '#002b36', // アンバーボタンには濃文字
       '--text':         '#93a1a1',
       '--text-muted':   '#586e75',
+      // Solarized アクセント（散布図カテゴリ色・#527）
+      '--scatter-cat-1':         '#dc322f',
+      '--scatter-cat-2':         '#268bd2',
+      '--scatter-cat-3':         '#b58900',
+      '--scatter-cat-4':         '#6c71c4',
+      '--scatter-cat-5':         '#cb4b16',
+      '--scatter-cat-6':         '#2aa198',
     },
   },
 ]
@@ -100,6 +114,13 @@ const BASE_VARS: Record<string, string> = {
   '--seq-good':              '#22c55e',
   '--seq-bad':               '#ef4444',
   '--seq-neutral':           '#fb923c',
+  // 散布図カテゴリ色分け（#527）。デフォルトは従来パレット。
+  '--scatter-cat-1':         '#ef4444',
+  '--scatter-cat-2':         '#3b82f6',
+  '--scatter-cat-3':         '#eab308',
+  '--scatter-cat-4':         '#a855f7',
+  '--scatter-cat-5':         '#f97316',
+  '--scatter-cat-6':         '#14b8a6',
 }
 
 export function applyTheme(themeId: string): void {
