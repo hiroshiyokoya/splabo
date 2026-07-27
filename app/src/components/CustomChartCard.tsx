@@ -240,7 +240,7 @@ function buildBattleScatterPoints(
 
 /** yComposition ごとの並び替えオプション（#509）。
  *  - stacked_winrate: バトル数 / 勝数 / 負数 / 勝率
- *  - attack_defense:  バトル数 + キルレ（チャート上の対比を 1 指標にまとめたもの）
+ *  - attack_defense:  キル / デス / キルレ / 貢献キル / 貢献キルレ
  *  - single_metric:   バトル数 + 選択中メトリクス */
 type BarSortKey = MetricKey | 'losses'
 type SortOption = { key: BarSortKey; label: string }
@@ -250,10 +250,13 @@ const SORT_OPTIONS_STACKED_WINRATE: SortOption[] = [
   { key: 'losses',   label: '負数' },
   { key: 'win_rate', label: '勝率' },
 ]
-/** キル系（attack_defense）はバトル数とその指標（キルレ）だけ。 */
+/** キル vs デス（attack_defense）用。 */
 const SORT_OPTIONS_ATTACK_DEFENSE: SortOption[] = [
-  { key: 'total',  label: 'バトル数' },
-  { key: 'avg_kd', label: 'キルレ' },
+  { key: 'avg_kill',         label: 'キル' },
+  { key: 'avg_death',        label: 'デス' },
+  { key: 'avg_kd',           label: 'キルレ' },
+  { key: 'avg_contrib_kill', label: '貢献キル' },
+  { key: 'avg_contrib_kd',   label: '貢献キルレ' },
 ]
 
 function barSortValue(row: GroupedStatsRow, key: BarSortKey): number | null {
