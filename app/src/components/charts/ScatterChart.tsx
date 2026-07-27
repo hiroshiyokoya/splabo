@@ -579,6 +579,16 @@ function roundNice(x: number): number {
 }
 
 /**
+ * 凡例の下限。データ最小が max に比べて無視できる（0 含む）ときは、
+ * 極小の 1/2/5 候補を並べない（#512 回帰: 0.00 が二重になる）。
+ */
+function legendFloor(min: number, max: number): number {
+  if (!(max > 0)) return 0
+  if (min > 0 && min >= max * 0.01) return min * 0.5
+  return niceStep(max / 3)
+}
+
+/**
  * データ範囲から凡例用の切りのいい値を最大 `steps` 個選ぶ(#512)。
  * 1・2・5 × 10^n の候補から、範囲内をほぼ等分する。面積スケールはデータ max 基準なので ≤ max。
  */
@@ -586,20 +596,18 @@ function niceSizeLegendValues(min: number, max: number, steps: number): number[]
   if (!(max > 0)) return []
   if (!(max > min) || steps <= 1) return [max]
 
+  const lo = legendFloor(min, max)
   const cands: number[] = []
   const seen = new Set<number>()
   const push = (v: number) => {
     const r = roundNice(v)
-    if (r <= 0 || r > max) return
-    // データ最小よりかなり小さい円は「この図に無い大きさ」になるので落とす
-    if (r < min * 0.5) return
+    if (r <= 0 || r > max || r < lo) return
     if (seen.has(r)) return
     seen.add(r)
     cands.push(r)
   }
 
-  const lo = Math.max(min * 0.5, max / 1e6, Number.MIN_VALUE)
-  const startExp = Math.floor(Math.log10(lo))
+  const startExp = Math.floor(Math.log10(Math.max(lo, Number.MIN_VALUE)))
   const endExp = Math.floor(Math.log10(max))
   for (let e = startExp; e <= endExp; e++) {
     for (const m of [1, 2, 5]) push(m * Math.pow(10, e))
@@ -634,9 +642,18 @@ export function buildSizeLegend(
   const r = finiteRange(values)
   // max <= 0 だと面積の比率が作れない(実データでは件数・平均値なので起きない)。
   if (!r || r.max <= 0) return null
-  // 全部同じ値ならドットの大小が無いので 1 つだけ出す(段を並べても全部同じ大きさになる)。
   const vals = niceSizeLegendValues(r.min, r.max, steps)
-  return { label, items: vals.map(v => ({ label: fmt(v), area: valueToArea(v, r.max) })) }
+  // 表示ラベルが同じ値は落とす(0.001 と 0.002 がどちらも 0.00 など)。
+  const items: { label: string; area: number }[] = []
+  const seenLabels = new Set<string>()
+  for (const v of vals) {
+    const item = { label: fmt(v), area: valueToArea(v, r.max) }
+    if (seenLabels.has(item.label)) continue
+    seenLabels.add(item.label)
+    items.push(item)
+  }
+  if (items.length === 0) return null
+  return { label, items }
 }
 
 /** 面積(px²)→ 半径。Recharts のドットと同じ式。 */
