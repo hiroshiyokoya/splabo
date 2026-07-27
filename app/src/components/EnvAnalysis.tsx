@@ -413,10 +413,15 @@ export function EnvAnalysis() {
   // ヒートマップ次元を変えたらセル指標の妥当性を保つ
   const weaponSlotInvolved = isWeaponSlotDim(rowDim) || isWeaponSlotDim(colDim)
   const bothWeaponSlot     = isWeaponSlotDim(rowDim) && isWeaponSlotDim(colDim)
-  const allowedCellMetrics = useMemo(
-    () => CELL_METRICS.filter(m => (weaponSlotInvolved && !bothWeaponSlot ? m.weapon : !weaponSlotInvolved ? !m.weapon : false)),
-    [weaponSlotInvolved, bothWeaponSlot],
-  )
+  const hasWeaponFilter    = weaponKeys.length > 0
+  // 武器系軸あり → 勝率/ピック率/KDA。非武器×非武器はバトル数/KO率。
+  // ただし武器フィルタありなら散布図(#478)と同様に勝率・KDA も出す（ピック率は武器軸必須・#520）。
+  const allowedCellMetrics = useMemo(() => {
+    if (bothWeaponSlot) return []
+    if (weaponSlotInvolved) return CELL_METRICS.filter(m => m.weapon)
+    if (hasWeaponFilter) return CELL_METRICS.filter(m => m.key !== 'pick_rate')
+    return CELL_METRICS.filter(m => !m.weapon)
+  }, [weaponSlotInvolved, bothWeaponSlot, hasWeaponFilter])
   useEffect(() => {
     if (allowedCellMetrics.length > 0 && !allowedCellMetrics.some(m => m.key === cellMetric)) {
       setCellMetric(allowedCellMetrics[0].key)
@@ -1040,6 +1045,11 @@ export function EnvAnalysis() {
                   </select>
                 </label>
               </div>
+              {!weaponSlotInvolved && !bothWeaponSlot && !hasWeaponFilter && (
+                <p className={`env-filter-note ${EXPORT_HIDE_CLASS}`}>
+                  ※ 勝率・キル系を見るときは、上の武器フィルタで武器を選ぶか、行/列の一方を武器系にしてください。
+                </p>
+              )}
 
               <div className={`env-chart-section${loading ? ' is-loading' : ''}`} ref={heatmapPanelRef}>
                 {loading && (

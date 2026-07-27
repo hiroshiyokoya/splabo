@@ -4103,12 +4103,151 @@ fn matrix_dim(dim: &str) -> Option<(&'static str, &'static str, &'static str)> {
     }
 }
 
+/// 武器フィルタ前提の非武器×非武器マトリクス（#520）。
+///
+/// ステージ×ルール等で、選んだ武器が乗っているスロット視点の勝率・KDA を出す。
+/// 散布図のステージ集計（#478）と同じく、武器キーで JOIN したスロットだけを展開する。
+async fn env_matrix_stats_weapon_filtered(
+    db:           &Pool<Sqlite>,
+    row_dim:      &str,
+    col_dim:      &str,
+    cell_metric:  &str,
+    kda_based:    bool,
+    f:            &EnvFilters,
+    where_clause: &str,
+) -> Result<EnvMatrixStats, String> {
+    let (row_col, rmaster, rlabel) = matrix_dim(row_dim)
+        .ok_or_else(|| format!("未知の集計次元: {row_dim}"))?;
+    let (col_col, cmaster, clabel) = matrix_dim(col_dim)
+        .ok_or_else(|| format!("未知の集計次元: {col_dim}"))?;
+
+    let wph = vec!["?"; f.weapon_keys.len()].join(",");
+    let slots: Vec<&ScatterSlot> = SELF_SLOTS.iter().chain(OPP_SLOTS.iter()).collect();
+    let selects: Vec<String> = slots
+        .iter()
+        .map(|s| {
+            format!(
+                "SELECT eb.{row_col} AS rid, eb.{col_col} AS cid, \
+                        CASE WHEN eb.win_team = '{team}' THEN 1 ELSE 0 END AS won, \
+                        {k} AS k, {d} AS d, {a} AS a, {ink} AS ink \
+                 FROM env_battles eb \
+                 JOIN weapon wk ON wk.id = eb.{wid} AND wk.key IN ({wph}) \
+                 {where}",
+                row_col = row_col,
+                col_col = col_col,
+                team = s.team,
+                k = s.k,
+                d = s.d,
+                a = s.a,
+                ink = s.ink,
+                wid = s.wid,
+                wph = wph,
+                where = where_clause,
+            )
+        })
+        .collect();
+    let app = selects.join("\n            UNION ALL ");
+
+    let sql = format!(
+        r#"
+        WITH app AS (
+            {app}
+        )
+        SELECT rm.{rlabel} AS row_key,
+               cm.{clabel} AS col_key,
+               COUNT(*) AS n,
+               COUNT(app.k) AS n_kda,
+               CAST(SUM(app.won) AS REAL) AS sum_won,
+               CAST(SUM(app.k)   AS REAL) AS sum_k,
+               CAST(SUM(app.d)   AS REAL) AS sum_d,
+               CAST(SUM(app.a)   AS REAL) AS sum_a,
+               CAST(SUM(app.ink) AS REAL) AS sum_ink
+        FROM app
+        JOIN {rmaster} rm ON rm.id = app.rid
+        JOIN {cmaster} cm ON cm.id = app.cid
+        WHERE app.rid IS NOT NULL AND app.cid IS NOT NULL
+        GROUP BY app.rid, app.cid
+        "#,
+        app = app,
+        rlabel = rlabel,
+        clabel = clabel,
+        rmaster = rmaster,
+        cmaster = cmaster,
+    );
+
+    // 各スロット: weapon_keys バインド + EnvFilters バインド（散布図ステージ集計と同じ）
+    let mut q = sqlx::query(&sql);
+    for _ in 0..slots.len() {
+        for v in &f.weapon_keys {
+            q = q.bind(v);
+        }
+        q = bind_env_filters(q, f);
+    }
+    let rows = q.fetch_all(db).await.map_err(|e| e.to_string())?;
+
+    let min_n = if kda_based { 20 } else { 30 };
+    let mut cells = Vec::new();
+    let mut inputs = Vec::new();
+    for row in rows {
+        let sum = |name: &str| -> f64 {
+            if let Ok(v) = row.try_get::<f64, _>(name) {
+                return v;
+            }
+            if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(name) {
+                return v;
+            }
+            if let Ok(v) = row.try_get::<i64, _>(name) {
+                return v as f64;
+            }
+            if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(name) {
+                return v as f64;
+            }
+            0.0
+        };
+        let raw = MatrixRaw {
+            n:        row.get("n"),
+            n_kda:    row.get("n_kda"),
+            sum_won:  sum("sum_won"),
+            sum_ko:   0.0,
+            sum_k:    sum("sum_k"),
+            sum_d:    sum("sum_d"),
+            sum_a:    sum("sum_a"),
+            sum_ink:  sum("sum_ink"),
+            pick_den: 0.0,
+        };
+        let n = if kda_based { raw.n_kda } else { raw.n };
+        let agg = cell_agg(cell_metric, &raw);
+        let row_key: String = row.get("row_key");
+        let col_key: String = row.get("col_key");
+        inputs.push(MarginalInput {
+            row_key: row_key.clone(),
+            col_key: col_key.clone(),
+            agg,
+            n,
+        });
+        if n >= min_n {
+            cells.push(EnvMatrixCell {
+                row_key,
+                col_key,
+                value: agg.and_then(Agg::value),
+                n,
+            });
+        }
+    }
+
+    Ok(EnvMatrixStats {
+        cells,
+        row_marginals: fold_marginals(&inputs, Axis::Row),
+        col_marginals: fold_marginals(&inputs, Axis::Col),
+    })
+}
+
 /// 環境データのマトリクス（ヒートマップ）集計。
 ///
 /// - `cell_metric` = "win_rate" | "pick_rate" | "avg_kill" | "avg_death" | "avg_assist"
 ///   | "avg_inked" | "kill_ratio" | "contrib_kill" | "contrib_ratio" … 行/列の **一方が
-///   weapon / weapon_category / sub_weapon / special_weapon** であること
-///   （スロット単位の勝率 / ピック率 / KDA 系）。いずれも投稿者を除く 7 人が母数（#501）。
+///   weapon / weapon_category / sub_weapon / special_weapon**、または **武器フィルタ指定の
+///   非武器×非武器**（#520。ピック率は武器系軸必須）。いずれも投稿者を除く 7 人が母数（#501）。
 /// - `cell_metric` = "ko_rate" | "battles"   … 行/列とも **weapon 系以外**（バトルレベル指標）
 ///
 /// セルはサンプル不足を落として返すが、行・列の周辺集計（marginals）は
@@ -4154,13 +4293,39 @@ pub async fn env_matrix_stats(
 
     if weapon_centric {
         // 行・列のうち厳密に一方が weapon 系（スロット単位集計）であること。
+        // 例外: 武器フィルタありなら非武器×非武器でも、選んだ武器が乗ったスロット視点で集計できる（#520）。
+        // ピック率は「軸上の武器シェア」なので武器系軸が無いと出さない。
         let slot_is_row = is_weapon_slot_dim(&row_dim);
         let slot_is_col = is_weapon_slot_dim(&col_dim);
-        if slot_is_row == slot_is_col {
+        if slot_is_row && slot_is_col {
             return Err(
                 "この指標は行・列の一方を weapon / weapon_category / sub_weapon / special_weapon にしてください"
                     .to_string(),
             );
+        }
+        if !slot_is_row && !slot_is_col {
+            if f.weapon_keys.is_empty() {
+                return Err(
+                    "この指標は行・列の一方を weapon 系にするか、武器フィルタを指定してください"
+                        .to_string(),
+                );
+            }
+            if cell_metric == "pick_rate" {
+                return Err(
+                    "ピック率は行・列の一方を weapon / weapon_category / sub_weapon / special_weapon にしてください"
+                        .to_string(),
+                );
+            }
+            return env_matrix_stats_weapon_filtered(
+                db.as_ref(),
+                &row_dim,
+                &col_dim,
+                &cell_metric,
+                kda_based,
+                &f,
+                &where_clause,
+            )
+            .await;
         }
         let slot_dim = if slot_is_row { &row_dim } else { &col_dim };
         let other_dim = if slot_is_row { &col_dim } else { &row_dim };
