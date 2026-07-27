@@ -90,7 +90,7 @@ export function PanelExportButton({ targetRef, screen, panel }: ButtonProps) {
             className="panel-export-menu__item"
             onClick={() => void runSave('html')}
           >
-            HTML（ホバー可）
+            HTMLファイル
           </button>
         </div>
       )}
