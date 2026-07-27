@@ -165,11 +165,16 @@ const POSTER_EXCLUDED_TEXT = '集計は投稿者を除く 7 人分（stat.ink �
 const POSTER_EXCLUDED_NOTE = `※ ${POSTER_EXCLUDED_TEXT}。`
 
 /** 画像に焼き込む注釈（#500）。パネル上の長文をそのまま入れるとレイアウトが崩れるので、
- *  出典・足切り・母数だけの 1 行に抑える。 */
+ *  足切り・母数だけの 1 行に抑える。出典はキャプション先頭に出す。 */
 const SCATTER_EXPORT_NOTE =
-  `出典: stat.ink／50 サンプル未満は非表示／${POSTER_EXCLUDED_TEXT}`
+  `50 サンプル未満は非表示／${POSTER_EXCLUDED_TEXT}`
 const heatmapExportNote = (kda: boolean) =>
-  `出典: stat.ink／${kda ? 20 : 30} サンプル未満のセルは非表示／${POSTER_EXCLUDED_TEXT}`
+  `${kda ? 20 : 30} サンプル未満のセルは非表示／${POSTER_EXCLUDED_TEXT}`
+
+/** 保存画像のキャプション先頭。出典を最初に出す。 */
+function envExportCaption(filterSummary: string): string {
+  return filterSummary ? `出典: stat.ink／${filterSummary}` : '出典: stat.ink'
+}
 
 /** スロット単位の集計が必要なヒートマップ次元（#481）。 */
 const WEAPON_SLOT_DIMS = ['weapon', 'weapon_category', 'sub_weapon', 'special_weapon'] as const
@@ -963,7 +968,7 @@ export function EnvAnalysis() {
                     panel={`${groupBy === 'weapon' ? '武器' : 'ステージ'}散布図 ${xM.label}×${yM.label}`}
                   />
                 </div>
-                <PanelExportCaption conditions={envFilterSummary} />
+                <PanelExportCaption conditions={envExportCaption(envFilterSummary)} />
                 {points.length === 0 ? (
                   <p className="env-no-data">条件に一致するデータがありません（50 サンプル未満は非表示）</p>
                 ) : (
@@ -1031,7 +1036,7 @@ export function EnvAnalysis() {
                     panel={`ヒートマップ ${dimLabel(rowDim)}×${dimLabel(colDim)} ${cm.label}`}
                   />
                 </div>
-                <PanelExportCaption conditions={envFilterSummary} />
+                <PanelExportCaption conditions={envExportCaption(envFilterSummary)} />
                 {bothWeaponSlot ? (
                   <p className="env-no-data">武器 × 武器は非対応です。一方をステージ/ルール/ロビーにしてください。</p>
                 ) : (

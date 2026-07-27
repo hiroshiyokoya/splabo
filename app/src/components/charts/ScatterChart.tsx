@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import {
   ScatterChart as RScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts'
-import { PANEL_EXPORT_PREPARE_EVENT } from '../../utils/panelExport'
+import { PANEL_EXPORT_HTML_PREPARE_EVENT, PANEL_EXPORT_PREPARE_EVENT } from '../../utils/panelExport'
 
 /**
  * 散布図 (presentational)。
@@ -156,6 +156,44 @@ function sameScatterAnchor(
   return Math.abs(a.cx - b.cx) < 0.5 && Math.abs(a.cy - b.cy) < 0.5
 }
 
+/** HTML 書き出し用ツールチップ（#505）。埋め込み JS が `data-scatter-tip` を読む。 */
+type ScatterTipPayload =
+  | {
+      kind: 'single'
+      name: string
+      iconUrl?: string | null
+      rows: { label: string; value: string; muted?: boolean }[]
+    }
+  | {
+      kind: 'group'
+      groupTitle: string
+      members: string[]
+      more: number
+    }
+
+const SCATTER_TIP_ROW_LIMIT = 12
+
+function buildScatterTipPayload(
+  point: ScatterPoint,
+  siblingsMap: Map<string, ScatterPoint[]>,
+): ScatterTipPayload {
+  const sibs = point.groupKey ? siblingsMap.get(point.groupKey) : undefined
+  if (sibs && sibs.length > 1) {
+    return {
+      kind: 'group',
+      groupTitle: `${point.tooltipRows.slice(0, 2).map(r => `${r.label} ${r.value}`).join(' / ')} (${sibs.length} 件)`,
+      members: sibs.slice(0, SCATTER_TIP_ROW_LIMIT).map(p => p.rowText ?? p.name),
+      more: Math.max(0, sibs.length - SCATTER_TIP_ROW_LIMIT),
+    }
+  }
+  return {
+    kind: 'single',
+    name: point.name,
+    iconUrl: point.iconUrl ?? null,
+    rows: point.tooltipRows,
+  }
+}
+
 /** Recharts Scatter の shape コールバック。payload.markerShape を読む。 */
 function scatterPointShape(props: {
   cx?: number
@@ -168,6 +206,8 @@ function scatterPointShape(props: {
   payload?: ScatterPoint
   /** ツールチップ対象の点。カーソルが写らない画像保存でも対応点が分かるように強調する。 */
   active?: boolean
+  /** HTML 保存向け。無いときは属性を付けない。 */
+  tipJson?: string
 }) {
   const cx = props.cx ?? 0
   const cy = props.cy ?? 0
@@ -184,8 +224,13 @@ function scatterPointShape(props: {
   // data 属性はツールチップ配置時に描画済みドットの実座標を読むために使う（#497）。
   // g で包んで Recharts のヒット領域も保つ。
   // アクティブ点は外側にハローを足して、画像にカーソルが無くても対応点が分かるようにする。
+  // data-scatter-tip は HTML 単体書き出しのホバー用（#505）。
   return (
-    <g data-scatter-point="true" data-scatter-active={props.active ? 'true' : undefined}>
+    <g
+      data-scatter-point="true"
+      data-scatter-active={props.active ? 'true' : undefined}
+      data-scatter-tip={props.tipJson}
+    >
       {props.active && (
         <circle
           cx={cx}
@@ -736,7 +781,7 @@ export function ScatterChart({
   }, [drawable])
 
   const hoverSiblings = active?.groupKey ? (siblings.get(active.groupKey) ?? [active]) : (active ? [active] : [])
-  const ROW_LIMIT = 12
+  const ROW_LIMIT = SCATTER_TIP_ROW_LIMIT
 
   // サイズ範囲 (sqrt スケール)。指定なしは ZAxis で一定サイズ。
   // 🔴 凡例と同じ定数を使う（SIZE_AREA_RANGE のコメント参照）。
@@ -826,11 +871,22 @@ export function ScatterChart({
       // キャプチャ前に同期で配置し直す（次フレーム待ちだけでは React 更新が間に合わない）。
       flushSync(() => setExportLayout(true))
     }
+    const onHtmlPrepare = () => {
+      // HTML では埋め込み JS にホバーを任せるので、アプリ側の固定チップは消す。
+      flushSync(() => {
+        setHover(null)
+        setPinned(null)
+        setTooltipPlacement(null)
+        setExportLayout(false)
+      })
+    }
     panel.addEventListener('mouseleave', onPanelLeave)
     panel.addEventListener(PANEL_EXPORT_PREPARE_EVENT, onExportPrepare)
+    panel.addEventListener(PANEL_EXPORT_HTML_PREPARE_EVENT, onHtmlPrepare)
     return () => {
       panel.removeEventListener('mouseleave', onPanelLeave)
       panel.removeEventListener(PANEL_EXPORT_PREPARE_EVENT, onExportPrepare)
+      panel.removeEventListener(PANEL_EXPORT_HTML_PREPARE_EVENT, onHtmlPrepare)
     }
   }, [])
 
@@ -891,11 +947,18 @@ export function ScatterChart({
         <ZAxis type="number" dataKey="size" range={zRange} />
         <Scatter
           data={drawable}
-          shape={(props: any) => scatterPointShape({
-            ...props,
-            fillOpacity,
-            active: sameScatterAnchor(props, active as { cx?: number; cy?: number } | null),
-          })}
+          shape={(props: any) => {
+            const payload = props.payload as ScatterPoint | undefined
+            const tipJson = payload
+              ? JSON.stringify(buildScatterTipPayload(payload, siblings))
+              : undefined
+            return scatterPointShape({
+              ...props,
+              fillOpacity,
+              active: sameScatterAnchor(props, active as { cx?: number; cy?: number } | null),
+              tipJson,
+            })
+          }}
           onMouseEnter={(p: any) => {
             // 同じ点へ入り直した場合も再計測するため、新しいオブジェクトとして保持する。
             setTooltipPlacement(null)
