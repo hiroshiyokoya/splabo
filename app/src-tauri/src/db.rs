@@ -4005,7 +4005,6 @@ fn cell_agg(cell_metric: &str, r: &MatrixRaw) -> Option<Agg> {
     let kda = r.n_kda as f64;
     Some(match cell_metric {
         "win_rate"      => Agg::Ratio { num: r.sum_won, den: n },
-        "ko_rate"       => Agg::Ratio { num: r.sum_ko,  den: n },
         // ピック率 = そのカテゴリでの延べ出現数 / そのカテゴリの全スロット数。
         "pick_rate"     => Agg::Ratio { num: n,         den: r.pick_den },
         "avg_kill"      => Agg::Ratio { num: r.sum_k,   den: kda },
@@ -4248,7 +4247,7 @@ async fn env_matrix_stats_weapon_filtered(
 ///   | "avg_inked" | "kill_ratio" | "contrib_kill" | "contrib_ratio" … 行/列の **一方が
 ///   weapon / weapon_category / sub_weapon / special_weapon**、または **武器フィルタ指定の
 ///   非武器×非武器**（#520。ピック率は武器系軸必須）。いずれも投稿者を除く 7 人が母数（#501）。
-/// - `cell_metric` = "ko_rate" | "battles"   … 行/列とも **weapon 系以外**（バトルレベル指標）
+/// - `cell_metric` = "battles"   … 行/列とも **weapon 系以外**（バトルレベル指標）
 ///
 /// セルはサンプル不足を落として返すが、行・列の周辺集計（marginals）は
 /// **足切り前の全グループ**から算出して一緒に返す（#411）。軸ラベルの色付けに使う。
@@ -4443,17 +4442,17 @@ pub async fn env_matrix_stats(
         return Ok(EnvMatrixStats { cells, row_marginals, col_marginals });
     }
 
-    // バトルレベル × バトルレベル（weapon 系を含まない）。
+    // バトルレベル × バトルレベル（weapon 系を含まない）。バトル数のみ（#522 で KO率を削除）。
     if is_weapon_slot_dim(&row_dim) || is_weapon_slot_dim(&col_dim) {
         return Err(
-            "ko_rate/battles は weapon / weapon_category / sub_weapon / special_weapon 以外の次元同士で指定してください"
+            "battles は weapon / weapon_category / sub_weapon / special_weapon 以外の次元同士で指定してください"
                 .to_string(),
         );
     }
     let (row_col, rmaster, rlabel) = matrix_dim(&row_dim).ok_or_else(|| format!("未知の集計次元: {row_dim}"))?;
     let (col_col, cmaster, clabel) = matrix_dim(&col_dim).ok_or_else(|| format!("未知の集計次元: {col_dim}"))?;
 
-    if !matches!(cell_metric.as_str(), "ko_rate" | "battles") {
+    if cell_metric != "battles" {
         return Err(format!("未知の cell_metric: {cell_metric}"));
     }
 
@@ -4463,8 +4462,7 @@ pub async fn env_matrix_stats(
         r#"
         SELECT rm.{rlabel} AS row_key,
                cm.{clabel} AS col_key,
-               COUNT(*) AS n,
-               SUM(CASE WHEN eb.knockout = 1 THEN 1.0 ELSE 0.0 END) AS sum_ko
+               COUNT(*) AS n
         FROM env_battles eb
         JOIN {rmaster} rm ON rm.id = eb.{row_col}
         JOIN {cmaster} cm ON cm.id = eb.{col_col}
@@ -4483,8 +4481,7 @@ pub async fn env_matrix_stats(
         let row_key: String = row.get("row_key");
         let col_key: String = row.get("col_key");
         let raw = MatrixRaw {
-            n:      row.get("n"),
-            sum_ko: row.try_get::<Option<f64>, _>("sum_ko").unwrap_or(None).unwrap_or(0.0),
+            n: row.get("n"),
             ..Default::default()
         };
         let n   = raw.n;

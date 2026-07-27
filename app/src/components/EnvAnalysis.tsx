@@ -126,7 +126,7 @@ const STAGE_WEAPON_ONLY = new Set([
 
 // ヒートマップのセル指標
 type CellMetricKey =
-  | 'win_rate' | 'pick_rate' | 'ko_rate' | 'battles'
+  | 'win_rate' | 'pick_rate' | 'battles'
   | 'avg_kill' | 'avg_assist' | 'contrib_kill' | 'avg_death' | 'kill_ratio' | 'contrib_ratio' | 'avg_inked'
 // キル系(記録のあるプレイヤーだけが母数・専用しきい値)。注記・母数表示の切り替えに使う。
 // 平均塗りP(avg_inked)も同じ母数なのでここに含める(#336 で元データの列マッピングを修正済み)。
@@ -152,7 +152,6 @@ const CELL_METRICS: CellMetric[] = [
   { key: 'kill_ratio',    label: 'キルレ',       fmt: num2, scale: 'diverging',  weapon: true, mid: 1.0 },
   { key: 'contrib_ratio', label: '貢献キルレ',   fmt: num2, scale: 'diverging',  weapon: true, mid: 1.0 },
   { key: 'avg_inked',     label: '平均塗りP',   fmt: pint, scale: 'sequential', weapon: true },
-  { key: 'ko_rate',       label: 'KO率',         fmt: pct,  scale: 'sequential', weapon: false },
   { key: 'battles',       label: 'バトル数',     fmt: pint, scale: 'sequential', weapon: false },
 ]
 // ルールを次元にしたときの並び順(ガチ系を先・ナワバリを最後)。
@@ -414,8 +413,9 @@ export function EnvAnalysis() {
   const weaponSlotInvolved = isWeaponSlotDim(rowDim) || isWeaponSlotDim(colDim)
   const bothWeaponSlot     = isWeaponSlotDim(rowDim) && isWeaponSlotDim(colDim)
   const hasWeaponFilter    = weaponKeys.length > 0
-  // 武器系軸あり → 勝率/ピック率/KDA。非武器×非武器はバトル数/KO率。
+  // 武器系軸あり → 勝率/ピック率/KDA。非武器×非武器はバトル数。
   // ただし武器フィルタありなら散布図(#478)と同様に勝率・KDA も出す（ピック率は武器軸必須・#520）。
+  // KO率はヒートマップから外した(#522)。
   const allowedCellMetrics = useMemo(() => {
     if (bothWeaponSlot) return []
     if (weaponSlotInvolved) return CELL_METRICS.filter(m => m.weapon)
