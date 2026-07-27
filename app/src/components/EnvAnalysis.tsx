@@ -167,13 +167,13 @@ const POSTER_EXCLUDED_NOTE = `※ ${POSTER_EXCLUDED_TEXT}。`
 /** 画像に焼き込む注釈(#500)。パネル上の長文をそのまま入れるとレイアウトが崩れるので、
  *  足切り・母数だけの 1 行に抑える。出典はキャプション先頭に出す。 */
 const SCATTER_EXPORT_NOTE =
-  `50 サンプル未満は非表示/${POSTER_EXCLUDED_TEXT}`
+  `50 サンプル未満は非表示 / ${POSTER_EXCLUDED_TEXT}`
 const heatmapExportNote = (kda: boolean) =>
-  `${kda ? 20 : 30} サンプル未満のセルは非表示/${POSTER_EXCLUDED_TEXT}`
+  `${kda ? 20 : 30} サンプル未満のセルは非表示 / ${POSTER_EXCLUDED_TEXT}`
 
 /** 保存画像のキャプション先頭。出典を最初に出す。 */
 function envExportCaption(filterSummary: string): string {
-  return filterSummary ? `出典: stat.ink/${filterSummary}` : '出典: stat.ink'
+  return filterSummary ? `出典: stat.ink / ${filterSummary}` : '出典: stat.ink'
 }
 
 /** スロット単位の集計が必要なヒートマップ次元(#481)。 */

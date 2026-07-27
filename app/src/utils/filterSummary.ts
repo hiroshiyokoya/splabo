@@ -50,8 +50,8 @@ const RULE_LABEL  = new Map(RULE_OPTIONS.map(o => [o.key, o.label]))
 const MAX_VALUES = 3
 
 export function joinValues(values: string[]): string {
-  if (values.length <= MAX_VALUES) return values.join('/')
-  return `${values.slice(0, MAX_VALUES).join('/')} 他${values.length - MAX_VALUES}件`
+  if (values.length <= MAX_VALUES) return values.join(' / ')
+  return `${values.slice(0, MAX_VALUES).join(' / ')} 他${values.length - MAX_VALUES}件`
 }
 
 /** `ラベル: 値` の並び。値が無い項目は落とす。 */
