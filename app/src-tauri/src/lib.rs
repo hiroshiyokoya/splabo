@@ -122,6 +122,7 @@ pub fn run() {
             env_import::import_env_full,
             env_import::import_env_delta,
             db::env_status,
+            db::env_filtered_count,
             db::env_scatter_stats,
             db::env_matrix_stats,
             db::env_season_range,

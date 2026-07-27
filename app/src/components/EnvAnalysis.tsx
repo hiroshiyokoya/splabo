@@ -280,6 +280,9 @@ export function EnvAnalysis() {
   const [loading, setLoading]         = useState(false)   // 集計クエリ実行中
   // 連続フィルタ変更で古い結果が後から来るのを防ぐ(#511)
   const loadSeqRef = useRef(0)
+  /** 共通フィルタに合うバトル件数(#529)。 */
+  const [filteredCount, setFilteredCount] = useState<number | null>(null)
+  const countSeqRef = useRef(0)
 
   // 共通フィルタ(#190: ロビー/ルールは複数選択)
   const [lobbyKeys, setLobbyKeys] = useState<string[]>(prefs.lobbyKeys)
@@ -501,9 +504,10 @@ export function EnvAnalysis() {
       ['バージョン', gameVers.length ? joinValues(gameVers.map(formatGameVer)) : null],
       ['ウデマエ',   posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
       ['Xパワー',    (powerMin || powerMax) ? `${powerMin || '-'}~${powerMax || '-'}` : null],
+      ['該当',       filteredCount != null ? `${filteredCount.toLocaleString()}バトル` : null],
     ])
   }, [period, range, lobbyKeys, ruleKeys, weaponKeys, stageKeys,
-      weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax])
+      weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax, filteredCount])
 
   // 拡充フィルタ(#189 / #477)を invoke 引数へ。空配列 / 空文字は null(無指定)に正規化。
   const extFilters = useMemo(() => ({
@@ -567,6 +571,21 @@ export function EnvAnalysis() {
 
   useEffect(() => { loadStatus() }, [loadStatus])
   useEffect(() => { loadData() }, [loadData])
+
+  // 絞り込みに合うバトル件数(#529)。グラフ集計とは独立に取り、軸切替でも同じ条件で更新する。
+  useEffect(() => {
+    if (!hasData) { setFilteredCount(null); return }
+    const seq = ++countSeqRef.current
+    invoke<number>('env_filtered_count', {
+      lobbyKeys,
+      ruleKeys,
+      since: range.since,
+      until: range.until,
+      ...extFilters,
+    })
+      .then(n => { if (seq === countSeqRef.current) setFilteredCount(n) })
+      .catch(() => { if (seq === countSeqRef.current) setFilteredCount(null) })
+  }, [hasData, lobbyKeys, ruleKeys, range, extFilters])
 
   // ------------------------------------------------------------------
   // 散布図ツールチップのアイコン画像(#412)
@@ -933,6 +952,9 @@ export function EnvAnalysis() {
           )}
 
           <div className="env-status-line">
+            {filteredCount != null && (
+              <span className="env-filtered-count">該当 {filteredCount.toLocaleString()} バトル</span>
+            )}
             {loading
               ? <span className="env-loading"><span className="env-loading-spinner" />グラフ更新中…</span>
               : <span className="env-updated">✓ 表示は最新です</span>}
