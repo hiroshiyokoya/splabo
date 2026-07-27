@@ -386,8 +386,9 @@ export function CustomChartCard({
     opacity:   isDragging ? 0.5 : 1,
   }
 
-  // yComposition ごとに使う並び替え選択肢と既定値を決める。
+  // 並び替えは棒グラフだけ（#509）。heatmap / calendar / line / scatter には出さない。
   const sortOptions: SortOption[] =
+    chart.shape !== 'bar' ? [] :
     chart.yComposition === 'stacked_winrate' ? SORT_OPTIONS_STACKED_WINRATE :
     chart.yComposition === 'attack_defense'  ? SORT_OPTIONS_ATTACK_DEFENSE  :
     chart.yComposition === 'single_metric' && chart.metric
