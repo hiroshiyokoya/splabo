@@ -444,6 +444,8 @@ export interface EnvFilterOption {
   key:   string
   label: string
   n:     number
+  /** 武器カテゴリ（公式準拠）。ステージでは空(#523)。 */
+  category?: string
 }
 
 export interface ChartSpec {

@@ -870,6 +870,7 @@ export function EnvAnalysis() {
                 key:   w.key,
                 label: `${w.label}(${w.n.toLocaleString()})`,
                 short: w.label,
+                group: w.category || undefined,
               }))}
             />
             <MultiSelect

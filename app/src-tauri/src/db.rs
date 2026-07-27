@@ -2289,7 +2289,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// 適用済みマイグレーションの最新版。**新しい `if current_version < N` ブロックを足したら
 /// 必ずここを N に更新する。** 更新を忘れると `migrate_battle_ids` 冒頭の早期 return に
 /// 阻まれ、追加したマイグレーションが一度も実行されない（#206・#306 の再発防止）。
-const LATEST_MIGRATION_VERSION: i64 = 21;
+const LATEST_MIGRATION_VERSION: i64 = 22;
 
 /// version 2: mode 判定バグ修正版で全件再処理
 /// version 3: kill カウントを kill_or_assist から実キル数に修正
@@ -2311,6 +2311,7 @@ const LATEST_MIGRATION_VERSION: i64 = 21;
 /// version 19: is_knockout を三値に修復（KO負けから時間切れ決着を除外）(#315)
 /// version 20: weapon の category/sub/special 空欄を同梱の静的マスターで backfill (#492)
 /// version 21: env_battles に A2–A4 / B2–B4 の kill/death/assist/inked 列を追加 (#501)
+/// version 22: 武器カテゴリ「リールガン」を公式どおり「シューター」へ統合 (#523)
 ///
 /// ⚠ **マイグレーションを追加したら `LATEST_MIGRATION_VERSION` も必ず上げること。**
 ///    ここが古いままだと早期 return に阻まれて新しい版が一度も走らない（#206 / #306 で 2 度踏んだ）。
@@ -3498,6 +3499,27 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         log::info!("migrate v21: env_battles に A2–A4 / B2–B4 の KDA 列を追加");
     }
 
+    // version 22: stat.ink 由来の「リールガン」を公式カテゴリ「シューター」へ統合（#523）。
+    // SplatNet 同期済みの武器はもともとシューター。静的マスター・env 同期も合わせて正規化する。
+    if current_version < 22 {
+        let w = sqlx::query("UPDATE weapon SET category_key = 'シューター' WHERE category_key = 'リールガン'")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?
+            .rows_affected();
+        let old = sqlx::query("UPDATE weapons SET category = 'シューター' WHERE category = 'リールガン'")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?
+            .rows_affected();
+
+        sqlx::query("PRAGMA user_version = 22")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!("migrate v22: リールガン → シューター（weapon {w} / weapons {old} 件）");
+    }
+
     Ok(updated)
 }
 
@@ -4650,9 +4672,12 @@ pub struct EnvFilterOption {
     pub key:   String,
     pub label: String,
     pub n:     i64,
+    /// 武器カテゴリ（公式準拠）。ステージでは空文字（#523）。
+    #[serde(default)]
+    pub category: String,
 }
 
-/// env_battles に登場する武器をピック数降順で返す（絞り込み UI 用・#477）。
+/// env_battles に登場する武器をカテゴリ → ピック数降順で返す（絞り込み UI 用・#477 / #523）。
 /// 件数は集計と同じく投稿者（a1）を除いたスロットで数える（#501）。
 #[tauri::command]
 pub async fn env_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOption>, String> {
@@ -4660,6 +4685,10 @@ pub async fn env_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOp
         r#"
         SELECT w.key AS key,
                COALESCE(NULLIF(w.name_ja, ''), w.key) AS label,
+               CASE
+                 WHEN w.category_key = 'リールガン' THEN 'シューター'
+                 ELSE COALESCE(w.category_key, '')
+               END AS category,
                COUNT(*) AS n
         FROM env_battles eb
         JOIN weapon w ON w.id IN (
@@ -4667,7 +4696,10 @@ pub async fn env_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOp
             eb.b1_weapon_id, eb.b2_weapon_id, eb.b3_weapon_id, eb.b4_weapon_id
         )
         GROUP BY w.id
-        ORDER BY n DESC
+        ORDER BY CASE WHEN category = '' OR category IS NULL THEN 1 ELSE 0 END,
+                 category,
+                 n DESC,
+                 label
         "#,
     )
     .fetch_all(db.as_ref())
@@ -4677,9 +4709,10 @@ pub async fn env_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOp
     Ok(rows
         .into_iter()
         .map(|row| EnvFilterOption {
-            key:   row.get("key"),
-            label: row.get("label"),
-            n:     row.get("n"),
+            key:      row.get("key"),
+            label:    row.get("label"),
+            n:        row.get("n"),
+            category: row.get("category"),
         })
         .collect())
 }
@@ -4705,9 +4738,10 @@ pub async fn env_stages(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOpt
     Ok(rows
         .into_iter()
         .map(|row| EnvFilterOption {
-            key:   row.get("key"),
-            label: row.get("label"),
-            n:     row.get("n"),
+            key:      row.get("key"),
+            label:    row.get("label"),
+            n:        row.get("n"),
+            category: String::new(),
         })
         .collect())
 }

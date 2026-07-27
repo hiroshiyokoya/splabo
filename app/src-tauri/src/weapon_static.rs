@@ -3,6 +3,9 @@
 //! stat.ink /api/v3/weapon のレスポンス（2026-07 時点）から生成。
 //! Splatoon 3 の武器追加は終了しているため、このデータが陳腐化することはない。
 //! 形式: (statink slug, カテゴリ, サブ, スペシャル) いずれも日本語名。
+//!
+//! カテゴリは **SplatNet / ゲーム内の武器種別** に揃える（#523）。
+//! stat.ink は L3/H3 を `リールガン` と分けるが、公式はシューター扱いのため統合する。
 
 pub const WEAPON_STATIC_ATTRS: &[(&str, &str, &str, &str)] = &[
     ("52gal", "シューター", "スプラッシュシールド", "メガホンレーザー5.1ch"),
@@ -54,9 +57,9 @@ pub const WEAPON_STATIC_ATTRS: &[(&str, &str, &str, &str)] = &[
     ("furuido_custom", "ストリンガー", "ポイントセンサー", "ホップソナー"),
     ("gaen_ff", "マニューバー", "トラップ", "メガホンレーザー5.1ch"),
     ("gaen_ff_custom", "マニューバー", "クイックボム", "トリプルトルネード"),
-    ("h3reelgun", "リールガン", "ポイントセンサー", "エナジースタンド"),
-    ("h3reelgun_d", "リールガン", "スプラッシュシールド", "グレートバリア"),
-    ("h3reelgun_snak", "リールガン", "キューバンボム", "トリプルトルネード"),
+    ("h3reelgun", "シューター", "ポイントセンサー", "エナジースタンド"),
+    ("h3reelgun_d", "シューター", "スプラッシュシールド", "グレートバリア"),
+    ("h3reelgun_snak", "シューター", "キューバンボム", "トリプルトルネード"),
     ("heroshooter_replica", "シューター", "キューバンボム", "ウルトラショット"),
     ("hissen", "スロッシャー", "ポイズンミスト", "ジェットパック"),
     ("hissen_ash", "スロッシャー", "スプラッシュボム", "スミナガシート"),
@@ -80,9 +83,9 @@ pub const WEAPON_STATIC_ATTRS: &[(&str, &str, &str, &str)] = &[
     ("kelvin525_deco", "マニューバー", "ポイントセンサー", "ウルトラショット"),
     ("kugelschreiber", "スピナー", "タンサンボム", "ジェットパック"),
     ("kugelschreiber_hue", "スピナー", "トラップ", "キューインキ"),
-    ("l3reelgun", "リールガン", "カーリングボム", "カニタンク"),
-    ("l3reelgun_d", "リールガン", "クイックボム", "ウルトラハンコ"),
-    ("l3reelgun_haku", "リールガン", "スプラッシュボム", "ジェットパック"),
+    ("l3reelgun", "シューター", "カーリングボム", "カニタンク"),
+    ("l3reelgun_d", "シューター", "クイックボム", "ウルトラハンコ"),
+    ("l3reelgun_haku", "シューター", "スプラッシュボム", "ジェットパック"),
     ("lact450", "ストリンガー", "カーリングボム", "マルチミサイル"),
     ("lact450_deco", "ストリンガー", "スプラッシュシールド", "サメライド"),
     ("lact450_milk", "ストリンガー", "トーピード", "ナイスダマ"),
@@ -188,6 +191,14 @@ pub fn lookup(slug: &str) -> Option<(&'static str, &'static str, &'static str)> 
         .map(|(_, cat, sub, sp)| (*cat, *sub, *sp))
 }
 
+/// stat.ink 等のカテゴリ名を公式（SplatNet）準拠に正規化する（#523）。
+pub fn normalize_category(cat: &str) -> &str {
+    match cat {
+        "リールガン" => "シューター",
+        other => other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,6 +210,14 @@ mod tests {
             Some(("シューター", "スプラッシュシールド", "メガホンレーザー5.1ch"))
         );
         assert_eq!(lookup("unknown_slug"), None);
+    }
+
+    #[test]
+    fn reelguns_are_shooters() {
+        assert_eq!(lookup("l3reelgun").map(|(c, _, _)| c), Some("シューター"));
+        assert_eq!(lookup("h3reelgun").map(|(c, _, _)| c), Some("シューター"));
+        assert_eq!(normalize_category("リールガン"), "シューター");
+        assert_eq!(normalize_category("ブラスター"), "ブラスター");
     }
 
     #[test]
