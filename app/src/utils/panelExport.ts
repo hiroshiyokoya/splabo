@@ -268,6 +268,9 @@ async function inlineImages(root: HTMLElement): Promise<void> {
 
 /** HTML 埋め込み用の追加 CSS（アプリ CSS に無い固定レイアウト）。 */
 const HTML_EXPORT_EXTRA_CSS = `
+/* App.css のグローバルリセットはセレクタ収集から漏れるのでここで補う。
+   box-sizing が content-box だと padding 分だけ枠とグラフ幅がずれる。 */
+*, *::before, *::after { box-sizing: border-box; }
 html, body {
   margin: 0;
   padding: 16px;
@@ -275,10 +278,16 @@ html, body {
   color: var(--text, #eee);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
+/* キャプチャ時の実寸を保つ。max-width で縮めると SVG 固定幅と枠がずれる。 */
 body > .chart-card,
 body > .env-chart-section {
-  max-width: 960px;
   margin: 0 auto;
+  flex-shrink: 0;
+}
+/* グリッド用の span 指定は単体 HTML では意味が無く、稀に幅計算を乱すので無効化。 */
+body > .chart-card.chart-card--wide,
+body > .chart-card.chart-card--full {
+  grid-column: auto;
 }
 #splabo-export-tip {
   display: none;
@@ -419,15 +428,83 @@ function escapeHtml(s: string): string {
 }
 
 /**
+ * Recharts の ResponsiveContainer が付けた実寸をインラインで固定する。
+ * HTML 単体では ResizeObserver が動かない／親幅が変わると、枠だけ縮んで SVG がはみ出す。
+ * 戻り値は元スタイルへ戻す関数（アプリ画面を汚さないため）。
+ */
+function freezeChartGeometry(root: HTMLElement): () => void {
+  const restorers: Array<() => void> = []
+
+  const freezeBox = (el: Element) => {
+    if (!(el instanceof HTMLElement) && !(el instanceof SVGElement)) return
+    const rect = el.getBoundingClientRect()
+    const w = Math.round(rect.width)
+    const h = Math.round(rect.height)
+    if (w <= 0 || h <= 0) return
+
+    if (el instanceof SVGSVGElement) {
+      const prevW = el.getAttribute('width')
+      const prevH = el.getAttribute('height')
+      const prevStyleW = el.style.width
+      const prevStyleH = el.style.height
+      el.setAttribute('width', String(w))
+      el.setAttribute('height', String(h))
+      el.style.width = `${w}px`
+      el.style.height = `${h}px`
+      restorers.push(() => {
+        if (prevW == null) el.removeAttribute('width')
+        else el.setAttribute('width', prevW)
+        if (prevH == null) el.removeAttribute('height')
+        else el.setAttribute('height', prevH)
+        el.style.width = prevStyleW
+        el.style.height = prevStyleH
+      })
+      return
+    }
+
+    if (!(el instanceof HTMLElement)) return
+    const prevW = el.style.width
+    const prevH = el.style.height
+    const prevMinW = el.style.minWidth
+    const prevMaxW = el.style.maxWidth
+    el.style.width = `${w}px`
+    el.style.height = `${h}px`
+    el.style.minWidth = `${w}px`
+    el.style.maxWidth = `${w}px`
+    restorers.push(() => {
+      el.style.width = prevW
+      el.style.height = prevH
+      el.style.minWidth = prevMinW
+      el.style.maxWidth = prevMaxW
+    })
+  }
+
+  freezeBox(root)
+  root.querySelectorAll(
+    '.chart-hover-area, .recharts-responsive-container, .recharts-wrapper, svg.recharts-surface',
+  ).forEach(freezeBox)
+
+  return () => {
+    for (let i = restorers.length - 1; i >= 0; i--) restorers[i]()
+  }
+}
+
+/**
  * パネルを単体 HTML にして保存ダイアログへ渡す。
  * 戻り値は保存先パス。キャンセルされたら null。
  */
 export async function savePanelAsHtml(node: HTMLElement, screen: string, panel: string): Promise<string | null> {
   node.classList.add(EXPORTING_CLASS)
+  let unfreeze: (() => void) | null = null
   try {
     fillExportCredit(node, buildExportCredit(await appVersion()))
     node.dispatchEvent(new CustomEvent(PANEL_EXPORT_HTML_PREPARE_EVENT, { bubbles: false }))
+    // キャプション表示後に ResponsiveContainer が再計測するのを待つ。
     await nextFrames()
+    await nextFrames()
+
+    // クローン前に実寸をインライン化してから clone する（構造が一致する）。
+    unfreeze = freezeChartGeometry(node)
 
     const clone = node.cloneNode(true) as HTMLElement
     clone.querySelectorAll(`.${EXPORT_HIDE_CLASS}`).forEach(el => el.remove())
@@ -438,9 +515,6 @@ export async function savePanelAsHtml(node: HTMLElement, screen: string, panel: 
 
     await inlineImages(clone)
 
-    // キャプチャ時の実寸を固定して、ブラウザで開いたときの崩れを減らす。
-    const rect = node.getBoundingClientRect()
-    clone.style.width = `${Math.round(rect.width)}px`
     clone.style.boxSizing = 'border-box'
 
     const title = `SpLabo — ${screen} — ${panel}`
@@ -451,6 +525,7 @@ export async function savePanelAsHtml(node: HTMLElement, screen: string, panel: 
       'html',
     )
   } finally {
+    unfreeze?.()
     node.classList.remove(EXPORTING_CLASS)
   }
 }
