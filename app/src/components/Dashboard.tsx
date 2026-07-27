@@ -23,6 +23,7 @@ import type { WeaponMeta } from '../utils/scatterCategoryColors'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import { describeFilters, useStageNames } from '../utils/filterSummary'
+import { rankRowsForBarChart } from '../utils/chartSort'
 
 const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
@@ -237,6 +238,16 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
     return [...data].sort((a, b) => b[by] - a[by])
   }
 
+  /** 固定の武器別: 指標で全件ソートしてから上位 14（#509）。逆順なし。 */
+  function rankedWeapons(data: SummaryEntry[], by: SortBy): SummaryEntry[] {
+    return rankRowsForBarChart(data, {
+      getSortValue: row => row[by],
+      getTotal: row => row.total,
+      sortByWinRate: by === 'win_rate',
+      dir: 'desc',
+    })
+  }
+
   // ---- カスタムグラフ操作 ----
   function persist(charts: CustomChart[]) {
     setCustomCharts(charts)
@@ -298,7 +309,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
 
           <div className="chart-grid">
             <ChartCard title="武器別 バトル数 & 勝率" sortBy={weaponSort} onSortChange={setWeaponSort} filterSummary={filterSummary}>
-              <WinRateChart data={sorted(summary.by_weapon.slice(0, 14), weaponSort)} height={260} images={weaponImages} hoverImageSize={64} />
+              <WinRateChart data={rankedWeapons(summary.by_weapon, weaponSort)} height={260} images={weaponImages} hoverImageSize={64} />
             </ChartCard>
 
             <ChartCard title="ステージ別 バトル数 & 勝率" sortBy={stageSort} onSortChange={setStageSort} filterSummary={filterSummary}>

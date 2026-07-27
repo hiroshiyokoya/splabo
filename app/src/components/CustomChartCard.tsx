@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, MetricKey, BattleMetricKey } from '../types'
@@ -24,6 +24,7 @@ import {
 } from '../utils/scatterCategoryColors'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
+import { rankRowsForBarChart, type ChartSortDir } from '../utils/chartSort'
 
 /** 1 バトル単位の散布図メトリクス値を BattleRow から計算する。 */
 function getBattleMetric(b: BattleRow, k: BattleMetricKey): number | null {
@@ -237,10 +238,10 @@ function buildBattleScatterPoints(
   }
 }
 
-/** yComposition ごとに用意する並び替えオプション。
+/** yComposition ごとに用意する並び替えオプション（#509）。
  *  - stacked_winrate: バトル数 / 勝数 / 勝率
- *  - attack_defense:  平均キル / 平均デス / キルレ（= 平均キル ÷ 平均デス）
- *  - single_metric:   並び替えなし（既に選択メトリクスが Y 軸なので自明）。 */
+ *  - attack_defense:  バトル数 + キル系指標
+ *  - single_metric:   バトル数 + 選択中メトリクス */
 type SortOption = { key: MetricKey; label: string }
 const SORT_OPTIONS_STACKED_WINRATE: SortOption[] = [
   { key: 'total',    label: 'バトル数' },
@@ -248,6 +249,7 @@ const SORT_OPTIONS_STACKED_WINRATE: SortOption[] = [
   { key: 'win_rate', label: '勝率' },
 ]
 const SORT_OPTIONS_ATTACK_DEFENSE: SortOption[] = [
+  { key: 'total',            label: 'バトル数' },
   { key: 'avg_kill',         label: '平均キル' },
   { key: 'avg_assist',       label: '平均アシスト' },
   { key: 'avg_contrib_kill', label: '平均貢献キル' },
@@ -322,14 +324,18 @@ const SPAN_CLASS: Record<ChartSpan, string> = {
   3: 'chart-card--full',
 }
 
-/** 上位 14 件抽出 → 指定 MetricKey で降順ソート。null は最後尾。 */
-function sortAndSlice(rows: GroupedStatsRow[], sortKey: MetricKey | null): GroupedStatsRow[] {
-  const sliced = rows.slice(0, 14)
-  if (!sortKey) return sliced
-  return [...sliced].sort((a, b) => {
-    const av = getMetric(a, sortKey) ?? -Infinity
-    const bv = getMetric(b, sortKey) ?? -Infinity
-    return bv - av
+/** 棒グラフ用: 指標で全件ソートしてから上位を切る（#509）。 */
+function sortAndSlice(
+  rows: GroupedStatsRow[],
+  sortKey: MetricKey | null,
+  dir: ChartSortDir,
+): GroupedStatsRow[] {
+  if (!sortKey) return rows.slice(0, 14)
+  return rankRowsForBarChart(rows, {
+    getSortValue: row => getMetric(row, sortKey),
+    getTotal: row => row.total,
+    sortByWinRate: sortKey === 'win_rate',
+    dir,
   })
 }
 
@@ -343,7 +349,8 @@ function sortAndSlice(rows: GroupedStatsRow[], sortKey: MetricKey | null): Group
  *   - rule  → ruleLabel
  *   - その他 → そのまま
  * - yComposition に応じて並び替えボタンを常に表示
- *   （stacked_winrate / attack_defense のとき）。
+ *   （stacked_winrate / attack_defense / single_metric の棒グラフ）。
+ * - 同じキー再クリックで昇順/降順トグル（#509）。
  */
 export function CustomChartCard({
   chart, data, data2d, battleData, onEdit, onDelete, weaponImages, weaponMeta,
@@ -380,9 +387,23 @@ export function CustomChartCard({
   const sortOptions: SortOption[] =
     chart.yComposition === 'stacked_winrate' ? SORT_OPTIONS_STACKED_WINRATE :
     chart.yComposition === 'attack_defense'  ? SORT_OPTIONS_ATTACK_DEFENSE  :
-                                                []
+    chart.yComposition === 'single_metric' && chart.metric
+      ? (chart.metric === 'total'
+        ? [{ key: 'total' as MetricKey, label: 'バトル数' }]
+        : [
+            { key: 'total' as MetricKey, label: 'バトル数' },
+            { key: chart.metric, label: METRIC_LABELS[chart.metric] ?? chart.metric },
+          ])
+      : []
   const defaultSortKey = sortOptions[0]?.key ?? null
   const [sortKey, setSortKey] = useState<MetricKey | null>(defaultSortKey)
+  const [sortDir, setSortDir] = useState<ChartSortDir>('desc')
+
+  // 構成が変わったら並び替えキーを既定に戻す（古いキーが選択肢から消えるため）。
+  useEffect(() => {
+    setSortKey(defaultSortKey)
+    setSortDir('desc')
+  }, [chart.id, chart.yComposition, chart.metric, defaultSortKey])
 
   // 軸キーに応じた表示整形（ステージは斜め）
   const nameTransform =
@@ -392,11 +413,20 @@ export function CustomChartCard({
                                 undefined
   const tickAngle = chart.groupBy === 'stage' ? 30 : undefined
 
-  // 上位 14 件を取って選択されたキーでソート。
+  // 指標で全件ソートしてから上位を切る（#509）。
   // 線・カレンダー・散布図・ヒートマップは全データが必要なので slice しない。
   const sliced = (chart.shape === 'line' || chart.shape === 'calendar_heatmap' || chart.shape === 'scatter' || chart.shape === 'heatmap')
     ? data
-    : sortAndSlice(data, sortKey)
+    : sortAndSlice(data, sortKey, sortDir)
+
+  function handleSortClick(key: MetricKey) {
+    if (sortKey === key) {
+      setSortDir(d => (d === 'desc' ? 'asc' : 'desc'))
+    } else {
+      setSortKey(key)
+      setSortDir('desc')
+    }
+  }
 
   // #401: チャート種別・データ規模から決めるグリッドスパン（standard / wide / full）。
   const spanClass = SPAN_CLASS[chartSpan(chart, data, data2d)]
@@ -431,13 +461,23 @@ export function CustomChartCard({
         <h3 className="chart-title">{title}</h3>
         {sortOptions.length > 0 && (
           <div className={`chart-sort-btns ${EXPORT_HIDE_CLASS}`}>
-            {sortOptions.map(o => (
-              <button
-                key={o.key}
-                className={`chart-sort-btn${sortKey === o.key ? ' active' : ''}`}
-                onClick={() => setSortKey(o.key)}
-              >{o.label}</button>
-            ))}
+            {sortOptions.map(o => {
+              const active = sortKey === o.key
+              const dirMark = active ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''
+              return (
+                <button
+                  key={o.key}
+                  type="button"
+                  className={`chart-sort-btn${active ? ' active' : ''}`}
+                  onClick={() => handleSortClick(o.key)}
+                  title={active
+                    ? `クリックで${sortDir === 'desc' ? '昇順' : '降順'}に切替`
+                    : `${o.label}で並べ替え`}
+                  aria-pressed={active}
+                  aria-label={`${o.label}${active ? (sortDir === 'asc' ? '（昇順）' : '（降順）') : ''}`}
+                >{o.label}{dirMark}</button>
+              )
+            })}
           </div>
         )}
       </div>
