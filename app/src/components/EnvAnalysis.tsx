@@ -158,9 +158,9 @@ const CELL_METRICS: CellMetric[] = [
 // ルールを次元にしたときの並び順（ガチ系を先・ナワバリを最後）。
 const RULE_HEATMAP_ORDER = ['area', 'yagura', 'hoko', 'asari', 'nawabari']
 
-/** 投稿者除外の説明（#501）。stat.ink の全体統計と同じく、投稿者本人を母数から外して
- *  残り 7 人で集計している。散布図・ヒートマップ・保存画像で同じ文言を使う。 */
-const POSTER_EXCLUDED_TEXT = '集計は投稿者を除く 7 人分（stat.ink の全体統計と同じ）'
+/** 投稿者除外の説明（#501）。投稿者本人を母数から外し、残り 7 人で集計している。
+ *  散布図・ヒートマップ・保存画像で同じ文言を使う。 */
+const POSTER_EXCLUDED_TEXT = '集計は投稿者を除く 7 人分'
 /** 画面の注釈用。 */
 const POSTER_EXCLUDED_NOTE = `※ ${POSTER_EXCLUDED_TEXT}。`
 
