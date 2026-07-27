@@ -171,8 +171,14 @@ const heatmapExportNote = (kda: boolean) =>
   `${kda ? 20 : 30} サンプル未満のセルは非表示 / ${POSTER_EXCLUDED_TEXT}`
 
 /** 保存画像のキャプション先頭。出典を最初に出す。 */
-function envExportCaption(filterSummary: string): string {
-  return filterSummary ? `出典: stat.ink / ${filterSummary}` : '出典: stat.ink'
+function envExportCaption(filterSummary: string, filteredCount: number | null): string {
+  const parts = ['出典: stat.ink']
+  // 該当件数は先頭寄りに置く。条件が長いと caption が 2 行で切られるため(#529)。
+  if (filteredCount != null) {
+    parts.push(`該当 ${filteredCount.toLocaleString()} バトル`)
+  }
+  if (filterSummary) parts.push(filterSummary)
+  return parts.join(' / ')
 }
 
 /** スロット単位の集計が必要なヒートマップ次元(#481)。 */
@@ -504,10 +510,9 @@ export function EnvAnalysis() {
       ['バージョン', gameVers.length ? joinValues(gameVers.map(formatGameVer)) : null],
       ['ウデマエ',   posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
       ['Xパワー',    (powerMin || powerMax) ? `${powerMin || '-'}~${powerMax || '-'}` : null],
-      ['該当',       filteredCount != null ? `${filteredCount.toLocaleString()}バトル` : null],
     ])
   }, [period, range, lobbyKeys, ruleKeys, weaponKeys, stageKeys,
-      weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax, filteredCount])
+      weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax])
 
   // 拡充フィルタ(#189 / #477)を invoke 引数へ。空配列 / 空文字は null(無指定)に正規化。
   const extFilters = useMemo(() => ({
@@ -1020,7 +1025,7 @@ export function EnvAnalysis() {
                     panel={`${groupBy === 'weapon' ? '武器' : 'ステージ'}散布図 ${xM.label}×${yM.label}`}
                   />
                 </div>
-                <PanelExportCaption conditions={envExportCaption(envFilterSummary)} />
+                <PanelExportCaption conditions={envExportCaption(envFilterSummary, filteredCount)} />
                 {points.length === 0 ? (
                   <p className="env-no-data">条件に一致するデータがありません(50 サンプル未満は非表示)</p>
                 ) : (
@@ -1098,7 +1103,7 @@ export function EnvAnalysis() {
                     panel={`ヒートマップ ${dimLabel(rowDim)}×${dimLabel(colDim)} ${cm.label}`}
                   />
                 </div>
-                <PanelExportCaption conditions={envExportCaption(envFilterSummary)} />
+                <PanelExportCaption conditions={envExportCaption(envFilterSummary, filteredCount)} />
                 {bothWeaponSlot ? (
                   <p className="env-no-data">武器 × 武器は非対応です。一方をステージ/ルール/ロビーにしてください。</p>
                 ) : (
