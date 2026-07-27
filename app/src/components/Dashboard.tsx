@@ -31,10 +31,10 @@ const COLOR_DRAW = '#9ca3af'
 
 // 勝率の閾値色。勝/負の緑/赤との衝突を避けつつ、
 // まぶしくならないよう少しトーンを抑える。
-//   ≥55% : emerald-400（緑＋青み、ライムの代わり）
-//   45-55% : orange-400（落ち着いた橙）
-//   <45% : pink-400（柔らかいピンク）
-const WIN_RATE_HI  = '#38bdf8'   // 勝率55%以上は青系（勝数の緑と区別しやすく）
+//   ≥55% : emerald-400(緑＋青み、ライムの代わり)
+//   45-55% : orange-400(落ち着いた橙)
+//   <45% : pink-400(柔らかいピンク)
+const WIN_RATE_HI  = '#38bdf8'   // 勝率55%以上は青系(勝数の緑と区別しやすく)
 const WIN_RATE_MID = '#fb923c'
 const WIN_RATE_LO  = '#f472b6'
 
@@ -50,17 +50,17 @@ function winRateLevel(rate: number): 'hi' | 'mid' | 'lo' {
   return 'lo'
 }
 
-/** 平均キルカードの値「K (A)」＝ キル (アシスト)（#449）。
- *  K が無ければ '—'、A だけ無ければ括弧内を '—' にする。BattleLog.fmtKillWithAssist と同期。 */
+/** 平均キルカードの値「K (A)」＝ キル (アシスト)(#449)。
+ *  K が無ければ '-'、A だけ無ければ括弧内を '-' にする。BattleLog.fmtKillWithAssist と同期。 */
 function fmtKillWithAssist(kill: number | null | undefined, assist: number | null | undefined): string {
-  if (kill == null) return '—'
-  return `${kill.toFixed(2)} (${assist != null ? assist.toFixed(2) : '—'})`
+  if (kill == null) return '-'
+  return `${kill.toFixed(2)} (${assist != null ? assist.toFixed(2) : '-'})`
 }
 
 // 積み上げバーで「最上段のセグメントだけ上端を角丸」にする shape。
 // Recharts の radius={[r,r,0,0]} を全 stack に付けると各セグメントが
 // 個別に丸まって境目に変な凹みが出るため、shape で制御する。
-// 並び（下→上）: wins → losses → draws。
+// 並び(下→上): wins → losses → draws。
 function stackTopRoundedShape(props: any) {
   const { x, y, width, height, fill, fillOpacity, payload, dataKey } = props
   if (height <= 0) return null
@@ -86,7 +86,7 @@ interface Props {
   aiChart: ChartSpec | null
   /** サイドバーの「最新データを取得」と同じ処理を空状態のボタンからも呼べるようにする。 */
   onFetchRequest?: () => void
-  /** 「設定タブを開く」ためのコールバック（ログイン誘導用）。 */
+  /** 「設定タブを開く」ためのコールバック(ログイン誘導用)。 */
   onOpenSettings?: () => void
   /** 取得中はボタンを disable + 表示文言を変えるためのフラグ。 */
   fetching?: boolean
@@ -97,7 +97,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
   const [stats, setStats]     = useState<BattleStats | null>(null)
   // #86 PR B: ユーザーが追加したカスタムグラフ。localStorage に永続化。
   const [customCharts, setCustomCharts] = useState<CustomChart[]>(() => loadCustomCharts())
-  // 各 groupBy のデータをキャッシュ（同じキーを複数カードで参照するので 1 回で済ませる）。
+  // 各 groupBy のデータをキャッシュ(同じキーを複数カードで参照するので 1 回で済ませる)。
   const [groupedStatsCache, setGroupedStatsCache] = useState<Partial<Record<GroupByKey, GroupedStatsRow[]>>>({})
   // ヒートマップ用の 2D キャッシュ。キーは `${groupBy}|${groupBy2}|${topN}`。
   const [grouped2dCache, setGrouped2dCache] = useState<Record<string, GroupedStatsRow2D[]>>({})
@@ -119,7 +119,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  // 画像保存に焼き込む条件（#500）。FilterBar は画面上部にあり画像には写らない。
+  // 画像保存に焼き込む条件(#500)。FilterBar は画面上部にあり画像には写らない。
   const stageNames    = useStageNames()
   const filterSummary = useMemo(() => describeFilters(filters, stageNames), [filters, stageNames])
 
@@ -231,14 +231,14 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
   const totalLosses  = totalBattles - totalWins - totalDraws
   const decisiveBattles = totalBattles - totalDraws
   const overallWinRate  = decisiveBattles > 0 ? totalWins / decisiveBattles : null
-  // カレンダーの表示範囲に渡す（#461）
+  // カレンダーの表示範囲に渡す(#461)
   const { since: filterSince, until: filterUntil } = filtersToRange(filters)
 
   function sorted(data: SummaryEntry[], by: SortBy): SummaryEntry[] {
     return [...data].sort((a, b) => b[by] - a[by])
   }
 
-  /** 固定の武器別: 指標で全件ソートしてから上位 14（#509）。逆順なし。 */
+  /** 固定の武器別: 指標で全件ソートしてから上位 14(#509)。逆順なし。 */
   function rankedWeapons(data: SummaryEntry[], by: SortBy): SummaryEntry[] {
     return rankRowsForBarChart(data, {
       getSortValue: row => row[by],
@@ -299,11 +299,11 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
             <StatCard label="Win / Lose (Draw)" value={`${totalWins} / ${totalLosses} (${totalDraws})`} />
             <StatCard
               label="全体勝率"
-              value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '—'}
+              value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '-'}
               valueColor={overallWinRate !== null ? winRateColor(overallWinRate) : undefined}
             />
             <StatCard label="平均キル" value={fmtKillWithAssist(stats?.avg_kill, stats?.avg_assist)} />
-            <StatCard label="平均デス" value={stats?.avg_death != null ? stats.avg_death.toFixed(2) : '—'} />
+            <StatCard label="平均デス" value={stats?.avg_death != null ? stats.avg_death.toFixed(2) : '-'} />
             <StatCard label="キルレ" value={avgKillRatio(stats?.avg_kill ?? null, stats?.avg_death ?? null)} />
           </div>
 
@@ -313,7 +313,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
             </ChartCard>
 
             <ChartCard title="ステージ別 バトル数 & 勝率" sortBy={stageSort} onSortChange={setStageSort} filterSummary={filterSummary}>
-              {/* ステージは現状 25 種程度で全件表示が望ましい（武器のような大量マスターと違い slice 不要）。 */}
+              {/* ステージは現状 25 種程度で全件表示が望ましい(武器のような大量マスターと違い slice 不要)。 */}
               <WinRateChart data={sorted(summary.by_stage, stageSort)} height={260} images={new Map()} nameTransform={stageAbbr} tickAngle={30} />
             </ChartCard>
 
@@ -388,7 +388,7 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
 }
 
 // ---------------------------------------------------------------------------
-// 空状態（DB にバトルが 1 件も無いとき）
+// 空状態(DB にバトルが 1 件も無いとき)
 // ---------------------------------------------------------------------------
 
 function DashboardEmptyState({ onFetchRequest, onOpenSettings, fetching }: {
@@ -424,7 +424,7 @@ function DashboardEmptyState({ onFetchRequest, onOpenSettings, fetching }: {
 }
 
 // ---------------------------------------------------------------------------
-// Custom XAxis tick — controlled by parent's activeIndex
+// Custom XAxis tick - controlled by parent's activeIndex
 // ---------------------------------------------------------------------------
 
 function ImageTick(props: {
@@ -489,7 +489,7 @@ function ImageTick(props: {
 }
 
 // ---------------------------------------------------------------------------
-// WinRateChart — activeIndex shared between tick icons and bars
+// WinRateChart - activeIndex shared between tick icons and bars
 // ---------------------------------------------------------------------------
 
 function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform, tickAngle }: {
@@ -513,7 +513,7 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
 
   // バーごとに上→下のグラデーション。上端で 95%、下端で 50% の不透明度。
   // SVG gradient ID はチャート間で衝突しないよう React useId を使うのが安全だが、
-  // 1 ページに複数置いてもブラウザ的には問題ない（同一定義のため）。
+  // 1 ページに複数置いてもブラウザ的には問題ない(同一定義のため)。
   const gradients: { id: string; color: string }[] = [
     { id: 'grad-win',      color: COLOR_WIN  },
     { id: 'grad-lose',     color: COLOR_LOSE },
@@ -523,7 +523,7 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
     { id: 'grad-rate-lo',  color: WIN_RATE_LO  },
   ]
 
-  // HoverTooltip 位置計算用：左 YAxis 36 + 右 YAxis 36（+ マージン 8）
+  // HoverTooltip 位置計算用：左 YAxis 36 + 右 YAxis 36(+ マージン 8)
   const leftPad  = 36
   const rightPad = 36 + 8
 
@@ -638,7 +638,7 @@ function ChartCard({
   children: React.ReactNode
   sortBy?: SortBy
   onSortChange?: (s: SortBy) => void
-  /** 画像保存時に焼き込む絞り込み条件（#500）。 */
+  /** 画像保存時に焼き込む絞り込み条件(#500)。 */
   filterSummary: string
 }) {
   const cardRef = useRef<HTMLDivElement>(null)

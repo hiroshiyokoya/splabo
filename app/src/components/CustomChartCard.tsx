@@ -52,25 +52,25 @@ function metricLabelOf(k: string): string {
 /** 値の色マッピング。勝率は divergent、その他は accent 濃淡。 */
 function colorOfValue(value: number | null, isRate: boolean, min: number, max: number, metric: MetricKey): string {
   if (value === null) return 'var(--cell-empty)'
-  // 勝率(発散)の色はヒートマップ・カレンダーと共通のスケールを使う（#351）
+  // 勝率(発散)の色はヒートマップ・カレンダーと共通のスケールを使う(#351)
   if (isRate) return rateCellColor(value)
-  // 勝数・平均系もヒートマップ・カレンダーと共通の 7 段スケール（#351）
+  // 勝数・平均系もヒートマップ・カレンダーと共通の 7 段スケール(#351)
   if (max <= min) return sequentialCellColor(0.5, metric)
   return sequentialCellColor((value - min) / (max - min), metric)
 }
 
-/** カテゴリ集計単位（武器 / ステージ / サブ / スペシャル / 武器カテゴリ）の散布図ポイントを作る。 */
+/** カテゴリ集計単位(武器 / ステージ / サブ / スペシャル / 武器カテゴリ)の散布図ポイントを作る。 */
 /** ツールチップ 1 行分。 */
 type TooltipRow = { label: string; value: string; muted?: boolean }
 
 /**
- * ツールチップの行をメトリクスキーで重複排除する（#388）。
+ * ツールチップの行をメトリクスキーで重複排除する(#388)。
  *
- * X / Y / サイズ / 色 は同じメトリクスを割り当てられるため（例: サイズと色を両方「バトル数」）、
- * そのまま並べると同じ行が 2 度出る。先に積んだ行を優先して残す（= X/Y 側が残る）。
+ * X / Y / サイズ / 色 は同じメトリクスを割り当てられるため(例: サイズと色を両方「バトル数」)、
+ * そのまま並べると同じ行が 2 度出る。先に積んだ行を優先して残す(= X/Y 側が残る)。
  *
- * 行は関数で受け取る。サイズ・色は未設定（key が undefined）のことがあり、その場合に
- * ラベル・値の組み立てを走らせないため（従来の三項演算子によるガードと同じ扱いを保つ）。
+ * 行は関数で受け取る。サイズ・色は未設定(key が undefined)のことがあり、その場合に
+ * ラベル・値の組み立てを走らせないため(従来の三項演算子によるガードと同じ扱いを保つ)。
  */
 function dedupeRows(entries: { key: string | undefined; row: () => TooltipRow }[]): TooltipRow[] {
   const seen = new Set<string>()
@@ -84,7 +84,7 @@ function dedupeRows(entries: { key: string | undefined; row: () => TooltipRow }[
 }
 
 /** 散布図の描画データ一式。凡例はポイントと同じ min/max・同じ色関数から作るので、
- *  ここでまとめて返す（呼び出し側で作り直すと本体と凡例がズレる）。 */
+ *  ここでまとめて返す(呼び出し側で作り直すと本体と凡例がズレる)。 */
 type ScatterBundle = { points: ScatterPoint[]; sizeLegend: SizeLegend | null; colorLegend: ColorLegend | null }
 
 function buildAggScatterPoints(
@@ -94,7 +94,7 @@ function buildAggScatterPoints(
 ): ScatterBundle {
   const filtered = data.filter(d => d.total > 0)
   const isCatColor = isScatterCategoryColorKey(colorKey)
-  // 色マッピング用 min/max（連続値のみ）
+  // 色マッピング用 min/max(連続値のみ)
   const colorIsRate = colorKey === 'win_rate'
   let cmin = Infinity, cmax = -Infinity
   if (colorKey && !isCatColor) {
@@ -156,7 +156,7 @@ function buildAggScatterPoints(
 
 /** バトル単位メトリクスの表示整形。整数はそのまま、小数は 2 桁。 */
 const fmtBattle = (v: number | null): string =>
-  v === null ? '—' : (Number.isInteger(v) ? v.toString() : v.toFixed(2))
+  v === null ? '-' : (Number.isInteger(v) ? v.toString() : v.toFixed(2))
 
 /** バトル単位の散布図ポイントを作る。整数軸 (キル/デス等) の重なりを見やすくするため
  *  ±0.15 のジッタを乗せる。表示上の位置だけずらして、ホバーには元の値を表示する。
@@ -207,7 +207,7 @@ function buildBattleScatterPoints(
       // 複数件表示時の 1 行: 日付・武器・勝敗
       rowText: `${b.played_at.slice(5, 10)} ${b.weapon}${colorKey === 'win_lose' ? '' : ` (${b.result})`}`,
       // ツールチップには元の値 (ジッタ前) を表示。同じメトリクスを複数の役割に
-      // 割り当てたときの重複は dedupeRows が落とす（#388）。
+      // 割り当てたときの重複は dedupeRows が落とす(#388)。
       tooltipRows: dedupeRows([
         { key: xKey, row: () => ({ label: metricLabelOf(xKey), value: fmtBattle(x) }) },
         { key: yKey, row: () => ({ label: metricLabelOf(yKey), value: fmtBattle(y) }) },
@@ -238,7 +238,7 @@ function buildBattleScatterPoints(
   }
 }
 
-/** yComposition ごとの並び替えオプション（#509）。
+/** yComposition ごとの並び替えオプション(#509)。
  *  - stacked_winrate: バトル数 / 勝数 / 負数 / 勝率
  *  - attack_defense:  キル / デス / キルレ / 貢献キル / 貢献キルレ
  *  - single_metric:   バトル数 + 選択中メトリクス */
@@ -250,7 +250,7 @@ const SORT_OPTIONS_STACKED_WINRATE: SortOption[] = [
   { key: 'losses',   label: '負数' },
   { key: 'win_rate', label: '勝率' },
 ]
-/** キル vs デス（attack_defense）用。 */
+/** キル vs デス(attack_defense)用。 */
 const SORT_OPTIONS_ATTACK_DEFENSE: SortOption[] = [
   { key: 'avg_kill',         label: 'キル' },
   { key: 'avg_death',        label: 'デス' },
@@ -265,13 +265,13 @@ function barSortValue(row: GroupedStatsRow, key: BarSortKey): number | null {
 }
 
 // ---------------------------------------------------------------------------
-// #401: チャートの「素の幅」からグリッドのスパン（1 / 2 / 3 トラック）を決める。
+// #401: チャートの「素の幅」からグリッドのスパン(1 / 2 / 3 トラック)を決める。
 // ---------------------------------------------------------------------------
 //
-// 基準トラックは App.css の .chart-grid（minmax(420px, 1fr)）と揃える。チャートの
+// 基準トラックは App.css の .chart-grid(minmax(420px, 1fr))と揃える。チャートの
 // 見込み描画幅が 1 トラックに収まれば standard(1)、2 トラックぶんなら wide(2)、
 // それ以上は full(3)。棒・線・散布図・単一メトリクスは常に standard。
-// ヒートマップ・カレンダーは shape だけでなく列数・週数（データ規模）まで見て決める。
+// ヒートマップ・カレンダーは shape だけでなく列数・週数(データ規模)まで見て決める。
 //
 // 幅の見積もり式は各チャートコンポーネントの実寸ロジックを転記している：
 //   - HeatmapChart:        PAD_LEFT(+yTitle) + 列数 * (CELL_W + GAP)
@@ -279,7 +279,7 @@ function barSortValue(row: GroupedStatsRow, key: BarSortKey): number | null {
 // 元コンポーネントの定数を変えたらここも追従すること。
 type ChartSpan = 1 | 2 | 3
 
-// 基準トラック 420px を単位にした閾値。カードの padding（16*2）とスクロールの余白を見て
+// 基準トラック 420px を単位にした閾値。カードの padding(16*2)とスクロールの余白を見て
 // 1 トラック内なら 430px 目安、2 トラック内なら 850px 目安で切り替える。
 function spanForWidth(w: number): ChartSpan {
   if (w <= 430) return 1
@@ -287,19 +287,19 @@ function spanForWidth(w: number): ChartSpan {
   return 3
 }
 
-/** ヒートマップの見込み幅。data2d の X 軸カテゴリ数（バトル数 > 0）から算出。 */
+/** ヒートマップの見込み幅。data2d の X 軸カテゴリ数(バトル数 > 0)から算出。 */
 function heatmapEstimatedWidth(data2d: GroupedStatsRow2D[] | undefined): number {
   const xCols = data2d ? new Set(data2d.filter(r => r.total > 0).map(r => r.key_x)).size : 0
   // HeatmapChart: PAD_LEFT_BASE(110) + yTitle 用 TITLE_PAD(22)、CELL_W(32)+GAP(1)=33、末尾 +8。
   return 132 + xCols * 33 + 8
 }
 
-/** カレンダーの見込み幅。data（日別 GroupedStatsRow）の日付レンジから週＋月境界ぶんの列数を推定。 */
+/** カレンダーの見込み幅。data(日別 GroupedStatsRow)の日付レンジから週＋月境界ぶんの列数を推定。 */
 function calendarEstimatedWidth(data: GroupedStatsRow[]): number {
   const times = data
     .map(d => Date.parse(`${d.name}T00:00:00Z`))
     .filter(n => !Number.isNaN(n))
-  // データが無いときは CalendarHeatmapChart が直近 1 年（約 52 週）を空表示するので full 相当。
+  // データが無いときは CalendarHeatmapChart が直近 1 年(約 52 週)を空表示するので full 相当。
   let cols: number
   if (times.length === 0) {
     cols = 64
@@ -308,7 +308,7 @@ function calendarEstimatedWidth(data: GroupedStatsRow[]): number {
     const max = Math.max(...times)
     const days = (max - min) / 86_400_000 + 1
     const weeks = Math.ceil(days / 7)
-    // #310/#392: 月境界ごとに列が 1〜2 本ずれる。おおよそ月数ぶん加算して見積もる。
+    // #310/#392: 月境界ごとに列が 1~2 本ずれる。おおよそ月数ぶん加算して見積もる。
     const months = Math.max(1, Math.round(days / 30))
     cols = weeks + months
   }
@@ -320,7 +320,7 @@ function calendarEstimatedWidth(data: GroupedStatsRow[]): number {
 function chartSpan(chart: CustomChart, data: GroupedStatsRow[], data2d: GroupedStatsRow2D[] | undefined): ChartSpan {
   if (chart.shape === 'heatmap') return spanForWidth(heatmapEstimatedWidth(data2d))
   if (chart.shape === 'calendar_heatmap') return spanForWidth(calendarEstimatedWidth(data))
-  // 棒・線・散布図・単一メトリクスは標準幅（ResponsiveContainer で横 100% に追従する）。
+  // 棒・線・散布図・単一メトリクスは標準幅(ResponsiveContainer で横 100% に追従する)。
   return 1
 }
 
@@ -330,7 +330,7 @@ const SPAN_CLASS: Record<ChartSpan, string> = {
   3: 'chart-card--full',
 }
 
-/** 棒グラフ用: 指標で全件ソートしてから上位を切る（#509）。 */
+/** 棒グラフ用: 指標で全件ソートしてから上位を切る(#509)。 */
 function sortAndSlice(
   rows: GroupedStatsRow[],
   sortKey: BarSortKey | null,
@@ -350,13 +350,13 @@ function sortAndSlice(
  * 右上に「ドラッグハンドル / 設定 / 削除」ボタンを並べる。
  *
  * - X 軸ラベルの整形は groupBy に応じて自動：
- *   - stage → stageAbbr（省略 + 30° 斜め）
+ *   - stage → stageAbbr(省略 + 30° 斜め)
  *   - mode  → modeLabel
  *   - rule  → ruleLabel
  *   - その他 → そのまま
  * - yComposition に応じて並び替えボタンを常に表示
- *   （stacked_winrate / attack_defense / single_metric の棒グラフ）。
- * - 同じキー再クリックで昇順/降順トグル（#509）。
+ *   (stacked_winrate / attack_defense / single_metric の棒グラフ)。
+ * - 同じキー再クリックで昇順/降順トグル(#509)。
  */
 export function CustomChartCard({
   chart, data, data2d, battleData, onEdit, onDelete, weaponImages, weaponMeta,
@@ -372,12 +372,12 @@ export function CustomChartCard({
   onDelete: () => void
   /** 武器名 → 画像 URL の対応。X 軸が `weapon` のときラベルをアイコンに置換する。 */
   weaponImages?: Map<string, string>
-  /** 武器名 → カテゴリ/サブ/スペシャル。散布図のカテゴリ色分け（#480）用。 */
+  /** 武器名 → カテゴリ/サブ/スペシャル。散布図のカテゴリ色分け(#480)用。 */
   weaponMeta?: Map<string, WeaponMeta>
-  /** カレンダー用。FilterBar の期間（#461）。 */
+  /** カレンダー用。FilterBar の期間(#461)。 */
   since?:   string | null
   until?:   string | null
-  /** 画像保存時に焼き込む絞り込み条件（#500）。 */
+  /** 画像保存時に焼き込む絞り込み条件(#500)。 */
   filterSummary?: string
 }) {
   const sortable = useSortable({ id: chart.id })
@@ -389,7 +389,7 @@ export function CustomChartCard({
     opacity:   isDragging ? 0.5 : 1,
   }
 
-  // 並び替えは棒グラフだけ（#509）。heatmap / calendar / line / scatter には出さない。
+  // 並び替えは棒グラフだけ(#509)。heatmap / calendar / line / scatter には出さない。
   const sortOptions: SortOption[] =
     chart.shape !== 'bar' ? [] :
     chart.yComposition === 'stacked_winrate' ? SORT_OPTIONS_STACKED_WINRATE :
@@ -406,13 +406,13 @@ export function CustomChartCard({
   const [sortKey, setSortKey] = useState<BarSortKey | null>(defaultSortKey)
   const [sortDir, setSortDir] = useState<ChartSortDir>('desc')
 
-  // 構成が変わったら並び替えキーを既定に戻す（古いキーが選択肢から消えるため）。
+  // 構成が変わったら並び替えキーを既定に戻す(古いキーが選択肢から消えるため)。
   useEffect(() => {
     setSortKey(defaultSortKey)
     setSortDir('desc')
   }, [chart.id, chart.yComposition, chart.metric, defaultSortKey])
 
-  // 軸キーに応じた表示整形（ステージは斜め）
+  // 軸キーに応じた表示整形(ステージは斜め)
   const nameTransform =
     chart.groupBy === 'stage' ? stageAbbr :
     chart.groupBy === 'mode'  ? modeLabel :
@@ -420,7 +420,7 @@ export function CustomChartCard({
                                 undefined
   const tickAngle = chart.groupBy === 'stage' ? 30 : undefined
 
-  // 指標で全件ソートしてから上位を切る（#509）。
+  // 指標で全件ソートしてから上位を切る(#509)。
   // 線・カレンダー・散布図・ヒートマップは全データが必要なので slice しない。
   const sliced = (chart.shape === 'line' || chart.shape === 'calendar_heatmap' || chart.shape === 'scatter' || chart.shape === 'heatmap')
     ? data
@@ -435,10 +435,10 @@ export function CustomChartCard({
     }
   }
 
-  // #401: チャート種別・データ規模から決めるグリッドスパン（standard / wide / full）。
+  // #401: チャート種別・データ規模から決めるグリッドスパン(standard / wide / full)。
   const spanClass = SPAN_CLASS[chartSpan(chart, data, data2d)]
 
-  // 画像保存（#500）。dnd-kit の ref と両立させるため、コールバック ref で両方へ渡す。
+  // 画像保存(#500)。dnd-kit の ref と両立させるため、コールバック ref で両方へ渡す。
   // 毎レンダーで関数が変わると React が ref を付け外しして dnd-kit の登録が揺れるので固定する。
   const cardRef = useRef<HTMLDivElement | null>(null)
   const setRefs = useCallback((el: HTMLDivElement | null) => {
@@ -450,7 +450,7 @@ export function CustomChartCard({
   return (
     <div className={`chart-card custom-chart-card${spanClass ? ` ${spanClass}` : ''}`} ref={setRefs} style={style}>
       <PanelExportLogo />
-      {/* 上段：ドラッグ・設定・削除・画像保存（カスタムグラフ専用）。
+      {/* 上段：ドラッグ・設定・削除・画像保存(カスタムグラフ専用)。
           こうすることで下の chart-card-header は固定 4 グラフと同じ「title | 並び替え」レイアウトになる。 */}
       <div className={`custom-chart-toprow ${EXPORT_HIDE_CLASS}`}>
         <button
@@ -481,7 +481,7 @@ export function CustomChartCard({
                     ? `クリックで${sortDir === 'desc' ? '昇順' : '降順'}に切替`
                     : `${o.label}で並べ替え`}
                   aria-pressed={active}
-                  aria-label={`${o.label}${active ? (sortDir === 'asc' ? '（昇順）' : '（降順）') : ''}`}
+                  aria-label={`${o.label}${active ? (sortDir === 'asc' ? '(昇順)' : '(降順)') : ''}`}
                 >{o.label}{dirMark}</button>
               )
             })}
@@ -509,7 +509,7 @@ function renderChartBody(
   since:         string | null,
   until:         string | null,
 ): ReactNode {
-  // line: 時系列のみ。複数系列対応（#436）。
+  // line: 時系列のみ。複数系列対応(#436)。
   if (chart.shape === 'line') {
     const metrics = chartMetrics(chart)
     if (metrics.length > 0) {
@@ -575,7 +575,7 @@ function renderChartBody(
     }
     const xT = chart.groupBy  === 'stage' ? stageAbbr : chart.groupBy  === 'mode' ? modeLabel : chart.groupBy  === 'rule' ? ruleLabel : undefined
     const yT = chart.groupBy2 === 'stage' ? stageAbbr : chart.groupBy2 === 'mode' ? modeLabel : chart.groupBy2 === 'rule' ? ruleLabel : undefined
-    // 軸タイトル（#145）：数値メトリクス bin 軸はメトリクス名 (bin 幅併記)、カテゴリ軸は GroupBy ラベル
+    // 軸タイトル(#145)：数値メトリクス bin 軸はメトリクス名 (bin 幅併記)、カテゴリ軸は GroupBy ラベル
     const xTitle = chart.xNumericMetric
       ? `${BATTLE_NUMERIC_METRIC_LABELS[chart.xNumericMetric]} (bin ${chart.xBinWidth ?? '?'})`
       : GROUP_BY_LABELS[chart.groupBy]
@@ -599,12 +599,12 @@ function renderChartBody(
   if (chart.shape !== 'bar') {
     return (
       <div className="chart-not-implemented">
-        この形（{chart.shape}）はまだ未実装です。<br />
+        この形({chart.shape})はまだ未実装です。<br />
         後続 PR で対応予定です。
       </div>
     )
   }
-  // X 軸が武器系（自分・味方・相手）のときだけ画像 tick を有効化。他の groupBy では undefined。
+  // X 軸が武器系(自分・味方・相手)のときだけ画像 tick を有効化。他の groupBy では undefined。
   const isWeaponAxis =
     chart.groupBy === 'weapon' ||
     chart.groupBy === 'ally_weapon' ||

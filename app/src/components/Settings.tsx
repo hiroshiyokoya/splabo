@@ -29,13 +29,13 @@ interface Props {
   settings: AppSettings
   onSave: (s: AppSettings) => void
   loginVersion: number
-  /** 遷移時に開くサブタブの指定（#428）。認証エラー通知やダッシュボード空状態から
-   *  「設定を開く」で飛ばすとき、目的の項目（Nintendo アカウント）がある連携タブを開かせる。
-   *  nonce を変えるたびに効くので、永続化した選択より優先される（同じ tab を再指定しても発火）。 */
+  /** 遷移時に開くサブタブの指定(#428)。認証エラー通知やダッシュボード空状態から
+   *  「設定を開く」で飛ばすとき、目的の項目(Nintendo アカウント)がある連携タブを開かせる。
+   *  nonce を変えるたびに効くので、永続化した選択より優先される(同じ tab を再指定しても発火)。 */
   focus?: { tab: SettingsTab; nonce: number } | null
 }
 
-/** 設定タブ内のサブタブ（#428 / #434）。AI を右端に追加。 */
+/** 設定タブ内のサブタブ(#428 / #434)。AI を右端に追加。 */
 const SETTINGS_TABS: readonly ViewToggleOption<SettingsTab>[] = [
   { key: 'link',    label: '連携', icon: '🔗' },
   { key: 'data',    label: 'データ', icon: '🗄' },
@@ -43,7 +43,7 @@ const SETTINGS_TABS: readonly ViewToggleOption<SettingsTab>[] = [
   { key: 'ai',      label: 'AI',   icon: '🤖' },
 ]
 
-/** companion_start の戻り値（Rust companion.rs::CompanionInfo に対応）。 */
+/** companion_start の戻り値(Rust companion.rs::CompanionInfo に対応)。 */
 interface CompanionInfo {
   host_ips: string[]
   port: number
@@ -56,9 +56,9 @@ interface CompanionStatus {
   port: number | null
 }
 
-/** companion_diagnostics の戻り値（Rust companion.rs::CompanionDiagnostics に対応・#363）。 */
+/** companion_diagnostics の戻り値(Rust companion.rs::CompanionDiagnostics に対応・#363)。 */
 interface CompanionDiagnostics {
-  /** 実行 OS（"windows" のときだけ network_category を判定）。 */
+  /** 実行 OS("windows" のときだけ network_category を判定)。 */
   os: string
   /** "public" | "private" | "domain" | "unknown" | "unsupported"。 */
   network_category: string
@@ -66,12 +66,12 @@ interface CompanionDiagnostics {
   has_lan_ip: boolean
 }
 
-/** ファイアウォール / プロファイルのトラブルシュート手順（README の該当節）。 */
+/** ファイアウォール / プロファイルのトラブルシュート手順(README の該当節)。 */
 const FIREWALL_HELP_URL =
   'https://github.com/hiroshiyokoya/splabo/blob/develop/README.md#モバイル同期がつながらないとき'
 
 /**
- * ペアリング QR に載せるペイロード（viewer と共有する契約）。
+ * ペアリング QR に載せるペイロード(viewer と共有する契約)。
  * viewer は hosts を順に /ping して到達可能なホストを採用する。
  */
 function pairingPayload(info: CompanionInfo): string {
@@ -79,11 +79,11 @@ function pairingPayload(info: CompanionInfo): string {
 }
 
 export function Settings({ settings, onSave, loginVersion, focus }: Props) {
-  // サブタブ（#428）。前回選択を復元し、focus 指定（遷移時の着地）が来たら上書きする。
+  // サブタブ(#428)。前回選択を復元し、focus 指定(遷移時の着地)が来たら上書きする。
   const [subTab, setSubTab] = useState<SettingsTab>(() => loadViewPrefs().settings)
-  // 選択が変わったら永続化。他のタブ内ビュー（バトル/図鑑）と同じ shellViews に相乗り。
+  // 選択が変わったら永続化。他のタブ内ビュー(バトル/図鑑)と同じ shellViews に相乗り。
   useEffect(() => { saveViewPrefs({ settings: subTab }) }, [subTab])
-  // 遷移元の着地指定。nonce が変わるたびに効く（同じ tab を再指定しても発火する）ので、
+  // 遷移元の着地指定。nonce が変わるたびに効く(同じ tab を再指定しても発火する)ので、
   // 復元した選択より優先される。
   useEffect(() => { if (focus) setSubTab(focus.tab) }, [focus])
 
@@ -96,7 +96,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   const [importResult, setImportResult] = useState<string | null>(null)
   const [weaponUpdating, setWeaponUpdating] = useState(false)
   const [weaponUpdateResult, setWeaponUpdateResult] = useState<string | null>(null)
-  // 開発ビルド（0.0.0-dev）では stat.ink アップロードを無効化する（#320）。
+  // 開発ビルド(0.0.0-dev)では stat.ink アップロードを無効化する(#320)。
   // 実ガードは Rust の upload_pending_battles 側。ここは UI 表示のためだけ。
   const [isDevBuild, setIsDevBuild] = useState(false)
 
@@ -110,12 +110,12 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   const [gearDeleting, setGearDeleting] = useState(false)
   const [gearDeleteResult, setGearDeleteResult] = useState<string | null>(null)
 
-  // ── モバイル同期（コンパニオン）──────────────────────────────
+  // ── モバイル同期(コンパニオン)──────────────────────────────
   // Rust 側 CompanionState が真実。UI は companion_status / _start / _stop を叩くだけ。
   const [companionInfo, setCompanionInfo] = useState<CompanionInfo | null>(null)
   const [companionBusy, setCompanionBusy] = useState(false)
   const [companionError, setCompanionError] = useState<string | null>(null)
-  // 接続トラブルの自己診断（#363）。有効化中のみ取得する。
+  // 接続トラブルの自己診断(#363)。有効化中のみ取得する。
   const [companionDiag, setCompanionDiag] = useState<CompanionDiagnostics | null>(null)
 
   useEffect(() => {
@@ -132,7 +132,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
     invoke<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
   }, [loginVersion])
 
-  // 起動時にサーバー稼働中なら QR を復元表示する（start は冪等＝稼働中は現行情報を返す）。
+  // 起動時にサーバー稼働中なら QR を復元表示する(start は冪等＝稼働中は現行情報を返す)。
   useEffect(() => {
     invoke<CompanionStatus>('companion_status')
       .then(st => {
@@ -143,7 +143,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
       .catch(() => {})
   }, [])
 
-  // 起動時のスケジューラー / stat.ink 設定同期は App.tsx が担う（#322）。
+  // 起動時のスケジューラー / stat.ink 設定同期は App.tsx が担う(#322)。
   // 設定タブを開かなくても同期されるよう起動時 useEffect を App 側へ移設した。
   // ここでは下の update() 内で、ユーザー操作による変更を即時同期するに留める。
 
@@ -228,7 +228,7 @@ async function handleUploadStatink() {
       )
       const parts = [`新規 ${r.imported} 件`, `スキップ ${r.skipped} 件`]
       if (r.failed > 0) parts.push(`失敗 ${r.failed} 件`)
-      setImportResult(`取り込み完了: ${parts.join(' / ')}（取得 ${r.total} 件）`)
+      setImportResult(`取り込み完了: ${parts.join(' / ')}(取得 ${r.total} 件)`)
     } catch (e) {
       setImportResult(`エラー: ${String(e)}`)
     } finally {
@@ -238,9 +238,9 @@ async function handleUploadStatink() {
 
   // ── ギア設定ハンドラ ──────────────────────────────────────
   // gear 側の appSettings は localStorage を更新するが store ミラーは張らないため、
-  // 変更のたびに mirrorToStore() を呼んで settings.json（#241 store ミラー）へ反映する。
-  // applyDensity は `.gear-root` 未マウント時（＝設定タブ表示中）は localStorage 更新のみで、
-  // 次回ギアタブ表示の initAppSettings() で反映される（即時プレビュー不可・仕様）。
+  // 変更のたびに mirrorToStore() を呼んで settings.json(#241 store ミラー)へ反映する。
+  // applyDensity は `.gear-root` 未マウント時(＝設定タブ表示中)は localStorage 更新のみで、
+  // 次回ギアタブ表示の initAppSettings() で反映される(即時プレビュー不可・仕様)。
   function handleChangeDensity(id: DensityId) {
     setGearDensity(id)
     applyDensity(id)
@@ -261,7 +261,7 @@ async function handleUploadStatink() {
 
   async function handleDeleteGearData() {
     if (!window.confirm(
-      '取得済みのギアデータ（ギア一覧・画像キャッシュ）をすべて削除します。\n' +
+      '取得済みのギアデータ(ギア一覧・画像キャッシュ)をすべて削除します。\n' +
       '削除後はギアタブが空になり、再度サイドバーの「最新データを取得」から取得が必要です。実行しますか？'
     )) return
     setGearDeleting(true)
@@ -362,7 +362,7 @@ async function handleUploadStatink() {
         </label>
         {isDevBuild && (
           <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '6px 0 0' }}>
-            ⚠ 開発ビルド（0.0.0-dev）では、実データの誤送信を防ぐため stat.ink へのアップロードは無効化されています。
+            ⚠ 開発ビルド(0.0.0-dev)では、実データの誤送信を防ぐため stat.ink へのアップロードは無効化されています。
           </p>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
@@ -381,7 +381,7 @@ async function handleUploadStatink() {
         </div>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '16px 0 10px' }}>
           stat.ink に保存済みの自分の過去バトルをデータベースに取り込みます。
-          SplatNet 3 が保持しない古いバトルも集計対象にできます（重複は自動でスキップ）。
+          SplatNet 3 が保持しない古いバトルも集計対象にできます(重複は自動でスキップ)。
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
@@ -400,12 +400,12 @@ async function handleUploadStatink() {
       </section>
       )}
 
-      {/* モバイル同期 UI は splabo-viewer 公開までリリースビルドでは隠す（#339）。 */}
+      {/* モバイル同期 UI は splabo-viewer 公開までリリースビルドでは隠す(#339)。 */}
       {subTab === 'link' && isDevBuild && (
       <section className="settings-section">
-        <h3>モバイル同期（コンパニオン）</h3>
+        <h3>モバイル同期(コンパニオン)</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
-          同じネットワーク（Wi-Fi ルーターや有線 LAN）上のスマホアプリ「SpLabo viewer」へ、
+          同じネットワーク(Wi-Fi ルーターや有線 LAN)上のスマホアプリ「SpLabo viewer」へ、
           取得済みのギア・直近バトルデータを配信します。
           任天堂 API には一切アクセスしません。有効な間だけ配信し、アプリ終了で自動的に止まります。
         </p>
@@ -439,7 +439,7 @@ async function handleUploadStatink() {
               <QRCodeSVG value={pairingPayload(companionInfo)} size={192} level="M" />
             </div>
             <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '10px 0 0' }}>
-              接続先: {companionInfo.host_ips.length > 0 ? companionInfo.host_ips.join(', ') : '（IP 不明）'}
+              接続先: {companionInfo.host_ips.length > 0 ? companionInfo.host_ips.join(', ') : '(IP 不明)'}
               {' : '}{companionInfo.port}
             </p>
             {companionInfo.host_ips.length === 0 && (
@@ -459,18 +459,18 @@ async function handleUploadStatink() {
                 ⚠ このネットワークが Windows で「パブリック」に設定されています。
                 この状態だと Windows ファイアウォールがスマホからの接続を遮断し、QR を読んでも
                 つながりません。<strong>「プライベート ネットワーク」に変更</strong>してください
-                （設定 → ネットワークとインターネット → 現在の接続 → ネットワーク プロファイルの種類）。
+                (設定 → ネットワークとインターネット → 現在の接続 → ネットワーク プロファイルの種類)。
                 初回接続時に許可ダイアログが出たら、<strong>プライベートにチェックして許可</strong>します。
               </div>
             )}
             <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '8px 0 0', lineHeight: 1.6 }}>
               QR を読んでもつながらない場合、ネットワークが「プライベート」でも
               Windows ファイアウォールの<strong>受信許可がパブリック用にしか無い</strong>ことがあります
-              （以前パブリックの状態で許可したまま、あとからプライベートに変更した場合）。
+              (以前パブリックの状態で許可したまま、あとからプライベートに変更した場合)。
               許可規則はプロファイルごとに効くため引き継がれません。
               <code>wf.msc</code> →「受信の規則」→ <strong>splabo</strong> → プロパティ → 詳細設定タブ →
               プロファイルで<strong>プライベートにチェック</strong>してください。
-              <strong>splabo の規則は通常 2 つ（TCP / UDP）あるので、すべて確認</strong>します。
+              <strong>splabo の規則は通常 2 つ(TCP / UDP)あるので、すべて確認</strong>します。
             </p>
             <p style={{ fontSize: 12, margin: '8px 0 0' }}>
               <a
@@ -478,7 +478,7 @@ async function handleUploadStatink() {
                 onClick={e => { e.preventDefault(); openUrl(FIREWALL_HELP_URL).catch(console.error) }}
                 style={{ color: 'var(--accent)', cursor: 'pointer' }}
               >
-                つながらないときは（ファイアウォール / ネットワークの確認・詳しい手順）
+                つながらないときは(ファイアウォール / ネットワークの確認・詳しい手順)
               </a>
             </p>
           </div>
@@ -489,7 +489,7 @@ async function handleUploadStatink() {
       {/* ── データ: 自動取得 → マスターデータ → ギアデータ削除 ── */}
       {subTab === 'data' && (
       <section className="settings-section">
-        <h3>自動取得（有効時はトレイに常駐）</h3>
+        <h3>自動取得(有効時はトレイに常駐)</h3>
         <label className="checkbox-label">
           <input
             type="checkbox"
@@ -550,7 +550,7 @@ async function handleUploadStatink() {
       <section className="settings-section">
         <h3>ギアデータ</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
-          取得済みのギアデータ（ギア一覧・画像キャッシュ）をすべて削除します。再度サイドバーの「最新データを取得」から取得できます。
+          取得済みのギアデータ(ギア一覧・画像キャッシュ)をすべて削除します。再度サイドバーの「最新データを取得」から取得できます。
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
@@ -592,7 +592,7 @@ async function handleUploadStatink() {
       <section className="settings-section">
         <h3>ダッシュボード</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
-          追加したカスタムグラフをすべて消してダッシュボードを初期状態（既存の固定 4 グラフのみ）に戻します。
+          追加したカスタムグラフをすべて消してダッシュボードを初期状態(既存の固定 4 グラフのみ)に戻します。
         </p>
         <button
           className="btn-secondary"
@@ -604,7 +604,7 @@ async function handleUploadStatink() {
             }
           }}
         >
-          カスタムグラフをすべて削除（ダッシュボードをリセット）
+          カスタムグラフをすべて削除(ダッシュボードをリセット)
         </button>
       </section>
       )}
@@ -651,7 +651,7 @@ async function handleUploadStatink() {
       </section>
       )}
 
-      {/* ── AI（新設）: AI API ── */}
+      {/* ── AI(新設): AI API ── */}
       {subTab === 'ai' && (
       <section className="settings-section">
         <h3>AI API</h3>
@@ -691,14 +691,14 @@ async function handleUploadStatink() {
               ? settings.ai.model : '__custom__'}
             onChange={(e) => {
               const v = e.target.value
-              if (v === '__custom__') return    // 「カスタム…」選択時は何もしない（下のテキストフィールドで入力）
+              if (v === '__custom__') return    // 「カスタム…」選択時は何もしない(下のテキストフィールドで入力)
               update({ ai: { ...settings.ai, model: v } })
             }}
           >
             {AI_MODELS[settings.ai.provider].map(m => (
               <option key={m.id} value={m.id}>{modelDisplayLabel(m)}</option>
             ))}
-            <option value="__custom__">カスタム（下のテキスト欄で指定）…</option>
+            <option value="__custom__">カスタム(下のテキスト欄で指定)…</option>
           </select>
         </label>
         <label>

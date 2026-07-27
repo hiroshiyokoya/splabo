@@ -9,32 +9,32 @@ import {
 /**
  * GitHub contribution graph 風のカレンダーヒートマップ。
  *
- * - 1 マス = 1 日（9 時境界の「Splatoon 日」、BE 側で UTC 日付＝Splatoon 日として返ってくる）
- * - 縦軸: 曜日（月〜日）
- * - 横軸: 週（左が古い）
+ * - 1 マス = 1 日(9 時境界の「Splatoon 日」、BE 側で UTC 日付＝Splatoon 日として返ってくる)
+ * - 縦軸: 曜日(月~日)
+ * - 横軸: 週(左が古い)
  * - メトリクスのグループで色スケールを自動切替:
  *   - count   → 相対 5 段階 (緑系)
  *   - rate    → 固定 0–100% divergent (赤 ↔ 白 ↔ 青)
  *   - average → 相対 5 段階 (アクセント色)
  * - 率・平均系はサンプル数 < minSampleSize でグレーアウト
  * - データが無い日は空セル (薄いグレー)
- * - 表示範囲は FilterBar の since/until に合わせ、期間外は描かない（#461）
- * - 期間が「いま」まで開いているときは、今日をバトル 0 でも常に出す（#461）
+ * - 表示範囲は FilterBar の since/until に合わせ、期間外は描かない(#461)
+ * - 期間が「いま」まで開いているときは、今日をバトル 0 でも常に出す(#461)
  */
 
 const CELL  = 16
 const GAP   = 3
 const PITCH = CELL + GAP
-/** セルの下限＝素のサイズ。これより狭いコンテナでは広げず、従来どおり横スクロールさせる（#429）。 */
+/** セルの下限＝素のサイズ。これより狭いコンテナでは広げず、従来どおり横スクロールさせる(#429)。 */
 const CELL_MIN = CELL
-/** セルの上限。直近 7 日のように列が 2〜3 本しか無いと、幅いっぱいに広げる計算では
- *  セルが 100px 超になってカレンダーに見えなくなるので止める（残る余白は許容する）。 */
+/** セルの上限。直近 7 日のように列が 2~3 本しか無いと、幅いっぱいに広げる計算では
+ *  セルが 100px 超になってカレンダーに見えなくなるので止める(残る余白は許容する)。 */
 const CELL_MAX = 24
-/** セル幅を合わせる基準にする列数の上限＝約 1 年ぶん（#431）。
+/** セル幅を合わせる基準にする列数の上限＝約 1 年ぶん(#431)。
  *  53 週 + 月境界の空列 12。データがこれより長くなっても、見える幅は 1 年ぶんに保ち、
  *  古いぶんは横スクロールで見に行く。CustomChartCard.calendarEstimatedWidth の見積もりと揃える。 */
 const VISIBLE_COLS_MAX = 65
-/** グリッド左端（曜日ラベルぶんのオフセット）。 */
+/** グリッド左端(曜日ラベルぶんのオフセット)。 */
 const GRID_LEFT = 22
 /** 1 日 = ミリ秒。 */
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -44,8 +44,8 @@ const DOW_LABELS = ['月', '火', '水', '木', '金', '土', '日']
 /** カラーバー (凡例) を描画するための、メトリクスグループごとの色順序。
  *  count / average は 5 段階 (薄い→濃い)、rate は 5 段階 (赤→青) divergent。 */
 const COUNT_COLORS  = ['var(--cell-count-c1)', 'var(--cell-count-c2)', 'var(--cell-count-c3)', 'var(--cell-count-c4)', 'var(--cell-count-c5)']
-// 平均系(シーケンシャル)の 7 段は utils/heatmapColors の SEQ_LEGEND_COLORS を共用する（#351）
-// 勝率(発散)の 7 段は utils/heatmapColors の RATE_LEGEND_COLORS を共用する（#351）
+// 平均系(シーケンシャル)の 7 段は utils/heatmapColors の SEQ_LEGEND_COLORS を共用する(#351)
+// 勝率(発散)の 7 段は utils/heatmapColors の RATE_LEGEND_COLORS を共用する(#351)
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -83,7 +83,7 @@ function mondayOf(d: Date): Date {
   return m
 }
 
-/** カウント系: 0=空、1〜5=濃さ。max を 5 段階に正規化。 */
+/** カウント系: 0=空、1~5=濃さ。max を 5 段階に正規化。 */
 function countColor(value: number, max: number): string {
   if (max <= 0) return 'var(--cell-count-empty)'
   const t = value / max
@@ -95,7 +95,7 @@ function countColor(value: number, max: number): string {
   return 'var(--cell-count-c5)'
 }
 
-/** 平均系: min–max を 7 段階に正規化（#351）。 */
+/** 平均系: min–max を 7 段階に正規化(#351)。 */
 function averageColor(value: number, min: number, max: number, metric: MetricKey): string {
   if (max <= min) return sequentialCellColor(0.5, metric)
   return sequentialCellColor((value - min) / (max - min), metric)
@@ -107,16 +107,16 @@ export function CalendarHeatmapChart({
   data:           GroupedStatsRow[]
   metric:         MetricKey
   minSampleSize?: number
-  /** FilterBar の期間開始（YYYY-MM-DD）。未指定ならデータ最早日（#461）。 */
+  /** FilterBar の期間開始(YYYY-MM-DD)。未指定ならデータ最早日(#461)。 */
   since?:         string | null
-  /** FilterBar の期間終了（YYYY-MM-DD）。未指定なら「いま」（今日まで・#461）。 */
+  /** FilterBar の期間終了(YYYY-MM-DD)。未指定なら「いま」(今日まで・#461)。 */
   until?:         string | null
 }) {
   // ツールチップ位置はマウスの clientX / clientY (viewport 基準) を使う。
   // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
   const [hover, setHover] = useState<{ mx: number; my: number; date: string; value: number | null; total: number; wins: number; draws: number } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
-  // カード幅に合わせてセルを広げるための実測幅（#429）。0 = 未計測（素のサイズで描く）。
+  // カード幅に合わせてセルを広げるための実測幅(#429)。0 = 未計測(素のサイズで描く)。
   // ウィンドウリサイズやサイドバー幅の変化にも追従させたいので ResizeObserver で見る。
   const [availW, setAvailW] = useState(0)
   useEffect(() => {
@@ -129,14 +129,14 @@ export function CalendarHeatmapChart({
     setAvailW(el.clientWidth)
     return () => ro.disconnect()
   }, [])
-  // サンプル不足セルのハッチ用。同一ページに複数チャートが載るので id は一意にする（#351）。
+  // サンプル不足セルのハッチ用。同一ページに複数チャートが載るので id は一意にする(#351)。
   const sparseId = `sparse-${useId()}`
 
   const group = metricGroup(metric)
 
-  // データ map / min-max / セル配置（列は日単位で割り当て・#310）
-  // 表示範囲は FilterBar の since/until を優先し、期間外は描かない（#461）。
-  // until 未指定（または今日以降）なら右端を今日まで延ばし、バトル 0 でも今日のセルを出す。
+  // データ map / min-max / セル配置(列は日単位で割り当て・#310)
+  // 表示範囲は FilterBar の since/until を優先し、期間外は描かない(#461)。
+  // until 未指定(または今日以降)なら右端を今日まで延ばし、バトル 0 でも今日のセルを出す。
   const { dataMap, minVal, maxVal, cells, monthLabels, maxCol } = useMemo(() => {
     const map = new Map<string, { value: number | null; total: number; wins: number; draws: number }>()
     let mn = Number.POSITIVE_INFINITY
@@ -166,7 +166,7 @@ export function CalendarHeatmapChart({
 
     // 期間終了が「いま」まで開いているときだけ、今日を必ず右端に含める。
     let rangeEnd = (untilOk && untilOk < todayUtc) ? untilOk : todayUtc
-    if (latest && latest > rangeEnd) rangeEnd = latest  // データが期間より新しい場合は追従（通常は起きない）
+    if (latest && latest > rangeEnd) rangeEnd = latest  // データが期間より新しい場合は追従(通常は起きない)
 
     let rangeStart: Date
     if (sinceOk) {
@@ -174,18 +174,18 @@ export function CalendarHeatmapChart({
     } else if (earliest) {
       rangeStart = earliest
     } else {
-      // データも since も無い: 直近 1 年を空表示（右端は今日）
+      // データも since も無い: 直近 1 年を空表示(右端は今日)
       rangeStart = new Date(rangeEnd)
       rangeStart.setUTCDate(rangeEnd.getUTCDate() - 364)
     }
     if (rangeStart > rangeEnd) rangeStart = rangeEnd
 
-    // 列は「日単位」で割り当てる（#310）。
-    //   - 月曜になったら列を +1（通常の週送り）
-    //   - 月が変わったら列を +1（週の途中でも。新しい月はその月の 1 日から新しい列で始まる）
-    //   - 月初が月曜なら列を +2 して、間に空列を 1 本挟む（#392）
-    // レイアウトは rangeStart の週頭から組むが、期間外（rangeStart より前）の日は
-    // cells に入れないので、空のゼロセルとして見えない（#461）。
+    // 列は「日単位」で割り当てる(#310)。
+    //   - 月曜になったら列を +1(通常の週送り)
+    //   - 月が変わったら列を +1(週の途中でも。新しい月はその月の 1 日から新しい列で始まる)
+    //   - 月初が月曜なら列を +2 して、間に空列を 1 本挟む(#392)
+    // レイアウトは rangeStart の週頭から組むが、期間外(rangeStart より前)の日は
+    // cells に入れないので、空のゼロセルとして見えない(#461)。
     const startMonday = mondayOf(rangeStart)
     const cells: { date: Date; col: number; row: number }[] = []
     const labels: { col: number; month: number }[] = []
@@ -217,7 +217,7 @@ export function CalendarHeatmapChart({
     const rawMin = mn === Number.POSITIVE_INFINITY ? 0 : mn
     const rawMax = mx === Number.NEGATIVE_INFINITY ? 0 : mx
     // カウント系は色スケール上限を 10 単位で切り上げると凡例が読みやすい (52 → 60 等)
-    // 平均系は範囲を整数に丸める（凡例が「3.2 – 7.8」ではなく「3 – 8」に・#351）
+    // 平均系は範囲を整数に丸める(凡例が「3.2 – 7.8」ではなく「3 – 8」に・#351)
     const finalMax = group === 'count' && rawMax > 0 ? Math.ceil(rawMax / 10) * 10 : rawMax
     const r = group === 'average' ? integerRange(rawMin, finalMax) : { min: rawMin, max: finalMax }
     return {
@@ -232,9 +232,9 @@ export function CalendarHeatmapChart({
 
   function cellFill(_date: string, value: number | null, total: number): string {
     // カレンダーは「バトルの無い日」が大半なので、データなしはハッチにせず静かなべた塗りのまま。
-    // ヒートマップの空セル（その組み合わせを一度も使っていない）とは意味も頻度も違う。
+    // ヒートマップの空セル(その組み合わせを一度も使っていない)とは意味も頻度も違う。
     if (value === null) return group === 'count' ? 'var(--cell-count-empty)' : 'var(--cell-empty)'
-    // 率・平均系はサンプル不足ならハッチ（色ではなく塗りの質で示す・#351）
+    // 率・平均系はサンプル不足ならハッチ(色ではなく塗りの質で示す・#351)
     if ((group === 'rate' || group === 'average') && total < minSampleSize) {
       return hatchFill(sparseId)
     }
@@ -245,16 +245,16 @@ export function CalendarHeatmapChart({
 
   const GRID_TOP = 32
 
-  // セルはカード幅いっぱいまで広げる（#429）。SVG が固定幅だとカードとの差がそのまま
-  // 右の死に幅になっていた（1 年 × 3 トラックで約 119px）。
+  // セルはカード幅いっぱいまで広げる(#429)。SVG が固定幅だとカードとの差がそのまま
+  // 右の死に幅になっていた(1 年 × 3 トラックで約 119px)。
   //
   //   幅 = GRID_LEFT + cols * (cell + GAP) + cell + 8   … これを availW に一致させる
   //
-  // 🔴 セル幅を合わせる列数は最長 1 年（VISIBLE_COLS_MAX）で頭打ちにする（#431）。
-  // データが増えるほど列が増え、幅いっぱいに合わせるとセルが際限なく縮む（下限 16px に
-  // 張り付き、期間によって見た目が変わる）。1 年ぶんの列数を基準にすれば、見える幅が
+  // 🔴 セル幅を合わせる列数は最長 1 年(VISIBLE_COLS_MAX)で頭打ちにする(#431)。
+  // データが増えるほど列が増え、幅いっぱいに合わせるとセルが際限なく縮む(下限 16px に
+  // 張り付き、期間によって見た目が変わる)。1 年ぶんの列数を基準にすれば、見える幅が
   // ちょうど 1 年になり、それより古いデータは横スクロールで見に行く形になる。
-  // SVG 全体幅（後述の width）は実データの maxCol から出すので、スクロール領域は保たれる。
+  // SVG 全体幅(後述の width)は実データの maxCol から出すので、スクロール領域は保たれる。
   const fitCols = Math.min(maxCol, VISIBLE_COLS_MAX)
   const cell = availW > 0
     ? Math.min(CELL_MAX, Math.max(CELL_MIN, (availW - GRID_LEFT - fitCols * GAP - 8) / (fitCols + 1)))
@@ -269,13 +269,13 @@ export function CalendarHeatmapChart({
   const width  = Math.max(colX(maxCol) + cell + 8, 280)
   const height = GRID_TOP + GRID_HEIGHT + 8
 
-  // カレンダーは左が古い・右が最新。初期表示・データ更新時に最新（右端）が見えるよう右端へスクロール。
+  // カレンダーは左が古い・右が最新。初期表示・データ更新時に最新(右端)が見えるよう右端へスクロール。
   useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollLeft = el.scrollWidth
   }, [width])
 
-  /** 凡例ラベル: 左端値・右端値（勝率の中央 50% は廃止・#351） */
+  /** 凡例ラベル: 左端値・右端値(勝率の中央 50% は廃止・#351) */
   const legendColors = group === 'rate' ? RATE_LEGEND_COLORS : group === 'count' ? COUNT_COLORS : seqLegendColors(metric)
   const legendLeft   = group === 'rate' ? '0%'  : group === 'count' ? '0' : fmtLegend(minVal, metric)
   const legendRight  = group === 'rate' ? '100%' : fmtLegend(maxVal, metric)
@@ -284,7 +284,7 @@ export function CalendarHeatmapChart({
     <div ref={scrollRef} className="chart-hover-area" style={{ position: 'relative', overflow: 'auto' }}>
       <svg width={width} height={height} role="img" aria-label="カレンダーヒートマップ">
         <defs><SparseHatchPattern id={sparseId} /></defs>
-        {/* .cal-cell スタイルは App.css に定義（凡例バーの SVG rect と共有） */}
+        {/* .cal-cell スタイルは App.css に定義(凡例バーの SVG rect と共有) */}
         {/* 月ラベル (横軸上部) */}
         {monthLabels.map((ml, i) => (
           <text
@@ -307,8 +307,8 @@ export function CalendarHeatmapChart({
             fill="var(--text)"
           >{lbl}</text>
         ))}
-        {/* セル: 列は日単位で割り当て済み（月境界で列がずれる・#310）。
-            期間外は cells に入れていない。未来日も rangeEnd で今日までに制限済み（#461）。 */}
+        {/* セル: 列は日単位で割り当て済み(月境界で列がずれる・#310)。
+            期間外は cells に入れていない。未来日も rangeEnd で今日までに制限済み(#461)。 */}
         {cells.map(({ date, col, row }) => {
           const dateStr = toIsoDate(date)
           const entry = dataMap.get(dateStr)
@@ -342,7 +342,7 @@ export function CalendarHeatmapChart({
           const fills = group === 'count'
             ? ['var(--cell-count-empty)', ...legendColors]
             : legendColors
-          // 凡例はグリッドとは別物なので固定サイズのまま（#429）。ここまで可変にすると
+          // 凡例はグリッドとは別物なので固定サイズのまま(#429)。ここまで可変にすると
           // スウォッチが 24px に膨らんで不格好になる。
           const barWidth = fills.length * PITCH - GAP
           return (
@@ -391,7 +391,7 @@ export function CalendarHeatmapChart({
                 <div className="hover-tt-row">バトル数: {hover.total}</div>
                 <div className="hover-tt-row">勝数: {hover.wins}</div>
                 <div className="hover-tt-row">負数: {losses}</div>
-                <div className="hover-tt-row">勝率: {winRate !== null ? `${winRate.toFixed(1)}%` : '—'}</div>
+                <div className="hover-tt-row">勝率: {winRate !== null ? `${winRate.toFixed(1)}%` : '-'}</div>
               </>
             )
           })()}

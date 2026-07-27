@@ -19,10 +19,10 @@ export interface ScatterPoint {
   y:           number | null
   size:        number | null   // null = 一定サイズ
   color:       string          // 既に CSS color に解決済み
-  /** カテゴリ色分け時のマーカー形（未指定は circle）。 */
+  /** カテゴリ色分け時のマーカー形(未指定は circle)。 */
   markerShape?: ScatterMarkerShape
-  /** ツールチップ見出しの左に出すアイコン（#412）。`color` と同じく **呼び出し側で解決済み**の
-   *  data URI を渡す。画像が無ければ省略（アイコンなしで名前だけ出す）。
+  /** ツールチップ見出しの左に出すアイコン(#412)。`color` と同じく **呼び出し側で解決済み**の
+   *  data URI を渡す。画像が無ければ省略(アイコンなしで名前だけ出す)。
    *  ここで画像を取りに行かないのは、ホバーのたびに invoke を飛ばさないため。 */
   iconUrl?:    string | null
   tooltipRows: { label: string; value: string; muted?: boolean }[]
@@ -34,7 +34,7 @@ export interface ScatterPoint {
   rowText?:    string
 }
 
-/** 散布図カテゴリの第2軸（色と組み合わせて使う）。 */
+/** 散布図カテゴリの第2軸(色と組み合わせて使う)。 */
 export type ScatterMarkerShape =
   | 'circle'
   | 'square'
@@ -47,13 +47,13 @@ export type SizeLegend  = { label: string; items: { label: string; area: number 
 export type ColorLegend = {
   label: string
   items: { label: string | null; color: string; shape?: ScatterMarkerShape }[]
-  /** 連続値グラデーション（既定）か、カテゴリチップ列か。 */
+  /** 連続値グラデーション(既定)か、カテゴリチップ列か。 */
   layout?: 'gradient' | 'chips'
   /** chips のとき「色」だけか「色・形」か。凡例タイトルに使う。 */
   encoding?: 'color' | 'color_shape'
 }
 
-/** 半径 r のマーカー SVG（チャート本体・凡例で共有）。 */
+/** 半径 r のマーカー SVG(チャート本体・凡例で共有)。 */
 export function ScatterMarkerGlyph({
   shape = 'circle',
   color,
@@ -65,7 +65,7 @@ export function ScatterMarkerGlyph({
 }: {
   shape?:       ScatterMarkerShape
   color:        string
-  /** 外接円の直径（px）。 */
+  /** 外接円の直径(px)。 */
   size?:        number
   fillOpacity?: number
   stroke?:      string
@@ -147,7 +147,7 @@ function markerElement(
   }
 }
 
-/** Recharts のホバー/クリック payload と描画 props が同じ点か（座標で判定）。 */
+/** Recharts のホバー/クリック payload と描画 props が同じ点か(座標で判定)。 */
 function sameScatterAnchor(
   a: { cx?: number; cy?: number } | null | undefined,
   b: { cx?: number; cy?: number } | null | undefined,
@@ -156,7 +156,7 @@ function sameScatterAnchor(
   return Math.abs(a.cx - b.cx) < 0.5 && Math.abs(a.cy - b.cy) < 0.5
 }
 
-/** HTML 書き出し用ツールチップ（#505）。埋め込み JS が `data-scatter-tip` を読む。 */
+/** HTML 書き出し用ツールチップ(#505)。埋め込み JS が `data-scatter-tip` を読む。 */
 type ScatterTipPayload =
   | {
       kind: 'single'
@@ -221,10 +221,10 @@ function scatterPointShape(props: {
     stroke: props.active ? 'var(--text)' : (props.stroke ?? 'var(--surface)'),
     strokeWidth: props.active ? 2 : (props.strokeWidth ?? 0.5),
   }
-  // data 属性はツールチップ配置時に描画済みドットの実座標を読むために使う（#497）。
+  // data 属性はツールチップ配置時に描画済みドットの実座標を読むために使う(#497)。
   // g で包んで Recharts のヒット領域も保つ。
   // アクティブ点は外側にハローを足して、画像にカーソルが無くても対応点が分かるようにする。
-  // data-scatter-tip は HTML 単体書き出しのホバー用（#505）。
+  // data-scatter-tip は HTML 単体書き出しのホバー用(#505)。
   return (
     <g
       data-scatter-point="true"
@@ -259,7 +259,7 @@ const TOOLTIP_EDGE_PAD = 6
 const DOT_AVOID_PAD = 4
 /** 画像保存時はドット同士の隙間を広めに見て、被りゼロを狙いやすくする。 */
 const EXPORT_DOT_AVOID_PAD = 10
-/** アクティブ点（ハロー込み）とツールチップの間に最低限空ける余白。 */
+/** アクティブ点(ハロー込み)とツールチップの間に最低限空ける余白。 */
 const ANCHOR_CLEARANCE = 8
 
 function rectsOverlap(
@@ -273,16 +273,16 @@ function rectsOverlap(
 }
 
 /**
- * ホバー点の周囲から、ドットを最も隠さないツールチップ位置を選ぶ（#497）。
+ * ホバー点の周囲から、ドットを最も隠さないツールチップ位置を選ぶ(#497)。
  *
  * 優先順位:
- * 0. **自分のドットを隠さない**（端補正でスライドしても被らない方向を最優先）
+ * 0. **自分のドットを隠さない**(端補正でスライドしても被らない方向を最優先)
  * 1. 重なるドット数が少ない
  * 2. 重なり面積が小さい
  * 3. 端からはみ出さないための補正量が小さい
  * 4. 同程度ならグラフ中心から外側へ向かう
  *
- * `richCandidates`（画像保存時）では斜め・遠めの候補も足して、他ドットとの被りゼロを狙いやすくする。
+ * `richCandidates`(画像保存時)では斜め・遠めの候補も足して、他ドットとの被りゼロを狙いやすくする。
  */
 export function chooseScatterTooltipPlacement({
   anchorX,
@@ -310,7 +310,7 @@ export function chooseScatterTooltipPlacement({
   gap?: number
   /** 他ドットを避けるときの外縁パディング。 */
   dotAvoidPad?: number
-  /** 斜め・遠め候補を足す（画像保存向け）。 */
+  /** 斜め・遠め候補を足す(画像保存向け)。 */
   richCandidates?: boolean
 }): TooltipPlacement {
   const g = gap
@@ -412,11 +412,11 @@ export function chooseScatterTooltipPlacement({
   return { left: best.left, top: best.top, direction: best.direction }
 }
 
-/** 目盛りラベルの小数を詰める（浮動小数の誤差も除去）。 */
+/** 目盛りラベルの小数を詰める(浮動小数の誤差も除去)。 */
 const fmtTick = (v: number) => String(Math.round(v * 1000) / 1000)
 
 /**
- * 比率（0–1）軸の目盛りラベル (#473)。
+ * 比率(0–1)軸の目盛りラベル (#473)。
  *
  * ログ軸では 0.001 / 0.002 / 0.005 のような細かい目盛りが並ぶ。小数 0 桁固定だと
  * 全部 `0%` になって軸が読めないので、1% 未満は値に応じて桁を足す。
@@ -433,7 +433,7 @@ const fmtRateTick = (v: number) => {
  * ログ軸に載せられる値か (#381)。
  *
  * `log(0)` は定義されず、キルレは `D=0` で無限大になる。**0 以下と非有限は描けない**ので
- * 除外する（現実的にはどちらも試合数が少ないケース）。
+ * 除外する(現実的にはどちらも試合数が少ないケース)。
  */
 export const isLogPlottable = (v: number | null): v is number =>
   v !== null && Number.isFinite(v) && v > 0
@@ -445,9 +445,9 @@ export const isLogPlottable = (v: number | null): v is number =>
  * 残った点の min/max を明示的に渡す必要がある。
  *
  * 全点が同じ値だと min === max になり軸が潰れるため、**1 桁ぶん広げる**。
- * 値が無ければ null（呼び出し側はログを諦めてリニアに落ちる）。
+ * 値が無ければ null(呼び出し側はログを諦めてリニアに落ちる)。
  *
- * min/max をそのまま渡すと端の点が軸線上に載ってドットが半分切れるため、余白を足す（#385）。
+ * min/max をそのまま渡すと端の点が軸線上に載ってドットが半分切れるため、余白を足す(#385)。
  * ログ軸はログ空間がピクセルに線形対応するので、余白も加算ではなく**乗除**で作る。
  * span に対する割合で広げるので、データの桁数によらず見た目の余白が一定になる。
  */
@@ -463,7 +463,7 @@ export function logDomain(values: number[]): [number, number] | null {
   return [min / 10 ** pad, max * 10 ** pad]
 }
 
-/** ログ軸の目盛り候補。各桁に 1・2・5 を置く（1,2,5,10,20,50,100…）。 */
+/** ログ軸の目盛り候補。各桁に 1・2・5 を置く(1,2,5,10,20,50,100…)。 */
 const LOG_MANTISSAS = [1, 2, 5]
 
 /**
@@ -500,24 +500,24 @@ export function logTicks(domain: [number, number], maxTicks = 10): number[] | nu
 }
 
 // ---------------------------------------------------------------------------
-// 凡例（#420）
+// 凡例(#420)
 // ---------------------------------------------------------------------------
 //
-// サイズ・色にメトリクスを割り当てられる（#406）が、凡例が無いと「大きい＝何が多いのか」
+// サイズ・色にメトリクスを割り当てられる(#406)が、凡例が無いと「大きい＝何が多いのか」
 // が画面から読めない。ホバーすればチップに出るが、全体を眺めているときに分からない。
 //
-// 凡例の中身（ラベル・値・色・面積）は **呼び出し側が組み立てて渡す**。環境分析と
-// ダッシュボードで色スケールの作り方が違う（pointColor と colorOfValue）ため、
+// 凡例の中身(ラベル・値・色・面積)は **呼び出し側が組み立てて渡す**。環境分析と
+// ダッシュボードで色スケールの作り方が違う(pointColor と colorOfValue)ため、
 // それぞれの関数をそのまま使えるほうが破綻しない。
 
-/** サイズ指標が割り当てられているときのドット面積レンジ（px²）。
+/** サイズ指標が割り当てられているときのドット面積レンジ(px²)。
  *
  *  🔴 凡例の円と実際のドットを一致させるため、ZAxis に渡す range と凡例の面積計算は
  *  **必ずこの定数を共有する**。片方だけ変えると凡例が嘘になる。 */
 export const SIZE_AREA_RANGE: [number, number] = [40, 600]
 
 /**
- * 軸端に確保する描画余白（px）。
+ * 軸端に確保する描画余白(px)。
  *
  * 最大ドットは area=600 → 半径約 13.8px。選択時はさらにハロー 4px＋線幅・角形の対角が付くため、
  * 28px 確保する。あわせてドメイン側も広げて、clipPath 内に収める。
@@ -526,7 +526,7 @@ const SCATTER_EDGE_PADDING = 28
 
 /**
  * 線形ドメインを値空間で広げ、上下限の点が軸線・clip に乗らないようにする。
- * （Axis padding だけだとログ軸の clip や nice tick の都合で足りないことがある）
+ * (Axis padding だけだとログ軸の clip や nice tick の都合で足りないことがある)
  */
 function expandLinearDomain(
   domain: [number, number] | undefined,
@@ -559,7 +559,7 @@ function finiteRange(values: (number | null | undefined)[]): { min: number; max:
 }
 
 /**
- * 値 → ドットの面積（px²）。
+ * 値 → ドットの面積(px²)。
  *
  * 🔴 Recharts の ZAxis のドメインは **[0, データ最大]** であって [最小, 最大] ではない。
  * `<ZAxis>` に domain を渡さないと `implicitZAxis.domain = [0, 'auto']` が効くため。
@@ -573,7 +573,7 @@ function valueToArea(v: number, max: number): number {
   return aMin + (aMax - aMin) * t
 }
 
-/** 「キリのよい」刻み（1 / 2 / 5 × 10^n）。 */
+/** 「キリのよい」刻み(1 / 2 / 5 × 10^n)。 */
 function niceStep(x: number): number {
   if (x <= 0) return 1
   const base = Math.pow(10, Math.floor(Math.log10(x)))
@@ -591,7 +591,7 @@ function roundNice(x: number): number {
 }
 
 /**
- * データ範囲から凡例用の切りのいい値を最大 `steps` 個選ぶ（#512）。
+ * データ範囲から凡例用の切りのいい値を最大 `steps` 個選ぶ(#512)。
  * 1・2・5 × 10^n の候補から、範囲内をほぼ等分する。面積スケールはデータ max 基準なので ≤ max。
  */
 function niceSizeLegendValues(min: number, max: number, steps: number): number[] {
@@ -616,7 +616,7 @@ function niceSizeLegendValues(min: number, max: number, steps: number): number[]
   for (let e = startExp; e <= endExp; e++) {
     for (const m of [1, 2, 5]) push(m * Math.pow(10, e))
   }
-  // max 側の代表（83 → 50、または max 自体が 1/2/5 ならそれ）
+  // max 側の代表(83 → 50、または max 自体が 1/2/5 ならそれ)
   push(Math.floor(max / niceStep(max / 2)) * niceStep(max / 2))
   push(max)
 
@@ -635,30 +635,30 @@ function niceSizeLegendValues(min: number, max: number, steps: number): number[]
 }
 
 /**
- * サイズ凡例を作る。切りのいい代表値を並べる（#512）。
+ * サイズ凡例を作る。切りのいい代表値を並べる(#512)。
  *
- * Recharts は面積を `radius = sqrt(面積 / π)` で描く（recharts/es6/cartesian/Scatter.js）。
+ * Recharts は面積を `radius = sqrt(面積 / π)` で描く(recharts/es6/cartesian/Scatter.js)。
  * 凡例の円も同じ式で描くので実際のドットと一致する。
  */
 export function buildSizeLegend(
   label: string, values: (number | null)[], fmt: (v: number) => string, steps = 3,
 ): SizeLegend | null {
   const r = finiteRange(values)
-  // max <= 0 だと面積の比率が作れない（実データでは件数・平均値なので起きない）。
+  // max <= 0 だと面積の比率が作れない(実データでは件数・平均値なので起きない)。
   if (!r || r.max <= 0) return null
-  // 全部同じ値ならドットの大小が無いので 1 つだけ出す（段を並べても全部同じ大きさになる）。
+  // 全部同じ値ならドットの大小が無いので 1 つだけ出す(段を並べても全部同じ大きさになる)。
   const vals = niceSizeLegendValues(r.min, r.max, steps)
   return { label, items: vals.map(v => ({ label: fmt(v), area: valueToArea(v, r.max) })) }
 }
 
-/** 面積（px²）→ 半径。Recharts のドットと同じ式。 */
+/** 面積(px²)→ 半径。Recharts のドットと同じ式。 */
 export function areaToRadius(area: number): number {
   return Math.sqrt(Math.max(area, 0) / Math.PI)
 }
 
 /**
- * 色凡例を作る。`colorOf` は **本体のドットと同じ関数**を渡すこと（色がズレないため）。
- * 値のラベルは両端と中央だけに付ける（全段に付けると数字が潰れて読めない）。
+ * 色凡例を作る。`colorOf` は **本体のドットと同じ関数**を渡すこと(色がズレないため)。
+ * 値のラベルは両端と中央だけに付ける(全段に付けると数字が潰れて読めない)。
  */
 export function buildColorLegend(
   label: string, values: (number | null)[], fmt: (v: number) => string,
@@ -678,7 +678,7 @@ export function buildColorLegend(
 
 function ScatterLegends({ sizeLegend, colorLegend }: { sizeLegend?: SizeLegend | null; colorLegend?: ColorLegend | null }) {
   if (!sizeLegend && !colorLegend) return null
-  // 一番大きい円に合わせて行の高さを取る（円が上下で切れないように）。
+  // 一番大きい円に合わせて行の高さを取る(円が上下で切れないように)。
   const maxR = sizeLegend ? areaToRadius(Math.max(...sizeLegend.items.map(i => i.area))) : 0
   // サイズ凡例の円の色。色にもメトリクスを割り当てているときは実際のドットが
   // そのスケールの色になるので、accent のままだと凡例だけ違う色で浮く。
@@ -758,21 +758,21 @@ export function ScatterChart({
   xLogScale?:   boolean
   /** Y 軸をログスケールにする (#381)。 */
   yLogScale?:   boolean
-  /** 明示ドメイン [min, max]。指定時は xIsRate の [0,1] 既定より優先（オートスケール用）。 */
+  /** 明示ドメイン [min, max]。指定時は xIsRate の [0,1] 既定より優先(オートスケール用)。 */
   xDomain?:     [number, number]
   yDomain?:     [number, number]
-  /** 基準線（例: 勝率 0.5）。指定軸に破線を引く。 */
+  /** 基準線(例: 勝率 0.5)。指定軸に破線を引く。 */
   xRefLine?:    number
   yRefLine?:    number
   hasSize?:     boolean
-  /** ドットの塗り透過度。未指定時は環境分析・ダッシュボードと同じ 0.55（#435）。 */
+  /** ドットの塗り透過度。未指定時は環境分析・ダッシュボードと同じ 0.55(#435)。 */
   fillOpacity?: number
   /** サイズメトリクス未指定時の一定サイズ。武器/ステージは大きめ (280)、バトルは小さめ (120) を想定。
    *  ZAxis range のピクセル面積。 */
   constSize?:   number
   height?:      number
-  /** ドットのサイズ・色が何を表しているかの凡例（#420）。buildSizeLegend / buildColorLegend で作る。
-   *  未指定（サイズ・色にメトリクスを割り当てていない）なら出さない。 */
+  /** ドットのサイズ・色が何を表しているかの凡例(#420)。buildSizeLegend / buildColorLegend で作る。
+   *  未指定(サイズ・色にメトリクスを割り当てていない)なら出さない。 */
   sizeLegend?:  SizeLegend | null
   colorLegend?: ColorLegend | null
 }) {
@@ -797,8 +797,8 @@ export function ScatterChart({
     )
   }, [plotted, xLogScale, yLogScale])
 
-  // ログ軸で落ちた件数。**黙って消さない**ための注記に使う（切り替えた瞬間に点が減るので、
-  // 理由が見えないとバグに見える）。
+  // ログ軸で落ちた件数。**黙って消さない**ための注記に使う(切り替えた瞬間に点が減るので、
+  // 理由が見えないとバグに見える)。
   const droppedByLog = plotted.length - drawable.length
 
   // 🔴 Recharts の scale="log" は domain={['auto','auto']} と併用すると壊れるので、
@@ -811,7 +811,7 @@ export function ScatterChart({
     () => (yLogScale ? logDomain(drawable.map(p => p.y as number)) : null),
     [drawable, yLogScale],
   )
-  // ログ軸の目盛りは 1/2/5 系列で明示する（#387）。Recharts 任せだと domain を等分した
+  // ログ軸の目盛りは 1/2/5 系列で明示する(#387)。Recharts 任せだと domain を等分した
   // 半端な値になる。null のときは従来どおり Recharts に任せる。
   const xTicks = useMemo(() => (xLogDomain ? logTicks(xLogDomain) : null), [xLogDomain])
   const yTicks = useMemo(() => (yLogDomain ? logTicks(yLogDomain) : null), [yLogDomain])
@@ -843,12 +843,12 @@ export function ScatterChart({
   const ROW_LIMIT = SCATTER_TIP_ROW_LIMIT
 
   // サイズ範囲 (sqrt スケール)。指定なしは ZAxis で一定サイズ。
-  // 🔴 凡例と同じ定数を使う（SIZE_AREA_RANGE のコメント参照）。
+  // 🔴 凡例と同じ定数を使う(SIZE_AREA_RANGE のコメント参照)。
   const zRange: [number, number] = hasSize ? SIZE_AREA_RANGE : [constSize, constSize]
 
   // ツールチップを一度 hidden で描画して実寸を測り、上下左右の最適位置へ移す。
-  // マーカーも DOM の実寸を読むため、形・サイズ指標の有無にかかわらず避けられる（#497）。
-  // 自分の点（ハロー込み）は他点より優先して隠さない。
+  // マーカーも DOM の実寸を読むため、形・サイズ指標の有無にかかわらず避けられる(#497)。
+  // 自分の点(ハロー込み)は他点より優先して隠さない。
   useLayoutEffect(() => {
     const area = areaRef.current
     const tooltip = tooltipRef.current
@@ -887,7 +887,7 @@ export function ScatterChart({
     const obstacles = markers
       .map(marker => toLocal(marker.getBoundingClientRect()))
       // アクティブ点自身と、完全に同じ座標に重なった兄弟点は通常障害物から除く
-      // （自分への被りは anchorObstacle 側で最優先に扱う）。
+      // (自分への被りは anchorObstacle 側で最優先に扱う)。
       .filter(rect => {
         const centerX = (rect.left + rect.right) / 2
         const centerY = (rect.top + rect.bottom) / 2
@@ -910,7 +910,7 @@ export function ScatterChart({
   }, [active, hoverSiblings.length, height, exportLayout])
 
   // チャート上から保存ボタンへ移ってもツールチップを残す。
-  // 消すのは「パネル全体」から出たときだけ（.chart-card / .env-chart-section）。
+  // 消すのは「パネル全体」から出たときだけ(.chart-card / .env-chart-section)。
   const pinnedRef = useRef(pinned)
   pinnedRef.current = pinned
   useEffect(() => {
@@ -923,11 +923,11 @@ export function ScatterChart({
       const related = (e as MouseEvent).relatedTarget as Node | null
       if (related && panel.contains(related)) return
       setHover(null)
-      // ピン留め中はパネル外でも残す（明示クリック解除まで）。
+      // ピン留め中はパネル外でも残す(明示クリック解除まで)。
       if (!pinnedRef.current) setTooltipPlacement(null)
     }
     const onExportPrepare = () => {
-      // キャプチャ前に同期で配置し直す（次フレーム待ちだけでは React 更新が間に合わない）。
+      // キャプチャ前に同期で配置し直す(次フレーム待ちだけでは React 更新が間に合わない)。
       flushSync(() => setExportLayout(true))
     }
     const onHtmlPrepare = () => {
@@ -969,7 +969,7 @@ export function ScatterChart({
         margin={{ top: 20, right: 18, left: 0, bottom: 28 }}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-        {/* ログ軸では 0 以下の基準線は載らない（extendDomain で軸ごと壊れるため出さない）。 */}
+        {/* ログ軸では 0 以下の基準線は載らない(extendDomain で軸ごと壊れるため出さない)。 */}
         {xRefLine != null && (!xLog || xRefLine > 0) && (
           <ReferenceLine x={xRefLine} stroke="var(--text-muted)" strokeDasharray="5 4" ifOverflow="extendDomain" />
         )}
@@ -1024,7 +1024,7 @@ export function ScatterChart({
             setHover({ ...p })
           }}
           onClick={(p: any) => {
-            // クリックでピン留め／再クリックで解除。画像保存前に点を固定できる。
+            // クリックでピン留め/再クリックで解除。画像保存前に点を固定できる。
             const next = { ...p }
             setPinned(prev => sameScatterAnchor(prev as { cx?: number; cy?: number } | null, next) ? null : next)
             setTooltipPlacement(null)
@@ -1050,7 +1050,7 @@ export function ScatterChart({
           pointerEvents: 'none',
         }}
       >
-        {droppedByLog} 件を非表示（ログ軸に載らない 0 以下・∞）
+        {droppedByLog} 件を非表示(ログ軸に載らない 0 以下・∞)
       </div>
     )}
     {active && (() => {

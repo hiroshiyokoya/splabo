@@ -12,12 +12,12 @@ export type ComboSlots = {
 
 export const emptySlots = (): ComboSlots => ({ head: null, clothing: null, shoes: null })
 
-/** 削除直後に表示する UNDO ボタンの表示時間（ms） */
+/** 削除直後に表示する UNDO ボタンの表示時間(ms) */
 const UNDO_BTN_MS = 4500
 
 // 3ギア合計の意味あるスナップ値 (max 57pt)
 // メイン=10pt, サブ=3pt, 1ギア最大=19pt, 3ギア合計最大=57pt
-// 10a + 3b (0≤a≤3, 0≤b≤9) で作れる値すべて（重複なし・昇順）
+// 10a + 3b (0≤a≤3, 0≤b≤9) で作れる値すべて(重複なし・昇順)
 const STEP_VALUES = [
    0,  3,  6,  9, 10, 12, 13, 15, 16, 18,
   19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
@@ -36,7 +36,7 @@ function stepDown(v: number, aAvail: number = 3) {
 function stepMax(aAvail: number, maxPts: number) {
   return [...STEP_VALUES].reverse().find(x => x <= maxPts && minMainsNeeded(x) <= aAvail) ?? 0
 }
-/** v を達成するのに最低何メインスロット必要か（不可能なら Infinity） */
+/** v を達成するのに最低何メインスロット必要か(不可能なら Infinity) */
 function minMainsNeeded(v: number): number {
   for (let a = 0; a <= 3; a++) {
     const rem = v - 10 * a
@@ -72,12 +72,12 @@ interface Props {
   onRestoreSlot:    (cat: GearCategory, gear: GearItem) => void
   onClearAll:       () => void
   onApplyCombo:     (combo: ComboResult) => void
-  /** シートが開いた/閉じたときに通知（peekは閉じた扱い） */
+  /** シートが開いた/閉じたときに通知(peekは閉じた扱い) */
   onIsOpenChange?:  (open: boolean) => void
   emptySkillImage?: string
-  /** コーデ候補の最大表示件数（デフォルト 50） */
+  /** コーデ候補の最大表示件数(デフォルト 50) */
   comboLimit?:      number
-  /** 惜しい候補の最大件数（デフォルト 10） */
+  /** 惜しい候補の最大件数(デフォルト 10) */
   nearLimit?:       number
 }
 
@@ -96,13 +96,13 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
   })
   const sheetRef = useRef<HTMLDivElement>(null)
   const drag = useRef<{ startY: number; startH: number; moved: boolean } | null>(null)
-  /** 削除直後に表示する UNDO ボタンを消すタイマー（カテゴリ別） */
+  /** 削除直後に表示する UNDO ボタンを消すタイマー(カテゴリ別) */
   const undoBtnTimers = useRef<Partial<Record<GearCategory, ReturnType<typeof setTimeout>>>>({})
   /** スタック型ステッパ長押し: 遅延後に連続変更 */
   const stepperHoldRef = useRef<{ t?: ReturnType<typeof setTimeout>; i?: ReturnType<typeof setInterval> } | null>(null)
   /** 長押しで連続したあと発火する click を1回無視する */
   const stepperIgnoreClickRef = useRef(false)
-  /** 長押し tick 内で参照する最新のプール・aAvail（毎レンダーで更新） */
+  /** 長押し tick 内で参照する最新のプール・aAvail(毎レンダーで更新) */
   const comboStepperCtxRef = useRef({ skillPoints, remainingPool: 0, aAvail: 3 })
 
   useEffect(() => { onIsOpenChange?.(isOpen) }, [isOpen])
@@ -177,7 +177,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
       .map(([id, { name, image }]) => ({ id, name, image }))
   }, [data])
 
-  // DB から発動型スキル一覧（カテゴリ別）
+  // DB から発動型スキル一覧(カテゴリ別)
   const mainOnlyByCategory = useMemo(() => {
     const result: Record<GearCategory, Array<{ id: number; name: string; image: string }>> = {
       head: [], clothing: [], shoes: [],
@@ -206,7 +206,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
     return result
   }, [data])
 
-  /** 候補行の全スキル表示用（DB上の id → 名称・アイコン） */
+  /** 候補行の全スキル表示用(DB上の id → 名称・アイコン) */
   const skillInfoById = useMemo(() => {
     const map = new Map<number, { name: string; image: string }>()
     for (const cat of ['head', 'clothing', 'shoes'] as GearCategory[]) {
@@ -219,7 +219,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
     return map
   }, [data])
 
-  /** リスト先頭の満たす候補と targetSum・allSum が同じなら「ベスト」（単体AP配列は見ない） */
+  /** リスト先頭の満たす候補と targetSum・allSum が同じなら「ベスト」(単体AP配列は見ない) */
   const bestPerfectSortKeys = useMemo((): ComboSortKey | null => {
     if (comboResults === null) return null
     const firstPerfect = comboResults.find(c => c.matchKind !== 'near')
@@ -232,15 +232,15 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
     (akiTarget > 0 ? 1 : 0)
 
   // ── AP プール制約ロジック ──
-  // 選択中の発動型数（0〜3）。発動型はメインスロット1枠=10APを占有する
+  // 選択中の発動型数(0~3)。発動型はメインスロット1枠=10APを占有する
   const numMainOnly = (Object.values(mainOnlySel) as (number | null)[]).filter(v => v !== null).length
   // スタック型に使えるAPプール = 空きメインスロット×10 + (サブスロット9枠 - アキ目標枠)×3
   const stackablePool = (3 - numMainOnly) * 10 + Math.max(0, 9 - akiTarget) * 3
   // 現在スタック型に割り当てたAP合計
   const allocatedStackable = [...skillPoints.values()].reduce((s, v) => s + v, 0)
-  // 残りプール（スタック型間で再配分可能）
+  // 残りプール(スタック型間で再配分可能)
   const remainingPool = stackablePool - allocatedStackable
-  // 発動型を新たに選べるか（残り10AP以上 & 空きカテゴリあり）
+  // 発動型を新たに選べるか(残り10AP以上 & 空きカテゴリあり)
   const canSelectMainOnly = remainingPool >= 10
   // スタック型に使えるメインスロット数
   const aAvail = 3 - numMainOnly
@@ -426,7 +426,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
     setSlotUndo(prev => ({ ...prev, [cat]: null }))
   }
 
-  /** 空スロット: スナップショットがあればタップで戻す（UNDO ボタン非表示時も可） */
+  /** 空スロット: スナップショットがあればタップで戻す(UNDO ボタン非表示時も可) */
   const handleEmptySlotActivate = (cat: GearCategory) => {
     if (!slots[cat] && slotUndo[cat]) handleRestoreFromUndo(cat)
   }
@@ -553,7 +553,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
         <div className="combo-sheet__body">
 
         <div className="combo-sheet__sticky-top">
-        {/* ── 3スロット（横並び） ── */}
+        {/* ── 3スロット(横並び) ── */}
         <div className="combo-slots">
           {(['head', 'clothing', 'shoes'] as GearCategory[]).map(cat => {
             const gear = slots[cat]
@@ -610,8 +610,8 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                 tabIndex={emptyInteractive ? 0 : undefined}
                 title={canUndo && undoGear
                   ? showUndoBtn
-                    ? `「${undoGear.name}」を戻す（↩ またはこの枠をタップ）`
-                    : `「${undoGear.name}」を戻す（この枠をタップ）`
+                    ? `「${undoGear.name}」を戻す(↩ またはこの枠をタップ)`
+                    : `「${undoGear.name}」を戻す(この枠をタップ)`
                   : `リストから${CAT_LABEL[cat]}ギアを選択`}
               >
                 {showUndoBtn && undoGear && (
@@ -668,7 +668,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
         </div>
         </div>
 
-        {/* ── スキル指定 + 生成 + 結果（オープン中は常に DOM に置き、ピーク時は折りたたんで intrinsic 幅だけ確保） ── */}
+        {/* ── スキル指定 + 生成 + 結果(オープン中は常に DOM に置き、ピーク時は折りたたんで intrinsic 幅だけ確保) ── */}
         {isOpen && (
           <div
             className={`combo-sheet__expand-block${snapExpanded ? '' : ' combo-sheet__expand-block--peek-hidden'}`}
@@ -696,7 +696,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                       {mainSkills.map(s => {
                         const isSelected = mainOnlySel[cat] === s.id
                         // 未選択カテゴリへの新規追加は残りプール10以上が必要
-                        // 選択済み（デセレクト or 同カテゴリ切替）は常に可
+                        // 選択済み(デセレクト or 同カテゴリ切替)は常に可
                         const isDisabled = !isSelected && mainOnlySel[cat] === null && !canSelectMainOnly
                         return (
                           <button
@@ -704,7 +704,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                             className={`combo-main-only-chip ${isSelected ? 'combo-main-only-chip--active' : ''}`}
                             onClick={() => !isDisabled && toggleMainOnly(cat, s.id)}
                             disabled={isDisabled}
-                            title={isDisabled ? `残りAP不足（あと${10 - remainingPool}pt必要）` : s.name}
+                            title={isDisabled ? `残りAP不足(あと${10 - remainingPool}pt必要)` : s.name}
                           >
                             <img src={s.image} alt={s.name} />
                             <span>{s.name}</span>
@@ -768,8 +768,8 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                         const nearN = comboResults.filter(c => c.matchKind === 'near').length
                         const perfectN = total - nearN
                         return nearN > 0
-                          ? `${total} 件（条件を満たす ${perfectN} / 惜しい ${nearN}）— タップで適用`
-                          : `${total} 件の候補（タップで適用）`
+                          ? `${total} 件(条件を満たす ${perfectN} / 惜しい ${nearN})- タップで適用`
+                          : `${total} 件の候補(タップで適用)`
                       })()}
                 </div>
                 <div className="combo-results__list">

@@ -8,7 +8,7 @@ import {
 } from '../../utils/heatmapColors'
 
 /**
- * 2 軸ヒートマップ。X 軸・Y 軸ともにカテゴリ系（武器・ステージ・モード・ルール・サブ・SP）。
+ * 2 軸ヒートマップ。X 軸・Y 軸ともにカテゴリ系(武器・ステージ・モード・ルール・サブ・SP)。
  *
  * - セル色: メトリクスのグループで自動切替
  *   - count   → 相対 5 段階
@@ -18,8 +18,8 @@ import {
  * - 0 サンプルセルは薄いグレー
  * - X / Y の表示順は バトル数合計の多い順
  * - X / Y の軸ラベルは、その軸に射影した値でセルと同じ色スケールに従って色付けする
- *   （#409。環境分析の Heatmap.tsx = #405 と揃えた挙動）。射影はその軸の
- *   **全セル**（サンプル不足セルも含む）から算出する。詳細は #411 / heatmapColors。
+ *   (#409。環境分析の Heatmap.tsx = #405 と揃えた挙動)。射影はその軸の
+ *   **全セル**(サンプル不足セルも含む)から算出する。詳細は #411 / heatmapColors。
  */
 
 const CELL_W  = 32
@@ -27,11 +27,11 @@ const CELL_H  = 24
 const GAP     = 1
 const PAD_LEFT_BASE = 110  // Y 軸 tick ラベルスペース
 const PAD_TOP_BASE  = 80   // X 軸 tick ラベルスペース
-const TITLE_PAD     = 22   // 軸タイトル（xTitle / yTitle）がある場合の追加スペース
+const TITLE_PAD     = 22   // 軸タイトル(xTitle / yTitle)がある場合の追加スペース
 
-// ナワバリ（ルール軸）はバトル数が多く先頭に来がちだが、慣例的に最後に置く
-// （EnvAnalysis の RULE_HEATMAP_ORDER と揃える）。キーは FE スラッグ 'turf_war'
-// （旧マスターの 'nawabari' も一応拾う）。ルール軸にしか現れないため軸種別は不要。
+// ナワバリ(ルール軸)はバトル数が多く先頭に来がちだが、慣例的に最後に置く
+// (EnvAnalysis の RULE_HEATMAP_ORDER と揃える)。キーは FE スラッグ 'turf_war'
+// (旧マスターの 'nawabari' も一応拾う)。ルール軸にしか現れないため軸種別は不要。
 const NAWABARI_KEYS = new Set(['turf_war', 'nawabari'])
 function nawabariLast(keys: string[]): string[] {
   return [
@@ -43,9 +43,9 @@ function nawabariLast(keys: string[]): string[] {
 type Group = ReturnType<typeof metricGroup>
 
 /**
- * 値 → 色スケール上の色（欠損・サンプル不足の判定は含まない）。
- * セル塗りと軸ラベルの文字色で共有し、色スケールを二重定義しない（#409）。
- * 色を決められない（カウント系で max<=0）ときは null。
+ * 値 → 色スケール上の色(欠損・サンプル不足の判定は含まない)。
+ * セル塗りと軸ラベルの文字色で共有し、色スケールを二重定義しない(#409)。
+ * 色を決められない(カウント系で max<=0)ときは null。
  */
 function scaleColor(value: number, group: Group, min: number, max: number, metric: MetricKey): string | null {
   if (group === 'count') {
@@ -59,8 +59,8 @@ function scaleColor(value: number, group: Group, min: number, max: number, metri
 }
 
 /**
- * 値 → 強度（0=淡い/中立 〜 1=濃い/極）。scaleColor と同じ正規化を使う。
- * 軸ラベルの文字色を「薄すぎるときは既定色に落とす」判定に使う（#409）。
+ * 値 → 強度(0=淡い/中立 ~ 1=濃い/極)。scaleColor と同じ正規化を使う。
+ * 軸ラベルの文字色を「薄すぎるときは既定色に落とす」判定に使う(#409)。
  */
 function scaleIntensity(value: number, group: Group, min: number, max: number): number {
   // 勝率は 0–100% 固定の divergent。50% からの隔たりが強度。
@@ -70,8 +70,8 @@ function scaleIntensity(value: number, group: Group, min: number, max: number): 
 }
 
 function cellColor(value: number | null, group: Group, min: number, max: number, total: number, minSampleSize: number, sparseId: string, emptyId: string, metric: MetricKey): string {
-  // 値が無いセルは色ではなくハッチで示す（中立グレーの中央と紛れさせないため・#351）。
-  // データなしはサンプル不足より強い（詰まった）ハッチ。
+  // 値が無いセルは色ではなくハッチで示す(中立グレーの中央と紛れさせないため・#351)。
+  // データなしはサンプル不足より強い(詰まった)ハッチ。
   if (value === null || total === 0) return hatchFill(emptyId)
   if ((group === 'rate' || group === 'average') && total < minSampleSize) {
     return hatchFill(sparseId)
@@ -88,10 +88,10 @@ export function HeatmapChart({
   xLabelTransform?: (s: string) => string
   yLabelTransform?: (s: string) => string
   minSampleSize?:   number
-  /** X 軸が数値メトリクス bin の場合 true（並び順を数値昇順にする、#134）。 */
+  /** X 軸が数値メトリクス bin の場合 true(並び順を数値昇順にする、#134)。 */
   xNumeric?:        boolean
   yNumeric?:        boolean
-  /** X 軸タイトル（軸ラベルの上に表示）。#145 */
+  /** X 軸タイトル(軸ラベルの上に表示)。#145 */
   xTitle?:          string
   yTitle?:          string
 }) {
@@ -100,7 +100,7 @@ export function HeatmapChart({
   const PAD_TOP  = PAD_TOP_BASE  + (xTitle ? TITLE_PAD : 0)
   // ツールチップ位置はマウスの clientX / clientY (viewport 基準)。
   // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
-  // ハッチ（サンプル不足 / データなし）用。同一ページに複数チャートが載るので id は一意にする（#351）。
+  // ハッチ(サンプル不足 / データなし)用。同一ページに複数チャートが載るので id は一意にする(#351)。
   const uid = useId()
   const sparseId = `sparse-${uid}`
   const emptyId  = `empty-${uid}`
@@ -127,8 +127,8 @@ export function HeatmapChart({
       nameMap.set(row.key_y, row.name_y ?? row.key_y)
     }
 
-    // 数値軸（#134）は bin 値の数値昇順、それ以外はバトル数の多い順。
-    // カテゴリ軸は最後に nawabariLast でナワバリ（ルール軸のみ該当）を末尾へ寄せる。
+    // 数値軸(#134)は bin 値の数値昇順、それ以外はバトル数の多い順。
+    // カテゴリ軸は最後に nawabariLast でナワバリ(ルール軸のみ該当)を末尾へ寄せる。
     const xKeys = nawabariLast(xNumeric
       ? Array.from(xTotals.keys()).sort((a, b) => Number(a) - Number(b))
       : Array.from(xTotals.entries()).sort((a, b) => b[1] - a[1]).map(e => e[0]))
@@ -149,7 +149,7 @@ export function HeatmapChart({
 
     const rawMin = mn === Number.POSITIVE_INFINITY ? 0 : mn
     const rawMax = mx === Number.NEGATIVE_INFINITY ? 0 : mx
-    // 勝数・平均系は範囲を整数に丸める（凡例が「3.2 – 7.8」ではなく「3 – 8」に・#351）。
+    // 勝数・平均系は範囲を整数に丸める(凡例が「3.2 – 7.8」ではなく「3 – 8」に・#351)。
     // 勝率は 0–100% 固定なのでそのまま。
     const r = group === 'rate' ? { min: rawMin, max: rawMax } : integerRange(rawMin, rawMax)
 
@@ -162,13 +162,13 @@ export function HeatmapChart({
     }
   }, [data, metric, group, minSampleSize, xNumeric, yNumeric])
 
-  // 軸ラベル色付け用の射影値（#409 / #411）。X キー・Y キーごとに、そのキーの
-  // **全セル**から算出する。セル単位の足切り（minSampleSize）は射影に掛けない:
+  // 軸ラベル色付け用の射影値(#409 / #411)。X キー・Y キーごとに、そのキーの
+  // **全セル**から算出する。セル単位の足切り(minSampleSize)は射影に掛けない:
   // どのセルが残るかは交差する軸で変わるため、掛けると「ガチエリアの勝率が
-  // 武器×ルールとステージ×ルールで違う」ことになる（#411）。
-  // 標本不足の軸は、セルではなく「軸の合計バトル数」（AXIS_MIN_TOTAL_SAMPLES）で落とす。
-  //  - 率・平均 … サンプル数（バトル数）で加重平均。Σ(値×n)/Σn = Σ勝数/Σ試合数 で交差軸に依存しない。
-  //  - カウント … 合計。件数を件数で加重平均しても意味を成さない（#411）。
+  // 武器×ルールとステージ×ルールで違う」ことになる(#411)。
+  // 標本不足の軸は、セルではなく「軸の合計バトル数」(AXIS_MIN_TOTAL_SAMPLES)で落とす。
+  //  - 率・平均 … サンプル数(バトル数)で加重平均。Σ(値×n)/Σn = Σ勝数/Σ試合数 で交差軸に依存しない。
+  //  - カウント … 合計。件数を件数で加重平均しても意味を成さない(#411)。
   const { xProj, yProj, xSamples, ySamples } = useMemo(() => {
     const valueOf = (row: GroupedStatsRow2D): number | null => getMetric2D(row, metric)
     const project = (keyOf: (r: GroupedStatsRow2D) => string) =>
@@ -184,12 +184,12 @@ export function HeatmapChart({
   }, [data, metric, group])
 
   /**
-   * 軸ラベルの文字色。射影値が無い／軸の合計標本数が足りないキーは既定色（undefined）。
+   * 軸ラベルの文字色。射影値が無い/軸の合計標本数が足りないキーは既定色(undefined)。
    *
-   * カウント系だけは正規化基準がセルと違う（#411）。射影値は「合計」なので必ずセルの
+   * カウント系だけは正規化基準がセルと違う(#411)。射影値は「合計」なので必ずセルの
    * 最大値以上になり、セルの max で正規化すると全ラベルが最濃で潰れて差が読めない。
-   * その軸の射影値の max を 1 とする軸内の相対スケールにする（ラベル同士の比較として読む）。
-   * 率・平均はセルと同じ絶対スケール（勝率は 0–100% 固定・平均はセルの min/max）のまま。
+   * その軸の射影値の max を 1 とする軸内の相対スケールにする(ラベル同士の比較として読む)。
+   * 率・平均はセルと同じ絶対スケール(勝率は 0–100% 固定・平均はセルの min/max)のまま。
    */
   const labelColor = (proj: Map<string, number>, samples: Map<string, number>) => {
     const axisMin = group === 'count' ? 0 : minVal
@@ -210,7 +210,7 @@ export function HeatmapChart({
   const width  = Math.max(PAD_LEFT + xKeys.length * (CELL_W + GAP) + 8, 360)
   const height = PAD_TOP + GRID_H + 8
 
-  /** カラーバー（凡例）用の色順・ラベル */
+  /** カラーバー(凡例)用の色順・ラベル */
   const legendColors = group === 'rate' ? RATE_LEGEND_COLORS : seqLegendColors(metric)
   const fmtLegend = (v: number): string => {
     if (metric === 'win_rate') return `${Math.round(v * 100)}%`
@@ -219,7 +219,7 @@ export function HeatmapChart({
     return Math.round(v).toString()
   }
   // 勝率は 0% / 100% の両端のみ。中央の 50% はバーの右に並んで出てしまい
-  // 中央ラベルとして機能していなかったため廃止（#351）。
+  // 中央ラベルとして機能していなかったため廃止(#351)。
   const legendLeft  = group === 'rate' ? '0%'  : group === 'count' ? '0' : fmtLegend(minVal)
   const legendRight = group === 'rate' ? '100%' : fmtLegend(maxVal)
 
@@ -240,7 +240,7 @@ export function HeatmapChart({
           <SparseHatchPattern id={sparseId} />
           <EmptyHatchPattern id={emptyId} />
         </defs>
-        {/* 軸タイトル（#145）。tick ラベルの上 / 左に表示。 */}
+        {/* 軸タイトル(#145)。tick ラベルの上 / 左に表示。 */}
         {xTitle && (
           <text
             x={PAD_LEFT + (xKeys.length * (CELL_W + GAP)) / 2}
@@ -265,7 +265,7 @@ export function HeatmapChart({
             >{yTitle}</text>
           )
         })()}
-        {/* X 軸ラベル（上に斜め配置） */}
+        {/* X 軸ラベル(上に斜め配置) */}
         {xKeys.map((k, i) => {
           const x = PAD_LEFT + i * (CELL_W + GAP) + CELL_W / 2
           const c = xLabelColor(k)
@@ -277,14 +277,14 @@ export function HeatmapChart({
               fontSize={10}
               fontWeight={600}
               fill="var(--text)"
-              // 射影値がある軸だけ style で上書きする（color-mix を確実に CSS として解釈させる）。
+              // 射影値がある軸だけ style で上書きする(color-mix を確実に CSS として解釈させる)。
               style={c ? { fill: c } : undefined}
               textAnchor="start"
               transform={`rotate(-35 ${x} ${PAD_TOP - 6})`}
             >{xLabel(k)}</text>
           )
         })}
-        {/* Y 軸ラベル（左） */}
+        {/* Y 軸ラベル(左) */}
         {yKeys.map((k, i) => {
           const c = yLabelColor(k)
           return (
@@ -363,13 +363,13 @@ export function HeatmapChart({
           <div className="hover-tt-row">{METRIC_LABELS[metric]}: {formatMetric(hover.value, metric)}</div>
           {/* バトル数の右に勝敗の内訳を並べる。引き分けは発生したときだけ出す。
               メトリクス自体が「バトル数」のときは上の行と同じ値になるので、
-              ラベルと件数を省いて勝敗内訳だけ出す（#388）。 */}
+              ラベルと件数を省いて勝敗内訳だけ出す(#388)。 */}
           <div className="hover-tt-row hover-tt-row--muted">
             {metric !== 'total' && <>バトル数: {hover.total}</>}
             {hover.total > 0 && (
               <>
-                {metric !== 'total' && ' '}（{hover.wins} 勝 {hover.total - hover.wins - hover.draws} 敗
-                {hover.draws > 0 && ` ${hover.draws} 分`}）
+                {metric !== 'total' && ' '}({hover.wins} 勝 {hover.total - hover.wins - hover.draws} 敗
+                {hover.draws > 0 && ` ${hover.draws} 分`})
               </>
             )}
           </div>

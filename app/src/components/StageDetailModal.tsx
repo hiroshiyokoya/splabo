@@ -10,14 +10,14 @@ function winRateColor(rate: number): string {
   return '#f472b6'
 }
 
-/** コンパクト戦績「12戦 7勝5敗」。引き分けは 0 でないときだけ「2分」を付ける（#449）。
+/** コンパクト戦績「12戦 7勝5敗」。引き分けは 0 でないときだけ「2分」を付ける(#449)。
  *  WeaponBook.fmtRecord / WeaponDetailModal.fmtRecord と同期。 */
 function fmtRecord(total: number, wins: number, draws: number): string {
   const losses = total - wins - draws
   return `${total}戦 ${wins}勝${losses}敗${draws > 0 ? `${draws}分` : ''}`
 }
 
-/** 武器 TOP セクションの下限バトル数（勝率 TOP のブレを避ける）。 */
+/** 武器 TOP セクションの下限バトル数(勝率 TOP のブレを避ける)。 */
 const WEAPON_MIN_BATTLES = 5
 /** 武器 TOP セクションで表示する件数。 */
 const WEAPON_TOP_N = 5
@@ -26,9 +26,9 @@ const WEAPON_TOP_N = 5
  * ステージ図鑑カードをクリックして開く詳細モーダル (#226)。
  *
  * - ルール別統計は `db_grouped_stats(group_by='rule', stage=<key>)` で取得。
- *   WHERE 句は `m.key` で絞られる（db.rs の filter_where 参照）ので row.key をそのまま渡せる。
+ *   WHERE 句は `m.key` で絞られる(db.rs の filter_where 参照)ので row.key をそのまま渡せる。
  * - 武器 TOP は `db_grouped_stats(group_by='weapon', stage=<key>)` で取得し、
- *   FE 側で「勝利数 TOP」「勝率 TOP（≥ WEAPON_MIN_BATTLES）」の 2 リストに絞る。
+ *   FE 側で「勝利数 TOP」「勝率 TOP(≥ WEAPON_MIN_BATTLES)」の 2 リストに絞る。
  * - Rust 側の追加コマンドは不要。既存の `db_grouped_stats` の `stage` フィルタを利用。
  */
 export function StageDetailModal({
@@ -53,7 +53,7 @@ export function StageDetailModal({
     return () => window.removeEventListener('keydown', handleKey)
   }, [handleKey])
 
-  // ルール別 / 武器別を並列で取得。stage フィルタは row.key（m.key）。
+  // ルール別 / 武器別を並列で取得。stage フィルタは row.key(m.key)。
   useEffect(() => {
     setLoading(true)
     setError(null)
@@ -65,8 +65,8 @@ export function StageDetailModal({
         setRuleRows(rules)
         setWeaponRows(weapons)
 
-        // 武器アイコン。key は武器スラッグ（stat.ink キー）で read_image と一致する。
-        // TOP に出そうな候補（勝利数 or 勝率）だけ先に集めて重複排除。
+        // 武器アイコン。key は武器スラッグ(stat.ink キー)で read_image と一致する。
+        // TOP に出そうな候補(勝利数 or 勝率)だけ先に集めて重複排除。
         const wins = [...weapons].sort((a, b) => b.wins - a.wins).slice(0, WEAPON_TOP_N)
         const rate = weapons
           .filter(w => w.total >= WEAPON_MIN_BATTLES)
@@ -80,7 +80,7 @@ export function StageDetailModal({
             invoke<string | null>('read_image', { kind: 'weapon', name: key })
               .then(url => (url ? ([key, url] as [string, string]) : null))
               .catch(() => null)
-              // key が name_ja だった場合のフォールバック（read_image がスラッグ想定）。
+              // key が name_ja だった場合のフォールバック(read_image がスラッグ想定)。
               .then(res => res ?? (name && name !== key
                 ? invoke<string | null>('read_image', { kind: 'weapon', name })
                     .then(url => (url ? ([key, url] as [string, string]) : null))
@@ -120,7 +120,7 @@ export function StageDetailModal({
         </div>
 
         <div className="modal-body">
-          {/* ヘッダー：ステージ画像（大） */}
+          {/* ヘッダー：ステージ画像(大) */}
           <section className="modal-section stage-modal-hero">
             <div className="stage-modal-hero-image">
               {image
@@ -164,13 +164,13 @@ export function StageDetailModal({
                             className="num"
                             style={{ color: wr !== null ? winRateColor(wr) : undefined }}
                           >
-                            {wr !== null ? `${(wr * 100).toFixed(1)}%` : '—'}
+                            {wr !== null ? `${(wr * 100).toFixed(1)}%` : '-'}
                           </td>
-                          <td className="num">{r?.avg_kill   !== null && r?.avg_kill   !== undefined ? r.avg_kill.toFixed(2)   : '—'}</td>
-                          <td className="num">{r?.avg_assist !== null && r?.avg_assist !== undefined ? r.avg_assist.toFixed(2) : '—'}</td>
-                          <td className="num">{r?.avg_death  !== null && r?.avg_death  !== undefined ? r.avg_death.toFixed(2)  : '—'}</td>
-                          <td className="num">{r ? avgKillRatio(r.avg_kill, r.avg_death) : '—'}</td>
-                          <td className="num">{koR !== null ? `${(koR * 100).toFixed(1)}%` : '—'}</td>
+                          <td className="num">{r?.avg_kill   !== null && r?.avg_kill   !== undefined ? r.avg_kill.toFixed(2)   : '-'}</td>
+                          <td className="num">{r?.avg_assist !== null && r?.avg_assist !== undefined ? r.avg_assist.toFixed(2) : '-'}</td>
+                          <td className="num">{r?.avg_death  !== null && r?.avg_death  !== undefined ? r.avg_death.toFixed(2)  : '-'}</td>
+                          <td className="num">{r ? avgKillRatio(r.avg_kill, r.avg_death) : '-'}</td>
+                          <td className="num">{koR !== null ? `${(koR * 100).toFixed(1)}%` : '-'}</td>
                         </tr>
                       )
                     })}

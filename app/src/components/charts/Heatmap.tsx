@@ -1,7 +1,7 @@
 /**
- * マトリクス型ヒートマップ（#187）。
+ * マトリクス型ヒートマップ(#187)。
  *
- * env_matrix_stats の結果（{ row_key, col_key, value, n }[]）を
+ * env_matrix_stats の結果({ row_key, col_key, value, n }[])を
  * 行カテゴリ × 列カテゴリのグリッドとして描画する。Recharts に専用型が無いため
  * CSS グリッド + カラースケールで自前実装する。集計後データは数十×数十セルで軽量。
  */
@@ -15,39 +15,39 @@ export interface HeatmapProps {
   valueLabel: (v: number) => string
   /** 'diverging' は mid を境に赤(低)/青(高)。'sequential' は薄→濃の単色。 */
   scale:      'sequential' | 'diverging'
-  /** diverging の中心値（勝率なら 0.5、キルレなら 1.0）。 */
+  /** diverging の中心値(勝率なら 0.5、キルレなら 1.0)。 */
   mid?:       number
-  /** sequential の色相（既定 210=青）。デスのような「高いほど悪い」指標は 8=赤 を渡す。 */
+  /** sequential の色相(既定 210=青)。デスのような「高いほど悪い」指標は 8=赤 を渡す。 */
   sequentialHue?: number
   rowAxis:    string
   colAxis:    string
   /** キー → 表示ラベル。未指定はキーそのまま。 */
   rowLabel?:  (key: string) => string
   colLabel?:  (key: string) => string
-  /** 列見出しを斜め表示にする（ステージ名など長いラベル向け）。 */
+  /** 列見出しを斜め表示にする(ステージ名など長いラベル向け)。 */
   diagonalCols?: boolean
   /** 行キーの優先並び順。指定キーはこの順、未指定キーはサンプル数降順で後ろに続く。 */
   rowOrder?:  string[]
   /** 列キーの優先並び順。 */
   colOrder?:  string[]
-  /** 列見出しクリックによる行ソート対象列。null / 未指定は既定並び（#479）。 */
+  /** 列見出しクリックによる行ソート対象列。null / 未指定は既定並び(#479)。 */
   sortColKey?: string | null
-  /** sortColKey 指定時の昇順 / 降順（初回クリックは desc）。 */
+  /** sortColKey 指定時の昇順 / 降順(初回クリックは desc)。 */
   sortDir?:    'asc' | 'desc'
   /** 列見出しクリック時。親が sortColKey / sortDir を更新する。 */
   onColHeaderClick?: (colKey: string) => void
-  /** 行ごとの射影値（そのキーの**全バトル**から算出した値。BE の marginals・#405 / #411）。
+  /** 行ごとの射影値(そのキーの**全バトル**から算出した値。BE の marginals・#405 / #411)。
    *  与えると行見出しの文字色をセルと同じ色スケールで色付けする。null / 未指定は既定色。 */
   rowValue?:  Map<string, number | null>
   /** 列ごとの射影値。#405 / #411 */
   colValue?:  Map<string, number | null>
-  /** 軸見出しの射影値を「その軸の最大値を 1」とする軸内の相対スケールで色付けする（#411）。
-   *  カウント系（バトル数）の射影は合計なので、必ずセルの最大値以上になり、
+  /** 軸見出しの射影値を「その軸の最大値を 1」とする軸内の相対スケールで色付けする(#411)。
+   *  カウント系(バトル数)の射影は合計なので、必ずセルの最大値以上になり、
    *  セルの min/max で正規化すると全見出しが最濃で潰れる。合計にはこちらを使う。 */
   axisRelative?: boolean
 }
 
-/** 集計マップを並べ替える。order 指定時はその順（未指定キーはサンプル数降順で後続）、
+/** 集計マップを並べ替える。order 指定時はその順(未指定キーはサンプル数降順で後続)、
  *  未指定時はサンプル数降順。 */
 function orderKeys(agg: Map<string, number>, order?: string[]): string[] {
   const entries = [...agg.entries()]
@@ -60,7 +60,7 @@ function orderKeys(agg: Map<string, number>, order?: string[]): string[] {
 
 const CELL_KEY_SEP = '\0'
 
-/** 指定列のセル値で行を並べ替える。値なし / null セルは末尾（#479）。 */
+/** 指定列のセル値で行を並べ替える。値なし / null セルは末尾(#479)。 */
 function sortRowsByColumn(
   rowKeys: string[],
   colKey: string,
@@ -78,10 +78,10 @@ function sortRowsByColumn(
   return [...withValue.map(w => w.key), ...withoutValue]
 }
 
-/** 強度（0=淡い 〜 1=濃い）に応じた背景色と読みやすい文字色。 */
+/** 強度(0=淡い ~ 1=濃い)に応じた背景色と読みやすい文字色。 */
 function cellStyle(hue: number, intensity: number): { background: string; color: string } {
   const c = Math.max(0, Math.min(1, intensity))
-  const lightness = 92 - c * 52  // 92%（淡）→ 40%（濃）
+  const lightness = 92 - c * 52  // 92%(淡)→ 40%(濃)
   return {
     background: `hsl(${hue} 72% ${lightness}%)`,
     color: lightness < 60 ? '#f2f2fb' : '#14142a',
@@ -89,16 +89,16 @@ function cellStyle(hue: number, intensity: number): { background: string; color:
 }
 
 /**
- * 軸ラベルの文字色（#405）。セルと同じ hue・強度を使うが、こちらは色付きの「背景」ではなく
+ * 軸ラベルの文字色(#405)。セルと同じ hue・強度を使うが、こちらは色付きの「背景」ではなく
  * サーフェス上に置く「文字」なので、淡い色だと読めない。強度に応じて彩度を上げ・明度を下げ、
- * ライト/ダーク双方で読める帯（明度 58%→48%）に収める。強度が小さいうちは既定色のまま
- * （undefined を返す）にして、意味のある差だけを色で示す。
- * 「弱い射影値は色を付けない」閾値はダッシュボードの HeatmapChart と共有する（#409）。 */
+ * ライト/ダーク双方で読める帯(明度 58%→48%)に収める。強度が小さいうちは既定色のまま
+ * (undefined を返す)にして、意味のある差だけを色で示す。
+ * 「弱い射影値は色を付けない」閾値はダッシュボードの HeatmapChart と共有する(#409)。 */
 function labelColor(hue: number, intensity: number): string | undefined {
   const c = Math.max(0, Math.min(1, intensity))
-  if (c < AXIS_LABEL_MIN_INTENSITY) return undefined  // 弱い射影値は既定色（薄すぎる色を避ける）
-  const sat = 58 + c * 30                    // 58%（弱）→ 88%（強）
-  const light = 58 - c * 10                  // 58%（弱・明るめ）→ 48%（強・濃いめ）
+  if (c < AXIS_LABEL_MIN_INTENSITY) return undefined  // 弱い射影値は既定色(薄すぎる色を避ける)
+  const sat = 58 + c * 30                    // 58%(弱)→ 88%(強)
+  const light = 58 - c * 10                  // 58%(弱・明るめ)→ 48%(強・濃いめ)
   return `hsl(${hue} ${sat}% ${light}%)`
 }
 
@@ -132,7 +132,7 @@ export function Heatmap({
     return { rowKeys, colKeys, cellMap, min, max }
   }, [cells, rowOrder, colOrder, sortColKey, sortDir])
 
-  // 値 → (色相, 強度)。セル背景・軸ラベル文字色で共通に使う（色スケールの二重定義をしない・#405）。
+  // 値 → (色相, 強度)。セル背景・軸ラベル文字色で共通に使う(色スケールの二重定義をしない・#405)。
   const hueIntensity = (v: number): { hue: number; intensity: number } => {
     if (scale === 'diverging') {
       // mid を境に赤(低)/青(高)。上下それぞれの最大幅で正規化する。
@@ -149,9 +149,9 @@ export function Heatmap({
     return cellStyle(hue, intensity)
   }
 
-  /** 軸見出しの文字色。射影値が無い（標本不足・算出不能）キーは既定色（undefined）。 */
+  /** 軸見出しの文字色。射影値が無い(標本不足・算出不能)キーは既定色(undefined)。 */
   const headColor = (proj?: Map<string, number | null>) => {
-    // 合計（カウント系）はセルの min/max と桁が違うので、その軸の最大値を 1 とする。
+    // 合計(カウント系)はセルの min/max と桁が違うので、その軸の最大値を 1 とする。
     const axisMax = axisRelative
       ? Math.max(0, ...[...(proj?.values() ?? [])].filter((v): v is number => v != null))
       : 0
@@ -169,7 +169,7 @@ export function Heatmap({
   const colHeadColor = headColor(colValue)
 
   if (cells.length === 0) {
-    return <p className="env-no-data">条件に一致するデータがありません（しきい値未満のセルは非表示）</p>
+    return <p className="env-no-data">条件に一致するデータがありません(しきい値未満のセルは非表示)</p>
   }
 
   const rl = rowLabel ?? ((k: string) => k)
@@ -197,7 +197,7 @@ export function Heatmap({
                 <th key={ck}
                     className={headClass}
                     style={colHeadColor(ck) ? { color: colHeadColor(ck) } : undefined}
-                    title={sortable ? `${cl(ck)} — クリックで行を並べ替え` : ck}
+                    title={sortable ? `${cl(ck)} - クリックで行を並べ替え` : ck}
                     aria-sort={sorted ? (sortDir === 'asc' ? 'ascending' : 'descending') : sortable ? 'none' : undefined}
                     onClick={sortable ? () => onColHeaderClick!(ck) : undefined}>
                   <span>{cl(ck)}{sorted ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</span>
@@ -221,7 +221,7 @@ export function Heatmap({
                     key={ck}
                     className="env-heatmap-cell"
                     style={styleFor(cell.value)}
-                    title={`${rl(rk)} × ${cl(ck)}\n${valueLabel(cell.value)}（n=${cell.n.toLocaleString()}）`}
+                    title={`${rl(rk)} × ${cl(ck)}\n${valueLabel(cell.value)}(n=${cell.n.toLocaleString()})`}
                   >
                     {valueLabel(cell.value)}
                   </td>
