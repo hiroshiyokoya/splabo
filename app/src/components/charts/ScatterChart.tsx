@@ -223,7 +223,7 @@ function scatterPointShape(props: {
   }
   // data 属性はツールチップ配置時に描画済みドットの実座標を読むために使う(#497)。
   // g で包んで Recharts のヒット領域も保つ。
-  // アクティブ点は外側にハローを足して、画像にカーソルが無くても対応点が分かるようにする。
+  // アクティブ点は黒い枠で強調する（外側のアクセント〇は付けない・#525）。
   // data-scatter-tip は HTML 単体書き出しのホバー用(#505)。
   return (
     <g
@@ -231,18 +231,6 @@ function scatterPointShape(props: {
       data-scatter-active={props.active ? 'true' : undefined}
       data-scatter-tip={props.tipJson}
     >
-      {props.active && (
-        <circle
-          cx={cx}
-          cy={cy}
-          r={r + 4}
-          fill="none"
-          stroke="var(--accent)"
-          strokeWidth={2}
-          opacity={0.95}
-          pointerEvents="none"
-        />
-      )}
       {markerElement(shape, cx, cy, r, common)}
     </g>
   )
@@ -259,7 +247,7 @@ const TOOLTIP_EDGE_PAD = 6
 const DOT_AVOID_PAD = 4
 /** 画像保存時はドット同士の隙間を広めに見て、被りゼロを狙いやすくする。 */
 const EXPORT_DOT_AVOID_PAD = 10
-/** アクティブ点(ハロー込み)とツールチップの間に最低限空ける余白。 */
+/** アクティブ点とツールチップの間に最低限空ける余白。 */
 const ANCHOR_CLEARANCE = 8
 
 function rectsOverlap(
