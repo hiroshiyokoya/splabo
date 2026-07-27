@@ -425,6 +425,11 @@ body {
    --------------------------------------------------------------------------- */
 
 /* ヘッダ右端の保存ボタン。既存のアイコンボタン（⚙ / ✕）と寸法を揃える。 */
+.panel-export-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
 .panel-export-btn {
   background: transparent;
   border: 1px solid transparent;
@@ -455,6 +460,37 @@ body {
   animation: panel-export-spin 0.7s linear infinite;
 }
 @keyframes panel-export-spin { to { transform: rotate(360deg); } }
+
+.panel-export-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 148px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.panel-export-menu__item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.3;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.panel-export-menu__item:hover {
+  background: var(--surface2);
+}
 
 /* ヘッダ右側（並び替えボタン＋保存ボタン）をひとまとめにする。 */
 .chart-card-actions {

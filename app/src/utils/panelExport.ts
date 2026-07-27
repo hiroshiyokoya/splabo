@@ -1,12 +1,11 @@
 /**
- * パネルを PNG 画像として保存する（#500）。
+ * パネルを PNG / HTML として保存する（#500 / #505）。
  *
- * 画面に出ているパネルをそのままラスタライズするので、テーマ色や凡例は表示と一致する。
+ * 画面に出ているパネルをそのまま写すので、テーマ色や凡例は表示と一致する。
  * 表示にしかない要素（操作ボタン・長い注釈）は `EXPORT_HIDE_CLASS` を付けて除外し、
- * 画像にしか無い要素（絞り込み条件のキャプション）は `.is-exporting` 中だけ表示する。
+ * 書き出しにしか無い要素（絞り込み条件のキャプション）は `.is-exporting` 中だけ表示する。
  *
- * PNG なので角丸の外側は透過のまま残す。パネル本体の背景は要素自身の
- * `background: var(--surface)` が塗る。
+ * PNG は角丸の外側を透過のまま残す。HTML は単体ファイルで、散布図はホバー tip が動く。
  */
 import { toPng } from 'html-to-image'
 import { invoke } from '@tauri-apps/api/core'
@@ -18,8 +17,13 @@ export const EXPORT_HIDE_CLASS = 'panel-export-hide'
 /** キャプチャ中だけパネルのルートに付くクラス。CSS はこれを見てキャプションを出す。 */
 const EXPORTING_CLASS = 'is-exporting'
 
-/** 画像保存直前にパネルへ飛ばす。散布図ツールチップの再配置などに使う。 */
+/** PNG 保存直前にパネルへ飛ばす。散布図ツールチップの再配置などに使う。 */
 export const PANEL_EXPORT_PREPARE_EVENT = 'panel-export-prepare'
+
+/** HTML 保存直前にパネルへ飛ばす。アプリ側の固定チップを消す。 */
+export const PANEL_EXPORT_HTML_PREPARE_EVENT = 'panel-export-html-prepare'
+
+export type PanelExportFormat = 'png' | 'html'
 
 /** アプリ版は起動中に変わらないので、一度取ったら使い回す。 */
 let cachedAppVersion: string | null = null
@@ -63,10 +67,20 @@ function sanitizeFilenamePart(s: string): string {
 }
 
 /** `splabo-環境分析-武器散布図-2026-07-26.png` 形式のファイル名。 */
-export function buildPanelImageFilename(screen: string, panel: string, now = new Date()): string {
+export function buildPanelExportFilename(
+  screen: string,
+  panel: string,
+  format: PanelExportFormat = 'png',
+  now = new Date(),
+): string {
   const date = formatExportDate(now)
   const parts = ['splabo', screen, panel, date].map(sanitizeFilenamePart).filter(Boolean)
-  return `${parts.join('-')}.png`
+  return `${parts.join('-')}.${format === 'html' ? 'html' : 'png'}`
+}
+
+/** @deprecated 互換用。`buildPanelExportFilename(..., 'png')` と同じ。 */
+export function buildPanelImageFilename(screen: string, panel: string, now = new Date()): string {
+  return buildPanelExportFilename(screen, panel, 'png', now)
 }
 
 function cssVar(name: string, fallback: string): string {
@@ -92,6 +106,24 @@ function nextFrames(): Promise<void> {
   })
 }
 
+async function invokeSave(
+  filename: string,
+  dataBase64: string,
+  format: PanelExportFormat,
+): Promise<string | null> {
+  return await invoke<string | null>('save_panel_image', {
+    filename,
+    dataBase64,
+    format,
+  })
+}
+
+function fillExportCredit(node: HTMLElement, credit: string): void {
+  node.querySelectorAll('.panel-export-credit').forEach(el => {
+    el.textContent = credit
+  })
+}
+
 /**
  * パネルを PNG にして保存ダイアログへ渡す。
  * 戻り値は保存先パス。キャンセルされたら null。
@@ -101,10 +133,7 @@ export async function savePanelAsPng(node: HTMLElement, screen: string, panel: s
   const tooltipBgs: { el: HTMLElement; prev: string }[] = []
   try {
     // 保存した瞬間の版・日付を焼き込む（画面に出しっぱなしの古い日付にしない）。
-    const credit = buildExportCredit(await appVersion())
-    node.querySelectorAll('.panel-export-credit').forEach(el => {
-      el.textContent = credit
-    })
+    fillExportCredit(node, buildExportCredit(await appVersion()))
     // ツールチップ背景を rgba 半透明に（color-mix はラスタライズで落ちることがある）。
     const tipBg = hexToRgba(cssVar('--surface', '#17172a'), 0.72)
       ?? 'rgba(23, 23, 42, 0.72)'
@@ -125,12 +154,315 @@ export async function savePanelAsPng(node: HTMLElement, screen: string, panel: s
       filter: (el) => !(el instanceof Element) || !el.classList.contains(EXPORT_HIDE_CLASS),
     })
     const dataBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
-    return await invoke<string | null>('save_panel_image', {
-      filename: buildPanelImageFilename(screen, panel),
-      dataBase64,
-    })
+    return await invokeSave(buildPanelExportFilename(screen, panel, 'png'), dataBase64, 'png')
   } finally {
     tooltipBgs.forEach(({ el, prev }) => { el.style.background = prev })
     node.classList.remove(EXPORTING_CLASS)
   }
+}
+
+// ---------------------------------------------------------------------------
+// HTML 単体書き出し（#505）
+// ---------------------------------------------------------------------------
+
+/** 単体 HTML に同梱するスタイルシートから拾うセレクタ接頭辞。 */
+const HTML_CSS_PREFIXES = [
+  '.chart-card',
+  '.chart-hover',
+  '.custom-chart',
+  '.env-chart',
+  '.env-hm',
+  '.cal-',
+  '.cal-tooltip',
+  '.scatter-',
+  '.panel-export',
+  '.is-exporting',
+  '.recharts-',
+  '.hover-tt',
+  '.heatmap',
+  '.hm-',
+  '.line-chart',
+]
+
+function collectRootCssVariables(): string {
+  const style = getComputedStyle(document.documentElement)
+  const decls: string[] = []
+  for (let i = 0; i < style.length; i++) {
+    const name = style.item(i)
+    if (!name.startsWith('--')) continue
+    const value = style.getPropertyValue(name).trim()
+    if (value) decls.push(`${name}: ${value};`)
+  }
+  return decls.length ? `:root {\n  ${decls.join('\n  ')}\n}` : ''
+}
+
+function selectorMatchesExport(selectorText: string): boolean {
+  return HTML_CSS_PREFIXES.some(prefix => selectorText.includes(prefix))
+}
+
+function collectExportStylesheets(): string {
+  const chunks: string[] = []
+  for (const sheet of Array.from(document.styleSheets)) {
+    let rules: CSSRuleList
+    try {
+      rules = sheet.cssRules
+    } catch {
+      // 外部オリジン等は読めない。テーマ変数は :root 側で足りる想定。
+      continue
+    }
+    for (const rule of Array.from(rules)) {
+      if (rule instanceof CSSStyleRule) {
+        if (selectorMatchesExport(rule.selectorText)) chunks.push(rule.cssText)
+      } else if (rule instanceof CSSMediaRule) {
+        const inner: string[] = []
+        for (const sub of Array.from(rule.cssRules)) {
+          if (sub instanceof CSSStyleRule && selectorMatchesExport(sub.selectorText)) {
+            inner.push(sub.cssText)
+          }
+        }
+        if (inner.length) chunks.push(`@media ${rule.media.mediaText} {\n${inner.join('\n')}\n}`)
+      } else if (rule instanceof CSSSupportsRule) {
+        const inner: string[] = []
+        for (const sub of Array.from(rule.cssRules)) {
+          if (sub instanceof CSSStyleRule && selectorMatchesExport(sub.selectorText)) {
+            inner.push(sub.cssText)
+          }
+        }
+        if (inner.length) chunks.push(`@supports ${rule.conditionText} {\n${inner.join('\n')}\n}`)
+      } else if (rule instanceof CSSKeyframesRule) {
+        if (rule.name.includes('panel-export') || rule.name.includes('recharts')) {
+          chunks.push(rule.cssText)
+        }
+      }
+    }
+  }
+  return chunks.join('\n')
+}
+
+async function urlToDataUri(src: string): Promise<string> {
+  if (!src || src.startsWith('data:')) return src
+  try {
+    const res = await fetch(src)
+    if (!res.ok) return src
+    const blob = await res.blob()
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'))
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    return src
+  }
+}
+
+async function inlineImages(root: HTMLElement): Promise<void> {
+  const imgs = Array.from(root.querySelectorAll('img'))
+  await Promise.all(imgs.map(async (img) => {
+    const src = img.getAttribute('src')
+    if (!src) return
+    const data = await urlToDataUri(src)
+    img.setAttribute('src', data)
+  }))
+}
+
+/** HTML 埋め込み用の追加 CSS（アプリ CSS に無い固定レイアウト）。 */
+const HTML_EXPORT_EXTRA_CSS = `
+html, body {
+  margin: 0;
+  padding: 16px;
+  background: var(--bg, #0f0f1a);
+  color: var(--text, #eee);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+body > .chart-card,
+body > .env-chart-section {
+  max-width: 960px;
+  margin: 0 auto;
+}
+#splabo-export-tip {
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  min-width: 160px;
+  max-width: 280px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+#splabo-export-tip.is-visible { display: block; }
+#splabo-export-tip .hover-tt-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+#splabo-export-tip .hover-tt-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+[data-scatter-point="true"] { cursor: pointer; }
+`
+
+/** 散布図ホバー用（オフライン・CDN なし）。 */
+const HTML_EXPORT_TIP_SCRIPT = `(function () {
+  var tip = document.getElementById('splabo-export-tip');
+  if (!tip) return;
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+  function render(payload) {
+    if (!payload) return '';
+    if (payload.kind === 'group') {
+      var html = '<div class="hover-tt-title">' + esc(payload.groupTitle) + '</div>';
+      (payload.members || []).forEach(function (m) {
+        html += '<div class="hover-tt-row hover-tt-row--muted">' + esc(m) + '</div>';
+      });
+      if (payload.more > 0) {
+        html += '<div class="hover-tt-row hover-tt-row--muted">他 ' + esc(payload.more) + ' 件</div>';
+      }
+      return html;
+    }
+    var icon = payload.iconUrl
+      ? '<img class="hover-tt-icon" src="' + esc(payload.iconUrl) + '" alt="">'
+      : '';
+    var out = '<div class="hover-tt-title">' + icon + esc(payload.name) + '</div>';
+    (payload.rows || []).forEach(function (r) {
+      var cls = r.muted ? 'hover-tt-row hover-tt-row--muted' : 'hover-tt-row';
+      out += '<div class="' + cls + '">' + esc(r.label) + ': ' + esc(r.value) + '</div>';
+    });
+    return out;
+  }
+  function place(ev) {
+    var pad = 12;
+    var tw = tip.offsetWidth || 180;
+    var th = tip.offsetHeight || 80;
+    var left = ev.clientX + pad;
+    var top = ev.clientY + pad;
+    if (left + tw > window.innerWidth - 8) left = ev.clientX - tw - pad;
+    if (top + th > window.innerHeight - 8) top = ev.clientY - th - pad;
+    tip.style.left = Math.max(8, left) + 'px';
+    tip.style.top = Math.max(8, top) + 'px';
+  }
+  function show(ev, el) {
+    var raw = el.getAttribute('data-scatter-tip');
+    if (!raw) return;
+    var payload;
+    try { payload = JSON.parse(raw); } catch (e) { return; }
+    tip.innerHTML = render(payload);
+    tip.classList.add('is-visible');
+    place(ev);
+  }
+  function hide() {
+    tip.classList.remove('is-visible');
+    tip.innerHTML = '';
+  }
+  document.querySelectorAll('[data-scatter-point="true"]').forEach(function (el) {
+    el.addEventListener('mouseenter', function (ev) { show(ev, el); });
+    el.addEventListener('mousemove', function (ev) {
+      if (tip.classList.contains('is-visible')) place(ev);
+    });
+    el.addEventListener('mouseleave', hide);
+  });
+})();`
+
+function utf8ToBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text)
+  let binary = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}
+
+function buildStandaloneHtml(panelHtml: string, title: string): string {
+  const css = [
+    collectRootCssVariables(),
+    collectExportStylesheets(),
+    HTML_EXPORT_EXTRA_CSS,
+  ].filter(Boolean).join('\n\n')
+
+  return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<style>
+${css}
+</style>
+</head>
+<body>
+${panelHtml}
+<div id="splabo-export-tip" class="cal-tooltip" aria-hidden="true"></div>
+<script>
+${HTML_EXPORT_TIP_SCRIPT}
+</script>
+</body>
+</html>
+`
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/**
+ * パネルを単体 HTML にして保存ダイアログへ渡す。
+ * 戻り値は保存先パス。キャンセルされたら null。
+ */
+export async function savePanelAsHtml(node: HTMLElement, screen: string, panel: string): Promise<string | null> {
+  node.classList.add(EXPORTING_CLASS)
+  try {
+    fillExportCredit(node, buildExportCredit(await appVersion()))
+    node.dispatchEvent(new CustomEvent(PANEL_EXPORT_HTML_PREPARE_EVENT, { bubbles: false }))
+    await nextFrames()
+
+    const clone = node.cloneNode(true) as HTMLElement
+    clone.querySelectorAll(`.${EXPORT_HIDE_CLASS}`).forEach(el => el.remove())
+    // アプリ側で残っていた固定ツールチップは HTML では使わない。
+    clone.querySelectorAll('.cal-tooltip').forEach(el => el.remove())
+    // アクティブ強調はホバー前の見た目に戻す。
+    clone.querySelectorAll('[data-scatter-active]').forEach(el => el.removeAttribute('data-scatter-active'))
+
+    await inlineImages(clone)
+
+    // キャプチャ時の実寸を固定して、ブラウザで開いたときの崩れを減らす。
+    const rect = node.getBoundingClientRect()
+    clone.style.width = `${Math.round(rect.width)}px`
+    clone.style.boxSizing = 'border-box'
+
+    const title = `SpLabo — ${screen} — ${panel}`
+    const html = buildStandaloneHtml(clone.outerHTML, title)
+    return await invokeSave(
+      buildPanelExportFilename(screen, panel, 'html'),
+      utf8ToBase64(html),
+      'html',
+    )
+  } finally {
+    node.classList.remove(EXPORTING_CLASS)
+  }
+}
+
+/** 形式を選んで保存する。 */
+export async function savePanel(
+  node: HTMLElement,
+  screen: string,
+  panel: string,
+  format: PanelExportFormat,
+): Promise<string | null> {
+  return format === 'html'
+    ? savePanelAsHtml(node, screen, panel)
+    : savePanelAsPng(node, screen, panel)
 }
