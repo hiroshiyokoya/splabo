@@ -31,7 +31,7 @@ import {
 } from '../utils/scatterCategoryColors'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo, PanelExportNote } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
-import { joinConditions, joinValues } from '../utils/filterSummary'
+import { joinConditions, joinValues, formatAbsolutePeriodRange } from '../utils/filterSummary'
 
 const LOBBY_OPTIONS = [
   { key: '',                  label: 'すべてのロビー' },
@@ -158,9 +158,9 @@ const CELL_METRICS: CellMetric[] = [
 // ルールを次元にしたときの並び順（ガチ系を先・ナワバリを最後）。
 const RULE_HEATMAP_ORDER = ['area', 'yagura', 'hoko', 'asari', 'nawabari']
 
-/** 投稿者除外の説明（#501）。stat.ink の全体統計と同じく、投稿者本人を母数から外して
- *  残り 7 人で集計している。散布図・ヒートマップ・保存画像で同じ文言を使う。 */
-const POSTER_EXCLUDED_TEXT = '集計は投稿者を除く 7 人分（stat.ink の全体統計と同じ）'
+/** 投稿者除外の説明（#501）。投稿者本人を母数から外し、残り 7 人で集計している。
+ *  散布図・ヒートマップ・保存画像で同じ文言を使う。 */
+const POSTER_EXCLUDED_TEXT = '集計は投稿者を除く 7 人分'
 /** 画面の注釈用。 */
 const POSTER_EXCLUDED_NOTE = `※ ${POSTER_EXCLUDED_TEXT}。`
 
@@ -332,23 +332,6 @@ export function EnvAnalysis() {
   // 画像保存（#500）。共通フィルタはパネルの外にあるので、画像には条件を焼き込む。
   const scatterPanelRef = useRef<HTMLDivElement>(null)
   const heatmapPanelRef = useRef<HTMLDivElement>(null)
-  const envFilterSummary = useMemo(() => {
-    const optLabel = (opts: { key: string; label: string }[], k: string) =>
-      opts.find(o => o.key === k)?.label ?? k
-    return joinConditions([
-      ['期間', period === 'custom'
-        ? `${customSince || '—'}〜${customUntil || '—'}`
-        : (PERIOD_OPTIONS.find(o => o.key === period)?.label ?? period)],
-      ['ロビー',     lobbyKeys.length ? joinValues(lobbyKeys.map(k => LOBBY_LABEL[k] ?? k)) : null],
-      ['ルール',     ruleKeys.length ? joinValues(ruleKeys.map(k => RULE_LABEL[k] ?? k)) : null],
-      ['武器',       weaponKeys.length ? joinValues(weaponKeys.map(k => optLabel(weaponOptions, k))) : null],
-      ['ステージ',   stageKeys.length ? joinValues(stageKeys.map(k => optLabel(stageOptions, k))) : null],
-      ['バージョン', gameVers.length ? joinValues(gameVers.map(formatGameVer)) : null],
-      ['ウデマエ',   posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
-      ['Xパワー',    (powerMin || powerMax) ? `${powerMin || '—'}〜${powerMax || '—'}` : null],
-    ])
-  }, [period, customSince, customUntil, lobbyKeys, ruleKeys, weaponKeys, stageKeys,
-      weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax])
 
   // 可視化モード
   const [vizMode, setVizMode] = useState<'scatter' | 'heatmap'>(prefs.vizMode)
@@ -486,6 +469,34 @@ export function EnvAnalysis() {
       case 'custom': return { since: customSince || null, until: customUntil || null }
     }
   }, [period, status, customSince, customUntil])
+
+  // 画像に焼き込む条件（#500 / #506）。期間はクエリと同じ since/until を絶対日付で。
+  const envFilterSummary = useMemo(() => {
+    const optLabel = (opts: { key: string; label: string }[], k: string) =>
+      opts.find(o => o.key === k)?.label ?? k
+    // データ未取得で相対期間が解けないときだけ、UI と同じラベルにフォールバックする。
+    const periodCaption = (() => {
+      if (period === 'all') return '全期間'
+      if (period === 'custom') {
+        return `${range.since || '—'}〜${range.until || '—'}`
+      }
+      if (range.since || range.until) {
+        return formatAbsolutePeriodRange(range.since, range.until)
+      }
+      return PERIOD_OPTIONS.find(o => o.key === period)?.label ?? period
+    })()
+    return joinConditions([
+      ['期間', periodCaption],
+      ['ロビー',     lobbyKeys.length ? joinValues(lobbyKeys.map(k => LOBBY_LABEL[k] ?? k)) : null],
+      ['ルール',     ruleKeys.length ? joinValues(ruleKeys.map(k => RULE_LABEL[k] ?? k)) : null],
+      ['武器',       weaponKeys.length ? joinValues(weaponKeys.map(k => optLabel(weaponOptions, k))) : null],
+      ['ステージ',   stageKeys.length ? joinValues(stageKeys.map(k => optLabel(stageOptions, k))) : null],
+      ['バージョン', gameVers.length ? joinValues(gameVers.map(formatGameVer)) : null],
+      ['ウデマエ',   posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
+      ['Xパワー',    (powerMin || powerMax) ? `${powerMin || '—'}〜${powerMax || '—'}` : null],
+    ])
+  }, [period, range, lobbyKeys, ruleKeys, weaponKeys, stageKeys,
+      weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax])
 
   // 拡充フィルタ（#189 / #477）を invoke 引数へ。空配列 / 空文字は null（無指定）に正規化。
   const extFilters = useMemo(() => ({
@@ -647,8 +658,6 @@ export function EnvAnalysis() {
   const sizeM  = metrics.find(m => m.key === sizeKey)
   const colorM = isScatterCategoryColorKey(colorKey) ? undefined : metrics.find(m => m.key === colorKey)
   const isCatColor = groupBy === 'weapon' && isScatterCategoryColorKey(colorKey)
-  // KDA 系の注記は X/Y に加えサイズ・色の指標も対象にする（#406）。
-  const usesKda = (xM.kda || yM.kda || sizeM?.kda || colorM?.kda) ?? false
 
   // 色指標が sequential のときの正規化レンジ（勝率＝divergent は min/max 不要）。
   // カスタムグラフ CustomChartCard.colorOfValue と揃える（#406）。
@@ -789,9 +798,8 @@ export function EnvAnalysis() {
 
           {!status.full_kda && (
             <p className="env-filter-note">
-              ※ 取り込み済みのデータは、キル・デス・アシスト・塗りポイントを 1 人分しか持っていません
-              （v0.9.7 から 7 人分を取り込みます）。「全期間再取得」でキル系の母数が 7 倍になります。
-              勝率・ピック率は再取得しなくても 7 人分で集計されます。
+              ※ v0.9.6 以前に取り込んだデータは、キル・デス・アシスト・塗りポイントが 1 人分しかありません。
+              「全期間再取得」を実行してください（勝率・ピック率は再取得なしでも 7 人分で集計されます）。
             </p>
           )}
 
@@ -993,7 +1001,6 @@ export function EnvAnalysis() {
                   {groupBy === 'stage' && weaponKeys.length === 0 &&
                     ' ※勝率・キル系は武器を絞り込むと選べます。'}
                   {' '}{POSTER_EXCLUDED_NOTE}
-                  {usesKda && !status.full_kda && ' キル系は再取得前のデータでは 1 人分のみが母数です。'}
                 </p>
                 <PanelExportNote note={SCATTER_EXPORT_NOTE} />
               </div>
@@ -1069,8 +1076,6 @@ export function EnvAnalysis() {
                   {cellMetric === 'avg_death' && ' デスは多いほど濃い赤（少ないほど良い）。'}
                   {(cellMetric === 'kill_ratio' || cellMetric === 'contrib_ratio') && ' 1.0 を中心に赤(低)〜青(高)。'}
                   {cm.weapon && ` ${POSTER_EXCLUDED_NOTE}`}
-                  {KDA_CELL_KEYS.includes(cellMetric) && !status.full_kda &&
-                    ' キル系は再取得前のデータでは 1 人分のみが母数です。'}
                   {cellMetric === 'battles'
                     ? ' 行・列の見出し色は、その軸の合計バトル数（軸内で最大を最も濃く）です。'
                     : ' 行・列の見出し色は、その軸の全バトルから算出した値です（非表示のセルも含むので、交差する軸を変えても同じ値になります）。'}
