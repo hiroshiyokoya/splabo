@@ -22,14 +22,16 @@ export const UNKNOWN_WEAPON_PART   = '(不明)'
 /**
  * カテゴリ用の少数色（色相が大きく離れているものだけ）。
  * 同じ色は別の形と組み合わせて使うので、緑や青を何色も並べない。
+ * 実色はテーマの CSS 変数（`--scatter-cat-*`）。デフォルトは現行パレット、
+ * Solarized ではアクセント色に差し替わる（#527）。
  */
 const CATEGORY_COLORS = [
-  '#ef4444', // red
-  '#3b82f6', // blue
-  '#eab308', // yellow
-  '#a855f7', // purple
-  '#f97316', // orange
-  '#14b8a6', // teal
+  'var(--scatter-cat-1)',
+  'var(--scatter-cat-2)',
+  'var(--scatter-cat-3)',
+  'var(--scatter-cat-4)',
+  'var(--scatter-cat-5)',
+  'var(--scatter-cat-6)',
 ]
 
 /** カテゴリ用のマーカー形。色と直交する第2軸。 */
