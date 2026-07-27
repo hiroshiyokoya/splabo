@@ -171,8 +171,14 @@ const heatmapExportNote = (kda: boolean) =>
   `${kda ? 20 : 30} サンプル未満のセルは非表示 / ${POSTER_EXCLUDED_TEXT}`
 
 /** 保存画像のキャプション先頭。出典を最初に出す。 */
-function envExportCaption(filterSummary: string): string {
-  return filterSummary ? `出典: stat.ink / ${filterSummary}` : '出典: stat.ink'
+function envExportCaption(filterSummary: string, filteredCount: number | null): string {
+  const parts = ['出典: stat.ink']
+  // 該当件数は先頭寄りに置く。条件が長いと caption が 2 行で切られるため(#529)。
+  if (filteredCount != null) {
+    parts.push(`該当 ${filteredCount.toLocaleString()} バトル`)
+  }
+  if (filterSummary) parts.push(filterSummary)
+  return parts.join(' / ')
 }
 
 /** スロット単位の集計が必要なヒートマップ次元(#481)。 */
@@ -280,6 +286,9 @@ export function EnvAnalysis() {
   const [loading, setLoading]         = useState(false)   // 集計クエリ実行中
   // 連続フィルタ変更で古い結果が後から来るのを防ぐ(#511)
   const loadSeqRef = useRef(0)
+  /** 共通フィルタに合うバトル件数(#529)。 */
+  const [filteredCount, setFilteredCount] = useState<number | null>(null)
+  const countSeqRef = useRef(0)
 
   // 共通フィルタ(#190: ロビー/ルールは複数選択)
   const [lobbyKeys, setLobbyKeys] = useState<string[]>(prefs.lobbyKeys)
@@ -567,6 +576,21 @@ export function EnvAnalysis() {
 
   useEffect(() => { loadStatus() }, [loadStatus])
   useEffect(() => { loadData() }, [loadData])
+
+  // 絞り込みに合うバトル件数(#529)。グラフ集計とは独立に取り、軸切替でも同じ条件で更新する。
+  useEffect(() => {
+    if (!hasData) { setFilteredCount(null); return }
+    const seq = ++countSeqRef.current
+    invoke<number>('env_filtered_count', {
+      lobbyKeys,
+      ruleKeys,
+      since: range.since,
+      until: range.until,
+      ...extFilters,
+    })
+      .then(n => { if (seq === countSeqRef.current) setFilteredCount(n) })
+      .catch(() => { if (seq === countSeqRef.current) setFilteredCount(null) })
+  }, [hasData, lobbyKeys, ruleKeys, range, extFilters])
 
   // ------------------------------------------------------------------
   // 散布図ツールチップのアイコン画像(#412)
@@ -933,6 +957,9 @@ export function EnvAnalysis() {
           )}
 
           <div className="env-status-line">
+            {filteredCount != null && (
+              <span className="env-filtered-count">該当 {filteredCount.toLocaleString()} バトル</span>
+            )}
             {loading
               ? <span className="env-loading"><span className="env-loading-spinner" />グラフ更新中…</span>
               : <span className="env-updated">✓ 表示は最新です</span>}
@@ -998,7 +1025,7 @@ export function EnvAnalysis() {
                     panel={`${groupBy === 'weapon' ? '武器' : 'ステージ'}散布図 ${xM.label}×${yM.label}`}
                   />
                 </div>
-                <PanelExportCaption conditions={envExportCaption(envFilterSummary)} />
+                <PanelExportCaption conditions={envExportCaption(envFilterSummary, filteredCount)} />
                 {points.length === 0 ? (
                   <p className="env-no-data">条件に一致するデータがありません(50 サンプル未満は非表示)</p>
                 ) : (
@@ -1076,7 +1103,7 @@ export function EnvAnalysis() {
                     panel={`ヒートマップ ${dimLabel(rowDim)}×${dimLabel(colDim)} ${cm.label}`}
                   />
                 </div>
-                <PanelExportCaption conditions={envExportCaption(envFilterSummary)} />
+                <PanelExportCaption conditions={envExportCaption(envFilterSummary, filteredCount)} />
                 {bothWeaponSlot ? (
                   <p className="env-no-data">武器 × 武器は非対応です。一方をステージ/ルール/ロビーにしてください。</p>
                 ) : (

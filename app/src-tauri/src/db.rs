@@ -3566,6 +3566,43 @@ pub async fn env_status(db: tauri::State<'_, DbPool>) -> Result<EnvStatus, Strin
     })
 }
 
+/// 環境分析の共通フィルタに合うバトル件数（#529）。
+/// 散布図・ヒートマップと同じ `EnvFilters` / `build_env_where` を使う。
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn env_filtered_count(
+    db:           tauri::State<'_, DbPool>,
+    lobby_keys:   Option<Vec<String>>,
+    rule_keys:    Option<Vec<String>>,
+    stage_keys:   Option<Vec<String>>,
+    weapon_keys:  Option<Vec<String>>,
+    since:        Option<String>,
+    until:        Option<String>,
+    game_vers:    Option<Vec<String>>,
+    poster_ranks: Option<Vec<String>>,
+    power_min:    Option<f64>,
+    power_max:    Option<f64>,
+) -> Result<i64, String> {
+    let f = EnvFilters {
+        lobby_keys:   lobby_keys.unwrap_or_default(),
+        rule_keys:    rule_keys.unwrap_or_default(),
+        stage_keys:   stage_keys.unwrap_or_default(),
+        weapon_keys:  weapon_keys.unwrap_or_default(),
+        since, until,
+        game_vers:    game_vers.unwrap_or_default(),
+        poster_ranks: poster_ranks.unwrap_or_default(),
+        power_min, power_max,
+    };
+    let where_clause = build_env_where(&f);
+    let sql = format!("SELECT COUNT(*) AS cnt FROM env_battles eb {where_clause}");
+    let q = bind_env_filters(sqlx::query(&sql), &f);
+    let row = q
+        .fetch_one(db.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.get::<i64, _>("cnt"))
+}
+
 // ---------------------------------------------------------------------------
 // 環境分析 拡張（#187）: 散布図 / ヒートマップ
 // ---------------------------------------------------------------------------

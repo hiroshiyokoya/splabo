@@ -3007,7 +3007,19 @@ body {
 }
 
 /* 集計の更新状態表示 #190 */
-.env-status-line { margin: 6px 0 2px; min-height: 18px; font-size: 12px; }
+.env-status-line {
+  margin: 6px 0 2px;
+  min-height: 18px;
+  font-size: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+.env-filtered-count {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
 .env-loading { color: var(--accent2); display: inline-flex; align-items: center; gap: 6px; }
 .env-updated { color: var(--text-muted); }
 .env-loading-spinner {
