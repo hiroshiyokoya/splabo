@@ -238,25 +238,28 @@ function buildBattleScatterPoints(
   }
 }
 
-/** yComposition ごとに用意する並び替えオプション（#509）。
- *  - stacked_winrate: バトル数 / 勝数 / 勝率
- *  - attack_defense:  バトル数 + キル系指標
+/** yComposition ごとの並び替えオプション（#509）。
+ *  - stacked_winrate: バトル数 / 勝数 / 負数 / 勝率
+ *  - attack_defense:  バトル数 + キルレ（チャート上の対比を 1 指標にまとめたもの）
  *  - single_metric:   バトル数 + 選択中メトリクス */
-type SortOption = { key: MetricKey; label: string }
+type BarSortKey = MetricKey | 'losses'
+type SortOption = { key: BarSortKey; label: string }
 const SORT_OPTIONS_STACKED_WINRATE: SortOption[] = [
   { key: 'total',    label: 'バトル数' },
   { key: 'wins',     label: '勝数' },
+  { key: 'losses',   label: '負数' },
   { key: 'win_rate', label: '勝率' },
 ]
+/** キル系（attack_defense）はバトル数とその指標（キルレ）だけ。 */
 const SORT_OPTIONS_ATTACK_DEFENSE: SortOption[] = [
-  { key: 'total',            label: 'バトル数' },
-  { key: 'avg_kill',         label: '平均キル' },
-  { key: 'avg_assist',       label: '平均アシスト' },
-  { key: 'avg_contrib_kill', label: '平均貢献キル' },
-  { key: 'avg_death',        label: '平均デス' },
-  { key: 'avg_kd',           label: 'キルレ' },
-  { key: 'avg_contrib_kd',   label: '貢献キルレ' },
+  { key: 'total',  label: 'バトル数' },
+  { key: 'avg_kd', label: 'キルレ' },
 ]
+
+function barSortValue(row: GroupedStatsRow, key: BarSortKey): number | null {
+  if (key === 'losses') return row.total - row.wins - row.draws
+  return getMetric(row, key)
+}
 
 // ---------------------------------------------------------------------------
 // #401: チャートの「素の幅」からグリッドのスパン（1 / 2 / 3 トラック）を決める。
@@ -327,12 +330,12 @@ const SPAN_CLASS: Record<ChartSpan, string> = {
 /** 棒グラフ用: 指標で全件ソートしてから上位を切る（#509）。 */
 function sortAndSlice(
   rows: GroupedStatsRow[],
-  sortKey: MetricKey | null,
+  sortKey: BarSortKey | null,
   dir: ChartSortDir,
 ): GroupedStatsRow[] {
   if (!sortKey) return rows.slice(0, 14)
   return rankRowsForBarChart(rows, {
-    getSortValue: row => getMetric(row, sortKey),
+    getSortValue: row => barSortValue(row, sortKey),
     getTotal: row => row.total,
     sortByWinRate: sortKey === 'win_rate',
     dir,
@@ -396,7 +399,7 @@ export function CustomChartCard({
           ])
       : []
   const defaultSortKey = sortOptions[0]?.key ?? null
-  const [sortKey, setSortKey] = useState<MetricKey | null>(defaultSortKey)
+  const [sortKey, setSortKey] = useState<BarSortKey | null>(defaultSortKey)
   const [sortDir, setSortDir] = useState<ChartSortDir>('desc')
 
   // 構成が変わったら並び替えキーを既定に戻す（古いキーが選択肢から消えるため）。
@@ -419,7 +422,7 @@ export function CustomChartCard({
     ? data
     : sortAndSlice(data, sortKey, sortDir)
 
-  function handleSortClick(key: MetricKey) {
+  function handleSortClick(key: BarSortKey) {
     if (sortKey === key) {
       setSortDir(d => (d === 'desc' ? 'asc' : 'desc'))
     } else {
