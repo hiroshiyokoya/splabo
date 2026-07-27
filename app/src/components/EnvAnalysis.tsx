@@ -658,8 +658,6 @@ export function EnvAnalysis() {
   const sizeM  = metrics.find(m => m.key === sizeKey)
   const colorM = isScatterCategoryColorKey(colorKey) ? undefined : metrics.find(m => m.key === colorKey)
   const isCatColor = groupBy === 'weapon' && isScatterCategoryColorKey(colorKey)
-  // KDA 系の注記は X/Y に加えサイズ・色の指標も対象にする（#406）。
-  const usesKda = (xM.kda || yM.kda || sizeM?.kda || colorM?.kda) ?? false
 
   // 色指標が sequential のときの正規化レンジ（勝率＝divergent は min/max 不要）。
   // カスタムグラフ CustomChartCard.colorOfValue と揃える（#406）。
@@ -1004,7 +1002,6 @@ export function EnvAnalysis() {
                   {groupBy === 'stage' && weaponKeys.length === 0 &&
                     ' ※勝率・キル系は武器を絞り込むと選べます。'}
                   {' '}{POSTER_EXCLUDED_NOTE}
-                  {usesKda && !status.full_kda && ' キル系は再取得前のデータでは 1 人分のみが母数です。'}
                 </p>
                 <PanelExportNote note={SCATTER_EXPORT_NOTE} />
               </div>
@@ -1080,8 +1077,6 @@ export function EnvAnalysis() {
                   {cellMetric === 'avg_death' && ' デスは多いほど濃い赤（少ないほど良い）。'}
                   {(cellMetric === 'kill_ratio' || cellMetric === 'contrib_ratio') && ' 1.0 を中心に赤(低)〜青(高)。'}
                   {cm.weapon && ` ${POSTER_EXCLUDED_NOTE}`}
-                  {KDA_CELL_KEYS.includes(cellMetric) && !status.full_kda &&
-                    ' キル系は再取得前のデータでは 1 人分のみが母数です。'}
                   {cellMetric === 'battles'
                     ? ' 行・列の見出し色は、その軸の合計バトル数（軸内で最大を最も濃く）です。'
                     : ' 行・列の見出し色は、その軸の全バトルから算出した値です（非表示のセルも含むので、交差する軸を変えても同じ値になります）。'}
