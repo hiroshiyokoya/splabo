@@ -2882,10 +2882,30 @@ body {
 
 /* チャートセクション */
 .env-chart-section {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 16px;
+}
+/* 集計中は古いグラフの上にオーバーレイ（#511） */
+.env-chart-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  color: var(--accent2);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: auto;
+}
+.env-chart-section.is-loading > :not(.env-chart-loading) {
+  opacity: 0.45;
 }
 .env-chart-title { font-size: 14px; font-weight: 600; margin: 0 0 12px; }
 .env-chart-title-row {

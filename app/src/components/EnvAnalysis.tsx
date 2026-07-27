@@ -279,6 +279,8 @@ export function EnvAnalysis() {
   const [progress, setProgress]       = useState<ImportProgress | null>(null)
   const [error, setError]             = useState<string | null>(null)
   const [loading, setLoading]         = useState(false)   // 集計クエリ実行中
+  // 連続フィルタ変更で古い結果が後から来るのを防ぐ（#511）
+  const loadSeqRef = useRef(0)
 
   // 共通フィルタ（#190: ロビー/ルールは複数選択）
   const [lobbyKeys, setLobbyKeys] = useState<string[]>(prefs.lobbyKeys)
@@ -511,6 +513,7 @@ export function EnvAnalysis() {
   // データ読み込み（モード/フィルタ変更で再取得）
   const loadData = useCallback(async () => {
     if (!hasData) return
+    const seq = ++loadSeqRef.current
     setError(null)
     setLoading(true)
     try {
@@ -524,10 +527,14 @@ export function EnvAnalysis() {
           until:    range.until,
           ...extFilters,
         })
+        if (seq !== loadSeqRef.current) return
         setScatterData(rows)
         setScatterAxis(groupBy)   // 行と軸は必ずセットで更新する（#412）
       } else {
-        if (bothWeaponSlot) { setMatrixData([]); setRowMarginals([]); setColMarginals([]); return }
+        if (bothWeaponSlot) {
+          if (seq !== loadSeqRef.current) return
+          setMatrixData([]); setRowMarginals([]); setColMarginals([]); return
+        }
         // 次元を変えた直後、セル指標が新しい次元にまだ整合していない一瞬は取得しない
         // （直後に走る useEffect が cellMetric を有効値へ補正し、再取得される）。
         if (!allowedCellMetrics.some(m => m.key === cellMetric)) return
@@ -539,14 +546,17 @@ export function EnvAnalysis() {
           until:    range.until,
           ...extFilters,
         })
+        if (seq !== loadSeqRef.current) return
         setMatrixData(res.cells)
         setRowMarginals(res.row_marginals)
         setColMarginals(res.col_marginals)
       }
     } catch (e) {
+      if (seq !== loadSeqRef.current) return
       setError(String(e))
     } finally {
-      setLoading(false)
+      // 最新リクエストだけ loading を落とす（古い完了で「最新です」にしない）
+      if (seq === loadSeqRef.current) setLoading(false)
     }
   }, [hasData, vizMode, groupBy, lobbyKeys, ruleKeys, range, rowDim, colDim, cellMetric, bothWeaponSlot, allowedCellMetrics, extFilters])
 
@@ -918,7 +928,7 @@ export function EnvAnalysis() {
 
           <div className="env-status-line">
             {loading
-              ? <span className="env-loading"><span className="env-loading-spinner" />集計中…</span>
+              ? <span className="env-loading"><span className="env-loading-spinner" />グラフ更新中…</span>
               : <span className="env-updated">✓ 表示は最新です</span>}
           </div>
 
@@ -966,7 +976,13 @@ export function EnvAnalysis() {
                 </label>
               </div>
 
-              <div className="env-chart-section" ref={scatterPanelRef}>
+              <div className={`env-chart-section${loading ? ' is-loading' : ''}`} ref={scatterPanelRef}>
+                {loading && (
+                  <div className={`env-chart-loading ${EXPORT_HIDE_CLASS}`} aria-live="polite">
+                    <span className="env-loading-spinner" />
+                    グラフ更新中…
+                  </div>
+                )}
                 <PanelExportLogo />
                 <div className="env-chart-title-row">
                   <h3 className="env-chart-title">{xM.label} vs {yM.label}（{groupBy === 'weapon' ? '武器別' : 'ステージ別'}）</h3>
@@ -1025,7 +1041,13 @@ export function EnvAnalysis() {
                 </label>
               </div>
 
-              <div className="env-chart-section" ref={heatmapPanelRef}>
+              <div className={`env-chart-section${loading ? ' is-loading' : ''}`} ref={heatmapPanelRef}>
+                {loading && (
+                  <div className={`env-chart-loading ${EXPORT_HIDE_CLASS}`} aria-live="polite">
+                    <span className="env-loading-spinner" />
+                    グラフ更新中…
+                  </div>
+                )}
                 <PanelExportLogo />
                 <div className="env-chart-title-row">
                   <h3 className="env-chart-title">{dimLabel(rowDim)} × {dimLabel(colDim)}（{cm.label}）</h3>
