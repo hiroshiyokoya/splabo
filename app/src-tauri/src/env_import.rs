@@ -236,8 +236,11 @@ async fn sync_weapon_masters(pool: &DbPool, client: &Client) -> Result<usize, St
             .and_then(|v| v.as_str())
             .unwrap_or(key);
         // 武器種 / サブ / スペシャルの日本語名（#492: 未分類をなくす）
+        // カテゴリは公式準拠へ正規化（stat.ink の「リールガン」→「シューター」・#523）
         let ja = |ptr: &str| item.pointer(ptr).and_then(|v| v.as_str()).map(str::to_string);
-        let category = ja("/type/name/ja_JP");
+        let category = ja("/type/name/ja_JP").map(|c| {
+            crate::weapon_static::normalize_category(&c).to_string()
+        });
         let sub      = ja("/sub/name/ja_JP");
         let special  = ja("/special/name/ja_JP");
         // key=statink_key に合わせて upsert: key が既にあれば statink_key を更新、なければ INSERT。

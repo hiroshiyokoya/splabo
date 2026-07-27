@@ -2851,6 +2851,35 @@ body {
 }
 .env-multiselect-item:hover { background: var(--bg); }
 .env-multiselect-item input { margin: 0; }
+.env-multiselect-item--indent { padding-left: 18px; }
+.env-multiselect-group { margin: 2px 0; }
+.env-multiselect-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+.env-multiselect-group-header:hover { background: var(--bg); color: var(--text); }
+.env-multiselect-check {
+  display: inline-block;
+  width: 1em;
+  font-family: monospace;
+  text-align: center;
+}
+.env-multiselect-group-count {
+  margin-left: auto;
+  font-weight: 400;
+  opacity: 0.8;
+}
 .env-multiselect-clear {
   align-self: flex-start;
   padding: 2px 4px;
