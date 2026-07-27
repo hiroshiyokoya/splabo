@@ -573,8 +573,69 @@ function valueToArea(v: number, max: number): number {
   return aMin + (aMax - aMin) * t
 }
 
+/** 「キリのよい」刻み（1 / 2 / 5 × 10^n）。 */
+function niceStep(x: number): number {
+  if (x <= 0) return 1
+  const base = Math.pow(10, Math.floor(Math.log10(x)))
+  const f = x / base
+  const nf = f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10
+  return nf * base
+}
+
+/** 浮動小数の誤差を落として表示・比較を安定させる。 */
+function roundNice(x: number): number {
+  if (!isFinite(x) || x === 0) return 0
+  const p = Math.max(0, 6 - Math.floor(Math.log10(Math.abs(x))))
+  const f = Math.pow(10, p)
+  return Math.round(x * f) / f
+}
+
 /**
- * サイズ凡例を作る。データの 最小 / 中間 / 最大 を並べる。
+ * データ範囲から凡例用の切りのいい値を最大 `steps` 個選ぶ（#512）。
+ * 1・2・5 × 10^n の候補から、範囲内をほぼ等分する。面積スケールはデータ max 基準なので ≤ max。
+ */
+function niceSizeLegendValues(min: number, max: number, steps: number): number[] {
+  if (!(max > 0)) return []
+  if (!(max > min) || steps <= 1) return [max]
+
+  const cands: number[] = []
+  const seen = new Set<number>()
+  const push = (v: number) => {
+    const r = roundNice(v)
+    if (r <= 0 || r > max) return
+    // データ最小よりかなり小さい円は「この図に無い大きさ」になるので落とす
+    if (r < min * 0.5) return
+    if (seen.has(r)) return
+    seen.add(r)
+    cands.push(r)
+  }
+
+  const lo = Math.max(min * 0.5, max / 1e6, Number.MIN_VALUE)
+  const startExp = Math.floor(Math.log10(lo))
+  const endExp = Math.floor(Math.log10(max))
+  for (let e = startExp; e <= endExp; e++) {
+    for (const m of [1, 2, 5]) push(m * Math.pow(10, e))
+  }
+  // max 側の代表（83 → 50、または max 自体が 1/2/5 ならそれ）
+  push(Math.floor(max / niceStep(max / 2)) * niceStep(max / 2))
+  push(max)
+
+  cands.sort((a, b) => a - b)
+  if (cands.length === 0) return [max]
+  if (cands.length <= steps) return cands
+
+  // 先頭・末尾を残し、間を等間隔インデックスで取る
+  const out: number[] = []
+  for (let i = 0; i < steps; i++) {
+    const idx = Math.round((i / (steps - 1)) * (cands.length - 1))
+    const v = cands[idx]
+    if (!out.length || out[out.length - 1] !== v) out.push(v)
+  }
+  return out
+}
+
+/**
+ * サイズ凡例を作る。切りのいい代表値を並べる（#512）。
  *
  * Recharts は面積を `radius = sqrt(面積 / π)` で描く（recharts/es6/cartesian/Scatter.js）。
  * 凡例の円も同じ式で描くので実際のドットと一致する。
@@ -586,9 +647,7 @@ export function buildSizeLegend(
   // max <= 0 だと面積の比率が作れない（実データでは件数・平均値なので起きない）。
   if (!r || r.max <= 0) return null
   // 全部同じ値ならドットの大小が無いので 1 つだけ出す（段を並べても全部同じ大きさになる）。
-  const vals = r.max > r.min
-    ? Array.from({ length: steps }, (_, i) => r.min + (r.max - r.min) * (i / (steps - 1)))
-    : [r.max]
+  const vals = niceSizeLegendValues(r.min, r.max, steps)
   return { label, items: vals.map(v => ({ label: fmt(v), area: valueToArea(v, r.max) })) }
 }
 
