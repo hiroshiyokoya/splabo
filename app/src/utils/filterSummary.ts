@@ -1,14 +1,17 @@
 /**
- * 絞り込み条件を 1 行のテキストにまとめる（#500）。
+ * 絞り込み条件を 1 行のテキストにまとめる（#500 / #506）。
  *
  * パネルを画像として保存すると、画面上部の FilterBar は写らない。
  * 条件が分からない画像は共有しても意味が無いので、画像側に焼き込む文字列をここで作る。
  * 画像内で 1〜2 行に収める必要があるため、多値は先頭数件＋「他 N 件」に丸める。
+ *
+ * 期間は相対プリセット名（今シーズン 等）ではなく絶対日付にする（#506）。
+ * UI の FilterBar 表示は触らない。
  */
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { Filters, Period } from '../types'
-import { resultLabel } from '../types'
+import { filtersToRange, resultLabel } from '../types'
 
 /** FilterBar と表示を揃えるための選択肢定義。UI とキャプションで文言をぶらさない。 */
 export const PERIOD_OPTIONS: { id: Period; label: string }[] = [
@@ -42,7 +45,6 @@ export const RULE_OPTIONS = [
 
 const LOBBY_LABEL = new Map(LOBBY_OPTIONS.map(o => [o.key, o.label]))
 const RULE_LABEL  = new Map(RULE_OPTIONS.map(o => [o.key, o.label]))
-const PERIOD_LABEL = new Map(PERIOD_OPTIONS.map(o => [o.id, o.label]))
 
 /** 画像内で 1 項目に並べる値の上限。これを超えたら「他 N 件」に畳む。 */
 const MAX_VALUES = 3
@@ -58,13 +60,41 @@ export function joinConditions(parts: [string, string | null][]): string {
   return kept.length ? kept.join('　/　') : '絞り込みなし'
 }
 
-function periodText(f: Filters): string {
+/** ローカル日付の `YYYY-MM-DD`（保存キャプションの「今日」）。 */
+export function localIsoDate(now = new Date()): string {
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
+/**
+ * クエリに効いている since/until を保存用の絶対日付にする（#506）。
+ *
+ * - 両方 null … `全期間`
+ * - until だけ無い … 終端を「今日」（ダッシュボードの相対プリセット）
+ * - since だけ無い … `〜until`（稀）
+ */
+export function formatAbsolutePeriodRange(
+  since: string | null,
+  until: string | null,
+  now = new Date(),
+): string {
+  if (!since && !until) return '全期間'
+  const end = until || localIsoDate(now)
+  if (!since) return `〜${end}`
+  return `${since}〜${end}`
+}
+
+/** 保存キャプション用の期間文言。UI プリセット名は使わない。 */
+function periodText(f: Filters, now = new Date()): string {
+  if (f.period === 'all') return '全期間'
   if (f.period === 'custom') {
-    const from = f.customFrom ?? '—'
-    const to   = f.customTo ?? '—'
-    return `${from}〜${to}`
+    return `${f.customFrom ?? '—'}〜${f.customTo ?? '—'}`
   }
-  return PERIOD_LABEL.get(f.period) ?? f.period
+  const { since, until } = filtersToRange(f)
+  return formatAbsolutePeriodRange(since, until, now)
 }
 
 /** ダッシュボードなど FilterBar 配下の画面の条件テキスト。 */

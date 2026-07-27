@@ -31,7 +31,7 @@ import {
 } from '../utils/scatterCategoryColors'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo, PanelExportNote } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
-import { joinConditions, joinValues } from '../utils/filterSummary'
+import { joinConditions, joinValues, formatAbsolutePeriodRange } from '../utils/filterSummary'
 
 const LOBBY_OPTIONS = [
   { key: '',                  label: 'すべてのロビー' },
@@ -332,23 +332,6 @@ export function EnvAnalysis() {
   // 画像保存（#500）。共通フィルタはパネルの外にあるので、画像には条件を焼き込む。
   const scatterPanelRef = useRef<HTMLDivElement>(null)
   const heatmapPanelRef = useRef<HTMLDivElement>(null)
-  const envFilterSummary = useMemo(() => {
-    const optLabel = (opts: { key: string; label: string }[], k: string) =>
-      opts.find(o => o.key === k)?.label ?? k
-    return joinConditions([
-      ['期間', period === 'custom'
-        ? `${customSince || '—'}〜${customUntil || '—'}`
-        : (PERIOD_OPTIONS.find(o => o.key === period)?.label ?? period)],
-      ['ロビー',     lobbyKeys.length ? joinValues(lobbyKeys.map(k => LOBBY_LABEL[k] ?? k)) : null],
-      ['ルール',     ruleKeys.length ? joinValues(ruleKeys.map(k => RULE_LABEL[k] ?? k)) : null],
-      ['武器',       weaponKeys.length ? joinValues(weaponKeys.map(k => optLabel(weaponOptions, k))) : null],
-      ['ステージ',   stageKeys.length ? joinValues(stageKeys.map(k => optLabel(stageOptions, k))) : null],
-      ['バージョン', gameVers.length ? joinValues(gameVers.map(formatGameVer)) : null],
-      ['ウデマエ',   posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
-      ['Xパワー',    (powerMin || powerMax) ? `${powerMin || '—'}〜${powerMax || '—'}` : null],
-    ])
-  }, [period, customSince, customUntil, lobbyKeys, ruleKeys, weaponKeys, stageKeys,
-      weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax])
 
   // 可視化モード
   const [vizMode, setVizMode] = useState<'scatter' | 'heatmap'>(prefs.vizMode)
@@ -486,6 +469,34 @@ export function EnvAnalysis() {
       case 'custom': return { since: customSince || null, until: customUntil || null }
     }
   }, [period, status, customSince, customUntil])
+
+  // 画像に焼き込む条件（#500 / #506）。期間はクエリと同じ since/until を絶対日付で。
+  const envFilterSummary = useMemo(() => {
+    const optLabel = (opts: { key: string; label: string }[], k: string) =>
+      opts.find(o => o.key === k)?.label ?? k
+    // データ未取得で相対期間が解けないときだけ、UI と同じラベルにフォールバックする。
+    const periodCaption = (() => {
+      if (period === 'all') return '全期間'
+      if (period === 'custom') {
+        return `${range.since || '—'}〜${range.until || '—'}`
+      }
+      if (range.since || range.until) {
+        return formatAbsolutePeriodRange(range.since, range.until)
+      }
+      return PERIOD_OPTIONS.find(o => o.key === period)?.label ?? period
+    })()
+    return joinConditions([
+      ['期間', periodCaption],
+      ['ロビー',     lobbyKeys.length ? joinValues(lobbyKeys.map(k => LOBBY_LABEL[k] ?? k)) : null],
+      ['ルール',     ruleKeys.length ? joinValues(ruleKeys.map(k => RULE_LABEL[k] ?? k)) : null],
+      ['武器',       weaponKeys.length ? joinValues(weaponKeys.map(k => optLabel(weaponOptions, k))) : null],
+      ['ステージ',   stageKeys.length ? joinValues(stageKeys.map(k => optLabel(stageOptions, k))) : null],
+      ['バージョン', gameVers.length ? joinValues(gameVers.map(formatGameVer)) : null],
+      ['ウデマエ',   posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
+      ['Xパワー',    (powerMin || powerMax) ? `${powerMin || '—'}〜${powerMax || '—'}` : null],
+    ])
+  }, [period, range, lobbyKeys, ruleKeys, weaponKeys, stageKeys,
+      weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax])
 
   // 拡充フィルタ（#189 / #477）を invoke 引数へ。空配列 / 空文字は null（無指定）に正規化。
   const extFilters = useMemo(() => ({
