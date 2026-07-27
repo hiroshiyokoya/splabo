@@ -15,6 +15,14 @@
   --draw:          #f59e0b;
   --sidebar-w:     180px;
 
+  /* 散布図カテゴリ色分け（#527）。テーマ切替で上書き。デフォルトは従来パレット。 */
+  --scatter-cat-1: #ef4444;
+  --scatter-cat-2: #3b82f6;
+  --scatter-cat-3: #eab308;
+  --scatter-cat-4: #a855f7;
+  --scatter-cat-5: #f97316;
+  --scatter-cat-6: #14b8a6;
+
   /* ヒートマップ用のセル色。
      sequential は「ほぼ白 → accent (ライム)」、
      divergent (勝率) は「赤 ← 中立 → 青」の 7 段階（#351）。 */
