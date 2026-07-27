@@ -1,9 +1,9 @@
 /**
- * パネルを PNG / HTML として保存する（#500 / #505）。
+ * パネルを PNG / HTML として保存する(#500 / #505)。
  *
  * 画面に出ているパネルをそのまま写すので、テーマ色や凡例は表示と一致する。
- * 表示にしかない要素（操作ボタン・長い注釈）は `EXPORT_HIDE_CLASS` を付けて除外し、
- * 書き出しにしか無い要素（絞り込み条件のキャプション）は `.is-exporting` 中だけ表示する。
+ * 表示にしかない要素(操作ボタン・長い注釈)は `EXPORT_HIDE_CLASS` を付けて除外し、
+ * 書き出しにしか無い要素(絞り込み条件のキャプション)は `.is-exporting` 中だけ表示する。
  *
  * PNG は角丸の外側を透過のまま残す。HTML は単体ファイルで、散布図はホバー tip が動く。
  */
@@ -99,7 +99,7 @@ function hexToRgba(hex: string, alpha: number): string | null {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
-/** レイアウト変更（キャプション表示）が反映されてから描画するために 2 フレーム待つ。 */
+/** レイアウト変更(キャプション表示)が反映されてから描画するために 2 フレーム待つ。 */
 function nextFrames(): Promise<void> {
   return new Promise(resolve => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
@@ -132,16 +132,16 @@ export async function savePanelAsPng(node: HTMLElement, screen: string, panel: s
   node.classList.add(EXPORTING_CLASS)
   const tooltipBgs: { el: HTMLElement; prev: string }[] = []
   try {
-    // 保存した瞬間の版・日付を焼き込む（画面に出しっぱなしの古い日付にしない）。
+    // 保存した瞬間の版・日付を焼き込む(画面に出しっぱなしの古い日付にしない)。
     fillExportCredit(node, buildExportCredit(await appVersion()))
-    // ツールチップ背景を rgba 半透明に（color-mix はラスタライズで落ちることがある）。
+    // ツールチップ背景を rgba 半透明に(color-mix はラスタライズで落ちることがある)。
     const tipBg = hexToRgba(cssVar('--surface', '#17172a'), 0.72)
       ?? 'rgba(23, 23, 42, 0.72)'
     node.querySelectorAll<HTMLElement>('.cal-tooltip').forEach(el => {
       tooltipBgs.push({ el, prev: el.style.background })
       el.style.background = tipBg
     })
-    // 散布図ツールチップを「他ドットを避ける位置」へ載せ替える（リスナ側で flushSync）。
+    // 散布図ツールチップを「他ドットを避ける位置」へ載せ替える(リスナ側で flushSync)。
     node.dispatchEvent(new CustomEvent(PANEL_EXPORT_PREPARE_EVENT, { bubbles: false }))
     await nextFrames()
     // backgroundColor を指定しない → 角丸の外側は透明。パネル内は要素自身の背景色。
@@ -162,7 +162,7 @@ export async function savePanelAsPng(node: HTMLElement, screen: string, panel: s
 }
 
 // ---------------------------------------------------------------------------
-// HTML 単体書き出し（#505）
+// HTML 単体書き出し(#505)
 // ---------------------------------------------------------------------------
 
 /** 単体 HTML に同梱するスタイルシートから拾うセレクタ接頭辞。 */
@@ -266,7 +266,7 @@ async function inlineImages(root: HTMLElement): Promise<void> {
   }))
 }
 
-/** HTML 埋め込み用の追加 CSS（アプリ CSS に無い固定レイアウト）。 */
+/** HTML 埋め込み用の追加 CSS(アプリ CSS に無い固定レイアウト)。 */
 const HTML_EXPORT_EXTRA_CSS = `
 /* App.css のグローバルリセットはセレクタ収集から漏れるのでここで補う。
    box-sizing が content-box だと padding 分だけ枠とグラフ幅がずれる。 */
@@ -315,7 +315,7 @@ body > .chart-card.chart-card--full {
 [data-scatter-point="true"] { cursor: pointer; }
 `
 
-/** 散布図ホバー用（オフライン・CDN なし）。 */
+/** 散布図ホバー用(オフライン・CDN なし)。 */
 const HTML_EXPORT_TIP_SCRIPT = `(function () {
   var tip = document.getElementById('splabo-export-tip');
   if (!tip) return;
@@ -429,8 +429,8 @@ function escapeHtml(s: string): string {
 
 /**
  * Recharts の ResponsiveContainer が付けた実寸をインラインで固定する。
- * HTML 単体では ResizeObserver が動かない／親幅が変わると、枠だけ縮んで SVG がはみ出す。
- * 戻り値は元スタイルへ戻す関数（アプリ画面を汚さないため）。
+ * HTML 単体では ResizeObserver が動かない/親幅が変わると、枠だけ縮んで SVG がはみ出す。
+ * 戻り値は元スタイルへ戻す関数(アプリ画面を汚さないため)。
  */
 function freezeChartGeometry(root: HTMLElement): () => void {
   const restorers: Array<() => void> = []
@@ -503,7 +503,7 @@ export async function savePanelAsHtml(node: HTMLElement, screen: string, panel: 
     await nextFrames()
     await nextFrames()
 
-    // クローン前に実寸をインライン化してから clone する（構造が一致する）。
+    // クローン前に実寸をインライン化してから clone する(構造が一致する)。
     unfreeze = freezeChartGeometry(node)
 
     const clone = node.cloneNode(true) as HTMLElement
@@ -517,7 +517,7 @@ export async function savePanelAsHtml(node: HTMLElement, screen: string, panel: 
 
     clone.style.boxSizing = 'border-box'
 
-    const title = `SpLabo — ${screen} — ${panel}`
+    const title = `SpLabo - ${screen} - ${panel}`
     const html = buildStandaloneHtml(clone.outerHTML, title)
     return await invokeSave(
       buildPanelExportFilename(screen, panel, 'html'),

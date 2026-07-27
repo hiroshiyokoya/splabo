@@ -87,7 +87,7 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
                 value={filters.customFrom ?? ''}
                 onChange={e => patch('customFrom', e.target.value || null)}
               />
-              <span className="custom-date-sep">〜</span>
+              <span className="custom-date-sep">~</span>
               <input
                 type="date"
                 className="custom-date-input"

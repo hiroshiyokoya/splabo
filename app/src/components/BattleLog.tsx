@@ -21,11 +21,11 @@ function killRatio(kill: number, death: number): string {
   return (kill / death).toFixed(2)
 }
 
-/** 平均キルカードの値「K (A)」＝ キル (アシスト)（#449）。
- *  K が無ければ '—'、A だけ無ければ括弧内を '—' にする。Dashboard.fmtKillWithAssist と同期。 */
+/** 平均キルカードの値「K (A)」＝ キル (アシスト)(#449)。
+ *  K が無ければ '-'、A だけ無ければ括弧内を '-' にする。Dashboard.fmtKillWithAssist と同期。 */
 function fmtKillWithAssist(kill: number | null | undefined, assist: number | null | undefined): string {
-  if (kill == null) return '—'
-  return `${kill.toFixed(2)} (${assist != null ? assist.toFixed(2) : '—'})`
+  if (kill == null) return '-'
+  return `${kill.toFixed(2)} (${assist != null ? assist.toFixed(2) : '-'})`
 }
 
 type OrderBy = 'played_at' | 'kill' | 'assist' | 'death' | 'special' | 'inked' | 'kill_ratio'
@@ -46,7 +46,7 @@ function statinkBattleUrl(uuid: string, screenName: string | null): string {
     : `https://stat.ink/api/v3/battle/${uuid}`
 }
 
-/** 規定ブラウザで URL を開く（Tauri webview 内に開かない）。 */
+/** 規定ブラウザで URL を開く(Tauri webview 内に開かない)。 */
 function openExternal(url: string) {
   openUrl(url).catch(console.error)
 }
@@ -147,10 +147,10 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
           <LogStatCard label="総バトル数"        value={stats.total.toLocaleString()} />
           <LogStatCard label="Win / Lose (Draw)"
             value={`${stats.wins} / ${stats.total - stats.wins - stats.draws} (${stats.draws})`} />
-          <LogStatCard label="全体勝率"          value={stats.total > 0 ? `${(stats.win_rate * 100).toFixed(1)}%` : '—'}
+          <LogStatCard label="全体勝率"          value={stats.total > 0 ? `${(stats.win_rate * 100).toFixed(1)}%` : '-'}
             valueColor={stats.total > 0 ? winRateColor(stats.win_rate) : undefined} />
           <LogStatCard label="平均キル"          value={fmtKillWithAssist(stats.avg_kill, stats.avg_assist)} />
-          <LogStatCard label="平均デス"          value={stats.avg_death !== null ? stats.avg_death.toFixed(2) : '—'} />
+          <LogStatCard label="平均デス"          value={stats.avg_death !== null ? stats.avg_death.toFixed(2) : '-'} />
           <LogStatCard label="キルレ"            value={avgKillRatio(stats.avg_kill, stats.avg_death)} />
         </div>
       )}
@@ -270,7 +270,7 @@ function SortTh({ col, label, orderBy, orderAsc, onSort }: {
 // ---------------------------------------------------------------------------
 
 /**
- * 背景ステージ画像を横方向のどこで切り出すか（0–100 の %）を、バトル ID から決める（#416）。
+ * 背景ステージ画像を横方向のどこで切り出すか(0–100 の %)を、バトル ID から決める(#416)。
  *
  * modal は縦長なので `background-size: cover` では縦が全部入り、横が約 4 割切れる。
  * その「横のどこを見せるか」を毎回変えて単調さを避ける。
@@ -293,8 +293,8 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
   stageImages: Map<string, string>
   statinkScreenName: string | null
   onClose: () => void
-  onPrev?: () => void  // 前のバトル（先頭なら undefined）
-  onNext?: () => void  // 次のバトル（末尾なら undefined）
+  onPrev?: () => void  // 前のバトル(先頭なら undefined)
+  onNext?: () => void  // 次のバトル(末尾なら undefined)
 }) {
   const [showRaw, setShowRaw] = useState(false)
 
@@ -309,7 +309,7 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
     return () => window.removeEventListener('keydown', handleKey)
   }, [handleKey])
 
-  // raw_json から詳細を取得（チームカラー・スコア・トリカラー対応）
+  // raw_json から詳細を取得(チームカラー・スコア・トリカラー対応)
   const detail = useMemo(() => tryParse(battle.raw_json) as VsHistoryDetail | null, [battle.raw_json])
   const myTeam     = detail?.myTeam ?? null
   const otherTeams = detail?.otherTeams ?? []
@@ -357,7 +357,7 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
 
         <div className="modal-body">
           {!hasDetail && (
-            <div className="detail-notice">詳細データ未取得 — 「最新データを取得」を実行すると詳細が表示されます</div>
+            <div className="detail-notice">詳細データ未取得 - 「最新データを取得」を実行すると詳細が表示されます</div>
           )}
 
           {hasDetail && (myTeam || otherTeams.length > 0) && (
@@ -418,7 +418,7 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
 }
 
 // ---------------------------------------------------------------------------
-// スコアサマリ（モーダル上部）
+// スコアサマリ(モーダル上部)
 // ---------------------------------------------------------------------------
 
 function ScoreSummary({ myTeam, otherTeams }: {
@@ -430,13 +430,13 @@ function ScoreSummary({ myTeam, otherTeams }: {
   const teams   = [{ team: myTeam, color: myColor }, ...otherTeams.map(t => ({ team: t, color: colorToHex(t.color) }))]
 
   // ルール文字列に依存せず、result の値で何を表示するか決める：
-  // paintRatio が数値なら 塗り%、なければ score を数値表示。result 自体が null（中断・切断バトル等）なら '—'。
+  // paintRatio が数値なら 塗り%、なければ score を数値表示。result 自体が null(中断・切断バトル等)なら '-'。
   function renderScore(team: Team | null): string {
     const r = team?.result
-    if (r == null) return '—'
+    if (r == null) return '-'
     if (typeof r.paintRatio === 'number') return `${(r.paintRatio * 100).toFixed(1)}%`
     if (typeof r.score      === 'number') return String(r.score)
-    return '—'
+    return '-'
   }
 
   return (
@@ -487,7 +487,7 @@ function MyStatsCard({ battle, weaponImages }: {
 }
 
 // ---------------------------------------------------------------------------
-// セット結果（バンカラチャレンジ / X マッチ評価戦）
+// セット結果(バンカラチャレンジ / X マッチ評価戦)
 // parent_json が非 null の最新バトルに表示する
 // ---------------------------------------------------------------------------
 
@@ -501,7 +501,7 @@ function RankChangeRow({ battle }: { battle: BattleRow }) {
   const hasSet    = setWin !== null && setLose !== null
 
   // バンカラチャレンジのウデマエ前後
-  // detail（raw_json）から udemae を取り、parent.udemaeAfter があれば「→ <after>」を表示
+  // detail(raw_json)から udemae を取り、parent.udemaeAfter があれば「→ <after>」を表示
   const detail = tryParse(battle.raw_json) as { udemae?: string } | null
   const udemaeBefore = detail?.udemae ?? null
   const udemaeAfter  = parent.udemaeAfter ?? null
@@ -560,7 +560,7 @@ function RankChangeRow({ battle }: { battle: BattleRow }) {
 }
 
 // ---------------------------------------------------------------------------
-// チームパネル（スコアボード 1 チーム分）
+// チームパネル(スコアボード 1 チーム分)
 // ---------------------------------------------------------------------------
 
 function TeamPanel({ team, label, highlight, showSignal, weaponImages, abilityImages }: {
@@ -660,12 +660,12 @@ function PlayerRow({ p, showSignal, weaponImages, abilityImages }: {
       <td className="gear-col">
         <GearGrid p={p} abilityImages={abilityImages} />
       </td>
-      <td className="num-col">{pureK ?? '—'}</td>
-      <td className="num-col">{result?.assist  ?? '—'}</td>
-      <td className="num-col">{result?.death   ?? '—'}</td>
-      <td className="num-col">{result?.special ?? '—'}</td>
-      <td className="num-col">{p.paint?.toLocaleString() ?? '—'}</td>
-      {showSignal && <td className="num-col">{result?.noroshiTry ?? '—'}</td>}
+      <td className="num-col">{pureK ?? '-'}</td>
+      <td className="num-col">{result?.assist  ?? '-'}</td>
+      <td className="num-col">{result?.death   ?? '-'}</td>
+      <td className="num-col">{result?.special ?? '-'}</td>
+      <td className="num-col">{p.paint?.toLocaleString() ?? '-'}</td>
+      {showSignal && <td className="num-col">{result?.noroshiTry ?? '-'}</td>}
     </tr>
   )
 }
@@ -694,8 +694,8 @@ function GearGrid({ p, abilityImages }: { p: Player; abilityImages: Map<string, 
           <GearSlot ability={gear?.primaryGearPower} abilityImages={abilityImages} primary />
           {[0, 1, 2].map(idx => {
             const ab = gear?.additionalGearPowers?.[idx]
-            // ab が undefined  → スロット未解放（locked）。★0/★1 で配列に要素が無い
-            // ab が empty URL  → 解放済みだが未装着（アキ）。abilityKeyFromUrl で 'empty' を解決して画像表示
+            // ab が undefined  → スロット未解放(locked)。★0/★1 で配列に要素が無い
+            // ab が empty URL  → 解放済みだが未装着(アキ)。abilityKeyFromUrl で 'empty' を解決して画像表示
             // ab が通常アビリティ → 通常表示
             return <GearSlot key={idx} ability={ab} abilityImages={abilityImages} isLocked={!ab} />
           })}

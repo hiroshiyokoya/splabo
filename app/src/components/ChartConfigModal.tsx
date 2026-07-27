@@ -19,14 +19,14 @@ const isRateMetric = (metric: string) => metric === 'win_rate'
 /** ログスケールのチェックボックスに添える説明 (#381)。 */
 function logScaleHint(metric: string): string {
   if (isRateMetric(metric)) return '勝率は 0-100% に収まるのでログスケールは使えません。'
-  return 'ロングテールや比率（キルレ）を読みやすくします。0 以下・∞ の点は除外されます。'
+  return 'ロングテールや比率(キルレ)を読みやすくします。0 以下・∞ の点は除外されます。'
 }
 
 /** 各 yComposition のヒント説明。 */
 const Y_COMPOSITION_DESCRIPTIONS: Record<YComposition, string> = {
-  single_metric:   'Y 軸に好きな 1 メトリクス（勝率・バトル数・キルレ など）を取る。',
+  single_metric:   'Y 軸に好きな 1 メトリクス(勝率・バトル数・キルレ など)を取る。',
   stacked_winrate: '勝/負/分 を積み上げた棒に、勝率を線で重ねる。既存 4 グラフと同じ形。',
-  attack_defense:  'カテゴリごとに「平均キル（灰色アシスト積み）」「平均デス」を 2 本セットで横並びに表示。',
+  attack_defense:  'カテゴリごとに「平均キル(灰色アシスト積み)」「平均デス」を 2 本セットで横並びに表示。',
 }
 
 interface Props {
@@ -37,22 +37,22 @@ interface Props {
 }
 
 /**
- * カスタムグラフの追加・編集モーダル（v2 モデル）。
+ * カスタムグラフの追加・編集モーダル(v2 モデル)。
  *
  * v2 では「グラフの形 (shape)」と「Y 軸の構成 (yComposition)」を独立に選ぶ：
- *   - shape: 棒 / 線 / 散布図 / ヒートマップ（v1.0.0 は bar のみ実装）
+ *   - shape: 棒 / 線 / 散布図 / ヒートマップ(v1.0.0 は bar のみ実装)
  *   - yComposition: 単一メトリクス / 勝負分積み上げ+勝率 / 攻撃 vs デス
  *
- * UI 上、未実装の shape も選択肢に出すが disabled にして「（未実装）」ラベルを付ける。
+ * UI 上、未実装の shape も選択肢に出すが disabled にして「(未実装)」ラベルを付ける。
  */
 export function ChartConfigModal({ initial, onSave, onClose }: Props) {
-  // タイトルは保存しない方針（軸から常に autoChartTitle で算出して表示する）。
+  // タイトルは保存しない方針(軸から常に autoChartTitle で算出して表示する)。
   const [shape,        setShape]        = useState<ChartShape>(initial?.shape        ?? 'bar')
   const [yComposition, setYComposition] = useState<YComposition>(initial?.yComposition ?? 'single_metric')
   const [groupBy,      setGroupBy]      = useState<GroupByKey>(initial?.groupBy      ?? 'weapon')
   const [groupBy2,     setGroupBy2]     = useState<GroupByKey>(initial?.groupBy2     ?? 'stage')
   const [metric,       setMetric]       = useState<MetricKey>(initial?.metric       ?? 'win_rate')
-  // shape='line' 専用: 複数系列メトリクス（#436）。選択順を保持する（軸の左右割当は選択順で決まる）。
+  // shape='line' 専用: 複数系列メトリクス(#436)。選択順を保持する(軸の左右割当は選択順で決まる)。
   const [lineMetrics,  setLineMetrics]  = useState<MetricKey[]>(
     initial?.shape === 'line' ? chartMetrics(initial) : ['win_rate']
   )
@@ -66,13 +66,13 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   const [dotUnit,      setDotUnit]      = useState<ScatterDotUnit>(initial?.dotUnit ?? 'weapon')
   const [xMetric,      setXMetric]      = useState<string>(initial?.xMetric ?? 'avg_kill')
   const [yMetric,      setYMetric]      = useState<string>(initial?.yMetric ?? 'win_rate')
-  // サイズは「（一定サイズ）」が '' で、保存時に undefined へ落ちる（handleSave 参照）。
+  // サイズは「(一定サイズ)」が '' で、保存時に undefined へ落ちる(handleSave 参照)。
   // そのため `initial?.sizeMetric ?? 'total'` にすると、一定サイズで保存したグラフを
-  // 編集で開いたとき「バトル数」に化けてしまう。編集時は保存値をそのまま（undefined は
-  // 一定サイズ = ''）復元し、新規作成のときだけ既定値 'total' を使う。
+  // 編集で開いたとき「バトル数」に化けてしまう。編集時は保存値をそのまま(undefined は
+  // 一定サイズ = '')復元し、新規作成のときだけ既定値 'total' を使う。
   const [sizeMetric,   setSizeMetric]   = useState<string>(initial ? (initial.sizeMetric ?? '') : 'total')
   const [colorMetric,  setColorMetric]  = useState<string>(initial?.colorMetric ?? '')
-  // ログスケール (#381)。未設定は false（既存グラフはリニアのまま）。
+  // ログスケール (#381)。未設定は false(既存グラフはリニアのまま)。
   const [xLogScale,    setXLogScale]    = useState<boolean>(initial?.xLogScale ?? false)
   const [yLogScale,    setYLogScale]    = useState<boolean>(initial?.yLogScale ?? false)
 
@@ -92,7 +92,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       if (isTimeBucketGroupBy(groupBy)) setGroupBy('weapon')
       if (isTimeBucketGroupBy(groupBy2)) setGroupBy2('stage')
       if (yComposition !== 'single_metric') setYComposition('single_metric')
-      // 合計系はヒートマップでは全セル空になるので、選ばれていたら勝率へ退避（#351）。
+      // 合計系はヒートマップでは全セル空になるので、選ばれていたら勝率へ退避(#351)。
       // 既存の保存済みグラフを開いた場合の救済も兼ねる。
       if (SUM_METRICS.includes(metric)) setMetric('win_rate')
     } else if (shape === 'scatter') {
@@ -103,25 +103,25 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
     } else {
       if (isTimeBucketGroupBy(groupBy)) setGroupBy('weapon')
     }
-    // ヒートマップ以外では数値メトリクス bin 軸はクリア（#134）。
+    // ヒートマップ以外では数値メトリクス bin 軸はクリア(#134)。
     if (shape !== 'heatmap') {
       if (xNumericMetric) setXNumericMetric(null)
       if (yNumericMetric) setYNumericMetric(null)
     }
   }, [shape])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // scatter のドット単位を変えたら groupBy も同期させる（カテゴリ単位のプリフェッチキー連動）。
+  // scatter のドット単位を変えたら groupBy も同期させる(カテゴリ単位のプリフェッチキー連動)。
   // dotUnit='battle' の場合は別経路で battle データを取るので groupBy は触らない。
   useEffect(() => {
     if (shape === 'scatter' && dotUnit !== 'battle') setGroupBy(dotUnit)
   }, [dotUnit, shape])
 
   // dotUnit を切り替えたとき X / Y / size / color の選択肢系統が変わるのでデフォルトに戻す。
-  // ただし **編集モードで開いたときの初回マウントでは保存値を保持** したい（#143）。
+  // ただし **編集モードで開いたときの初回マウントでは保存値を保持** したい(#143)。
   //
   // 以前は「ref で 1 回目をスキップ」していたが、StrictMode は effect を
   // setup → cleanup → setup と 2 回走らせるため、2 回目でスキップが外れて
-  // 保存値が既定値に上書きされていた（編集を開くと設定が違って見えるバグ）。
+  // 保存値が既定値に上書きされていた(編集を開くと設定が違って見えるバグ)。
   // 「実際に dotUnit が変わったときだけ反応する」形にして、何回走っても安全にする。
   const prevDotUnitRef = useRef(dotUnit)
   useEffect(() => {
@@ -148,8 +148,8 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // 折れ線の軸グループ（#436）: 同時に使えるのは 2 グループまで。
-  // 3 グループ目に属する未選択メトリクスは選べない（チェックボックスを disabled にする）。
+  // 折れ線の軸グループ(#436): 同時に使えるのは 2 グループまで。
+  // 3 グループ目に属する未選択メトリクスは選べない(チェックボックスを disabled にする)。
   const lineUsedGroups = new Set(lineMetrics.map(axisGroupOf))
   function toggleLineMetric(m: MetricKey) {
     setLineMetrics(prev => {
@@ -167,7 +167,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       shape,
       yComposition,
       groupBy,
-      // line は metrics（複数系列・#436）、それ以外は単一 metric。
+      // line は metrics(複数系列・#436)、それ以外は単一 metric。
       metric:       shape !== 'line' && yComposition === 'single_metric' ? metric : undefined,
       metrics:      shape === 'line' ? lineMetrics : undefined,
       groupBy2:     shape === 'heatmap' ? groupBy2 : undefined,
@@ -180,7 +180,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       // 比率メトリクスにログは効かないので、選び直された場合は保存しない (#381)。
       xLogScale:    shape === 'scatter' && xLogScale && !isRateMetric(xMetric) ? true : undefined,
       yLogScale:    shape === 'scatter' && yLogScale && !isRateMetric(yMetric) ? true : undefined,
-      // 数値メトリクス bin 軸（#134、ヒートマップ専用）
+      // 数値メトリクス bin 軸(#134、ヒートマップ専用)
       xNumericMetric: shape === 'heatmap' && xNumericMetric ? xNumericMetric : undefined,
       xBinWidth:      shape === 'heatmap' && xNumericMetric ? xBinWidth : undefined,
       yNumericMetric: shape === 'heatmap' && yNumericMetric ? yNumericMetric : undefined,
@@ -201,13 +201,13 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
 
         <div className="modal-body chart-config-body">
           <div className="form-field">
-            <label className="form-label">形（グラフの種類）</label>
+            <label className="form-label">形(グラフの種類)</label>
             <select className="form-input" value={shape} onChange={e => setShape(e.target.value as ChartShape)}>
               {(Object.keys(CHART_SHAPE_LABELS) as ChartShape[]).map(s => {
                 const implemented = IMPLEMENTED_SHAPES.includes(s)
                 return (
                   <option key={s} value={s} disabled={!implemented}>
-                    {CHART_SHAPE_LABELS[s]}{implemented ? '' : '（未実装）'}
+                    {CHART_SHAPE_LABELS[s]}{implemented ? '' : '(未実装)'}
                   </option>
                 )
               })}
@@ -222,7 +222,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
           {/* scatter は X 軸 (集計キー) と Y 軸の構成・メトリクスを使わないので、shape ごとに分岐 */}
           {shape !== 'scatter' && (
             <div className="form-field">
-              <label className="form-label">X 軸（集計キー）</label>
+              <label className="form-label">X 軸(集計キー)</label>
               <select
                 className="form-input"
                 value={xNumericMetric ? `numeric:${xNumericMetric}` : groupBy}
@@ -263,7 +263,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 <p className="form-hint">線グラフは時系列のみ。粒度は {TIME_BUCKET_GROUP_BYS.map(k => GROUP_BY_LABELS[k]).join(' / ')} から選びます。</p>
               )}
               {shape === 'calendar_heatmap' && (
-                <p className="form-hint">カレンダーは「日」固定（GitHub 風コントリビューショングラフ）。</p>
+                <p className="form-hint">カレンダーは「日」固定(GitHub 風コントリビューショングラフ)。</p>
               )}
               {shape === 'heatmap' && xNumericMetric && (
                 <div className="form-field" style={{ marginTop: 8 }}>
@@ -284,7 +284,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
 
           {shape === 'heatmap' && (
             <div className="form-field">
-              <label className="form-label">Y 軸（集計キー 2）</label>
+              <label className="form-label">Y 軸(集計キー 2)</label>
               <select
                 className="form-input"
                 value={yNumericMetric ? `numeric:${yNumericMetric}` : groupBy2}
@@ -349,13 +349,13 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 value={topN}
                 onChange={e => setTopN(Math.max(1, Math.min(200, Number(e.target.value) || 20)))}
               />
-              <p className="form-hint">バトル数の多い武器を上位 N 種に絞ります（デフォルト 20）。</p>
+              <p className="form-hint">バトル数の多い武器を上位 N 種に絞ります(デフォルト 20)。</p>
             </div>
           )}
 
           {/* 棒グラフ: Y 軸を「メトリクス + 複合構成」統合の 1 セレクトで選ぶ。
               line/heatmap/calendar は yComposition が常に single_metric なので、
-              メトリクスだけのシンプルな select を出す（下のブロック）。 */}
+              メトリクスだけのシンプルな select を出す(下のブロック)。 */}
           {shape === 'bar' && (() => {
             // 統合 select の現在値：single_metric のときは metric、それ以外は yComposition
             const barYAxisValue = yComposition === 'single_metric' ? metric : yComposition
@@ -393,13 +393,13 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             )
           })()}
 
-          {/* heatmap / calendar_heatmap 用のメトリクス選択（単一）。
+          {/* heatmap / calendar_heatmap 用のメトリクス選択(単一)。
               これらは yComposition が常に single_metric に固定されている。line は下の複数選択 UI を使う。 */}
           {shape !== 'scatter' && shape !== 'bar' && shape !== 'line' && yComposition === 'single_metric' && (
             <div className="form-field">
               <label className="form-label">メトリクス</label>
               {/* ヒートマップは合計系を出さない。2D クロス集計に列が無く、
-                  選んでも全セルが空になるため（#351）。 */}
+                  選んでも全セルが空になるため(#351)。 */}
               <select className="form-input" value={metric} onChange={e => setMetric(e.target.value as MetricKey)}>
                 {(shape === 'heatmap' ? HEATMAP_METRICS : (Object.keys(METRIC_LABELS) as MetricKey[])).map(m => (
                   <option key={m} value={m}>{METRIC_LABELS[m]}</option>
@@ -408,12 +408,12 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             </div>
           )}
 
-          {/* line 用のメトリクス選択。複数系列対応（#436）：チェックボックス群、上限なし。
-              同時に使える軸グループ（回/バトル・勝率・カウント・塗り）は 2 つまで。
-              軸の左右は自動割当（最初に選んだ系列のグループ = 左軸、2 つ目のグループ = 右軸）。 */}
+          {/* line 用のメトリクス選択。複数系列対応(#436)：チェックボックス群、上限なし。
+              同時に使える軸グループ(回/バトル・勝率・カウント・塗り)は 2 つまで。
+              軸の左右は自動割当(最初に選んだ系列のグループ = 左軸、2 つ目のグループ = 右軸)。 */}
           {shape === 'line' && (
             <div className="form-field">
-              <label className="form-label">メトリクス（複数選択可）</label>
+              <label className="form-label">メトリクス(複数選択可)</label>
               <div className="metric-checkbox-group">
                 {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => {
                   const group = axisGroupOf(m)
@@ -434,7 +434,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               </div>
               {lineUsedGroups.size >= 2 && (
                 <p className="form-hint">
-                  軸は 2 種類までです（{[...lineUsedGroups].map(g => AXIS_GROUP_LABELS[g]).join('・')} を使用中）。
+                  軸は 2 種類までです({[...lineUsedGroups].map(g => AXIS_GROUP_LABELS[g]).join('・')} を使用中)。
                 </p>
               )}
               {lineMetrics.length === 0 && (
@@ -491,19 +491,19 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 <p className="form-hint">{logScaleHint(yMetric)}</p>
               </div>
               <div className="form-field">
-                <label className="form-label">サイズ（任意）</label>
+                <label className="form-label">サイズ(任意)</label>
                 <select className="form-input" value={sizeMetric} onChange={e => setSizeMetric(e.target.value)}>
-                  <option value="">（一定サイズ）</option>
+                  <option value="">(一定サイズ)</option>
                   {scatterMetricOptions(dotUnit).map(o => (
                     <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
-                <p className="form-hint">値が大きいほど大きく見える（sqrt スケール）。</p>
+                <p className="form-hint">値が大きいほど大きく見える(sqrt スケール)。</p>
               </div>
               <div className="form-field">
-                <label className="form-label">色・形（任意）</label>
+                <label className="form-label">色・形(任意)</label>
                 <select className="form-input" value={colorMetric} onChange={e => setColorMetric(e.target.value)}>
-                  <option value="">（単色 = アクセント）</option>
+                  <option value="">(単色 = アクセント)</option>
                   {dotUnit === 'battle' && <option value="win_lose">勝敗</option>}
                   {scatterMetricOptions(dotUnit).map(o => (
                     <option key={o.key} value={o.key}>{o.label}</option>

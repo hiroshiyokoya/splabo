@@ -64,7 +64,7 @@ export function AiAnalysis({ settings, onChartReady }: Props) {
 
       {response && (
         <details className="ai-raw">
-          <summary>AIの返答（raw）</summary>
+          <summary>AIの返答(raw)</summary>
           <pre>{response}</pre>
         </details>
       )}
@@ -147,7 +147,7 @@ async function callAnthropic(apiKey: string, model: string, system: string, user
       'Content-Type':      'application/json',
       'x-api-key':         apiKey,
       'anthropic-version': '2023-06-01',
-      // ブラウザ環境（Tauri webview）から呼ぶため、CORS 制限を回避
+      // ブラウザ環境(Tauri webview)から呼ぶため、CORS 制限を回避
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({

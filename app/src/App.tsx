@@ -36,10 +36,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoFetchIntervalMin: 1440, // 24h
   statink: { apiKey: '', autoUpload: false, screenName: null },
 }
-/** 武器マスターを再取得するインターバル（ミリ秒）。24 時間。 */
+/** 武器マスターを再取得するインターバル(ミリ秒)。24 時間。 */
 const WEAPONS_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000
 
-/** 「バトル」タブ内のビュー切替（#296）。 */
+/** 「バトル」タブ内のビュー切替(#296)。 */
 const BATTLES_VIEWS: readonly ViewToggleOption<BattlesView>[] = [
   { key: 'dashboard', label: 'ダッシュボード', icon: '📊' },
   { key: 'list',      label: '一覧',           icon: '📋' },
@@ -62,7 +62,7 @@ function loadSettings(): AppSettings {
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('battles')
-  // 設定タブへ飛ばすときに開くサブタブの指定（#428）。nonce を毎回上げることで、
+  // 設定タブへ飛ばすときに開くサブタブの指定(#428)。nonce を毎回上げることで、
   // 既に設定タブにいても・同じサブタブでも Settings 側の useEffect が発火する。
   const [settingsFocus, setSettingsFocus] = useState<{ tab: SettingsTab; nonce: number } | null>(null)
   /** 設定タブを開き、任意で特定サブタブに着地させる。未指定なら前回の選択のまま。 */
@@ -70,7 +70,7 @@ export default function App() {
     setTab('settings')
     if (subTab) setSettingsFocus(f => ({ tab: subTab, nonce: (f?.nonce ?? 0) + 1 }))
   }
-  // 「バトル」タブ内のビュー。前回選択を localStorage から復元する（#296）。
+  // 「バトル」タブ内のビュー。前回選択を localStorage から復元する(#296)。
   const [battlesView, setBattlesViewState] = useState<BattlesView>(() => loadViewPrefs().battles)
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
   const [aiChart, setAiChart] = useState<ChartSpec | null>(null)
@@ -81,8 +81,8 @@ export default function App() {
     () => lsGet(LAST_FETCHED_KEY)
   )
   const { notify } = useNotify()
-  // バトル／武器／ステージ上部の絞り込み＋見出しを sticky にするとき、
-  // 武器・ステージの見出し行が FilterBar の下に来るよう高さを測る（#450）。
+  // バトル/武器/ステージ上部の絞り込み＋見出しを sticky にするとき、
+  // 武器・ステージの見出し行が FilterBar の下に来るよう高さを測る(#450)。
   const stickyChromeRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -104,7 +104,7 @@ export default function App() {
     }
   }, [tab, battlesView])
 
-  // 起動時: store（settings.json）が localStorage より新しければ取り込む（識別子変更後の復元経路 #241）。
+  // 起動時: store(settings.json)が localStorage より新しければ取り込む(識別子変更後の復元経路 #241)。
   // 取り込んだら設定 state・派生 state を localStorage の最新値で更新する。
   useEffect(() => {
     let cancelled = false
@@ -121,10 +121,10 @@ export default function App() {
   }, [])
 
   // 起動直後・設定変更時・store 取り込み後に、自動取得と stat.ink 設定を
-  // バックエンドへ同期する（#322）。以前は設定タブ（Settings）を開いたときにしか
+  // バックエンドへ同期する(#322)。以前は設定タブ(Settings)を開いたときにしか
   // 同期されず、開かずに閉じると「自動取得 ON でもトレイに残らず終了」「スケジューラーが
   // 動かない」状態になっていた。settings は本コンポーネントが持つので、mount 時
-  // （loadSettings の値）と import 後（setSettings）で必ず同期される。
+  // (loadSettings の値)と import 後(setSettings)で必ず同期される。
   useEffect(() => {
     invoke('set_scheduler_config', {
       enabled: settings.autoFetchEnabled,
@@ -151,7 +151,7 @@ export default function App() {
       fe.hint === 'settings' ? { label: '設定を開く', onClick: () => openSettings('link') } :
       retry                  ? { label: '再試行',     onClick: retry } :
       undefined
-    // 未ログイン・外部サービスの一時障害は「アプリが壊れた」ではないので warning 止まり（#399）。
+    // 未ログイン・外部サービスの一時障害は「アプリが壊れた」ではないので warning 止まり(#399)。
     const soft = fe.kind === 'not_logged_in' || fe.kind === 'upstream_unavailable'
     notify({ kind: soft ? 'warning' : 'error', title: fe.title, message: fe.message, action, durationMs: 0 })
   }
@@ -180,16 +180,16 @@ export default function App() {
   }, [])
 
   // 起動時取得・スケジューラ取得でも「取得中…」を出すため、Rust 側の fetch_start/fetch_finish を listen し、
-  // さらに mount 時点で進行中なら即座に取得中表示にする（起動時取得は React マウント前に始まり得る race 対策）。
+  // さらに mount 時点で進行中なら即座に取得中表示にする(起動時取得は React マウント前に始まり得る race 対策)。
   useEffect(() => {
     let disposed  = false
     // 実イベントを一度でも受け取ったら、あとから解決する is_fetching スナップショットで
-    // 上書きしない（古い値でのクロバー防止）。
+    // 上書きしない(古い値でのクロバー防止)。
     let sawEvent  = false
     const startP  = listen('fetch_start',  () => { sawEvent = true; setFetching(true) })
     const finishP = listen('fetch_finish', () => { sawEvent = true; setFetching(false) })
     // listener 登録が完了してから is_fetching を読む。こうすると「登録の隙間に
-    // fetch_finish を取りこぼして『取得中』が残る」race を塞げる（#402 任意4）:
+    // fetch_finish を取りこぼして『取得中』が残る」race を塞げる(#402 任意4):
     // 登録前に emit された finish は、登録後のこの再確認が false を読んで解除する。
     Promise.all([startP, finishP]).then(() => {
       invoke<boolean>('is_fetching')
@@ -203,7 +203,7 @@ export default function App() {
     }
   }, [])
 
-  // stat.ink 自動アップロードの失敗をユーザーに見せる（#402 必須2）。
+  // stat.ink 自動アップロードの失敗をユーザーに見せる(#402 必須2)。
   // 以前は warn ログに畳んで握りつぶしていたため「なぜか送られない」だけが残っていた。
   // 未送信バトルは DB に残り次回自動で再送されるので、データは失われない旨も伝える。
   useEffect(() => {
@@ -214,8 +214,8 @@ export default function App() {
         kind:    'warning',
         title:   isAuth ? 'stat.ink の API キーを確認してください' : 'stat.ink へ送信できませんでした',
         message: isAuth
-          ? 'stat.ink の API キーが無効なため送信できませんでした。設定を確認してください。未送信分は次回自動で送られます（データは失われません）。'
-          : 'stat.ink が不調のため送信できませんでした。未送信分は次回自動で送られます（データは失われません）。',
+          ? 'stat.ink の API キーが無効なため送信できませんでした。設定を確認してください。未送信分は次回自動で送られます(データは失われません)。'
+          : 'stat.ink が不調のため送信できませんでした。未送信分は次回自動で送られます(データは失われません)。',
         durationMs: 8000,
       })
     })
@@ -254,7 +254,7 @@ export default function App() {
   }, [settings.statink.apiKey])
 
   // 起動時に武器マスターの自動チェック。前回取得から 24h 経過していれば裏で再取得。
-  // 失敗してもサイレント（UI ブロックしない）。
+  // 失敗してもサイレント(UI ブロックしない)。
   useEffect(() => {
     const last = Number(localStorage.getItem(LAST_WEAPONS_FETCH_K) ?? 0)
     if (Date.now() - last < WEAPONS_FETCH_INTERVAL_MS) return
@@ -281,15 +281,15 @@ export default function App() {
     return () => { unlistenPromise.then(fn => fn()) }
   }, [])
 
-  // 移行が発火した初回起動時、旧バージョン（v0.7 以前の chartoon / geartoon）の
+  // 移行が発火した初回起動時、旧バージョン(v0.7 以前の chartoon / geartoon)の
   // アンインストールを案内する。別 identifier のため single-instance では共存を防げず、
-  // 旧版と同時起動してしまうのを案内で解消する（#279）。
+  // 旧版と同時起動してしまうのを案内で解消する(#279)。
   useEffect(() => {
     const unlistenPromise = listen('migration_completed', () => {
       notify({
         kind: 'info',
         title: 'データを引き継ぎました',
-        message: '旧バージョン（chartoon / geartoon）のデータを splabo に移行しました。旧アプリが残っている場合はアンインストールをおすすめします（旧版と同時に起動してしまうのを防げます）。',
+        message: '旧バージョン(chartoon / geartoon)のデータを splabo に移行しました。旧アプリが残っている場合はアンインストールをおすすめします(旧版と同時に起動してしまうのを防げます)。',
         durationMs: 0,
       })
     })
@@ -300,11 +300,11 @@ export default function App() {
   function saveSettings(s: AppSettings) {
     setSettings(s)
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(s))
-    // store（settings.json）へミラー。識別子変更で localStorage が失われても復元できるように（#241）。
+    // store(settings.json)へミラー。識別子変更で localStorage が失われても復元できるように(#241)。
     void mirrorToStore()
   }
 
-  /** ビュー切替。選択を localStorage に保存して次回起動時にも復元する（#296）。 */
+  /** ビュー切替。選択を localStorage に保存して次回起動時にも復元する(#296)。 */
   function setBattlesView(next: BattlesView) {
     setBattlesViewState(next)
     saveViewPrefs({ ...loadViewPrefs(), battles: next })
@@ -317,7 +317,7 @@ export default function App() {
     setBattlesView('dashboard')
   }
 
-  // サイドバーから呼ばれる「最新データを取得」処理（バトル → ギア best-effort）
+  // サイドバーから呼ばれる「最新データを取得」処理(バトル → ギア best-effort)
   async function handleFetchFull() {
     if (fetching) return
     setFetching(true)
@@ -345,8 +345,8 @@ export default function App() {
           <img src="/splabo-logo.png" alt="splabo" />
         </button>
         {/* 並び順: バトル → 武器 → ステージ → ギア → 環境分析 → AI分析 → 設定
-            扱う対象をそのまま名前にする。旧アプリ由来の 2 つ（バトル / ギア）は
-            メニューでだけ旧名を併記する（#419）。 */}
+            扱う対象をそのまま名前にする。旧アプリ由来の 2 つ(バトル / ギア)は
+            メニューでだけ旧名を併記する(#419)。 */}
         <NavItem id="battles"   icon="⚔️" label="バトル" legacyName="chartoon" active={tab} onClick={setTab} />
         <NavItem id="weapons"   icon="🔫" label="武器"           active={tab} onClick={setTab} />
         <NavItem id="stages"    icon="🗺️" label="ステージ"       active={tab} onClick={setTab} />
@@ -370,10 +370,10 @@ export default function App() {
       <main className="content">
         {tab === 'battles' && (
           <>
-            {/* 武器・ステージ（FilterBar → 見出し行内の ViewToggle）と並びを揃えるため、
+            {/* 武器・ステージ(FilterBar → 見出し行内の ViewToggle)と並びを揃えるため、
                 切替は絞り込みの下に置く。見出しはダッシュボード / 一覧の両方に共通なので、
                 各ビューの中ではなくここに 1 つだけ置く。
-                絞り込み＋見出しはスクロール中も常時表示する（#450）。 */}
+                絞り込み＋見出しはスクロール中も常時表示する(#450)。 */}
             <div className="content-sticky-chrome" ref={stickyChromeRef}>
               <FilterBar filters={filters} onChange={setFilters} />
               <div className="battles-header">
@@ -399,9 +399,9 @@ export default function App() {
             )}
           </>
         )}
-        {/* 図鑑タブ（#298）: 期間・モード・ルール・結果を集計に反映する。
+        {/* 図鑑タブ(#298): 期間・モード・ルール・結果を集計に反映する。
             武器/ステージ絞り込みは自己言及的なので hideTargetFilters で隠す。
-            FilterBar は sticky。見出し行は各 Book 内で chrome 高さ分ずらして sticky（#450）。 */}
+            FilterBar は sticky。見出し行は各 Book 内で chrome 高さ分ずらして sticky(#450)。 */}
         {(tab === 'weapons' || tab === 'stages') && (
           <div className="content-sticky-chrome" ref={stickyChromeRef}>
             <FilterBar filters={filters} onChange={setFilters} hideTargetFilters />
@@ -426,9 +426,9 @@ function NavItem({ id, icon, label, legacyName, active, onClick }: { id: Tab; ic
       <span className="nav-item-icon" aria-hidden="true">{icon}</span>
       <span className="nav-item-label">
         {label}
-        {/* 旧アプリ由来のタブ（バトル＝Chartoon / ギア＝Geartoon）に添える旧アプリ名。
+        {/* 旧アプリ由来のタブ(バトル＝Chartoon / ギア＝Geartoon)に添える旧アプリ名。
             タブの中は絞り込み窓を図鑑と揃えている都合で置き場所が無いため、メニューに一本化した。
-            aria からは外す（読み上げでは日本語名だけで十分）。 */}
+            aria からは外す(読み上げでは日本語名だけで十分)。 */}
         {legacyName && <span className="nav-item-legacy" aria-hidden="true">({legacyName})</span>}
       </span>
     </button>

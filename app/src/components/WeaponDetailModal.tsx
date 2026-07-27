@@ -10,23 +10,23 @@ function winRateColor(rate: number): string {
   return '#f472b6'
 }
 
-/** 「勝率の良いステージ」の下限バトル数（少数サンプルによる勝率のブレを避ける）。
+/** 「勝率の良いステージ」の下限バトル数(少数サンプルによる勝率のブレを避ける)。
  *  StageDetailModal の「勝率 TOP 武器」と同じ流儀・同じ値に揃えている。 */
 const STAGE_MIN_BATTLES = 5
 /** 「勝率の良いステージ」で表示する件数。 */
 const STAGE_TOP_N = 5
 
 function fmtNum(n: number | null | undefined, digits = 2): string {
-  if (n === null || n === undefined) return '—'
+  if (n === null || n === undefined) return '-'
   return n.toFixed(digits)
 }
 
 function fmtRatio(num: number | null | undefined, den: number | null | undefined): string {
-  if (num === null || num === undefined || den === null || den === undefined || den === 0) return '—'
+  if (num === null || num === undefined || den === null || den === undefined || den === 0) return '-'
   return (num / den).toFixed(2)
 }
 
-/** コンパクト戦績「12戦 7勝5敗」。引き分けは 0 でないときだけ「2分」を付ける（#449）。
+/** コンパクト戦績「12戦 7勝5敗」。引き分けは 0 でないときだけ「2分」を付ける(#449)。
  *  WeaponBook.fmtRecord / StageDetailModal.fmtRecord と同期。 */
 function fmtRecord(total: number, wins: number, draws: number): string {
   const losses = total - wins - draws
@@ -36,14 +36,14 @@ function fmtRecord(total: number, wins: number, draws: number): string {
 /**
  * 武器図鑑カードをクリックして開く詳細モーダル。
  *
- * - バトル統計（バトル数 / W/L/D / 勝率 / 平均キル・デス・塗り / キルレ）は DB 集計。
+ * - バトル統計(バトル数 / W/L/D / 勝率 / 平均キル・デス・塗り / キルレ)は DB 集計。
  *   親 (WeaponBook) が statsByWeapon から該当行を `stats` prop として渡す。
  * - ステージ Top 5 とルール別勝率は `db_grouped_stats(group_by, weapon=武器スラッグ)` を 2 回呼んで取得。
- *   武器スラッグは `weapons.name`（旧テーブル）= `weapon.key`（新テーブル）= stat.ink キー。
+ *   武器スラッグは `weapons.name`(旧テーブル)= `weapon.key`(新テーブル)= stat.ink キー。
  *   FE 側で持っている `WeaponRecord.name` をそのまま `weapon` フィルタとして渡せる。
- * - 直近 30 バトルの線グラフは仕様により非実装（#149）。
- * - WeaponRecordQuery 由来の公式アプリ統計（熟練度・通算勝利数・総塗）は #162 廃止中のため
- *   今 PR では表示しない（混乱回避）。
+ * - 直近 30 バトルの線グラフは仕様により非実装(#149)。
+ * - WeaponRecordQuery 由来の公式アプリ統計(熟練度・通算勝利数・総塗)は #162 廃止中のため
+ *   今 PR では表示しない(混乱回避)。
  */
 export function WeaponDetailModal({
   weapon, image, subImage, spImage, stats, onClose,
@@ -89,12 +89,12 @@ export function WeaponDetailModal({
   const overallWinRate = decisive > 0 ? weapon.wins / decisive : null
   const losses         = weapon.total - weapon.wins - weapon.draws
 
-  // ステージ Top 5（バトル数降順、既に db 側でソート済み）
+  // ステージ Top 5(バトル数降順、既に db 側でソート済み)
   const topStages = (stageRows ?? []).slice(0, 5)
 
-  // 勝率の良いステージ Top 5（#302）。取得済みの stageRows を使い回すので追加クエリは不要。
+  // 勝率の良いステージ Top 5(#302)。取得済みの stageRows を使い回すので追加クエリは不要。
   // 少数サンプルで勝率が跳ねるのを避けるため STAGE_MIN_BATTLES 戦以上に絞る。
-  // 勝率を算出できない（引き分けのみ等で decisive=0）ステージは除外し、
+  // 勝率を算出できない(引き分けのみ等で decisive=0)ステージは除外し、
   // 同率のときはバトル数の多い方を上位にする。
   const bestStages = (stageRows ?? [])
     .filter(r => r.total >= STAGE_MIN_BATTLES)
@@ -105,7 +105,7 @@ export function WeaponDetailModal({
     .filter((x): x is { row: GroupedStatsRow; winRate: number } => x.winRate !== null)
     .sort((a, b) => (b.winRate - a.winRate) || (b.row.total - a.row.total))
     .slice(0, STAGE_TOP_N)
-  // ルール別は 5 ルール固定順で表示（データが無いルールは試合数 0 として並べる）
+  // ルール別は 5 ルール固定順で表示(データが無いルールは試合数 0 として並べる)
   const ruleOrder = Object.keys(RULE_LABELS)
   const ruleMap = new Map((ruleRows ?? []).map(r => [r.key, r]))
 
@@ -119,7 +119,7 @@ export function WeaponDetailModal({
         </div>
 
         <div className="modal-body">
-          {/* ヘッダー：武器画像（大）+ サブ/SP */}
+          {/* ヘッダー：武器画像(大)+ サブ/SP */}
           <section className="modal-section weapon-modal-hero">
             <div className="weapon-modal-hero-icon">
               {image
@@ -142,9 +142,9 @@ export function WeaponDetailModal({
             </div>
           </section>
 
-          {/* バトル統計：8 パネル（4×2 グリッド）。
+          {/* バトル統計：8 パネル(4×2 グリッド)。
               上段はバトル数・勝敗・勝率・平均塗り、
-              下段は K/A/D 系（平均キル・平均アシスト・平均デス・キルレ）で揃える（#449 / #465）。 */}
+              下段は K/A/D 系(平均キル・平均アシスト・平均デス・キルレ)で揃える(#449 / #465)。 */}
           <section className="modal-section">
             <h3 className="modal-section-title">バトル統計</h3>
             <div className="weapon-modal-stats-grid">
@@ -152,7 +152,7 @@ export function WeaponDetailModal({
               <StatPanel label="Win / Lose (Draw)" value={`${weapon.wins} / ${losses} (${weapon.draws})`} />
               <StatPanel
                 label="勝率"
-                value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '—'}
+                value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '-'}
                 color={overallWinRate !== null ? winRateColor(overallWinRate) : undefined}
               />
               <StatPanel label="平均塗り" value={fmtNum(stats?.avg_inked, 0)} />
@@ -163,7 +163,7 @@ export function WeaponDetailModal({
             </div>
           </section>
 
-          {/* ルール別勝率（横棒） */}
+          {/* ルール別勝率(横棒) */}
           <section className="modal-section">
             <h3 className="modal-section-title">ルール別勝率</h3>
             {loading && <div className="loading">読み込み中...</div>}
@@ -186,7 +186,7 @@ export function WeaponDetailModal({
                         )}
                       </div>
                       <span className="weapon-modal-rule-value">
-                        {wr !== null ? `${(wr * 100).toFixed(1)}%` : '—'}
+                        {wr !== null ? `${(wr * 100).toFixed(1)}%` : '-'}
                         <span className="weapon-modal-rule-count"> ({row?.total ?? 0})</span>
                       </span>
                     </div>
@@ -214,7 +214,7 @@ export function WeaponDetailModal({
                       <span
                         className="weapon-modal-stage-rate"
                         style={{ color: wr !== null ? winRateColor(wr) : 'var(--text-muted)' }}
-                      >{wr !== null ? `${(wr * 100).toFixed(1)}%` : '—'}</span>
+                      >{wr !== null ? `${(wr * 100).toFixed(1)}%` : '-'}</span>
                     </div>
                   )
                 })}
@@ -222,7 +222,7 @@ export function WeaponDetailModal({
             )}
           </section>
 
-          {/* 勝率の良いステージ Top 5（#302）。stageRows を勝率降順で並べ替えたもの。 */}
+          {/* 勝率の良いステージ Top 5(#302)。stageRows を勝率降順で並べ替えたもの。 */}
           <section className="modal-section">
             <h3 className="modal-section-title">
               勝率の良いステージ Top {STAGE_TOP_N}

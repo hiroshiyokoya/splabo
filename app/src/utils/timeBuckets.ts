@@ -126,5 +126,5 @@ export function formatBucketLabel(t: number, groupBy: GroupByKey): string {
   if (groupBy === 'day') return formatTickDate(t)
   if (groupBy === 'month') return `${start.getUTCFullYear()}/${start.getUTCMonth() + 1}`
   const end = bucketEndDate(start, groupBy)
-  return `${formatTickDate(start.getTime())}〜${formatTickDate(end.getTime())}`
+  return `${formatTickDate(start.getTime())}~${formatTickDate(end.getTime())}`
 }

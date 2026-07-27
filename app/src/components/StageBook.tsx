@@ -33,23 +33,23 @@ const SORT_LABELS: Record<SortKey, string> = {
   name:           '名前',
 }
 
-// 並びはバトル一覧と同じ K → A → D（#449）。
+// 並びはバトル一覧と同じ K → A → D(#449)。
 const SORT_KEYS: SortKey[] = [
   'total', 'wins', 'loses', 'draws',
   'win_rate', 'avg_kill', 'avg_assist', 'avg_death', 'kd', 'knockout_rate', 'name',
 ]
 
-/** K/D = 平均K ÷ 平均D。デス 0 は上位（Infinity）、データ無しは null。 */
+/** K/D = 平均K ÷ 平均D。デス 0 は上位(Infinity)、データ無しは null。 */
 function kdOf(r: GroupedStatsRow): number | null {
   if (r.avg_kill === null || r.avg_death === null) return null
   if (r.avg_death === 0) return r.avg_kill > 0 ? Number.POSITIVE_INFINITY : null
   return r.avg_kill / r.avg_death
 }
 
-/** compareRows が「昇順」で並べるキー（それ以外は降順）。一覧ビューの矢印表示に使う。 */
+/** compareRows が「昇順」で並べるキー(それ以外は降順)。一覧ビューの矢印表示に使う。 */
 const ASC_SORT_KEYS: ReadonlySet<SortKey> = new Set<SortKey>(['name', 'avg_death'])
 
-/** 比較関数（DESC を基本に、name / avg_death は ASC）。 */
+/** 比較関数(DESC を基本に、name / avg_death は ASC)。 */
 function compareRows(a: GroupedStatsRow, b: GroupedStatsRow, sort: SortKey): number {
   switch (sort) {
     case 'total':
@@ -101,7 +101,7 @@ export function StageBook({ filters }: { filters: Filters }) {
   const [loading,     setLoading]     = useState(true)
   const [sort,        setSort]        = useState<SortKey>('total')
   const [selected,    setSelected]    = useState<GroupedStatsRow | null>(null)
-  // パネル / 一覧の切替（#297）。前回選択を localStorage から復元する。
+  // パネル / 一覧の切替(#297)。前回選択を localStorage から復元する。
   const [view,        setViewState]   = useState<BookView>(() => loadViewPrefs().stages)
   // compareRows は各キーの「自然な向き」を返すので、反転フラグで昇順/降順をトグルする。
   const [reversed,    setReversed]    = useState(false)
@@ -120,13 +120,13 @@ export function StageBook({ filters }: { filters: Filters }) {
 
   useEffect(() => {
     setLoading(true)
-    // 共通 FilterBar（期間・モード・ルール・結果）を集計に反映する（#298）。
+    // 共通 FilterBar(期間・モード・ルール・結果)を集計に反映する(#298)。
     // ステージ図鑑はローカル集計のみなので、全項目がフィルタに追従する。
     invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'stage', ...filtersToBookArgs(filters) })
       .then(data => {
         setRows(data)
 
-        // ステージ画像（BattleLog と同じ流儀で name を渡す）。
+        // ステージ画像(BattleLog と同じ流儀で name を渡す)。
         Promise.all(
           data.map(r =>
             invoke<string | null>('read_image', { kind: 'stage', name: r.name })
@@ -141,7 +141,7 @@ export function StageBook({ filters }: { filters: Filters }) {
       .finally(() => setLoading(false))
   }, [filters])
 
-  // 一覧ビューの名前検索（パネルには出さない）。
+  // 一覧ビューの名前検索(パネルには出さない)。
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (view !== 'list' || !q) return rows
@@ -230,7 +230,7 @@ export function StageBook({ filters }: { filters: Filters }) {
   )
 }
 
-/** 一覧ビュー（#297）。ヘッダクリックで並び替え、行クリックで詳細モーダル。 */
+/** 一覧ビュー(#297)。ヘッダクリックで並び替え、行クリックで詳細モーダル。 */
 function StageTable({ rows, sort, ascending, onSort, onSelect }: {
   rows:      GroupedStatsRow[]
   sort:      SortKey
@@ -274,14 +274,14 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
                 <td className="book-td">{loses}</td>
                 <td className="book-td">{r.draws}</td>
                 <td className="book-td" style={{ color: winRate !== null ? winRateColor(winRate) : undefined }}>
-                  {winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '—'}
+                  {winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '-'}
                 </td>
-                <td className="book-td">{r.avg_kill   !== null ? r.avg_kill.toFixed(2)   : '—'}</td>
-                <td className="book-td">{r.avg_assist !== null ? r.avg_assist.toFixed(2) : '—'}</td>
-                <td className="book-td">{r.avg_death  !== null ? r.avg_death.toFixed(2)  : '—'}</td>
+                <td className="book-td">{r.avg_kill   !== null ? r.avg_kill.toFixed(2)   : '-'}</td>
+                <td className="book-td">{r.avg_assist !== null ? r.avg_assist.toFixed(2) : '-'}</td>
+                <td className="book-td">{r.avg_death  !== null ? r.avg_death.toFixed(2)  : '-'}</td>
                 <td className="book-td">{avgKillRatio(r.avg_kill, r.avg_death)}</td>
                 <td className="book-td">{(koWin * 100).toFixed(1)}%</td>
-                <td className="book-td">{r.avg_inked !== null ? r.avg_inked.toFixed(0) : '—'}</td>
+                <td className="book-td">{r.avg_inked !== null ? r.avg_inked.toFixed(0) : '-'}</td>
               </tr>
             )
           })}
@@ -336,25 +336,25 @@ function StageCard({ row, image, onClick }: {
             className="stage-card-stat-value stage-card-winrate"
             style={{ color: winRate !== null ? winRateColor(winRate) : undefined }}
           >
-            {winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '—'}
+            {winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '-'}
           </span>
         </div>
         <div className="stage-card-stat-row">
           <span className="stage-card-stat-label">平均K</span>
           <span className="stage-card-stat-value">
-            {row.avg_kill !== null ? row.avg_kill.toFixed(2) : '—'}
+            {row.avg_kill !== null ? row.avg_kill.toFixed(2) : '-'}
           </span>
         </div>
         <div className="stage-card-stat-row">
           <span className="stage-card-stat-label">平均A</span>
           <span className="stage-card-stat-value">
-            {row.avg_assist !== null ? row.avg_assist.toFixed(2) : '—'}
+            {row.avg_assist !== null ? row.avg_assist.toFixed(2) : '-'}
           </span>
         </div>
         <div className="stage-card-stat-row">
           <span className="stage-card-stat-label">平均D</span>
           <span className="stage-card-stat-value">
-            {row.avg_death !== null ? row.avg_death.toFixed(2) : '—'}
+            {row.avg_death !== null ? row.avg_death.toFixed(2) : '-'}
           </span>
         </div>
         <div className="stage-card-stat-row">
@@ -378,7 +378,7 @@ function StageCard({ row, image, onClick }: {
         <div className="stage-card-stat-row">
           <span className="stage-card-stat-label">平均塗り</span>
           <span className="stage-card-stat-value">
-            {row.avg_inked !== null ? row.avg_inked.toFixed(0) : '—'}
+            {row.avg_inked !== null ? row.avg_inked.toFixed(0) : '-'}
           </span>
         </div>
       </div>
