@@ -15,7 +15,10 @@ import {
 } from '@dnd-kit/sortable'
 import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats, BattleRow, GroupedStatsRow, GroupedStatsRow2D, CustomChart, GroupByKey, WeaponRecord } from '../types'
 import { BATTLE_NUMERIC_DEFAULT_BIN } from '../types'
-import { filtersToRange, stageAbbr, modeLabel, ruleLabel, avgKillRatio, modeFilterArg, ruleFilterArg } from '../types'
+import {
+  filtersToRange, stageAbbr, modeLabel, ruleLabel, modeFilterArg, ruleFilterArg,
+  fmtKillWithAssist, fmtKillRatioWithContrib,
+} from '../types'
 import { CustomChartCard } from './CustomChartCard'
 import { ChartConfigModal } from './ChartConfigModal'
 import { loadCustomCharts, saveCustomCharts, generateChartId } from '../utils/customCharts'
@@ -48,13 +51,6 @@ function winRateLevel(rate: number): 'hi' | 'mid' | 'lo' {
   if (rate >= 0.55) return 'hi'
   if (rate >= 0.45) return 'mid'
   return 'lo'
-}
-
-/** 平均キルカードの値「K (A)」＝ キル (アシスト)(#449)。
- *  K が無ければ '-'、A だけ無ければ括弧内を '-' にする。BattleLog.fmtKillWithAssist と同期。 */
-function fmtKillWithAssist(kill: number | null | undefined, assist: number | null | undefined): string {
-  if (kill == null) return '-'
-  return `${kill.toFixed(2)} (${assist != null ? assist.toFixed(2) : '-'})`
 }
 
 // 積み上げバーで「最上段のセグメントだけ上端を角丸」にする shape。
@@ -305,9 +301,10 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
               value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '-'}
               valueColor={overallWinRate !== null ? winRateColor(overallWinRate) : undefined}
             />
-            <StatCard label="平均キル" value={fmtKillWithAssist(stats?.avg_kill, stats?.avg_assist)} />
+            {/* カッコ内が何かはラベルで示す(#561)。「Win / Lose (Draw)」と同じ書き方。 */}
+            <StatCard label="平均キル (アシスト)" value={fmtKillWithAssist(stats?.avg_kill, stats?.avg_assist)} />
             <StatCard label="平均デス" value={stats?.avg_death != null ? stats.avg_death.toFixed(2) : '-'} />
-            <StatCard label="キルレ" value={avgKillRatio(stats?.avg_kill ?? null, stats?.avg_death ?? null)} />
+            <StatCard label="キルレ (貢献)" value={fmtKillRatioWithContrib(stats?.avg_kill, stats?.avg_assist, stats?.avg_death)} />
           </div>
 
           <div className="chart-grid">

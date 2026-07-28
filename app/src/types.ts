@@ -477,6 +477,50 @@ export function avgKillRatio(avgKill: number | null, avgDeath: number | null): s
   return (avgKill / avgDeath).toFixed(2)
 }
 
+/**
+ * 統計パネルの `平均キル (平均アシスト)`(#561)。
+ *
+ * 以前は Dashboard と BattleLog に同じ実装が二重にあり、コメントで「同期」と
+ * 書いて運用していた。1 本に寄せる。
+ */
+export function fmtKillWithAssist(
+  kill: number | null | undefined,
+  assist: number | null | undefined,
+): string {
+  if (kill == null) return '-'
+  return `${kill.toFixed(2)} (${assist != null ? assist.toFixed(2) : '-'})`
+}
+
+/**
+ * 統計パネルの `キルレ (貢献キルレ)`(#561)。
+ *
+ * 貢献キルレは (キル + アシスト) ÷ デス。アシストが取れないデータでは
+ * `平均キル (平均アシスト)` と同じ考え方でカッコ内を `-` にする。
+ */
+export function fmtKillRatioWithContrib(
+  avgKill: number | null | undefined,
+  avgAssist: number | null | undefined,
+  avgDeath: number | null | undefined,
+): string {
+  const kd = avgKillRatio(avgKill ?? null, avgDeath ?? null)
+  if (kd === '-') return '-'
+  const contrib = avgAssist == null
+    ? '-'
+    : avgKillRatio((avgKill ?? 0) + avgAssist, avgDeath ?? null)
+  return `${kd} (${contrib})`
+}
+
+/**
+ * バトル数の勝敗内訳 `70 勝 50 敗 3 分`(#562)。
+ *
+ * 引き分けは発生したときだけ出す。ヒートマップ・散布図のツールチップで
+ * 同じ書き方を使うため、文言はここ 1 か所に置く(#388 で決めた形)。
+ */
+export function winLoseBreakdown(total: number, wins: number, draws: number): string {
+  const losses = total - wins - draws
+  return `${wins} 勝 ${losses} 敗${draws > 0 ? ` ${draws} 分` : ''}`
+}
+
 // ---------------------------------------------------------------------------
 // カスタムグラフ(#86)用の型
 // ---------------------------------------------------------------------------

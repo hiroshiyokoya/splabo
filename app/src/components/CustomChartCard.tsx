@@ -5,7 +5,7 @@ import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, Metric
 import {
   stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric, chartMetrics,
   METRIC_LABELS, BATTLE_METRIC_LABELS, BATTLE_NUMERIC_METRIC_LABELS,
-  GROUP_BY_LABELS, formatMetric, type GroupByKey,
+  GROUP_BY_LABELS, formatMetric, winLoseBreakdown, type GroupByKey,
 } from '../types'
 import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
@@ -83,6 +83,18 @@ function dedupeRows(entries: { key: string | undefined; row: () => TooltipRow }[
   return out
 }
 
+/**
+ * 集計散布図のツールチップ 1 行の値(#562)。
+ *
+ * バトル数のときだけ勝敗内訳を添える。書き方はヒートマップのツールチップと共通
+ * (`winLoseBreakdown`)。X / Y / サイズ / 色のどれに割り当てられていても効く。
+ */
+function fmtScatterMetric(d: GroupedStatsRow, value: number | null, key: string): string {
+  const text = formatMetric(value, key as MetricKey)
+  if (key !== 'total' || d.total <= 0) return text
+  return `${text} (${winLoseBreakdown(d.total, d.wins, d.draws)})`
+}
+
 /** 散布図の描画データ一式。凡例はポイントと同じ min/max・同じ色関数から作るので、
  *  ここでまとめて返す(呼び出し側で作り直すと本体と凡例がズレる)。 */
 type ScatterBundle = { points: ScatterPoint[]; sizeLegend: SizeLegend | null; colorLegend: ColorLegend | null }
@@ -127,12 +139,12 @@ function buildAggScatterPoints(
           : 'var(--accent)',
       markerShape: catStyle?.shape,
       tooltipRows: dedupeRows([
-        { key: xKey, row: () => ({ label: metricLabelOf(xKey), value: formatMetric(x, xKey as MetricKey) }) },
-        { key: yKey, row: () => ({ label: metricLabelOf(yKey), value: formatMetric(y, yKey as MetricKey) }) },
-        { key: sizeKey, row: () => ({ label: metricLabelOf(sizeKey!), value: formatMetric(size, sizeKey as MetricKey), muted: true }) },
+        { key: xKey, row: () => ({ label: metricLabelOf(xKey), value: fmtScatterMetric(d, x, xKey) }) },
+        { key: yKey, row: () => ({ label: metricLabelOf(yKey), value: fmtScatterMetric(d, y, yKey) }) },
+        { key: sizeKey, row: () => ({ label: metricLabelOf(sizeKey!), value: fmtScatterMetric(d, size, sizeKey!), muted: true }) },
         isCatColor
           ? { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: catVal!, muted: true }) }
-          : { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: formatMetric(colorVal, colorKey as MetricKey), muted: true }) },
+          : { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: fmtScatterMetric(d, colorVal, colorKey!), muted: true }) },
       ]),
     }
   })
