@@ -441,11 +441,27 @@ export const isLogPlottable = (v: number | null): v is number =>
  */
 const LOG_PAD_RATIO = 0.12  // 選択ハロー込みでも端で切れないよう、少し広めに取る
 
-export function logDomain(values: number[]): [number, number] | null {
+/**
+ * `center` を渡すと、その値を軸の中央に置いて**上下が均等**になるようにする(#549)。
+ *
+ * キルレは 1 を境に「キルが勝ってる / 負けてる」が反転する比率なので、1 が軸の
+ * どこか偏った位置に来ると読み違える。ログ空間では「2 倍」と「0.5 倍」が中心から
+ * 等距離になるので、`k = max(max/center, center/min)` を取って `[center/k, center*k]`
+ * にすれば対称になる。
+ *
+ * 対称化するのは**データが center を跨いでいるときだけ**。全点が片側にあるときに
+ * 対称化すると、値が存在しない反対側に半分を割くことになり、肝心のデータが潰れる。
+ */
+export function logDomain(values: number[], center?: number): [number, number] | null {
   const usable = values.filter(v => Number.isFinite(v) && v > 0)
   if (usable.length === 0) return null
-  const min = Math.min(...usable)
-  const max = Math.max(...usable)
+  let min = Math.min(...usable)
+  let max = Math.max(...usable)
+  if (center != null && center > 0 && min < center && max > center) {
+    const k = Math.max(max / center, center / min)
+    min = center / k
+    max = center * k
+  }
   if (min === max) return [min / 10, max * 10]
   const pad = (Math.log10(max) - Math.log10(min)) * LOG_PAD_RATIO
   return [min / 10 ** pad, max * 10 ** pad]
@@ -453,6 +469,8 @@ export function logDomain(values: number[]): [number, number] | null {
 
 /** ログ軸の目盛り候補。各桁に 1・2・5 を置く(1,2,5,10,20,50,100…)。 */
 const LOG_MANTISSAS = [1, 2, 5]
+/** 1/2/5 が 2 本も入らない狭いレンジ用の細かい系列。 */
+const LOG_MANTISSAS_FINE = [1, 1.5, 2, 3, 4, 5, 7]
 
 /**
  * ログ軸の目盛りを「切りのいい値」で作る (#387)。
@@ -483,8 +501,75 @@ export function logTicks(domain: [number, number], maxTicks = 10): number[] | nu
   // 細かい順に候補を並べ、maxTicks に収まる最初のものを採る。
   const usable = [build(LOG_MANTISSAS, 1), build([1], 1), build([1], 2), build([1], 3)]
     .filter(t => t.length >= 2)
-  if (usable.length === 0) return null
+  if (usable.length === 0) {
+    // レンジが狭くて 1/2/5 が 2 本も入らないケース(キルレ 1.2~2.0 など)。
+    // ここで諦めると Recharts が domain を等分した半端な値を出すので、桁内をもう一段
+    // 細かい系列で刻む。
+    const fine = build(LOG_MANTISSAS_FINE, 1)
+    return fine.length >= 2 && fine.length <= maxTicks ? fine : null
+  }
   return usable.find(t => t.length <= maxTicks) ?? usable[usable.length - 1]
+}
+
+/**
+ * リニア軸の目盛りを「切りのいい値」で作る (#547)。
+ *
+ * ドメインは端のドットが軸線に乗って切れないよう `expandLinearDomain()` で 10% 広げて
+ * いるため、Recharts に任せるとその半端な端を等分した目盛りになる。刻みを 1/2/5 × 10^n
+ * から選び直して、人が読める並びにする。
+ *
+ * 勝率のような 0~1 の比率でも同じ仕組みで足りる(0.05 = 5% 刻みが選ばれる)。
+ * 目盛りが 2 本未満しか入らないときは null を返し、Recharts に任せる。
+ */
+export function linearTicks(
+  domain: [number, number],
+  maxTicks = 8,
+  /**
+   * 刻みの下限。ラベルの表示桁より細かい刻みを選ぶと**同じラベルが並ぶ**ため、
+   * 呼び出し側の書式に合わせて渡す(勝率は整数 % 表示なので 0.01)。
+   */
+  minStep = 0,
+): number[] | null {
+  const [lo, hi] = domain
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || !(hi > lo)) return null
+
+  // 目標本数から必要な刻みの下限を出し、それ以上で最小の 1/2/5 刻みを採る。
+  let step = Math.max(niceStep((hi - lo) / maxTicks), minStep)
+  for (let guard = 0; guard < 8; guard++) {
+    const first = Math.ceil(lo / step) * step
+    const out: number[] = []
+    // 端の浮動小数誤差で最後の目盛りが落ちないよう、ごく小さな許容を足す。
+    for (let v = first; v <= hi + step * 1e-9; v += step) {
+      out.push(roundNice(Math.round(v / step) * step))
+    }
+    if (out.length >= 2 && out.length <= maxTicks) return out
+    if (out.length > maxTicks) { step = niceStep(step * 1.5); continue }
+    // 本数が足りない = 刻みが粗すぎる。1 段細かくして再試行する。
+    // minStep より細かくはできないので、そこで諦めて Recharts に任せる。
+    const finer = niceStep(step / 2.5)
+    if (!(finer > 0) || finer >= step || finer < minStep) return null
+    step = finer
+  }
+  return null
+}
+
+/**
+ * メトリクスの「基準値」。この値に破線を引き、ログ軸ならこの値を中心に対称化する。
+ *
+ * 勝率は 0.5(引き分け)、キルレ系は 1(キルとデスが同数)が読みの境界になる。
+ * 環境分析(`kd` / `contrib_kd`)とダッシュボード(`avg_kd` / `avg_contrib_kd`)で
+ * メトリクスキーが違うので、両方をここにまとめて 2 画面で同じ判定を使う(#548)。
+ */
+const REF_LINE_BY_METRIC: Record<string, number> = {
+  win_rate:       0.5,
+  kd:             1,
+  contrib_kd:     1,
+  avg_kd:         1,
+  avg_contrib_kd: 1,
+}
+
+export function metricRefLine(metric: string | null | undefined): number | undefined {
+  return metric ? REF_LINE_BY_METRIC[metric] : undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -808,29 +893,55 @@ export function ScatterChart({
 
   // 🔴 Recharts の scale="log" は domain={['auto','auto']} と併用すると壊れるので、
   // 残った点から min/max を作って明示的に渡す。点が全部落ちたらリニアに落とす。
+  // 基準値が 1 の軸(キルレ)はログ空間で 1 の上下が均等になるようにする(#549)。
+  // 勝率(0.5)はログにできないので対象外。
+  const xLogCenter = xRefLine === 1 ? 1 : undefined
+  const yLogCenter = yRefLine === 1 ? 1 : undefined
   const xLogDomain = useMemo(
-    () => (xLogScale ? logDomain(drawable.map(p => p.x as number)) : null),
-    [drawable, xLogScale],
+    () => (xLogScale ? logDomain(drawable.map(p => p.x as number), xLogCenter) : null),
+    [drawable, xLogScale, xLogCenter],
   )
   const yLogDomain = useMemo(
-    () => (yLogScale ? logDomain(drawable.map(p => p.y as number)) : null),
-    [drawable, yLogScale],
+    () => (yLogScale ? logDomain(drawable.map(p => p.y as number), yLogCenter) : null),
+    [drawable, yLogScale, yLogCenter],
   )
   // ログ軸の目盛りは 1/2/5 系列で明示する(#387)。Recharts 任せだと domain を等分した
   // 半端な値になる。null のときは従来どおり Recharts に任せる。
-  const xTicks = useMemo(() => (xLogDomain ? logTicks(xLogDomain) : null), [xLogDomain])
-  const yTicks = useMemo(() => (yLogDomain ? logTicks(yLogDomain) : null), [yLogDomain])
+  const xLogTicks = useMemo(() => (xLogDomain ? logTicks(xLogDomain) : null), [xLogDomain])
+  const yLogTicks = useMemo(() => (yLogDomain ? logTicks(yLogDomain) : null), [yLogDomain])
   const xLog = xLogDomain !== null
   const yLog = yLogDomain !== null
+
+  // 明示ドメインが無いリニア軸は実データから作る。Recharts の auto に任せると
+  // ドメインが分からず目盛りを組み立てられない(#547)。比率軸は従来どおり 0~1 を基準にする。
+  const xDataRange = useMemo(() => finiteRange(drawable.map(p => p.x)), [drawable])
+  const yDataRange = useMemo(() => finiteRange(drawable.map(p => p.y)), [drawable])
 
   // 端のマーカーが切れないよう、線形ドメインは値空間でも少し広げる。
   // ログ軸は logDomain 側の余白を使う。
   const xAxisDomain = xLogDomain
     ?? expandLinearDomain(xDomain, { rate01: xIsRate })
-    ?? (xIsRate ? expandLinearDomain([0, 1], { rate01: true }) : undefined)
+    ?? (xIsRate
+          ? expandLinearDomain([0, 1], { rate01: true })
+          : expandLinearDomain(xDataRange ? [xDataRange.min, xDataRange.max] : undefined))
   const yAxisDomain = yLogDomain
     ?? expandLinearDomain(yDomain, { rate01: yIsRate })
-    ?? (yIsRate ? expandLinearDomain([0, 1], { rate01: true }) : undefined)
+    ?? (yIsRate
+          ? expandLinearDomain([0, 1], { rate01: true })
+          : expandLinearDomain(yDataRange ? [yDataRange.min, yDataRange.max] : undefined))
+
+  // リニア軸の目盛りも 1/2/5 系列で明示する(#547)。
+  // 勝率は `fmtRateTick` が整数 % に丸めるので、1% より細かい刻みは選ばせない
+  // (0.5% 刻みにすると「50%」が 2 本並ぶ)。
+  // 横軸はラベルが横に並ぶので本数を抑えめに、縦軸は縦に積むので少し多めでよい。
+  const xTicks = useMemo(
+    () => xLogTicks ?? (xLog || !xAxisDomain ? null : linearTicks(xAxisDomain, 8, xIsRate ? 0.01 : 0)),
+    [xLogTicks, xLog, xIsRate, xAxisDomain?.[0], xAxisDomain?.[1]],
+  )
+  const yTicks = useMemo(
+    () => yLogTicks ?? (yLog || !yAxisDomain ? null : linearTicks(yAxisDomain, 10, yIsRate ? 0.01 : 0)),
+    [yLogTicks, yLog, yIsRate, yAxisDomain?.[0], yAxisDomain?.[1]],
+  )
 
   // groupKey → siblings: 重なり判定用に同一 groupKey の点を集約
   const siblings = useMemo(() => {

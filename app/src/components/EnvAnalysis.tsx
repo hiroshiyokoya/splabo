@@ -19,7 +19,7 @@ import type {
   EnvStatus, EnvVersion, EnvRank, EnvFilterOption, MetricKey, GroupByKey,
 } from '../types'
 import { currentSeasonStart, GROUP_BY_LABELS } from '../types'
-import { ScatterChart, buildSizeLegend, buildColorLegend } from './charts/ScatterChart'
+import { ScatterChart, buildSizeLegend, buildColorLegend, metricRefLine } from './charts/ScatterChart'
 import type { ScatterPoint } from './charts/ScatterChart'
 import { Heatmap } from './charts/Heatmap'
 import { MultiSelect } from './MultiSelect'
@@ -1048,8 +1048,8 @@ export function EnvAnalysis() {
                     xIsRate={xM.rate01} yIsRate={yM.rate01}
                     xLogScale={xLog && xLogOk} yLogScale={yLog && yLogOk}
                     xDomain={xDomain} yDomain={yDomain}
-                    xRefLine={xM.key === 'win_rate' ? 0.5 : undefined}
-                    yRefLine={yM.key === 'win_rate' ? 0.5 : undefined}
+                    xRefLine={metricRefLine(xM.key)}
+                    yRefLine={metricRefLine(yM.key)}
                     hasSize={!!sizeM}
                     sizeLegend={sizeLegend}
                     colorLegend={colorLegend}

@@ -14,7 +14,7 @@ import { LineChart } from './charts/LineChart'
 import { CalendarHeatmapChart } from './charts/CalendarHeatmapChart'
 import { HeatmapChart } from './charts/HeatmapChart'
 import {
-  ScatterChart, buildSizeLegend, buildColorLegend,
+  ScatterChart, buildSizeLegend, buildColorLegend, metricRefLine,
   type ScatterPoint, type SizeLegend, type ColorLegend,
 } from './charts/ScatterChart'
 import { rateCellColor, sequentialCellColor } from '../utils/heatmapColors'
@@ -553,6 +553,9 @@ function renderChartBody(
         yLabel={metricLabelOf(chart.yMetric)}
         xIsRate={chart.xMetric === 'win_rate'}
         yIsRate={chart.yMetric === 'win_rate'}
+        // 勝率 50% / キルレ 1 に破線を引く。環境分析と同じ判定を使う(#548)。
+        xRefLine={metricRefLine(chart.xMetric)}
+        yRefLine={metricRefLine(chart.yMetric)}
         // 比率メトリクスはログにしても意味がないので、設定が残っていても効かせない (#381)。
         xLogScale={chart.xLogScale && chart.xMetric !== 'win_rate'}
         yLogScale={chart.yLogScale && chart.yMetric !== 'win_rate'}
