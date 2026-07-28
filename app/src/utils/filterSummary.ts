@@ -49,24 +49,24 @@ const RULE_LABEL  = new Map(RULE_OPTIONS.map(o => [o.key, o.label]))
 /** 画像内で 1 項目に並べる値の上限。これを超えたら「他 N 件」に畳む。 */
 const MAX_VALUES = 3
 
+/**
+ * 1 項目の中で複数選択した値の並び。
+ *
+ * 区切りは `, `。項目の区切り(` / `)と同じ記号にすると「ロビーの 2 つ目の値」と
+ * 「次の項目」の区別が付かない(#556)。
+ */
+const VALUE_SEP = ', '
+
 export function joinValues(values: string[]): string {
-  if (values.length <= MAX_VALUES) return values.join(' / ')
-  return `${values.slice(0, MAX_VALUES).join(' / ')} 他${values.length - MAX_VALUES}件`
+  if (values.length <= MAX_VALUES) return values.join(VALUE_SEP)
+  return `${values.slice(0, MAX_VALUES).join(VALUE_SEP)}${VALUE_SEP}他${values.length - MAX_VALUES}件`
 }
 
-/**
- * `ラベル: 値` の並び。値が無い項目は落とす。
- *
- * `emptyText` は全項目が空だったときの戻り値。キャプションを前半・後半に分けて組む場合
- * (環境分析)、後半が空のときに `絞り込みなし` が混ざると嘘になるので `''` を渡す。
- */
-export function joinConditions(
-  parts: [string, string | null][],
-  emptyText = '絞り込みなし',
-): string {
+/** `ラベル: 値` の並び。値が無い項目は落とす。 */
+export function joinConditions(parts: [string, string | null][]): string {
   const kept = parts.filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`)
   // 区切りは半角スペース + 半角スラッシュ(全角スペースや全角/は使わない)
-  return kept.length ? kept.join(' / ') : emptyText
+  return kept.length ? kept.join(' / ') : '絞り込みなし'
 }
 
 /** ローカル日付の `YYYY-MM-DD`(保存キャプションの「今日」)。 */
@@ -106,11 +106,32 @@ function periodText(f: Filters, now = new Date()): string {
   return formatAbsolutePeriodRange(since, until, now)
 }
 
-/** ダッシュボードなど FilterBar 配下の画面の条件テキスト。 */
+/**
+ * 保存画像のキャプションを組む(#553 / #554)。
+ *
+ * 順序は **先頭要素 → 絞り込み条件 → 該当バトル数**。件数は末尾。
+ * 条件が長いときは CSS 側で折り返す(打ち切らない)ので、件数を前へ寄せる必要はない。
+ *
+ * `source` は環境分析の `出典: stat.ink` のような画面固有の先頭要素。
+ * `count` が null のとき(データ未取得など)は件数を出さない。
+ */
+export function buildExportCaption(
+  conditions: string,
+  count: number | null,
+  source?: string,
+): string {
+  return [
+    source ?? '',
+    conditions,
+    count != null ? `該当 ${count.toLocaleString()} バトル` : '',
+  ].filter(Boolean).join(' / ')
+}
+
+/** ダッシュボードなど FilterBar 配下の画面の条件。`buildExportCaption` に渡す。 */
 export function describeFilters(f: Filters, stageNames?: Map<string, string>): string {
   return joinConditions([
-    ['期間',     periodText(f)],
     ['ロビー',   f.mode.length ? joinValues(f.mode.map(k => LOBBY_LABEL.get(k) ?? k)) : null],
+    ['期間',     periodText(f)],
     ['ルール',   f.rule.length ? joinValues(f.rule.map(k => RULE_LABEL.get(k) ?? k)) : null],
     ['武器',     f.weapon.length ? joinValues(f.weapon) : null],
     ['ステージ', f.stage.length ? joinValues(f.stage.map(id => stageNames?.get(id) ?? id)) : null],

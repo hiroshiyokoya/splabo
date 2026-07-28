@@ -91,6 +91,7 @@ pub fn run() {
         .manage(FetchInProgress::default())
         .manage(gear::GearFetchInProgress::default())
         .manage(companion::CompanionState::default())
+        .manage(image_export::LastExportDir::default())
         .invoke_handler(tauri::generate_handler![
             auth::start_login,
             auth::handle_auth_redirect,

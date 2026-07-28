@@ -130,7 +130,17 @@ function fitExportWidth(node: HTMLElement): () => void {
   node.querySelectorAll('svg').forEach(svg => {
     // 画像に写らない操作 UI のアイコンは数えない。
     if (svg.closest(`.${EXPORT_HIDE_CLASS}`)) return
-    const w = svg.getBoundingClientRect().width
+    let w = svg.getBoundingClientRect().width
+    // ヒートマップの斜め列ラベルのように、**宣言サイズの外へ描かれる**要素がある
+    // (`.chart-card svg { overflow: visible }` なので画面では見えている)。
+    // 宣言幅だけで詰めると、はみ出していた分が画像の端で切れる(#552)。
+    // getBBox() は子要素の実際の描画範囲を返すので、そちらも見て広い方を採る。
+    try {
+      const bb = (svg as SVGGraphicsElement).getBBox()
+      if (bb.width > 0) w = Math.max(w, bb.x + bb.width)
+    } catch {
+      // 未レンダリング(display:none 等)の SVG では getBBox が投げる。宣言幅で足りる。
+    }
     if (w > contentW) contentW = w
   })
   if (contentW <= 0) return noop
