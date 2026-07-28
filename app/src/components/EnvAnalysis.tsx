@@ -170,15 +170,23 @@ const SCATTER_EXPORT_NOTE =
 const heatmapExportNote = (kda: boolean) =>
   `${kda ? 20 : 30} サンプル未満のセルは非表示 / ${POSTER_EXCLUDED_TEXT}`
 
-/** 保存画像のキャプション先頭。出典を最初に出す。 */
-function envExportCaption(filterSummary: string, filteredCount: number | null): string {
-  const parts = ['出典: stat.ink']
-  // 該当件数は先頭寄りに置く。条件が長いと caption が 2 行で切られるため(#529)。
-  if (filteredCount != null) {
-    parts.push(`該当 ${filteredCount.toLocaleString()} バトル`)
-  }
-  if (filterSummary) parts.push(filterSummary)
-  return parts.join(' / ')
+/** 保存画像キャプションの絞り込み条件。前半(ロビー・期間)と後半に分けて持つ。
+ *  間に該当件数を挟むため、1 本の文字列にはしない(#545)。 */
+interface EnvFilterSummary { lead: string; rest: string }
+
+/**
+ * 保存画像のキャプション。順序は **出典 → ロビー → 期間 → 該当件数 → その他の条件**(#545)。
+ *
+ * 該当件数を末尾に置かないのは、キャプションが `-webkit-line-clamp: 2` で打ち切られるため
+ * (条件が長いと切れて見えなくなる・#529)。
+ */
+function envExportCaption(summary: EnvFilterSummary, filteredCount: number | null): string {
+  return [
+    '出典: stat.ink',
+    summary.lead,
+    filteredCount != null ? `該当 ${filteredCount.toLocaleString()} バトル` : '',
+    summary.rest,
+  ].filter(Boolean).join(' / ')
 }
 
 /** スロット単位の集計が必要なヒートマップ次元(#481)。 */
@@ -487,7 +495,8 @@ export function EnvAnalysis() {
   }, [period, status, customSince, customUntil])
 
   // 画像に焼き込む条件(#500 / #506)。期間はクエリと同じ since/until を絶対日付で。
-  const envFilterSummary = useMemo(() => {
+  // 前半(ロビー → 期間)と後半に分けて返す。間に該当件数が入る(#545)。
+  const envFilterSummary = useMemo<EnvFilterSummary>(() => {
     const optLabel = (opts: { key: string; label: string }[], k: string) =>
       opts.find(o => o.key === k)?.label ?? k
     // データ未取得で相対期間が解けないときだけ、UI と同じラベルにフォールバックする。
@@ -501,16 +510,20 @@ export function EnvAnalysis() {
       }
       return PERIOD_OPTIONS.find(o => o.key === period)?.label ?? period
     })()
-    return joinConditions([
-      ['期間', periodCaption],
-      ['ロビー',     lobbyKeys.length ? joinValues(lobbyKeys.map(k => LOBBY_LABEL[k] ?? k)) : null],
-      ['ルール',     ruleKeys.length ? joinValues(ruleKeys.map(k => RULE_LABEL[k] ?? k)) : null],
-      ['武器',       weaponKeys.length ? joinValues(weaponKeys.map(k => optLabel(weaponOptions, k))) : null],
-      ['ステージ',   stageKeys.length ? joinValues(stageKeys.map(k => optLabel(stageOptions, k))) : null],
-      ['バージョン', gameVers.length ? joinValues(gameVers.map(formatGameVer)) : null],
-      ['ウデマエ',   posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
-      ['Xパワー',    (powerMin || powerMax) ? `${powerMin || '-'}~${powerMax || '-'}` : null],
-    ])
+    return {
+      lead: joinConditions([
+        ['ロビー', lobbyKeys.length ? joinValues(lobbyKeys.map(k => LOBBY_LABEL[k] ?? k)) : null],
+        ['期間',   periodCaption],
+      ], ''),
+      rest: joinConditions([
+        ['ルール',     ruleKeys.length ? joinValues(ruleKeys.map(k => RULE_LABEL[k] ?? k)) : null],
+        ['武器',       weaponKeys.length ? joinValues(weaponKeys.map(k => optLabel(weaponOptions, k))) : null],
+        ['ステージ',   stageKeys.length ? joinValues(stageKeys.map(k => optLabel(stageOptions, k))) : null],
+        ['バージョン', gameVers.length ? joinValues(gameVers.map(formatGameVer)) : null],
+        ['ウデマエ',   posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
+        ['Xパワー',    (powerMin || powerMax) ? `${powerMin || '-'}~${powerMax || '-'}` : null],
+      ], ''),
+    }
   }, [period, range, lobbyKeys, ruleKeys, weaponKeys, stageKeys,
       weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax])
 

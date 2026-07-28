@@ -54,11 +54,19 @@ export function joinValues(values: string[]): string {
   return `${values.slice(0, MAX_VALUES).join(' / ')} 他${values.length - MAX_VALUES}件`
 }
 
-/** `ラベル: 値` の並び。値が無い項目は落とす。 */
-export function joinConditions(parts: [string, string | null][]): string {
+/**
+ * `ラベル: 値` の並び。値が無い項目は落とす。
+ *
+ * `emptyText` は全項目が空だったときの戻り値。キャプションを前半・後半に分けて組む場合
+ * (環境分析)、後半が空のときに `絞り込みなし` が混ざると嘘になるので `''` を渡す。
+ */
+export function joinConditions(
+  parts: [string, string | null][],
+  emptyText = '絞り込みなし',
+): string {
   const kept = parts.filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`)
   // 区切りは半角スペース + 半角スラッシュ(全角スペースや全角/は使わない)
-  return kept.length ? kept.join(' / ') : '絞り込みなし'
+  return kept.length ? kept.join(' / ') : emptyText
 }
 
 /** ローカル日付の `YYYY-MM-DD`(保存キャプションの「今日」)。 */
