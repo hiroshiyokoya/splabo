@@ -22,7 +22,7 @@ import { loadCustomCharts, saveCustomCharts, generateChartId } from '../utils/cu
 import type { WeaponMeta } from '../utils/scatterCategoryColors'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
-import { describeFilters, useStageNames } from '../utils/filterSummary'
+import { describeFilters, buildExportCaption, useStageNames } from '../utils/filterSummary'
 import { rankRowsForBarChart } from '../utils/chartSort'
 
 const COLOR_WIN  = '#22c55e'
@@ -120,8 +120,9 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
   )
 
   // 画像保存に焼き込む条件(#500)。FilterBar は画面上部にあり画像には写らない。
-  const stageNames    = useStageNames()
-  const filterSummary = useMemo(() => describeFilters(filters, stageNames), [filters, stageNames])
+  // キャプション本体は末尾に該当バトル数が付くので、集計が出そろってから組む(下の filterSummary)。
+  const stageNames      = useStageNames()
+  const filterConditions = useMemo(() => describeFilters(filters, stageNames), [filters, stageNames])
 
   useEffect(() => {
     const { since, until } = filtersToRange(filters)
@@ -231,6 +232,8 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
   const totalLosses  = totalBattles - totalWins - totalDraws
   const decisiveBattles = totalBattles - totalDraws
   const overallWinRate  = decisiveBattles > 0 ? totalWins / decisiveBattles : null
+  // 保存画像のキャプション(#553)。集計未取得のうちは「該当 0 バトル」を出さない。
+  const filterSummary = buildExportCaption(filterConditions, summary ? totalBattles : null)
   // カレンダーの表示範囲に渡す(#461)
   const { since: filterSince, until: filterUntil } = filtersToRange(filters)
 

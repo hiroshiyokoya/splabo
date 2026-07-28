@@ -514,13 +514,14 @@ body {
   font-size: 11px;
   line-height: 1.5;
   color: var(--text-muted);
-  /* 条件が長くても打ち切る。画像内で条件文がグラフを押しつぶさないようにする。 */
   overflow: hidden;
   -webkit-box-orient: vertical;
 }
+/* 条件が長いときは打ち切らず折り返す(#554)。画像が縦に伸びるだけで、
+   絞り込み条件が読めなくなるより良い。 */
 .is-exporting .panel-export-caption {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
+  display: block;
+  overflow: visible;
   margin: -8px 0 12px;
 }
 .is-exporting .panel-export-note {
