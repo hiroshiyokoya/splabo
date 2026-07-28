@@ -99,6 +99,67 @@ function hexToRgba(hex: string, alpha: number): string | null {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
+/**
+ * 書き出し時にパネル幅を中身の実寸へ寄せる(#546)。
+ *
+ * ヒートマップ・カレンダーは列数から幅を決める**固定幅 SVG** で描いている。一方カード幅は
+ * ダッシュボードのグリッドが決めるため、
+ *
+ * - 列が少ない … SVG 幅 < カード幅 → 画像の右に死に余白が残る
+ * - 列が多い   … SVG 幅 > カード幅 → `html-to-image` はノードのボックスで
+ *                ラスタライズするので、はみ出した分が画像から欠ける
+ *
+ * どちらもキャプチャ中だけカード幅を中身に合わせれば直る。
+ *
+ * 幅を数えるのは**固定幅を持つ SVG だけ**。キャプション・注釈は折り返す前提の文章なので
+ * 数えない(1 行に伸ばすと極端に横長になる)。凡例は `flex-wrap` なので狭くても折り返す。
+ *
+ * Recharts のパネルは SVG 幅 = コンテナ幅なので目標幅が現在の幅と一致し、何も起きない。
+ *
+ * 戻り値は元のスタイルへ戻す関数(画面を汚さないため)。
+ */
+function fitExportWidth(node: HTMLElement): () => void {
+  const noop = () => {}
+  const cs = getComputedStyle(node)
+  const frameX =
+    parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) +
+    parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth)
+  if (!Number.isFinite(frameX)) return noop
+
+  let contentW = 0
+  node.querySelectorAll('svg').forEach(svg => {
+    // 画像に写らない操作 UI のアイコンは数えない。
+    if (svg.closest(`.${EXPORT_HIDE_CLASS}`)) return
+    const w = svg.getBoundingClientRect().width
+    if (w > contentW) contentW = w
+  })
+  if (contentW <= 0) return noop
+
+  const target = Math.max(Math.ceil(contentW + frameX), MIN_EXPORT_WIDTH)
+  const current = Math.round(node.getBoundingClientRect().width)
+  if (Math.abs(target - current) <= 1) return noop
+
+  const prev = {
+    width:    node.style.width,
+    minWidth: node.style.minWidth,
+    maxWidth: node.style.maxWidth,
+  }
+  node.style.width    = `${target}px`
+  node.style.minWidth = `${target}px`
+  node.style.maxWidth = `${target}px`
+  return () => {
+    node.style.width    = prev.width
+    node.style.minWidth = prev.minWidth
+    node.style.maxWidth = prev.maxWidth
+  }
+}
+
+/**
+ * 書き出し幅の下限(px)。ダッシュボードの基準トラック幅に合わせる。
+ * これより狭めると、タイトルが右上ロゴ用に確保した 140px と競って窮屈になる。
+ */
+const MIN_EXPORT_WIDTH = 420
+
 /** レイアウト変更(キャプション表示)が反映されてから描画するために 2 フレーム待つ。 */
 function nextFrames(): Promise<void> {
   return new Promise(resolve => {
@@ -131,9 +192,14 @@ function fillExportCredit(node: HTMLElement, credit: string): void {
 export async function savePanelAsPng(node: HTMLElement, screen: string, panel: string): Promise<string | null> {
   node.classList.add(EXPORTING_CLASS)
   const tooltipBgs: { el: HTMLElement; prev: string }[] = []
+  let unfit: (() => void) | null = null
   try {
     // 保存した瞬間の版・日付を焼き込む(画面に出しっぱなしの古い日付にしない)。
     fillExportCredit(node, buildExportCredit(await appVersion()))
+    // 固定幅 SVG のパネルで右に余白が出る / はみ出しが欠けるのを防ぐ(#546)。
+    // ツールチップの載せ替えより先に効かせる(位置計算が新しい幅を見るように)。
+    unfit = fitExportWidth(node)
+    await nextFrames()
     // ツールチップ背景を rgba 半透明に(color-mix はラスタライズで落ちることがある)。
     const tipBg = hexToRgba(cssVar('--surface', '#17172a'), 0.72)
       ?? 'rgba(23, 23, 42, 0.72)'
@@ -157,6 +223,7 @@ export async function savePanelAsPng(node: HTMLElement, screen: string, panel: s
     return await invokeSave(buildPanelExportFilename(screen, panel, 'png'), dataBase64, 'png')
   } finally {
     tooltipBgs.forEach(({ el, prev }) => { el.style.background = prev })
+    unfit?.()
     node.classList.remove(EXPORTING_CLASS)
   }
 }
@@ -496,8 +563,11 @@ function freezeChartGeometry(root: HTMLElement): () => void {
 export async function savePanelAsHtml(node: HTMLElement, screen: string, panel: string): Promise<string | null> {
   node.classList.add(EXPORTING_CLASS)
   let unfreeze: (() => void) | null = null
+  let unfit: (() => void) | null = null
   try {
     fillExportCredit(node, buildExportCredit(await appVersion()))
+    // 実寸を固める前に幅を中身へ寄せる(#546)。順序を逆にすると広いままの幅が固定される。
+    unfit = fitExportWidth(node)
     node.dispatchEvent(new CustomEvent(PANEL_EXPORT_HTML_PREPARE_EVENT, { bubbles: false }))
     // キャプション表示後に ResponsiveContainer が再計測するのを待つ。
     await nextFrames()
@@ -526,6 +596,7 @@ export async function savePanelAsHtml(node: HTMLElement, screen: string, panel: 
     )
   } finally {
     unfreeze?.()
+    unfit?.()
     node.classList.remove(EXPORTING_CLASS)
   }
 }
