@@ -1,6 +1,6 @@
 import { useId, useMemo, useState } from 'react'
 import type { GroupedStatsRow2D, MetricKey } from '../../types'
-import { METRIC_LABELS, getMetric2D, formatMetric, metricGroup } from '../../types'
+import { METRIC_LABELS, getMetric2D, formatMetric, metricGroup, winLoseBreakdown } from '../../types'
 import {
   rateCellColor, RATE_LEGEND_COLORS, sequentialCellColor, seqLegendColors,
   integerRange, SparseHatchPattern, EmptyHatchPattern, hatchFill,
@@ -368,8 +368,7 @@ export function HeatmapChart({
             {metric !== 'total' && <>バトル数: {hover.total}</>}
             {hover.total > 0 && (
               <>
-                {metric !== 'total' && ' '}({hover.wins} 勝 {hover.total - hover.wins - hover.draws} 敗
-                {hover.draws > 0 && ` ${hover.draws} 分`})
+                {metric !== 'total' && ' '}({winLoseBreakdown(hover.total, hover.wins, hover.draws)})
               </>
             )}
           </div>
