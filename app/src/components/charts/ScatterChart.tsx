@@ -442,26 +442,17 @@ export const isLogPlottable = (v: number | null): v is number =>
 const LOG_PAD_RATIO = 0.12  // 選択ハロー込みでも端で切れないよう、少し広めに取る
 
 /**
- * `center` を渡すと、その値を軸の中央に置いて**上下が均等**になるようにする(#549)。
+ * 🔴 範囲は**実データに寄せる**こと(#558)。
  *
- * キルレは 1 を境に「キルが勝ってる / 負けてる」が反転する比率なので、1 が軸の
- * どこか偏った位置に来ると読み違える。ログ空間では「2 倍」と「0.5 倍」が中心から
- * 等距離になるので、`k = max(max/center, center/min)` を取って `[center/k, center*k]`
- * にすれば対称になる。
- *
- * 対称化するのは**データが center を跨いでいるときだけ**。全点が片側にあるときに
- * 対称化すると、値が存在しない反対側に半分を割くことになり、肝心のデータが潰れる。
+ * #549 でキルレ軸を 1 について対称化していたが、データが 1 の片側に偏っているほど
+ * 反対側に空白を作り、肝心のデータが潰れた(例: 0.9~3.4 → 0.22~4.56 で下半分が空)。
+ * 「1 が軸の中央」より「データが見やすい」が優先。1 の位置は基準線と目盛りで示す。
  */
-export function logDomain(values: number[], center?: number): [number, number] | null {
+export function logDomain(values: number[]): [number, number] | null {
   const usable = values.filter(v => Number.isFinite(v) && v > 0)
   if (usable.length === 0) return null
-  let min = Math.min(...usable)
-  let max = Math.max(...usable)
-  if (center != null && center > 0 && min < center && max > center) {
-    const k = Math.max(max / center, center / min)
-    min = center / k
-    max = center * k
-  }
+  const min = Math.min(...usable)
+  const max = Math.max(...usable)
   if (min === max) return [min / 10, max * 10]
   const pad = (Math.log10(max) - Math.log10(min)) * LOG_PAD_RATIO
   return [min / 10 ** pad, max * 10 ** pad]
@@ -570,6 +561,28 @@ const REF_LINE_BY_METRIC: Record<string, number> = {
 
 export function metricRefLine(metric: string | null | undefined): number | undefined {
   return metric ? REF_LINE_BY_METRIC[metric] : undefined
+}
+
+/**
+ * 目盛りに基準値(勝率 50% / キルレ 1)を必ず入れる(#558)。
+ *
+ * ドメイン内に基準線があるのに目盛りが無いと、破線だけが浮いて何の値か読めない。
+ * 軸の範囲はデータに合わせて自動で決め、**1 の目盛りだけは必ず出す**のがルール。
+ *
+ * 目盛りを Recharts に任せている(null)ときは何もしない。1 本だけ足しても軸にならないため。
+ */
+export function withRefTick(
+  ticks: number[] | null,
+  ref: number | undefined,
+  domain: [number, number] | undefined,
+): number[] | null {
+  if (!ticks || ref == null || !domain) return ticks
+  const [lo, hi] = domain
+  if (!(ref > lo && ref < hi)) return ticks
+  // 浮動小数の誤差で「同じ値がもう 1 本」増えないよう、相対誤差で見る。
+  const eps = Math.max(Math.abs(ref), 1) * 1e-9
+  if (ticks.some(t => Math.abs(t - ref) <= eps)) return ticks
+  return [...ticks, ref].sort((a, b) => a - b)
 }
 
 // ---------------------------------------------------------------------------
@@ -893,17 +906,14 @@ export function ScatterChart({
 
   // 🔴 Recharts の scale="log" は domain={['auto','auto']} と併用すると壊れるので、
   // 残った点から min/max を作って明示的に渡す。点が全部落ちたらリニアに落とす。
-  // 基準値が 1 の軸(キルレ)はログ空間で 1 の上下が均等になるようにする(#549)。
-  // 勝率(0.5)はログにできないので対象外。
-  const xLogCenter = xRefLine === 1 ? 1 : undefined
-  const yLogCenter = yRefLine === 1 ? 1 : undefined
+  // 範囲は実データに寄せる。基準値(キルレ 1)を軸の中央に置くための対称化はしない(#558)。
   const xLogDomain = useMemo(
-    () => (xLogScale ? logDomain(drawable.map(p => p.x as number), xLogCenter) : null),
-    [drawable, xLogScale, xLogCenter],
+    () => (xLogScale ? logDomain(drawable.map(p => p.x as number)) : null),
+    [drawable, xLogScale],
   )
   const yLogDomain = useMemo(
-    () => (yLogScale ? logDomain(drawable.map(p => p.y as number), yLogCenter) : null),
-    [drawable, yLogScale, yLogCenter],
+    () => (yLogScale ? logDomain(drawable.map(p => p.y as number)) : null),
+    [drawable, yLogScale],
   )
   // ログ軸の目盛りは 1/2/5 系列で明示する(#387)。Recharts 任せだと domain を等分した
   // 半端な値になる。null のときは従来どおり Recharts に任せる。
@@ -934,13 +944,24 @@ export function ScatterChart({
   // 勝率は `fmtRateTick` が整数 % に丸めるので、1% より細かい刻みは選ばせない
   // (0.5% 刻みにすると「50%」が 2 本並ぶ)。
   // 横軸はラベルが横に並ぶので本数を抑えめに、縦軸は縦に積むので少し多めでよい。
+  // 最後に基準値(勝率 50% / キルレ 1)を必ず足す。範囲は自動、1 の目盛りは出す(#558)。
+  //
+  // ログ軸で `logTicks` が null(レンジが狭くて 1/2/5 が 2 本入らない)のときは
+  // リニア刻みに落とす。1 桁に満たないレンジならログとリニアの見た目はほぼ同じで、
+  // Recharts の半端な自動目盛りに任せるより読める。目盛りが無いと基準値も足せない。
   const xTicks = useMemo(
-    () => xLogTicks ?? (xLog || !xAxisDomain ? null : linearTicks(xAxisDomain, 8, xIsRate ? 0.01 : 0)),
-    [xLogTicks, xLog, xIsRate, xAxisDomain?.[0], xAxisDomain?.[1]],
+    () => withRefTick(
+      xAxisDomain ? (xLogTicks ?? linearTicks(xAxisDomain, 8, xIsRate ? 0.01 : 0)) : null,
+      xRefLine, xAxisDomain,
+    ),
+    [xLogTicks, xIsRate, xRefLine, xAxisDomain?.[0], xAxisDomain?.[1]],
   )
   const yTicks = useMemo(
-    () => yLogTicks ?? (yLog || !yAxisDomain ? null : linearTicks(yAxisDomain, 10, yIsRate ? 0.01 : 0)),
-    [yLogTicks, yLog, yIsRate, yAxisDomain?.[0], yAxisDomain?.[1]],
+    () => withRefTick(
+      yAxisDomain ? (yLogTicks ?? linearTicks(yAxisDomain, 10, yIsRate ? 0.01 : 0)) : null,
+      yRefLine, yAxisDomain,
+    ),
+    [yLogTicks, yIsRate, yRefLine, yAxisDomain?.[0], yAxisDomain?.[1]],
   )
 
   // groupKey → siblings: 重なり判定用に同一 groupKey の点を集約
