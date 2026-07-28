@@ -301,9 +301,10 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
               value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '-'}
               valueColor={overallWinRate !== null ? winRateColor(overallWinRate) : undefined}
             />
-            <StatCard label="平均キル" value={fmtKillWithAssist(stats?.avg_kill, stats?.avg_assist)} />
+            {/* カッコ内が何かはラベルで示す(#561)。「Win / Lose (Draw)」と同じ書き方。 */}
+            <StatCard label="平均キル (アシスト)" value={fmtKillWithAssist(stats?.avg_kill, stats?.avg_assist)} />
             <StatCard label="平均デス" value={stats?.avg_death != null ? stats.avg_death.toFixed(2) : '-'} />
-            <StatCard label="キルレ" value={fmtKillRatioWithContrib(stats?.avg_kill, stats?.avg_assist, stats?.avg_death)} />
+            <StatCard label="キルレ (貢献)" value={fmtKillRatioWithContrib(stats?.avg_kill, stats?.avg_assist, stats?.avg_death)} />
           </div>
 
           <div className="chart-grid">

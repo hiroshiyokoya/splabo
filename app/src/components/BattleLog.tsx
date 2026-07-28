@@ -145,9 +145,10 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
             value={`${stats.wins} / ${stats.total - stats.wins - stats.draws} (${stats.draws})`} />
           <LogStatCard label="全体勝率"          value={stats.total > 0 ? `${(stats.win_rate * 100).toFixed(1)}%` : '-'}
             valueColor={stats.total > 0 ? winRateColor(stats.win_rate) : undefined} />
-          <LogStatCard label="平均キル"          value={fmtKillWithAssist(stats.avg_kill, stats.avg_assist)} />
-          <LogStatCard label="平均デス"          value={stats.avg_death !== null ? stats.avg_death.toFixed(2) : '-'} />
-          <LogStatCard label="キルレ"            value={fmtKillRatioWithContrib(stats.avg_kill, stats.avg_assist, stats.avg_death)} />
+          {/* カッコ内が何かはラベルで示す(#561)。「Win / Lose (Draw)」と同じ書き方。 */}
+          <LogStatCard label="平均キル (アシスト)" value={fmtKillWithAssist(stats.avg_kill, stats.avg_assist)} />
+          <LogStatCard label="平均デス"           value={stats.avg_death !== null ? stats.avg_death.toFixed(2) : '-'} />
+          <LogStatCard label="キルレ (貢献)"       value={fmtKillRatioWithContrib(stats.avg_kill, stats.avg_assist, stats.avg_death)} />
         </div>
       )}
 
