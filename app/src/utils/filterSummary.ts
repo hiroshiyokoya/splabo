@@ -49,9 +49,17 @@ const RULE_LABEL  = new Map(RULE_OPTIONS.map(o => [o.key, o.label]))
 /** 画像内で 1 項目に並べる値の上限。これを超えたら「他 N 件」に畳む。 */
 const MAX_VALUES = 3
 
+/**
+ * 1 項目の中で複数選択した値の並び。
+ *
+ * 区切りは `, `。項目の区切り(` / `)と同じ記号にすると「ロビーの 2 つ目の値」と
+ * 「次の項目」の区別が付かない(#556)。
+ */
+const VALUE_SEP = ', '
+
 export function joinValues(values: string[]): string {
-  if (values.length <= MAX_VALUES) return values.join(' / ')
-  return `${values.slice(0, MAX_VALUES).join(' / ')} 他${values.length - MAX_VALUES}件`
+  if (values.length <= MAX_VALUES) return values.join(VALUE_SEP)
+  return `${values.slice(0, MAX_VALUES).join(VALUE_SEP)}${VALUE_SEP}他${values.length - MAX_VALUES}件`
 }
 
 /** `ラベル: 値` の並び。値が無い項目は落とす。 */
