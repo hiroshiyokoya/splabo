@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import { getVersion } from '@tauri-apps/api/app'
+import { displayVersion } from '../utils/version'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useState } from 'react'
 
@@ -32,7 +33,7 @@ export function About({ onClose }: Props) {
         </div>
         <div className="modal-body about-body">
           <img className="about-logo" src="/splabo-logo.png" alt="splabo" />
-          {version && <div className="about-version">v{version}</div>}
+          {version && <div className="about-version">v{displayVersion(version)}</div>}
           <p className="about-desc">
             Splatoon 3 のバトルデータを記録・分析するデスクトップアプリです。
           </p>
