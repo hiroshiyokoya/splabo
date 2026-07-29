@@ -869,6 +869,17 @@ body {
   gap: 10px;
   margin-bottom: 20px;
 }
+/* 狭いときは 6 → 3 → 2 と折る(#564)。
+   カードは 6 枚固定なので、**割り切れる数だけ**を使う。auto-fit + minmax だと
+   幅によって 5 枚 + 1 枚のような半端な行ができる。
+   カードの高さは grid の stretch で行内が揃うので、ラベルが 2 行になっても崩れない。
+   閾値はサイドバー(180px)と .content の左右 padding(24px×2)を引いた実効幅で見ている。 */
+@media (max-width: 1280px) {
+  .stat-cards { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 720px) {
+  .stat-cards { grid-template-columns: repeat(2, 1fr); }
+}
 /* バトルのダッシュボードでは統計カード行もスクロール中常時表示する（#450）。
    絞り込み＋見出し（.content-sticky-chrome）のすぐ下に張り付く。
    下余白は padding に寄せ、半透明の背景でカード間の隙間も覆う。 */
