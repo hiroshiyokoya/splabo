@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { getVersion } from '@tauri-apps/api/app'
+import { isDevVersion } from '../utils/version'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { QRCodeSVG } from 'qrcode.react'
 import type { AppSettings, SettingsTab } from '../types'
@@ -101,7 +102,9 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   const [isDevBuild, setIsDevBuild] = useState(false)
 
   useEffect(() => {
-    getVersion().then(v => setIsDevBuild(v === '0.0.0-dev')).catch(() => {})
+    // 🔴 判定は getVersion() の生の値に対して行う。表示用の displayVersion() は
+    // 開発ビルドで `0.0.0-dev (a1b2c3d)` になるため、比較に使うと常に false になる(#569)。
+    getVersion().then(v => setIsDevBuild(isDevVersion(v))).catch(() => {})
   }, [])
   // ── ギア設定 ──────────────────────────────────────────────
   const [gearDensity, setGearDensity] = useState<DensityId>(loadDensityId)
