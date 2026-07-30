@@ -385,7 +385,9 @@ const COMMON_MISTAKES: &[&str] = &[
     "🔴 **結果の形を指定されたら、その形で返す。** 「行は〜、列は〜」「表にして」と\
      言われたら、縦に長い一覧ではなく指定どおりの表になるまで SQL の中で組み立てる。\
      列方向へ並べるには `MAX(CASE WHEN 順位 = 1 THEN ... END) AS '1位'` を使う\
-     （SQLite に PIVOT 構文は無い）",
+     （SQLite に PIVOT 構文は無い）。**セルに複数の値を並べて書く**ときは\
+     `指標 || ' ' || ROUND(相関係数, 3)` のように **1 列の文字列に連結**する。\
+     相関係数だけにすると指標名が消える",
     "**群ごとの上位 N** は `ROW_NUMBER() OVER (PARTITION BY 群 ORDER BY 指標 DESC)` で\
      順位を振ってから `WHERE 順位 <= N` で絞る。\
      全体の `LIMIT N` や `ORDER BY 群, 指標` だけでは**群ごとの上位にならない**",
@@ -433,28 +435,28 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
     (
         // 実機で踏んだ。横に corr 列を並べて GREATEST + ROW_NUMBER すると壊れる。
         // 縦に UNION ALL → PARTITION BY ルール → ピボットが正しい。
-        "ルールごとに勝率と相関が高い指標の上位5つを、ルール×相関係数の表で（セルは相関係数のみ）",
+        "ルールごとに勝率と相関が高い指標の上位5つ。ルール×相関係数の表で、セルには指標と相関係数を並べて",
         "WITH 指標 AS (\n\
-         \x20 SELECT rule AS ルール, corr(won, kill) AS 相関係数 FROM ai_battles\n\
+         \x20 SELECT rule AS ルール, 'キル' AS 指標, corr(won, kill) AS 相関係数 FROM ai_battles\n\
          \x20   WHERE rule IS NOT NULL GROUP BY rule HAVING COUNT(*) >= 30\n\
-         \x20 UNION ALL SELECT rule, corr(won, death) FROM ai_battles\n\
+         \x20 UNION ALL SELECT rule, 'デス', corr(won, death) FROM ai_battles\n\
          \x20   WHERE rule IS NOT NULL GROUP BY rule HAVING COUNT(*) >= 30\n\
-         \x20 UNION ALL SELECT rule, corr(won, assist) FROM ai_battles\n\
+         \x20 UNION ALL SELECT rule, 'アシスト', corr(won, assist) FROM ai_battles\n\
          \x20   WHERE rule IS NOT NULL GROUP BY rule HAVING COUNT(*) >= 30\n\
-         \x20 UNION ALL SELECT rule, corr(won, inked) FROM ai_battles\n\
+         \x20 UNION ALL SELECT rule, '塗り', corr(won, inked) FROM ai_battles\n\
          \x20   WHERE rule IS NOT NULL GROUP BY rule HAVING COUNT(*) >= 30\n\
-         \x20 UNION ALL SELECT rule, corr(won, kill_or_assist) FROM ai_battles\n\
+         \x20 UNION ALL SELECT rule, '貢献キル', corr(won, kill_or_assist) FROM ai_battles\n\
          \x20   WHERE rule IS NOT NULL GROUP BY rule HAVING COUNT(*) >= 30\n\
          ), 順位付き AS (\n\
          \x20 SELECT *, ROW_NUMBER() OVER (PARTITION BY ルール ORDER BY ABS(相関係数) DESC) AS 順位\n\
          \x20 FROM 指標 WHERE 相関係数 IS NOT NULL\n\
          )\n\
          SELECT ルール,\n\
-         \x20      MAX(CASE WHEN 順位 = 1 THEN ROUND(相関係数, 3) END) AS '1位',\n\
-         \x20      MAX(CASE WHEN 順位 = 2 THEN ROUND(相関係数, 3) END) AS '2位',\n\
-         \x20      MAX(CASE WHEN 順位 = 3 THEN ROUND(相関係数, 3) END) AS '3位',\n\
-         \x20      MAX(CASE WHEN 順位 = 4 THEN ROUND(相関係数, 3) END) AS '4位',\n\
-         \x20      MAX(CASE WHEN 順位 = 5 THEN ROUND(相関係数, 3) END) AS '5位'\n\
+         \x20      MAX(CASE WHEN 順位 = 1 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '1位',\n\
+         \x20      MAX(CASE WHEN 順位 = 2 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '2位',\n\
+         \x20      MAX(CASE WHEN 順位 = 3 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '3位',\n\
+         \x20      MAX(CASE WHEN 順位 = 4 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '4位',\n\
+         \x20      MAX(CASE WHEN 順位 = 5 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '5位'\n\
          FROM 順位付き WHERE 順位 <= 5\n\
          GROUP BY ルール ORDER BY ルール",
     ),
