@@ -155,7 +155,7 @@ Nintendo Account ログインURL → ブラウザで開く（deep-link で認可
 
 ### AI 分析
 
-OpenAI / Google Gemini / Anthropic Claude / xAI Grok のいずれかに、**質問文とデータ構造の説明だけ**を渡し、返ってきた SQLite の SELECT をアプリが手元で実行します。バトルデータそのものは AI に送りません。表示は「AI の説明」「実行した SQL」「結果の表」です。プロバイダごとに価格情報付きのモデルプリセットを用意しています（`app/src/utils/aiModels.ts`）。API キーは `localStorage` に保存されます。
+OpenAI / Google Gemini / Anthropic Claude / xAI Grok のいずれかに、**質問文・データ構造の説明（ビュー定義とドメイン知識）・件数と期間の範囲**を渡し、返ってきた SQLite の SELECT をアプリが手元で実行します。バトルの内容は AI に送りません。表示は「AI の説明」「実行した SQL」「結果の表」です。プロバイダごとに価格情報付きのモデルプリセットを用意しています（`app/src/utils/aiModels.ts`）。API キーは `localStorage` に保存されます。
 
 読み取り専用・タイムアウト・行数上限で安全に実行します。結果をグラフにする機能は次の段で入れる予定です（現状は表のみ）。
 
