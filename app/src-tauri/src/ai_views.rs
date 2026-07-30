@@ -380,6 +380,21 @@ const COMMON_MISTAKES: &[&str] = &[
     "足切りはグループごとの件数に対して行う。グループが 1 行しかない集計に \
      HAVING COUNT(*) >= 5 を付けると、全部消えて 0 件になる",
     "相関を聞かれたら平均を並べず corr() を使う。平均を見比べても相関は分からない",
+    "🔴 **相関を取る列で GROUP BY しない。** `corr(won, kill)` を出すのに `GROUP BY won` と\
+     書くと、群の中で `won` が定数になって分散 0 になり、**必ず NULL が返る**。\
+     相関は群の中で両方の値が動いている必要がある",
+    "🔴 **複数の指標の相関は 1 回のスキャンで取る。** 指標ごとに `UNION ALL` で分けると\
+     同じ行を何度も読む（4 指標で 4 回）。まず `SELECT corr(won, kill) AS キル, \
+     corr(won, death) AS デス, ... FROM ... WHERE ...` と**横に並べて 1 行で取り**、\
+     その結果を `UNION ALL` で縦に展開する。実測で 5.0 秒 → 0.59 秒",
+    "🔴 **`UNION ALL` の各ブランチに絞り込みを書く。** CTE や 1 つのブランチに \
+     `WHERE` を書いても他のブランチには効かない。書き忘れたブランチが全件スキャンする",
+    "SQLite の日付修飾子は `start of day` / `start of month` / `start of year` だけ。\
+     **`start of season` は存在しない**（式全体が NULL になり 1 行も一致しなくなる）。\
+     シーズンで絞るときは「データの規模」に載っている**シーズンの開始日**を使う",
+    "🔴 **シーズンは `season` 列で絞らない。`source_date` の範囲で絞る。**\
+     `season` にはインデックスが無く、実測で 15 倍遅い（8.7 秒 → 0.59 秒）。\
+     シーズン名と日付の対応は「データの規模」に載っている",
     "UNION ALL で並べた結果を並べ替えるときは、**全体を副問い合わせで包む**。\
      複合 SELECT の ORDER BY には式を書けず、列名か位置しか使えない",
     "🔴 **表の形は考えなくてよい。縦長（long format）で返す。**\
@@ -458,6 +473,28 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
          ORDER BY ルール, 順位",
     ),
     (
+        // 実機で踏んだ。4 分岐の UNION ALL は 3900 万行を 4 回スキャンして 5 秒（season で
+        // 絞ると 36 秒）。**1 回スキャンして横に取り、それを縦に展開**すれば 0.59 秒。
+        // シーズンは season 列ではなく **source_date の範囲**で絞る（season にインデックスが無い）。
+        "今シーズンのXマッチで、勝率と最も相関の高いバトル指標は？",
+        "WITH 相関 AS (\n\
+         \x20 -- 🔴 スキャンは 1 回だけ。指標ごとに UNION ALL で分けると同じ行を何度も読む。\n\
+         \x20 SELECT corr(won, kill) AS キル, corr(won, death) AS デス,\n\
+         \x20        corr(won, assist) AS アシスト, corr(won, inked) AS 塗り,\n\
+         \x20        COUNT(won) AS 件数\n\
+         \x20 FROM ai_env_slots\n\
+         \x20 WHERE lobby = 'xmatch'\n\
+         \x20   -- シーズンの開始日は「データの規模」の一覧から選ぶ（season 列では絞らない）。\n\
+         \x20   AND source_date >= '2026-06-01'\n\
+         )\n\
+         SELECT * FROM (\n\
+         \x20 SELECT '平均キル' AS 指標, キル AS 相関係数, 件数 FROM 相関\n\
+         \x20 UNION ALL SELECT '平均デス',     デス,     件数 FROM 相関\n\
+         \x20 UNION ALL SELECT '平均アシスト', アシスト, 件数 FROM 相関\n\
+         \x20 UNION ALL SELECT '平均塗り',     塗り,     件数 FROM 相関\n\
+         ) WHERE 相関係数 IS NOT NULL ORDER BY ABS(相関係数) DESC",
+    ),
+    (
         "ステージ別の勝率を 20 戦以上で",
         "SELECT stage AS ステージ, ROUND(AVG(won) * 100, 1) AS 勝率, COUNT(won) AS 件数\n\
          FROM ai_battles GROUP BY stage HAVING COUNT(won) >= 20 ORDER BY 勝率 DESC",
@@ -518,7 +555,14 @@ pub struct DataScale {
     pub env_min_date: Option<String>,
     pub env_max_date: Option<String>,
     pub my_battles: i64,
+    /// `lobby` 列に実際に入っている値。推測させないために載せる。
+    pub lobbies: Vec<String>,
+    /// `rule` 列に実際に入っている値。
+    pub rules: Vec<String>,
 }
+
+/// プロンプトに載せるシーズンの件数。全部並べても読まれない。
+const SEASONS_IN_PROMPT: usize = 6;
 
 impl DataScale {
     fn to_prompt(&self) -> String {
@@ -537,6 +581,47 @@ impl DataScale {
                  環境の質問には答えられないので、そう伝える SQL ではなく\
                  自分のバトルで答えられる形に読み替えてください\n",
             ),
+        }
+
+        if !self.lobbies.is_empty() {
+            s.push_str(&format!(
+                "\n`lobby` に入っている値: {}\n",
+                self.lobbies.iter().map(|v| format!("`{v}`")).collect::<Vec<_>>().join(", ")
+            ));
+        }
+        if !self.rules.is_empty() {
+            s.push_str(&format!(
+                "`rule` に入っている値: {}\n",
+                self.rules.iter().map(|v| format!("`{v}`")).collect::<Vec<_>>().join(", ")
+            ));
+        }
+
+        // 「今シーズン」を日付で表現できるようにする。
+        // 🔴 season 列で絞らせない（インデックスが無く 15 倍遅い）。
+        if let (Some(min), Some(max)) = (&self.env_min_date, &self.env_max_date) {
+            let seasons = crate::season::seasons_in(min, max, SEASONS_IN_PROMPT);
+            if !seasons.is_empty() {
+                s.push_str(
+                    "\n### シーズン\n\n\
+                     **`season` 列では絞らないでください**（インデックスが無く 15 倍遅い）。\
+                     下の開始日・終了日を `source_date` の条件に使ってください。\n\n",
+                );
+                for (i, sea) in seasons.iter().enumerate() {
+                    // 最新シーズンの終端はまだ未来なので、データの最終日で止める。
+                    let until = if i == 0 && sea.until.as_str() > max.as_str() {
+                        format!("{max}（データの最終日）")
+                    } else {
+                        sea.until.clone()
+                    };
+                    s.push_str(&format!(
+                        "- {}{} — `source_date >= '{}' AND source_date <= '{}'`\n",
+                        sea.name,
+                        if i == 0 { "（**今シーズン**）" } else { "" },
+                        sea.since,
+                        until,
+                    ));
+                }
+            }
         }
         s.push('\n');
         s
@@ -1098,6 +1183,8 @@ mod tests {
             env_min_date: Some("2022-09-26".into()),
             env_max_date: Some("2026-07-29".into()),
             my_battles: 1_382,
+            lobbies: vec!["xmatch".into(), "bankara_open".into()],
+            rules: vec!["area".into(), "hoko".into()],
         };
         let p = analysis_prompt(Some(&scale));
         assert!(p.contains("5541963"), "環境データの件数が無い");
@@ -1105,6 +1192,51 @@ mod tests {
         assert!(p.contains("1382"), "自分のバトル数が無い");
         // 1 バトル 7 行という増え方まで伝える。
         assert!(p.contains("38793741"), "行数が示されていない");
+    }
+
+    /// ロビーとルールの**実際の値**が載るか。
+    ///
+    /// 実機で AI が `lobby = 'xmatch'` を推測で当てた。外れれば 0 件になるので、
+    /// 推測させずに一覧を渡す。
+    #[test]
+    fn ロビーとルールの値が載る() {
+        let scale = DataScale {
+            env_battles: 100,
+            env_min_date: Some("2026-06-01".into()),
+            env_max_date: Some("2026-07-29".into()),
+            my_battles: 10,
+            lobbies: vec!["xmatch".into(), "bankara_open".into()],
+            rules: vec!["area".into(), "hoko".into()],
+        };
+        let p = analysis_prompt(Some(&scale));
+        assert!(p.contains("`xmatch`"), "lobby の値が無い");
+        assert!(p.contains("`area`"), "rule の値が無い");
+    }
+
+    /// シーズンが**日付範囲つき**で載るか。
+    ///
+    /// 実機で AI が `date('now', 'start of season')`（存在しない修飾子）を書いて
+    /// タイムアウトした。「今シーズン」を日付で表現できる材料を渡す。
+    #[test]
+    fn シーズンが日付範囲つきで載る() {
+        let scale = DataScale {
+            env_battles: 5_541_963,
+            env_min_date: Some("2022-09-26".into()),
+            env_max_date: Some("2026-07-29".into()),
+            my_battles: 1_382,
+            lobbies: vec![],
+            rules: vec![],
+        };
+        let p = analysis_prompt(Some(&scale));
+
+        assert!(p.contains("Sizzle Season 2026"), "今シーズンの名前が無い");
+        assert!(p.contains("今シーズン"), "どれが今シーズンか分からない");
+        assert!(p.contains("source_date >= '2026-06-01'"), "日付での絞り方が示されていない");
+        assert!(p.contains("Fresh Season 2026"), "過去のシーズンが無い");
+        // 最新シーズンの終端は未来なので、データの最終日で止める。
+        assert!(p.contains("2026-07-29（データの最終日）"), "終端が未来のままになっている");
+        // season 列で絞らせない（インデックスが無く 15 倍遅い）。
+        assert!(p.contains("`season` 列では絞らないでください"), "season 列の注意が無い");
     }
 
     /// 環境データが無いときに、環境の質問へ空振りの SQL を書かせないか。
@@ -1115,6 +1247,8 @@ mod tests {
             env_min_date: None,
             env_max_date: None,
             my_battles: 10,
+            lobbies: vec![],
+            rules: vec![],
         };
         let p = analysis_prompt(Some(&scale));
         assert!(p.contains("まだ取り込まれていません"), "未取り込みが伝わらない");

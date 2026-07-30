@@ -8,6 +8,7 @@ pub mod abilities;
 pub mod ai_present;
 pub mod ai_sql;
 pub mod ai_views;
+pub mod season;
 pub mod auth;
 pub mod battle_export;
 pub mod companion;

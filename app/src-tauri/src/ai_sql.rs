@@ -178,9 +178,22 @@ async fn data_scale(app: &AppHandle) -> Option<crate::ai_views::DataScale> {
     } else {
         (None, None)
     };
+    // ロビーとルールの値は推測させない（実機で AI が値を当てにいった）。
+    // どちらもマスタなので数十行しかなく、取得は一瞬。
+    let lobbies: Vec<String> = sqlx::query_scalar("SELECT key FROM lobby ORDER BY key")
+        .fetch_all(&mut conn).await.unwrap_or_default();
+    let rules: Vec<String> = sqlx::query_scalar("SELECT key FROM rule ORDER BY key")
+        .fetch_all(&mut conn).await.unwrap_or_default();
     let _ = conn.close().await;
 
-    Some(crate::ai_views::DataScale { env_battles, env_min_date, env_max_date, my_battles })
+    Some(crate::ai_views::DataScale {
+        env_battles,
+        env_min_date,
+        env_max_date,
+        my_battles,
+        lobbies,
+        rules,
+    })
 }
 
 /// AI が書いた SELECT を実行する。
@@ -327,6 +340,16 @@ fn slow_query_hint(sql: &str) -> String {
             "環境データは数千万行あります。**`source_date` で期間を絞ってください**\n\
              例: `WHERE source_date >= date('now', '-30 days')`\n\
              どの期間で集計したかは explanation に書いてください",
+        );
+    }
+    // 同じビューを何度も読んでいる = UNION ALL の分岐ごとにスキャンしている。
+    // 実測で 4 分岐 5.0 秒 → 1 スキャン 0.59 秒。
+    if sql.matches("ai_env_slots").count() >= 3 {
+        hints.push(
+            "`ai_env_slots` を何度も読んでいます。**スキャンは 1 回で済ませてください**\n\
+             指標ごとに `UNION ALL` で分けるのではなく、まず\n\
+             `SELECT corr(won, kill) AS キル, corr(won, death) AS デス, ... FROM ... WHERE ...`\n\
+             と**横に並べて 1 行で取り**、その結果を `UNION ALL` で縦に展開してください",
         );
     }
     // 副問い合わせがあってウィンドウ関数が無い = 割合の出し方を間違えている可能性が高い。
@@ -659,6 +682,93 @@ mod tests {
         assert!(out.contains("source_date"), "期間の絞り込みを勧めていない: {out}");
         assert!(out.contains("-30 days"), "書き方が示されていない: {out}");
         println!("--- AI に返る文面 ---\n{out}\n---");
+    }
+
+    /// 実データの値を覗く用（普段は走らせない）。プロンプトに載せる値を確かめる。
+    #[tokio::test]
+    #[ignore]
+    async fn 実データ探索() {
+        use std::time::Instant;
+        let path = std::env::var("SPLABO_DB").unwrap();
+        let opts = sqlx::sqlite::SqliteConnectOptions::new().filename(&path).read_only(true);
+        let pool = SqlitePoolOptions::new()
+            .after_connect(|conn, _meta| {
+                Box::pin(async move {
+                    let mut handle = conn.lock_handle().await?;
+                    let failed =
+                        unsafe { crate::sql_functions::register_all(handle.as_raw_handle().as_ptr()) };
+                    assert!(failed.is_empty(), "統計関数の登録に失敗: {failed:?}");
+                    Ok(())
+                })
+            })
+            .connect_with(opts)
+            .await
+            .unwrap();
+
+        for (label, sql) in [
+            ("lobby", "SELECT key FROM lobby ORDER BY key"),
+            ("rule", "SELECT key FROM rule ORDER BY key"),
+        ] {
+            let v: Vec<String> = sqlx::query_scalar(sql).fetch_all(&pool).await.unwrap();
+            println!("{label}: {v:?}");
+        }
+
+        // 「今シーズンのXマッチで勝率と最も相関の高い指標」の書き方を比べる。
+        // 4 分岐の UNION ALL は 3900 万行を 4 回スキャンする。1 回で済む書き方があるはず。
+        let branches = "SELECT '平均キル' AS 指標, corr(won, kill) AS 相関係数, COUNT(won) AS 件数
+             FROM ai_env_slots WHERE lobby = 'xmatch' AND season = 'Sizzle Season 2026'
+             UNION ALL SELECT '平均デス', corr(won, death), COUNT(won) FROM ai_env_slots
+             WHERE lobby = 'xmatch' AND season = 'Sizzle Season 2026'
+             UNION ALL SELECT '平均アシスト', corr(won, assist), COUNT(won) FROM ai_env_slots
+             WHERE lobby = 'xmatch' AND season = 'Sizzle Season 2026'
+             UNION ALL SELECT '平均塗り', corr(won, inked), COUNT(won) FROM ai_env_slots
+             WHERE lobby = 'xmatch' AND season = 'Sizzle Season 2026'";
+        let one_pass = "WITH 相関 AS (
+               SELECT corr(won, kill) AS キル, corr(won, death) AS デス,
+                      corr(won, assist) AS アシスト, corr(won, inked) AS 塗り, COUNT(won) AS 件数
+               FROM ai_env_slots WHERE lobby = 'xmatch' AND season = 'Sizzle Season 2026'
+             )
+             SELECT * FROM (
+               SELECT '平均キル' AS 指標, キル AS 相関係数, 件数 FROM 相関
+               UNION ALL SELECT '平均デス', デス, 件数 FROM 相関
+               UNION ALL SELECT '平均アシスト', アシスト, 件数 FROM 相関
+               UNION ALL SELECT '平均塗り', 塗り, 件数 FROM 相関
+             ) ORDER BY ABS(相関係数) DESC";
+        // season にはインデックスが無い。source_date（複合インデックスの先頭）なら効くはず。
+        let by_date = |s: &str| {
+            s.replace(
+                "season = 'Sizzle Season 2026'",
+                "source_date >= '2026-06-01'",
+            )
+        };
+        for (label, sql) in [
+            ("4分岐 + season", branches.to_string()),
+            ("1スキャン + season", one_pass.to_string()),
+            ("4分岐 + source_date", by_date(branches)),
+            ("1スキャン + source_date", by_date(one_pass)),
+        ] {
+            let t = Instant::now();
+            let r = sqlx::query(&sql).fetch_all(&pool).await;
+            println!("{label}: {:?} / {:?}", t.elapsed(), r.map(|v| v.len()));
+        }
+        let t = Instant::now();
+        let rows = sqlx::query(
+            "SELECT season, COUNT(*) AS n, MIN(source_date) AS d0, MAX(source_date) AS d1
+             FROM env_battles GROUP BY season ORDER BY d1 DESC LIMIT 6",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        println!("--- season（新しい順・{:?}）---", t.elapsed());
+        for r in &rows {
+            println!(
+                "  {:?} n={} {:?}〜{:?}",
+                r.get::<Option<String>, _>("season"),
+                r.get::<i64, _>("n"),
+                r.get::<Option<String>, _>("d0"),
+                r.get::<Option<String>, _>("d1")
+            );
+        }
     }
 
     /// 実データでの計測用（普段は走らせない）。
