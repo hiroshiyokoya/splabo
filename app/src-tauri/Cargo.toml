@@ -26,6 +26,10 @@ tauri-plugin-deep-link = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "macros"] }
+# SQLite に統計関数（corr / stddev 等）を登録するため FFI を直に叩く（#573）。
+# sqlx が既に同じバージョンに依存しており、sqlx の "sqlite" feature 経由で bundled
+# 済みなので、ここで直接依存に足しても同じ SQLite にリンクされる。
+libsqlite3-sys = "0.30"
 # Nintendo auth
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 tokio = { version = "1", features = ["full"] }

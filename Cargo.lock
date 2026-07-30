@@ -4381,6 +4381,7 @@ dependencies = [
  "chrono",
  "csv",
  "if-addrs",
+ "libsqlite3-sys",
  "log",
  "mdns-sd",
  "rand 0.8.6",
