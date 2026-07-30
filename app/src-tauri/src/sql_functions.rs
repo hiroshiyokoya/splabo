@@ -163,6 +163,8 @@ pub const FUNCTION_DOCS: &[(&str, &str)] = &[
     ("stddev(x)", "標本標準偏差"),
     ("regr_slope(y, x)", "回帰直線の傾き。**説明変数は第 2 引数**"),
     ("regr_intercept(y, x)", "回帰直線の切片"),
+    ("greatest(a, b, ...)", "引数の最大値。PostgreSQL の GREATEST 相当。引数に NULL があれば NULL"),
+    ("least(a, b, ...)", "引数の最小値。PostgreSQL の LEAST 相当。引数に NULL があれば NULL"),
 ];
 
 /// 生の接続ハンドルに全関数を登録する。
@@ -176,16 +178,43 @@ pub const FUNCTION_DOCS: &[(&str, &str)] = &[
 pub unsafe fn register_all(db: *mut ffi::sqlite3) -> Vec<&'static str> {
     let mut failed = Vec::new();
     for kind in KINDS {
-        if register(db, *kind) != ffi::SQLITE_OK {
-            // 名前は 0 終端を含むので落とす。
+        if register_aggregate(db, *kind) != ffi::SQLITE_OK {
             let name = kind.name();
             failed.push(std::str::from_utf8(&name[..name.len() - 1]).unwrap_or("?"));
+        }
+    }
+    for (name, func) in SCALARS {
+        if register_scalar(db, name, *func) != ffi::SQLITE_OK {
+            failed.push(name);
         }
     }
     failed
 }
 
-unsafe fn register(db: *mut ffi::sqlite3, kind: Kind) -> c_int {
+/// 可変長引数のスカラー関数（greatest / least）。
+type ScalarFn = unsafe extern "C" fn(*mut ffi::sqlite3_context, c_int, *mut *mut ffi::sqlite3_value);
+
+const SCALARS: &[(&str, ScalarFn)] = &[
+    ("greatest", x_greatest),
+    ("least", x_least),
+];
+
+unsafe fn register_scalar(db: *mut ffi::sqlite3, name: &str, func: ScalarFn) -> c_int {
+    let name = format!("{name}\0");
+    ffi::sqlite3_create_function_v2(
+        db,
+        name.as_ptr().cast(),
+        -1, // 可変長
+        ffi::SQLITE_UTF8 | ffi::SQLITE_DETERMINISTIC,
+        std::ptr::null_mut(),
+        Some(func),
+        None,
+        None,
+        None,
+    )
+}
+
+unsafe fn register_aggregate(db: *mut ffi::sqlite3, kind: Kind) -> c_int {
     // xStep / xFinal から「どの関数か」を知るために、Kind を user data として渡す。
     // Kind は Copy な小さい enum なので、ポインタ幅に詰めて持たせる（解放不要）。
     let user_data = kind as usize as *mut std::os::raw::c_void;
@@ -202,6 +231,59 @@ unsafe fn register(db: *mut ffi::sqlite3, kind: Kind) -> c_int {
         Some(x_final),
         None,
     )
+}
+
+/// 可変長スカラー: greatest(a, b, ...)。引数に NULL があれば NULL。
+unsafe extern "C" fn x_greatest(
+    ctx:  *mut ffi::sqlite3_context,
+    argc: c_int,
+    argv: *mut *mut ffi::sqlite3_value,
+) {
+    x_min_max(ctx, argc, argv, true);
+}
+
+/// 可変長スカラー: least(a, b, ...)。引数に NULL があれば NULL。
+unsafe extern "C" fn x_least(
+    ctx:  *mut ffi::sqlite3_context,
+    argc: c_int,
+    argv: *mut *mut ffi::sqlite3_value,
+) {
+    x_min_max(ctx, argc, argv, false);
+}
+
+unsafe fn x_min_max(
+    ctx:   *mut ffi::sqlite3_context,
+    argc:  c_int,
+    argv:  *mut *mut ffi::sqlite3_value,
+    pick_max: bool,
+) {
+    if argc < 1 {
+        ffi::sqlite3_result_null(ctx);
+        return;
+    }
+    let mut acc: Option<f64> = None;
+    for i in 0..argc {
+        let v = unsafe { *argv.offset(i as isize) };
+        if ffi::sqlite3_value_type(v) == ffi::SQLITE_NULL {
+            ffi::sqlite3_result_null(ctx);
+            return;
+        }
+        let d = ffi::sqlite3_value_double(v);
+        if !d.is_finite() {
+            ffi::sqlite3_result_null(ctx);
+            return;
+        }
+        acc = Some(match acc {
+            None => d,
+            Some(cur) if pick_max => cur.max(d),
+            Some(cur) => cur.min(d),
+        });
+    }
+    if let Some(v) = acc {
+        ffi::sqlite3_result_double(ctx, v);
+    } else {
+        ffi::sqlite3_result_null(ctx);
+    }
 }
 
 /// `Kind` を user data から復元する。`register` が詰めた値をそのまま戻す。
@@ -298,7 +380,17 @@ mod tests {
                 "{name} の説明が FUNCTION_DOCS に無い"
             );
         }
-        assert_eq!(FUNCTION_DOCS.len(), KINDS.len(), "説明の数と登録数が合わない");
+        for (name, _) in SCALARS {
+            assert!(
+                FUNCTION_DOCS.iter().any(|(sig, _)| sig.starts_with(name)),
+                "{name} の説明が FUNCTION_DOCS に無い"
+            );
+        }
+        assert_eq!(
+            FUNCTION_DOCS.len(),
+            KINDS.len() + SCALARS.len(),
+            "説明の数と登録数が合わない"
+        );
     }
 
     #[test]
@@ -400,6 +492,13 @@ mod tests {
 
         let slope: f64 = sqlx::query_scalar("SELECT regr_slope(y, x) FROM t").fetch_one(&pool).await.unwrap();
         assert!((slope - 2.0).abs() < 1e-12, "slope = {slope}");
+
+        let g: f64 = sqlx::query_scalar("SELECT greatest(1, 5, 3)").fetch_one(&pool).await.unwrap();
+        assert!((g - 5.0).abs() < 1e-12, "greatest = {g}");
+        let l: f64 = sqlx::query_scalar("SELECT least(1, 5, 3)").fetch_one(&pool).await.unwrap();
+        assert!((l - 1.0).abs() < 1e-12, "least = {l}");
+        let null_g: Option<f64> = sqlx::query_scalar("SELECT greatest(1, NULL, 3)").fetch_one(&pool).await.unwrap();
+        assert!(null_g.is_none(), "NULL を含む greatest は NULL: {null_g:?}");
 
         // NULL を含む行は母数から外れる。AI 用ビューが引き分けを won = NULL で表すため、
         // ここが崩れると勝敗と各指標の相関が静かにずれる(#572)。
