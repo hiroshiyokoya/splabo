@@ -17,10 +17,19 @@ pub type DbPool = Arc<Pool<Sqlite>>;
 // 初期化
 // ---------------------------------------------------------------------------
 
+/// DB ファイルのパス。
+///
+/// AI 用 SQL は**別の読み取り専用コネクション**で開くのでパスが必要になる（`ai_sql`）。
+/// ファイル名の文字列を 2 か所に書かないよう関数にしてある。
+pub fn db_file_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    Ok(data_dir.join("chartoon.db"))
+}
+
 pub async fn init_db(app: &AppHandle) -> Result<DbPool, String> {
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
-    let db_path = data_dir.join("chartoon.db");
+    let db_path = db_file_path(app)?;
 
     // プールの全コネクションに共通設定を適用する。
     // - busy_timeout: SQLite は単一ライターのため、起動直後の他処理（バトル取得・
