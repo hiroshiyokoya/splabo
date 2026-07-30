@@ -382,6 +382,16 @@ const COMMON_MISTAKES: &[&str] = &[
     "相関を聞かれたら平均を並べず corr() を使う。平均を見比べても相関は分からない",
     "UNION ALL で並べた結果を並べ替えるときは、**全体を副問い合わせで包む**。\
      複合 SELECT の ORDER BY には式を書けず、列名か位置しか使えない",
+    "🔴 **結果の形を指定されたら、その形で返す。** 「行は〜、列は〜」「表にして」と\
+     言われたら、縦に長い一覧ではなく指定どおりの表になるまで SQL の中で組み立てる。\
+     列方向へ並べるには `MAX(CASE WHEN 順位 = 1 THEN ... END) AS '1位'` を使う\
+     （SQLite に PIVOT 構文は無い）",
+    "**群ごとの上位 N** は `ROW_NUMBER() OVER (PARTITION BY 群 ORDER BY 指標 DESC)` で\
+     順位を振ってから `WHERE 順位 <= N` で絞る。\
+     全体の `LIMIT N` や `ORDER BY 群, 指標` だけでは**群ごとの上位にならない**",
+    "数値を帯に区切るときは `CAST(x / 500 AS INT) * 500` のように**数値のまま**作り、\
+     並べ替えもその数値で行う。`'500-999'` のような文字列で ORDER BY すると\
+     辞書順になり `'3000+'` より後に来る。表示用の文字列は最後に組み立てる",
     "🔴 `ai_env_slots` を使うときは **`source_date` で期間を必ず絞る**。\
      環境データは 500 万バトル超（1 バトル 7 行なので数千万行）あり、\
      **全期間の集計は 70 秒以上かかって必ず中断される**。直近 30 日なら 1 秒未満。\
@@ -431,6 +441,30 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
          FROM ai_env_slots\n\
          WHERE poster_rank IS NOT NULL AND source_date >= date('now', '-30 days')\n\
          GROUP BY poster_rank, weapon ORDER BY 使用率 DESC LIMIT 10",
+    ),
+    (
+        // 実機で踏んだ 3 点をまとめて示す例。
+        // ① 群ごとの上位 N は ROW_NUMBER、② 行と列を指定されたらピボット、
+        // ③ 数値の帯は数値で作って数値で並べる。
+        "Xパワーを 500 ごとに区切って、パワー帯ごとの勝率上位 5 ブキを、行 = 帯・列 = 順位で",
+        "WITH 帯 AS (\n\
+         \x20 SELECT CAST(poster_power / 500 AS INT) * 500 AS 下限, weapon, won\n\
+         \x20 FROM ai_env_slots\n\
+         \x20 WHERE poster_power IS NOT NULL AND source_date >= date('now', '-30 days')\n\
+         ), 集計 AS (\n\
+         \x20 SELECT 下限, weapon, ROUND(AVG(won) * 100, 1) AS 勝率, COUNT(won) AS 件数\n\
+         \x20 FROM 帯 GROUP BY 下限, weapon HAVING COUNT(won) >= 50\n\
+         ), 順位付き AS (\n\
+         \x20 SELECT *, ROW_NUMBER() OVER (PARTITION BY 下限 ORDER BY 勝率 DESC) AS 順位 FROM 集計\n\
+         )\n\
+         SELECT 下限 || '〜' || (下限 + 499) AS Xパワー帯,\n\
+         \x20      MAX(CASE WHEN 順位 = 1 THEN weapon || ' ' || 勝率 || '%' END) AS '1位',\n\
+         \x20      MAX(CASE WHEN 順位 = 2 THEN weapon || ' ' || 勝率 || '%' END) AS '2位',\n\
+         \x20      MAX(CASE WHEN 順位 = 3 THEN weapon || ' ' || 勝率 || '%' END) AS '3位',\n\
+         \x20      MAX(CASE WHEN 順位 = 4 THEN weapon || ' ' || 勝率 || '%' END) AS '4位',\n\
+         \x20      MAX(CASE WHEN 順位 = 5 THEN weapon || ' ' || 勝率 || '%' END) AS '5位'\n\
+         FROM 順位付き WHERE 順位 <= 5\n\
+         GROUP BY 下限 ORDER BY 下限",
     ),
     (
         "相手にイカ速を積んでいる人が多いと勝ちにくい？",
