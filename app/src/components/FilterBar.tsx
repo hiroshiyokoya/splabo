@@ -77,16 +77,8 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
     <div className="filter-bar">
       <div className="filter-row">
         <FilterGroup label="期間">
-          {PERIODS.map(p => (
-            <button
-              key={p.id}
-              className={`filter-btn${filters.period === p.id ? ' active' : ''}`}
-              onClick={() => patch('period', p.id)}
-            >{p.label}</button>
-          ))}
-          {/* 「今シーズン」ボタンだった場所をプルダウンにする（#585）。新しい順。
-              先頭の「今シーズン」は今までどおり自動追従。過去のシーズンは名指しで選ぶと、
-              解決済みの日付範囲がそのまま絞り込みに入る。 */}
+          {/* シーズンは期間の**先頭**（#585）。既定が「今シーズン」なのでボタンより前に置く。
+              新しい順。過去のシーズンを名指しで選ぶと、解決済みの日付範囲が絞り込みに入る。 */}
           <SeasonSelect
             seasons={seasons}
             value={filters.period === 'season' ? filters.seasonName : null}
@@ -100,6 +92,13 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
               )
             }
           />
+          {PERIODS.map(p => (
+            <button
+              key={p.id}
+              className={`filter-btn${filters.period === p.id ? ' active' : ''}`}
+              onClick={() => patch('period', p.id)}
+            >{p.label}</button>
+          ))}
           {filters.period === 'custom' && (
             <span className="custom-date-range">
               <input

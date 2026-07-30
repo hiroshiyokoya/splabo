@@ -472,7 +472,13 @@ export function EnvAnalysis() {
         try { setWeaponOptions(await invoke<EnvFilterOption[]>('env_weapons')) } catch { /* noop */ }
         try { setStageOptions(await invoke<EnvFilterOption[]>('env_stages')) } catch { /* noop */ }
         // 選べるシーズン（新しい順・#585）。取り込み済みの期間に重なるものだけ返る。
-        try { setSeasons(await invoke<Season[]>('list_seasons', { source: 'env' })) } catch { /* noop */ }
+        // 🔴 ここが失敗するとプルダウンが**黙って消える**（空なら描画しない）ので、
+        // 他の選択肢と違って握り潰さずログに出す。
+        try {
+          setSeasons(await invoke<Season[]>('list_seasons', { source: 'env' }))
+        } catch (e) {
+          console.error('[EnvAnalysis] list_seasons 失敗:', e)
+        }
       }
     } catch (e) {
       console.error('[EnvAnalysis] env_status 失敗:', e)
@@ -879,14 +885,7 @@ export function EnvAnalysis() {
                 「今シーズン」はボタンではなくシーズンのプルダウンの先頭にある。 */}
             <label>期間
               <span className="env-period-btns">
-                {PERIOD_OPTIONS.map(o => (
-                  <button
-                    key={o.key}
-                    type="button"
-                    className={`filter-btn${period === o.key ? ' active' : ''}`}
-                    onClick={() => setPeriod(o.key)}
-                  >{o.label}</button>
-                ))}
+                {/* シーズンは期間の先頭。既定が「今シーズン」なので、ボタンより前に置く。 */}
                 <SeasonSelect
                   seasons={seasons}
                   value={period === 'season' ? seasonName : null}
@@ -897,6 +896,14 @@ export function EnvAnalysis() {
                     else   { setSeasonName(null);   setPeriod('current_season') }
                   }}
                 />
+                {PERIOD_OPTIONS.map(o => (
+                  <button
+                    key={o.key}
+                    type="button"
+                    className={`filter-btn${period === o.key ? ' active' : ''}`}
+                    onClick={() => setPeriod(o.key)}
+                  >{o.label}</button>
+                ))}
               </span>
             </label>
             {period === 'custom' && (
