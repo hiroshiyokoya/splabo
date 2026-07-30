@@ -311,8 +311,10 @@ pub const AI_VIEWS: &[ViewDoc] = &[
             ("lobby", "regular / bankara_open / bankara_challenge / xmatch など。解決できなければ NULL"),
             ("rule", "nawabari / area / yagura / hoko / asari。解決できなければ NULL"),
             ("stage", "ステージ名（和名）"),
-            ("poster_rank", "**投稿者本人**のウデマエ。この行のプレイヤーのものではない"),
-            ("poster_power", "**投稿者本人**の X パワー。この行のプレイヤーのものではない"),
+            ("poster_rank", "**投稿者本人**のウデマエ。この行のプレイヤーのものではない。\
+                             環境をウデマエで分けるときはこの列を使う（このビューに rank_before は無い）"),
+            ("poster_power", "**投稿者本人**の X パワー。この行のプレイヤーのものではない\
+                              （このビューに x_power_before は無い）"),
             ("slot", "a2 / a3 / a4 / b1 / b2 / b3 / b4。投稿者の a1 は含まれない"),
             ("is_poster_team", "投稿者と同じチーム（a 側）なら 1"),
             ("weapon", "そのスロットのブキ（和名）"),
@@ -380,6 +382,10 @@ const COMMON_MISTAKES: &[&str] = &[
     "相関を聞かれたら平均を並べず corr() を使う。平均を見比べても相関は分からない",
     "UNION ALL で並べた結果を並べ替えるときは、**全体を副問い合わせで包む**。\
      複合 SELECT の ORDER BY には式を書けず、列名か位置しか使えない",
+    "ビューごとに列が違う。列を他のビューから借りてこないこと。\
+     とくに**ウデマエ**は、自分の戦績（ai_battles）では rank_before / rank_after、\
+     環境（ai_env_slots）では poster_rank。名前が違うだけでなく、\
+     ai_env_slots に rank_before は存在しない",
 ];
 
 /// AI に見せる書き方の実例（few-shot）。

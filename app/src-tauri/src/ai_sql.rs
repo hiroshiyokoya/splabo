@@ -156,7 +156,7 @@ async fn fetch_rows(conn: &mut SqliteConnection, sql: &str) -> Result<AnalysisRe
     let rows = sqlx::query(sql)
         .fetch_all(&mut *conn)
         .await
-        .map_err(|e| classify_error(&e.to_string()))?;
+        .map_err(|e| classify_error(&e.to_string(), sql))?;
 
     let truncated = rows.len() > MAX_ROWS;
     let rows = &rows[..rows.len().min(MAX_ROWS)];
@@ -189,7 +189,11 @@ fn value_at(row: &sqlx::sqlite::SqliteRow, idx: usize) -> serde_json::Value {
 }
 
 /// AI に返しても意味が通るエラー文にする。原因の区別が付かないと再試行できない。
-fn classify_error(msg: &str) -> String {
+///
+/// 列名・テーブル名の間違いには、**使っているビューの実際の列一覧を添える**。
+/// ビューごとに列が違うので取り違えが起きやすく（`ai_battles` の `rank_before` を
+/// `ai_env_slots` に書く等）、一覧が手元にないと AI は同じ間違いを繰り返す。
+fn classify_error(msg: &str, sql: &str) -> String {
     let lower = msg.to_ascii_lowercase();
     if lower.contains("interrupted") {
         return format!(
@@ -205,7 +209,29 @@ fn classify_error(msg: &str) -> String {
     if lower.contains("readonly") || lower.contains("attempt to write") {
         return format!("書き込みはできません: {msg}");
     }
+    if lower.contains("no such column") || lower.contains("no such table") {
+        if let Some(hint) = view_columns_hint(sql) {
+            return format!("{msg}\n\n{hint}");
+        }
+    }
     msg.to_string()
+}
+
+/// SQL が使っている AI 用ビューの列一覧。どのビューも使っていなければ None。
+fn view_columns_hint(sql: &str) -> Option<String> {
+    let used: Vec<&crate::ai_views::ViewDoc> = crate::ai_views::AI_VIEWS
+        .iter()
+        .filter(|v| sql.contains(v.name))
+        .collect();
+    if used.is_empty() {
+        return None;
+    }
+    let mut s = String::from("使っているビューに実際にある列は次のとおりです。ここに無い列は使えません。");
+    for v in used {
+        let cols: Vec<&str> = v.columns.iter().map(|(c, _)| *c).collect();
+        s.push_str(&format!("\n\n- `{}`: {}", v.name, cols.join(", ")));
+    }
+    Some(s)
 }
 
 /// 進行コールバック。0 以外を返すとクエリが中断される。
@@ -330,7 +356,8 @@ mod tests {
         // 列単位の拒否は "access to battle.raw_json is prohibited" になる。
         let e = err_of(sqlx::query("SELECT raw_json FROM battle").fetch_all(&mut conn).await);
         assert!(e.contains("prohibited"), "raw_json が読めてしまう: {e}");
-        assert!(classify_error(&e).contains("許可されていない"), "エラー文が AI に伝わらない");
+        assert!(classify_error(&e, "SELECT raw_json FROM battle").contains("許可されていない"),
+                "エラー文が AI に伝わらない");
 
         let e = err_of(sqlx::query("SELECT name FROM battle_player").fetch_all(&mut conn).await);
         assert!(e.contains("prohibited"), "他プレイヤー名が読めてしまう: {e}");
@@ -388,7 +415,7 @@ mod tests {
             e.to_ascii_lowercase().contains("interrupt"),
             "中断されていない: {e}"
         );
-        assert!(classify_error(&e).contains("中断"), "エラー文が AI に伝わらない: {}", classify_error(&e));
+        assert!(classify_error(&e, "").contains("中断"), "エラー文が AI に伝わらない");
 
         {
             let mut handle = conn.lock_handle().await.unwrap();
@@ -430,6 +457,31 @@ mod tests {
         assert_eq!(res.rows[0][2], serde_json::json!("a"));
         assert_eq!(res.rows[0][3], serde_json::Value::Null);
         assert!(!res.truncated);
+    }
+
+    /// 列名を間違えたときに、**使っているビューの列一覧が添えられる**か。
+    ///
+    /// 実機で AI が `ai_env_slots` に `rank_before`（`ai_battles` の列）を書いて落ちた。
+    /// 一覧が手元にないと同じ間違いを繰り返すので、エラーに載せる。
+    #[test]
+    fn 列名の間違いには使っているビューの列一覧が付く() {
+        let sql = "SELECT rank_before FROM ai_env_slots GROUP BY rank_before";
+        let out = classify_error("no such column: rank_before", sql);
+
+        assert!(out.contains("no such column"), "元のエラーが消えている: {out}");
+        assert!(out.contains("ai_env_slots"), "どのビューか分からない: {out}");
+        // 正解の列名が含まれていること
+        assert!(out.contains("poster_rank"), "正しい列名が示されていない: {out}");
+        // 関係ないビューの列は混ぜない（プロンプトを無駄に太らせない）
+        assert!(!out.contains("ai_battle_players"), "使っていないビューまで載っている: {out}");
+        // 実際に AI へ渡る文面を目で確認できるようにしておく（cargo test -- --nocapture）
+        println!("--- AI に返る文面 ---\n{out}\n---");
+    }
+
+    #[test]
+    fn ビューを使っていないエラーには一覧を付けない() {
+        let out = classify_error("no such column: foo", "SELECT foo");
+        assert_eq!(out, "no such column: foo");
     }
 
     /// 拒否列の一覧に、AI 用ビューが使っている列が混ざっていないか。
