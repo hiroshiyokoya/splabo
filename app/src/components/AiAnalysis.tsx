@@ -32,6 +32,19 @@ interface AnalysisResult {
 /** 画面に出す行数。バックエンドは 5000 行で切るが、DOM に全部出すと重い。 */
 const DISPLAY_ROWS = 200
 
+/**
+ * SQL を作らせる試行の上限（初回 + 自動の書き直し 2 回）。
+ *
+ * 列名の取り違えのような**エラーメッセージを読めば直せる失敗**が実際に多い。
+ * 毎回ユーザーに「AI に直させる」を押させるのは手間なので自動で回す。
+ * ただし 1 回ごとに API を呼ぶ（ユーザーの課金）ので上限を切り、回数を画面に出す。
+ */
+const MAX_ATTEMPTS = 3
+
+/** 0 件だったときの説明。エラーではないが、たいてい SQL の作りが間違っている。 */
+const EMPTY_PROBLEM =
+  '結果が 0 件でした。絞り込みが厳しすぎるか、集計の粒度が合っていない可能性があります。'
+
 /** 何を聞けるか分からないと使われないので例を置く。 */
 const EXAMPLES = [
   '勝率と最も相関の高いバトル指標は？',
@@ -41,11 +54,13 @@ const EXAMPLES = [
 
 export function AiAnalysis({ settings }: { settings: AppSettings }) {
   const [prompt, setPrompt] = useState('')
-  const [phase, setPhase] = useState<null | 'ai' | 'sql'>(null)
+  const [phase, setPhase] = useState<null | { kind: 'ai' | 'sql'; attempt: number }>(null)
   const [error, setError] = useState<string | null>(null)
   const [plan, setPlan] = useState<SqlPlan | null>(null)
   const [sqlError, setSqlError] = useState<string | null>(null)
   const [result, setResult] = useState<AnalysisResult | null>(null)
+  /** 何回 AI に書かせたか。自動で書き直した事実を隠さないために出す。 */
+  const [attempts, setAttempts] = useState(0)
 
   // ビュー定義とドメイン知識はビルド時に固定なので、一度取ったら使い回す。
   const schemaRef = useRef<string | null>(null)
@@ -58,8 +73,10 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
   }
 
   /**
-   * 質問から SQL を作って実行する。
-   * `fixHint` があるとき（実行が失敗した後の「AI に直させる」）は、その内容を添えて書き直させる。
+   * 質問から SQL を作って実行する。**失敗したら自動で書き直させる**（上限 `MAX_ATTEMPTS`）。
+   *
+   * 実行エラーは AI にエラー文を渡せばだいたい直る（列名の取り違え、ビューの選び間違い等）。
+   * `fixHint` は、上限まで使い切ったあとユーザーが手動で押した「AI に直させる」から来る。
    */
   async function analyze(fixHint?: { sql: string; error: string }) {
     if (!prompt.trim()) return
@@ -70,27 +87,55 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
     setError(null)
     setSqlError(null)
     setResult(null)
+    setAttempts(0)
 
-    // 🔴 判定に state（phase / plan）を使わない。この関数の中では更新前の値が見えるので、
-    // 初回に SQL 実行だけ失敗したケースを取り違える（「AI に直させる」が出なくなる）。
-    let issued: SqlPlan | null = null
+    // 🔴 判定に state を使わない。この関数の中では更新前の値が見えるので取り違える。
+    let hint = fixHint
+    // 0 件は「本当に該当なし」のこともある。書き直しは 1 回だけ試して、
+    // それでも 0 件ならそれが答えだと受け取る（無駄に API を叩かない）。
+    let emptyRetried = false
+
     try {
-      setPhase('ai')
-      issued = await askForSql(settings, prompt, await schemaPrompt(), fixHint)
-      setPlan(issued)
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        setPhase({ kind: 'ai', attempt })
+        let issued: SqlPlan
+        try {
+          issued = await askForSql(settings, prompt, await schemaPrompt(), hint)
+        } catch (e) {
+          // AI 呼び出し自体の失敗（キー・通信・JSON 不正）は書き直しても直らない。
+          setError(String(e))
+          return
+        }
+        setPlan(issued)
+        setAttempts(attempt)
 
-      setPhase('sql')
-      const next = await invoke<AnalysisResult>('ai_run_sql', { sql: issued.sql })
-      setResult(next)
-      // 0 件はエラーにならないが、たいてい SQL の作りが間違っている
-      // （1 行 1 件のビューに HAVING COUNT(*) >= 5 を付けた等）。直させる導線を出す。
-      if (next.rows.length === 0) {
-        setSqlError('結果が 0 件でした。絞り込みが厳しすぎるか、集計の粒度が合っていない可能性があります。')
+        setPhase({ kind: 'sql', attempt })
+        let problem: string
+        try {
+          const next = await invoke<AnalysisResult>('ai_run_sql', { sql: issued.sql })
+          if (next.rows.length > 0) {
+            setResult(next)
+            return
+          }
+          setResult(next)
+          if (emptyRetried) {
+            setSqlError(EMPTY_PROBLEM)
+            return
+          }
+          emptyRetried = true
+          problem = EMPTY_PROBLEM
+        } catch (e) {
+          problem = String(e)
+        }
+
+        // 上限に達したら、ここから先はユーザーの判断（手動の「AI に直させる」）に委ねる。
+        if (attempt === MAX_ATTEMPTS) {
+          setSqlError(problem)
+          return
+        }
+        setResult(null)
+        hint = { sql: issued.sql, error: problem }
       }
-    } catch (e) {
-      // SQL を受け取った後の失敗 = 実行時エラー。「AI に直させる」で回復できる。
-      if (issued) setSqlError(String(e))
-      else setError(String(e))
     } finally {
       setPhase(null)
     }
@@ -127,7 +172,12 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
           }}
         />
         <button className="btn-primary" onClick={() => analyze()} disabled={busy}>
-          {phase === 'ai' ? 'AI に問い合わせ中...' : phase === 'sql' ? '集計中...' : '分析'}
+          {phase === null
+            ? '分析'
+            : (phase.kind === 'ai' ? 'AI に問い合わせ中' : '集計中') +
+              // 2 回目以降は書き直していることが分かるように出す。
+              (phase.attempt > 1 ? `（書き直し ${phase.attempt - 1} 回目）` : '') +
+              '...'}
         </button>
       </div>
 
@@ -137,7 +187,10 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
 
       {plan && (
         <details className="ai-sql">
-          <summary>実行した SQL</summary>
+          <summary>
+            実行した SQL
+            {attempts > 1 && `（AI が ${attempts - 1} 回書き直しました）`}
+          </summary>
           <pre>{plan.sql}</pre>
         </details>
       )}

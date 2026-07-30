@@ -451,19 +451,49 @@ pub fn analysis_prompt() -> String {
         s.push_str(&format!("- {m}\n"));
     }
 
-    s.push_str("\n## 書き方の例\n\n");
+    s.push_str("---\n\n");
+    s.push_str(DOMAIN_KNOWLEDGE);
+
+    // 🔴 実例は**最後**に置く。実機で「ウデマエ帯ごとの武器使用率」（実例とほぼ同じ質問）に
+    // 別のビューを選ばれた。長いドメイン知識を後ろに積むと実例が埋もれるので、末尾に移した。
+    s.push_str("\n---\n\n## 書き方の例\n\n\
+                質問が下のどれかに近いときは、**その SQL をそのまま土台にしてください。**\n\n");
     for (q, sql) in SQL_EXAMPLES {
         s.push_str(&format!("質問「{q}」\n\n```sql\n{sql}\n```\n\n"));
     }
-
-    s.push_str("---\n\n");
-    s.push_str(DOMAIN_KNOWLEDGE);
     s
 }
 
+/// どのビューを使うかの案内。**列の説明より前に読ませる。**
+///
+/// 実機で「ウデマエ帯ごとのブキ使用率」に `ai_battle_players`（自分のバトルの同卓者）を
+/// 選ばれた。列を並べるだけでは、**そもそも母集団の選択を間違える**。
+const VIEW_CHOICE: &str = "\
+まず**どのビューを使うか**を決めてください。母集団が違います。
+
+| 聞かれていること | 使うビュー |
+|---|---|
+| 自分の勝率・成績・その推移 | `ai_battles` |
+| 自分のバトルに居た人（味方・相手）のブキやギア | `ai_battle_players` |
+| **世界全体の環境**（流行りのブキ、ブキの強さ、ウデマエ帯ごとの傾向） | `ai_env_slots` |
+| 自分のバトルで「その陣営にそのブキが居たか」 | `ai_battle_weapon_presence` |
+
+判断の目安:
+
+- 「**環境**」「流行」「使用率」「ピック率」「world」「みんな」「一般に」\
+——**自分の記録ではなく世界の話**なので `ai_env_slots`
+- 「**ウデマエ帯ごと**」「Xパワー帯ごと」に世界の傾向を見るなら \
+`ai_env_slots` の `poster_rank` / `poster_power` で分ける
+- 「自分の」「私が」と付いていれば `ai_battles`（同卓者の話なら `ai_battle_players`）
+
+`ai_battle_players` は**自分が遊んだバトルの参加者だけ**で、世界の使用率にはなりません。
+
+";
+
 /// AI に渡すスキーマ説明を組む。**ここが唯一の出力元**で、手書きの一覧を別に持たない。
 pub fn schema_prompt() -> String {
-    let mut s = String::from(
+    let mut s = String::from(VIEW_CHOICE);
+    s.push_str(
         "分析に使えるビューは以下だけです。他のテーブルは参照できません。\n\n",
     );
     for v in AI_VIEWS {
@@ -869,6 +899,33 @@ mod tests {
         }
         assert!(p.contains("GROUP BY battle_id"), "粒度の注意がプロンプトに無い");
         assert!(p.contains("複合 SELECT"), "複合 SELECT の注意がプロンプトに無い");
+    }
+
+    /// **どのビューを使うか**の案内が、列の説明より前に出ているか。
+    ///
+    /// 実機で「ウデマエ帯ごとのブキ使用率」に `ai_battle_players`（自分のバトルの同卓者）を
+    /// 選ばれた。列を並べるだけでは母集団の選択を間違える。
+    #[test]
+    fn ビューの選び方が列の説明より前に出る() {
+        let p = analysis_prompt();
+        let choice = p.find("どのビューを使うか").expect("ビューの選び方が無い");
+        let columns = p.find("- `battle_id`").expect("列の説明が無い");
+        assert!(choice < columns, "ビューの選び方が列の説明より後ろにある");
+        // 環境の質問を自分の記録のビューへ流さないための言い換え。
+        assert!(p.contains("使用率"), "「使用率」の行き先が案内されていない");
+        assert!(p.contains("世界"), "環境が世界の話だと書かれていない");
+    }
+
+    /// 実例が**プロンプトの末尾**にあるか。
+    ///
+    /// 実例とほぼ同じ質問で別のビューを選ばれた。長いドメイン知識を後ろに積むと
+    /// 実例が埋もれるので末尾へ移した。並び替えで元に戻らないよう固定する。
+    #[test]
+    fn 実例はドメイン知識より後ろにある() {
+        let p = analysis_prompt();
+        let domain = p.find("9 時境界").expect("ドメイン知識が無い");
+        let examples = p.find("## 書き方の例").expect("実例の節が無い");
+        assert!(examples > domain, "実例がドメイン知識より前にあり埋もれる");
     }
 
     /// ドメイン知識から**落ちてはいけない事実**が残っているか。

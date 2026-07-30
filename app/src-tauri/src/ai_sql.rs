@@ -210,28 +210,58 @@ fn classify_error(msg: &str, sql: &str) -> String {
         return format!("書き込みはできません: {msg}");
     }
     if lower.contains("no such column") || lower.contains("no such table") {
-        if let Some(hint) = view_columns_hint(sql) {
+        if let Some(hint) = view_columns_hint(msg, sql) {
             return format!("{msg}\n\n{hint}");
         }
     }
     msg.to_string()
 }
 
-/// SQL が使っている AI 用ビューの列一覧。どのビューも使っていなければ None。
-fn view_columns_hint(sql: &str) -> Option<String> {
+/// SQL が使っている AI 用ビューの列一覧と、**探している列が別のビューにあるならその案内**。
+///
+/// 「列名を間違えた」の実体はたいてい**ビューの選び間違い**なので、
+/// 列一覧を並べるだけでなく「その列は X にあります」まで言う。
+fn view_columns_hint(msg: &str, sql: &str) -> Option<String> {
     let used: Vec<&crate::ai_views::ViewDoc> = crate::ai_views::AI_VIEWS
         .iter()
         .filter(|v| sql.contains(v.name))
         .collect();
-    if used.is_empty() {
-        return None;
+
+    let mut s = String::new();
+
+    // 探していた列が他のビューにあるなら、そこへ誘導する。
+    if let Some(col) = missing_column(msg) {
+        let owners: Vec<&str> = crate::ai_views::AI_VIEWS
+            .iter()
+            .filter(|v| v.columns.iter().any(|(c, _)| *c == col))
+            .map(|v| v.name)
+            .collect();
+        if !owners.is_empty() {
+            s.push_str(&format!(
+                "`{col}` があるのは {} です。使うビューを間違えていないか確認してください。\n\n",
+                owners.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(" / ")
+            ));
+        }
     }
-    let mut s = String::from("使っているビューに実際にある列は次のとおりです。ここに無い列は使えません。");
+
+    if used.is_empty() {
+        return if s.is_empty() { None } else { Some(s) };
+    }
+    s.push_str("使っているビューに実際にある列は次のとおりです。ここに無い列は使えません。");
     for v in used {
         let cols: Vec<&str> = v.columns.iter().map(|(c, _)| *c).collect();
         s.push_str(&format!("\n\n- `{}`: {}", v.name, cols.join(", ")));
     }
     Some(s)
+}
+
+/// `no such column: t.rank_before` から `rank_before` を取り出す。
+fn missing_column(msg: &str) -> Option<String> {
+    let idx = msg.to_ascii_lowercase().find("no such column:")?;
+    let rest = msg[idx + "no such column:".len()..].trim();
+    let name = rest.split_whitespace().next()?;
+    // 修飾子（別名）が付いていれば落とす。
+    Some(name.rsplit('.').next()?.trim().to_string())
 }
 
 /// 進行コールバック。0 以外を返すとクエリが中断される。
@@ -472,10 +502,32 @@ mod tests {
         assert!(out.contains("ai_env_slots"), "どのビューか分からない: {out}");
         // 正解の列名が含まれていること
         assert!(out.contains("poster_rank"), "正しい列名が示されていない: {out}");
+        // 「その列があるのは ai_battles」まで言えていること。
+        // 列名の間違いは実体としてビューの選び間違いなので、行き先を示す。
+        assert!(out.contains("ai_battles"), "列がどのビューにあるか示していない: {out}");
         // 関係ないビューの列は混ぜない（プロンプトを無駄に太らせない）
         assert!(!out.contains("ai_battle_players"), "使っていないビューまで載っている: {out}");
         // 実際に AI へ渡る文面を目で確認できるようにしておく（cargo test -- --nocapture）
         println!("--- AI に返る文面 ---\n{out}\n---");
+    }
+
+    /// 実機 2 例目。`ai_battle_players` にウデマエで絞ろうとした。
+    /// ビュー自体の選び間違いなので、正しい行き先（ai_battles / ai_env_slots）を示す。
+    #[test]
+    fn 別のビューを選んでいても行き先を示す() {
+        let sql = "SELECT weapon FROM ai_battle_players GROUP BY rank_before, weapon";
+        let out = classify_error("no such column: rank_before", sql);
+
+        assert!(out.contains("ai_battles"), "行き先が示されていない: {out}");
+        assert!(out.contains("ai_battle_players"), "今使っているビューの列が無い: {out}");
+        println!("--- AI に返る文面 ---\n{out}\n---");
+    }
+
+    /// 別名付き（`t.rank_before`）でも列名を取り出せるか。
+    #[test]
+    fn 別名が付いた列名からも行き先を引ける() {
+        let out = classify_error("no such column: t.poster_rank", "SELECT 1 FROM x");
+        assert!(out.contains("ai_env_slots"), "別名を落とせていない: {out}");
     }
 
     #[test]
