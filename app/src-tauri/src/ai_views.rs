@@ -254,6 +254,22 @@ pub async fn create_views(pool: &DbPool) -> Result<(), String> {
     Ok(())
 }
 
+/// AI に渡すドメイン知識（#575）。
+///
+/// ビューの形では焼き込めない「意味」を言葉で渡す部分。ナワバリだけ塗り率で決まる、
+/// ギアの AP 重み、味方ブキの合計がバトル数を超えるのは正常、といった内容。
+///
+/// `include_str!` で埋め込むので、ファイルを消すとコンパイルが通らない。
+/// 実行時にファイルを探さないため、配布物に同梱する必要もない。
+pub const DOMAIN_KNOWLEDGE: &str = include_str!("../../../docs/ai-domain-knowledge.md");
+
+/// AI に渡すプロンプトの土台。**ビューの一覧 + ドメイン知識**。
+///
+/// データは 1 行も含まない。ここに載っているのは「どんな列があるか」と「その意味」だけ。
+pub fn analysis_prompt() -> String {
+    format!("{}\n---\n\n{}", schema_prompt(), DOMAIN_KNOWLEDGE)
+}
+
 /// AI に渡すスキーマ説明を組む。**ここが唯一の出力元**で、手書きの一覧を別に持たない。
 pub fn schema_prompt() -> String {
     let mut s = String::from(
@@ -490,6 +506,49 @@ mod tests {
         assert!(
             AI_VIEWS_SQL.contains("LEFT JOIN rule"),
             "battle.rule_id は nullable(v11)。INNER JOIN にすると詳細未取得のバトルが黙って落ちる"
+        );
+    }
+
+    /// ドメイン知識から**落ちてはいけない事実**が残っているか。
+    ///
+    /// 文書なので細かい表現は変わってよいが、ここに挙げた規約が消えると
+    /// AI が「動くけれど意味の違う集計」を書くようになる。節ごと削除する事故を防ぐ。
+    #[test]
+    fn ドメイン知識に要となる規約が残っている() {
+        let doc = DOMAIN_KNOWLEDGE;
+        for must in [
+            // 日付をずらすと 1 日ずれる
+            "9 時境界",
+            // KDA と勝率で母数が違う
+            "has_kda",
+            // 投稿者は母数外
+            "投稿者",
+            // ナワバリは塗り率で決まるので指標の意味が違う
+            "ナワバリ",
+            // ギアの AP 重み
+            "10AP",
+            // 味方ブキの合計はバトル数を超える
+            "3〜4 倍",
+            // 足切りしないと 5 戦のブキが 1 位になる
+            "足切り",
+            // 相関を因果と書かせない
+            "相関",
+        ] {
+            assert!(doc.contains(must), "ドメイン知識から「{must}」が消えている");
+        }
+    }
+
+    /// プロンプトはビュー一覧とドメイン知識の両方を含み、トークンが暴れない大きさに収まるか。
+    #[test]
+    fn プロンプトが両方を含み大きさが妥当() {
+        let p = analysis_prompt();
+        assert!(p.contains("ai_battles"), "ビュー一覧が入っていない");
+        assert!(p.contains("9 時境界"), "ドメイン知識が入っていない");
+        // 目安。データは 1 行も入らない前提なので、これを大きく超えたら何か混ざっている。
+        assert!(
+            p.chars().count() < 20_000,
+            "プロンプトが大きすぎる: {} 文字",
+            p.chars().count()
         );
     }
 
