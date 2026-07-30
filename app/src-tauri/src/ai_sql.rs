@@ -210,13 +210,13 @@ pub fn ai_presentation_prompt() -> String {
 
 /// AI② が返した見せ方を集計結果に適用し、表の形にする。
 ///
-/// **数値はここで作らない。** 行・列の組み替えとセルの連結だけを行う。
+/// **数値はここで作らない。** 行・列の組み替え、セルの連結、系列への振り分けだけを行う。
 /// 指定が結果と合っていなければ、実際の列名を添えて `Err` を返す（AI が読んで直せる形）。
 #[tauri::command]
 pub fn ai_apply_presentation(
     result: AnalysisResult,
     spec: crate::ai_present::PresentationSpec,
-) -> Result<crate::ai_present::ShapedTable, String> {
+) -> Result<crate::ai_present::Presentation, String> {
     crate::ai_present::apply(&result.columns, &result.rows, &spec)
 }
 
@@ -907,7 +907,11 @@ mod tests {
             )
             .unwrap();
 
-            let t = crate::ai_present::apply(&columns, &values, &spec).unwrap();
+            let crate::ai_present::Presentation::Table(t) =
+                crate::ai_present::apply(&columns, &values, &spec).unwrap()
+            else {
+                panic!("表を期待したのにグラフが返った")
+            };
             println!("\n=== 通し確認: 行 = パワー帯 / 列 = 順位 ===");
             println!("{}", t.columns.join(" | "));
             for r in t.rows.iter().take(6) {
@@ -924,6 +928,37 @@ mod tests {
                 );
             }
             println!("警告: {:?}\n", t.warnings);
+        }
+
+        // グラフ（#587）も同じ縦長の結果から作れるかを実データで通す。
+        {
+            let (_, sql) = crate::ai_views::SQL_EXAMPLES
+                .iter()
+                .find(|(q, _)| q.contains("ウデマエ帯"))
+                .expect("ウデマエ帯の実例が無い");
+            let rows = sqlx::query(sql).fetch_all(&pool).await.unwrap();
+            let columns: Vec<String> =
+                rows[0].columns().iter().map(|c| c.name().to_string()).collect();
+            let values: Vec<Vec<serde_json::Value>> = rows
+                .iter()
+                .map(|r| (0..r.len()).map(|i| value_at(r, i)).collect())
+                .collect();
+
+            let spec: crate::ai_present::PresentationSpec = serde_json::from_str(
+                r#"{"shape":"bar","title":"ウデマエ帯ごとの使用率","x":"ブキ","y":"使用率","series":"ウデマエ"}"#,
+            )
+            .unwrap();
+            let crate::ai_present::Presentation::Chart(c) =
+                crate::ai_present::apply(&columns, &values, &spec).unwrap()
+            else {
+                panic!("グラフを期待したのに表が返った")
+            };
+            println!("=== 通し確認: 棒グラフ ===");
+            println!("x={} y={} 数値軸={}", c.x_label, c.y_label, c.x_numeric);
+            for s in &c.series {
+                println!("  系列 {}: {} 点 先頭={:?}", s.name, s.points.len(), s.points.first());
+            }
+            println!("警告: {:?}\n", c.warnings);
         }
 
         // プロンプトに載せている実例そのものを、実データで計測する。

@@ -12,7 +12,8 @@
  */
 import { useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { AppSettings } from '../types'
+import type { AppSettings, ShapedChart } from '../types'
+import { AiResultChart } from './charts/AiResultChart'
 import { defaultModelFor } from '../utils/aiModels'
 
 /** AI に返させる形。SQL と、それが何を出すかの短い説明。 */
@@ -47,7 +48,7 @@ interface PresentationSpec {
   cell_template?: string
 }
 
-/** `ai_apply_presentation` の戻り。表の形はここで確定している。 */
+/** `ai_apply_presentation` が表を返したとき。形はここで確定している。 */
 interface ShapedTable {
   title?: string
   columns: string[]
@@ -55,6 +56,11 @@ interface ShapedTable {
   /** 出せなかったもの・切ったものの説明。黙って捨てないための欄。 */
   warnings: string[]
 }
+
+/** `ai_apply_presentation` の戻り。表かグラフのどちらか（#587）。 */
+type Presentation =
+  | ({ form: 'table' } & ShapedTable)
+  | ({ form: 'chart' } & ShapedChart)
 
 /** 画面に出す行数。バックエンドは 5000 行で切るが、DOM に全部出すと重い。 */
 const DISPLAY_ROWS = 200
@@ -100,8 +106,8 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
   const [result, setResult] = useState<AnalysisResult | null>(null)
   /** 何回 AI に書かせたか。自動で書き直した事実を隠さないために出す。 */
   const [attempts, setAttempts] = useState(0)
-  /** AI② が決めた表。作れなかったときは null（そのときは SQL の結果をそのまま出す）。 */
-  const [shaped, setShaped] = useState<ShapedTable | null>(null)
+  /** AI② が決めた見せ方（表かグラフ）。決まらなければ null で、SQL の結果をそのまま出す。 */
+  const [shaped, setShaped] = useState<Presentation | null>(null)
   /** 見せ方を決められなかった理由。表は出るので、エラーではなく注記として出す。 */
   const [shapeNote, setShapeNote] = useState<string | null>(null)
 
@@ -203,11 +209,7 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
       setPhase({ kind: 'present', attempt })
       try {
         const spec = await askForPresentation(settings, prompt, data, hint)
-        const table = await invoke<ShapedTable>('ai_apply_presentation', {
-          result: data,
-          spec,
-        })
-        setShaped(table)
+        setShaped(await invoke<Presentation>('ai_apply_presentation', { result: data, spec }))
         return
       } catch (e) {
         // 列の取り違えなら、エラーに実際の列名が入っているので渡せば直る。
@@ -260,7 +262,7 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
                 ? 'AI に問い合わせ中'
                 : phase.kind === 'sql'
                   ? '集計中'
-                  : '表の形を決めています') +
+                  : '見せ方を決めています') +
               // 2 回目以降は書き直していることが分かるように出す。
               (phase.attempt > 1 ? `（書き直し ${phase.attempt - 1} 回目）` : '') +
               '...'}
@@ -300,10 +302,12 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
         <p key={w} className="ai-shape-note">{w}</p>
       ))}
 
-      {shaped && shaped.title && <h3 className="ai-result-title">{shaped.title}</h3>}
+      {shaped?.title && <h3 className="ai-result-title">{shaped.title}</h3>}
 
-      {/* AI② が形を決められたらその表、決められなければ集計結果をそのまま出す。 */}
-      {shaped ? (
+      {/* AI② が決めたのが表かグラフか。決められなければ集計結果をそのまま出す。 */}
+      {shaped?.form === 'chart' ? (
+        <AiResultChart chart={shaped} />
+      ) : shaped ? (
         <ResultTable
           columns={shaped.columns}
           rows={shaped.rows}
@@ -320,7 +324,8 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
         )
       )}
 
-      {/* 形を変えたときは、元の集計結果も確認できるようにしておく（数値の根拠）。 */}
+      {/* 形を変えたときは、元の集計結果も確認できるようにしておく（数値の根拠）。
+          グラフのときは特に、点になった値を数字で確かめられる必要がある。 */}
       {shaped && result && (
         <details className="ai-sql">
           <summary>集計結果（{result.rows.length.toLocaleString()} 行）</summary>

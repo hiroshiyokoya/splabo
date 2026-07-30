@@ -2084,6 +2084,15 @@ body {
 }
 .ai-fix-btn { margin-top: 10px; }
 
+/* AI 分析のグラフ（#587）。既存のグラフ部品と余白を揃える。 */
+.ai-chart {
+  margin: 12px 0 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 8px 4px;
+}
+
 /* AI が決めた表の見出し（#566 第 1 段 B）。 */
 .ai-result-title {
   font-size: 15px;

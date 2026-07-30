@@ -17,6 +17,22 @@ export type SettingsTab = 'link' | 'data' | 'display' | 'ai'
  */
 export type Period = 'all' | 'current_season' | 'season' | '1y' | '180d' | '30d' | '7d' | 'custom'
 
+/**
+ * AI 分析のグラフ（#587）。**点への振り分けは Rust の `ai_present` が済ませている。**
+ *
+ * 数値は SQLite が出したまま。フロントは受け取った系列を描くだけで、選別も並べ替えもしない。
+ */
+export interface ShapedChart {
+  kind: 'bar' | 'line' | 'scatter'
+  title?: string
+  x_label: string
+  y_label: string
+  /** 横軸が数値か。軸の型を決めるのに使う。 */
+  x_numeric: boolean
+  series: { name: string; points: { x: string | number; y: number }[] }[]
+  warnings: string[]
+}
+
 /** `list_seasons` コマンドの返却型（#585）。計算は Rust の `season.rs` が持つ。 */
 export interface Season {
   name: string
