@@ -5,8 +5,10 @@ use tauri::{
 };
 
 pub mod abilities;
+pub mod ai_present;
 pub mod ai_sql;
 pub mod ai_views;
+pub mod season;
 pub mod auth;
 pub mod battle_export;
 pub mod companion;
@@ -113,6 +115,8 @@ pub fn run() {
             // AI 分析（#566）: プロンプトの土台を返す / AI が書いた SELECT を安全に実行する
             ai_sql::ai_analysis_prompt,
             ai_sql::ai_run_sql,
+            ai_sql::ai_presentation_prompt,
+            ai_sql::ai_apply_presentation,
             images::read_image,
             image_export::save_panel_image,
             fetch_battles_full,
@@ -133,6 +137,7 @@ pub fn run() {
             db::env_scatter_stats,
             db::env_matrix_stats,
             db::env_season_range,
+            season::list_seasons,
             db::env_versions,
             db::env_ranks,
             db::env_weapons,

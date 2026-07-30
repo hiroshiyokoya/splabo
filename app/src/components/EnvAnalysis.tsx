@@ -16,13 +16,14 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type {
   EnvScatterStat, EnvMatrixCell, EnvMatrixMarginal, EnvMatrixStats,
-  EnvStatus, EnvVersion, EnvRank, EnvFilterOption, MetricKey, GroupByKey,
+  EnvStatus, EnvVersion, EnvRank, EnvFilterOption, MetricKey, GroupByKey, Season,
 } from '../types'
 import { currentSeasonStart, GROUP_BY_LABELS } from '../types'
 import { ScatterChart, buildSizeLegend, buildColorLegend, metricRefLine } from './charts/ScatterChart'
 import type { ScatterPoint } from './charts/ScatterChart'
 import { Heatmap } from './charts/Heatmap'
 import { MultiSelect } from './MultiSelect'
+import { SeasonSelect } from './SeasonSelect'
 import { rateCellColor, sequentialCellColor, AXIS_MIN_TOTAL_SAMPLES } from '../utils/heatmapColors'
 import { loadEnvPrefs, saveEnvPrefs, DEFAULT_ENV_PREFS } from '../utils/envPrefs'
 import {
@@ -221,10 +222,12 @@ function dimKeyLabeller(dim: string): (k: string) => string {
 // 期間プリセット
 // ---------------------------------------------------------------------------
 
-type Period = 'all' | 'current_season' | '1y' | '180d' | '30d' | 'custom'
+/** `season` は特定のシーズンを名指しで選んだ状態（#585）。範囲は seasonName から引く。 */
+type Period = 'all' | 'current_season' | 'season' | '1y' | '180d' | '30d' | 'custom'
 const PERIOD_OPTIONS: { key: Period; label: string }[] = [
   { key: 'all',            label: '全期間' },
-  { key: 'current_season', label: '今シーズン' },
+  // 🔴 'current_season' と 'season' はボタンに出さない（#585）。
+  // シーズンのプルダウン側にあるので、両方に出すと同じものが 2 つ並ぶ。
   { key: '1y',             label: '1年' },
   { key: '180d',           label: '180日' },
   { key: '30d',            label: '30日' },
@@ -295,6 +298,10 @@ export function EnvAnalysis() {
   const [period, setPeriod]     = useState<Period>(prefs.period as Period)   // 既定は直近30日
   const [customSince, setCustomSince] = useState(prefs.customSince)
   const [customUntil, setCustomUntil] = useState(prefs.customUntil)
+  /** 選べるシーズン（新しい順）。計算は Rust の `season.rs`（#585）。 */
+  const [seasons, setSeasons] = useState<Season[]>([])
+  /** 名指しで選んだシーズン名（`period === 'season'` のときだけ意味を持つ）。 */
+  const [seasonName, setSeasonName] = useState<string | null>(prefs.seasonName ?? null)
 
   // フィルタ拡充(#189): バージョン / ウデマエ帯 / Xパワー帯
   // 武器・ステージ(#477)
@@ -336,6 +343,7 @@ export function EnvAnalysis() {
     setPeriod(DEFAULT_ENV_PREFS.period as Period)
     setCustomSince('')
     setCustomUntil('')
+    setSeasonName(null)
   }
 
   // 画像保存(#500)。共通フィルタはパネルの外にあるので、画像には条件を焼き込む。
@@ -381,11 +389,12 @@ export function EnvAnalysis() {
     saveEnvPrefs({
       vizMode, groupBy, xKey, yKey, sizeKey, colorKey, xLog, yLog,
       rowDim, colDim, cellMetric,
-      period, customSince, customUntil,
+      period, customSince, customUntil, seasonName: seasonName ?? '',
       lobbyKeys, ruleKeys, weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax,
     })
   }, [vizMode, groupBy, xKey, yKey, sizeKey, colorKey, xLog, yLog, rowDim, colDim, cellMetric,
-      period, customSince, customUntil, lobbyKeys, ruleKeys, weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax])
+      period, customSince, customUntil, seasonName,
+      lobbyKeys, ruleKeys, weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax])
 
   // 集計軸を切り替えたら X/Y・サイズ・色 指標を既定へ戻す。
   // 「初回だけスキップ」の ref フラグは StrictMode の二重マウントで false のまま
@@ -458,10 +467,24 @@ export function EnvAnalysis() {
       const s = await invoke<EnvStatus>('env_status')
       setStatus(s)
       if (s.total_rows > 0) {
-        try { setVersionOptions(await invoke<EnvVersion[]>('env_versions')) } catch { /* noop */ }
-        try { setRankOptions(await invoke<EnvRank[]>('env_ranks')) } catch { /* noop */ }
-        try { setWeaponOptions(await invoke<EnvFilterOption[]>('env_weapons')) } catch { /* noop */ }
-        try { setStageOptions(await invoke<EnvFilterOption[]>('env_stages')) } catch { /* noop */ }
+        // 🔴 シーズンを最初に取る（#585）。以降の選択肢は 550 万行を集計するので秒単位かかり、
+        // 直列に await していると**シーズンのプルダウンだけ最後まで出てこない**。
+        // こちらは MIN/MAX を引くだけなので一瞬で返る。
+        // 失敗すると選択肢が空になってプルダウンが黙って消えるため、握り潰さずログに出す。
+        try {
+          setSeasons(await invoke<Season[]>('list_seasons', { source: 'env' }))
+        } catch (e) {
+          console.error('[EnvAnalysis] list_seasons 失敗:', e)
+        }
+        // 🔴 直列に await しない。どれも 550 万行の集計で数秒かかるため
+        // （実測: バージョン 2.6 秒 / ウデマエ帯 3.9 秒）、順に待つと**後ろのものほど
+        // 遅れて出てくる**。互いに依存しないので同時に投げ、取れたものから反映する。
+        void Promise.allSettled([
+          invoke<EnvVersion[]>('env_versions').then(setVersionOptions),
+          invoke<EnvRank[]>('env_ranks').then(setRankOptions),
+          invoke<EnvFilterOption[]>('env_weapons').then(setWeaponOptions),
+          invoke<EnvFilterOption[]>('env_stages').then(setStageOptions),
+        ])
       }
     } catch (e) {
       console.error('[EnvAnalysis] env_status 失敗:', e)
@@ -478,12 +501,19 @@ export function EnvAnalysis() {
       // until は他と揃えて max_date(それ以降のデータは存在しない)。
       case 'current_season':
         return { since: currentSeasonStart(), until: maxd }
+      // 名指しのシーズン(#585)。範囲は Rust が出した一覧から引く。
+      // until はデータの最終日で頭打ちにする（今シーズンの終端はまだ未来）。
+      case 'season': {
+        const s = seasons.find(x => x.name === seasonName)
+        if (!s) return { since: null, until: null }
+        return { since: s.since, until: maxd && maxd < s.until ? maxd : s.until }
+      }
       case '1y':     return maxd ? { since: addDays(maxd, -364), until: maxd } : { since: null, until: null }
       case '180d':   return maxd ? { since: addDays(maxd, -179), until: maxd } : { since: null, until: null }
       case '30d':    return maxd ? { since: addDays(maxd, -29),  until: maxd } : { since: null, until: null }
       case 'custom': return { since: customSince || null, until: customUntil || null }
     }
-  }, [period, status, customSince, customUntil])
+  }, [period, status, customSince, customUntil, seasons, seasonName])
 
   // 画像に焼き込む条件(#500 / #506)。期間はクエリと同じ since/until を絶対日付で。
   const envFilterSummary = useMemo(() => {
@@ -492,6 +522,10 @@ export function EnvAnalysis() {
     // データ未取得で相対期間が解けないときだけ、UI と同じラベルにフォールバックする。
     const periodCaption = (() => {
       if (period === 'all') return '全期間'
+      // シーズンは名前を出す(#585)。後から見ても一意に決まるので日付に開かなくてよい。
+      if (period === 'season' && seasonName) {
+        return `${seasonName} (${range.since || '-'}~${range.until || '-'})`
+      }
       if (period === 'custom') {
         return `${range.since || '-'}~${range.until || '-'}`
       }
@@ -510,7 +544,7 @@ export function EnvAnalysis() {
       ['ウデマエ',   posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
       ['Xパワー',    (powerMin || powerMax) ? `${powerMin || '-'}~${powerMax || '-'}` : null],
     ])
-  }, [period, range, lobbyKeys, ruleKeys, weaponKeys, stageKeys,
+  }, [period, seasonName, range, lobbyKeys, ruleKeys, weaponKeys, stageKeys,
       weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax])
 
   // 拡充フィルタ(#189 / #477)を invoke 引数へ。空配列 / 空文字は null(無指定)に正規化。
@@ -853,10 +887,30 @@ export function EnvAnalysis() {
 
           {/* 共通フィルタ(並びは FilterBar＝期間→ロビー→ルール→武器→ステージ に合わせる) */}
           <div className="env-filters">
+            {/* 期間はバトル・武器・ステージと同じくボタンを並べる（#585）。
+                「今シーズン」はボタンではなくシーズンのプルダウンの先頭にある。 */}
             <label>期間
-              <select value={period} onChange={e => setPeriod(e.target.value as Period)}>
-                {PERIOD_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-              </select>
+              <span className="env-period-btns">
+                {/* シーズンは期間の先頭。既定が「今シーズン」なので、ボタンより前に置く。 */}
+                <SeasonSelect
+                  seasons={seasons}
+                  value={period === 'season' ? seasonName : null}
+                  isCurrent={period === 'current_season'}
+                  onSelect={s => {
+                    if (s) { setSeasonName(s.name); setPeriod('season') }
+                    // 先頭は「今シーズン」= 自動追従。外したらそこへ戻す。
+                    else   { setSeasonName(null);   setPeriod('current_season') }
+                  }}
+                />
+                {PERIOD_OPTIONS.map(o => (
+                  <button
+                    key={o.key}
+                    type="button"
+                    className={`filter-btn${period === o.key ? ' active' : ''}`}
+                    onClick={() => setPeriod(o.key)}
+                  >{o.label}</button>
+                ))}
+              </span>
             </label>
             {period === 'custom' && (
               <>
@@ -884,6 +938,9 @@ export function EnvAnalysis() {
               onChange={setRuleKeys}
               options={RULE_OPTIONS.filter(o => o.key).map(o => ({ key: o.key, label: o.label }))}
             />
+          </div>
+          {/* 武器から行を変える（#585）。期間・シーズン・ロビー・ルールで 1 行目。 */}
+          <div className="env-filters">
             <MultiSelect
               label="武器"
               allLabel="すべての武器"

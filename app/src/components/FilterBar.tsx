@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { Filters, WeaponRecord } from '../types'
+import type { Filters, Season, WeaponRecord } from '../types'
 import { resultLabel } from '../types'
 import { MultiSelect } from './MultiSelect'
+import { SeasonSelect } from './SeasonSelect'
 import { LOBBY_OPTIONS, RULE_OPTIONS, PERIOD_OPTIONS } from '../utils/filterSummary'
 
 // #190: モード/ルールは複数選択（OR）。モードのキーは lobby.key に一致させ、
@@ -29,6 +30,8 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
   const [pickerOpen,      setPickerOpen]      = useState(false)
   const [stageList,       setStageList]       = useState<StageInfo[]>([])
   const [stagePickerOpen, setStagePickerOpen] = useState(false)
+  /** 選べるシーズン（新しい順）。バトルがある期間に重なるものだけ返る（#585）。 */
+  const [seasons,         setSeasons]         = useState<Season[]>([])
 
   useEffect(() => {
     invoke<WeaponRecord[]>('db_list_weapons').then(weapons => {
@@ -45,6 +48,7 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
       })
     })
     invoke<StageInfo[]>('db_stages_used').then(setStageList).catch(() => {})
+    invoke<Season[]>('list_seasons', { source: 'battle' }).then(setSeasons).catch(() => {})
   }, [])
 
   function patch<K extends keyof Filters>(key: K, val: Filters[K]) {
@@ -57,7 +61,8 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
   }
 
   function reset() {
-    onChange({ period: 'all', mode: [], rule: [], result: null, weapon: [], stage: [], customFrom: null, customTo: null })
+    onChange({ period: 'all', mode: [], rule: [], result: null, weapon: [], stage: [],
+               customFrom: null, customTo: null, seasonName: null })
     setPickerOpen(false)
     setStagePickerOpen(false)
   }
@@ -72,6 +77,21 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
     <div className="filter-bar">
       <div className="filter-row">
         <FilterGroup label="期間">
+          {/* シーズンは期間の**先頭**（#585）。既定が「今シーズン」なのでボタンより前に置く。
+              新しい順。過去のシーズンを名指しで選ぶと、解決済みの日付範囲が絞り込みに入る。 */}
+          <SeasonSelect
+            seasons={seasons}
+            value={filters.period === 'season' ? filters.seasonName : null}
+            isCurrent={filters.period === 'current_season'}
+            onSelect={s =>
+              onChange(
+                s
+                  // 「今シーズン」に戻したときは自動追従の period に戻す。
+                  ? { ...filters, period: 'season', seasonName: s.name, customFrom: s.since, customTo: s.until }
+                  : { ...filters, period: 'current_season', seasonName: null }
+              )
+            }
+          />
           {PERIODS.map(p => (
             <button
               key={p.id}

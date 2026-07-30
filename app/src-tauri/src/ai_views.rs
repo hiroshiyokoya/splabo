@@ -380,20 +380,36 @@ const COMMON_MISTAKES: &[&str] = &[
     "足切りはグループごとの件数に対して行う。グループが 1 行しかない集計に \
      HAVING COUNT(*) >= 5 を付けると、全部消えて 0 件になる",
     "相関を聞かれたら平均を並べず corr() を使う。平均を見比べても相関は分からない",
+    "🔴 **相関を取る列で GROUP BY しない。** `corr(won, kill)` を出すのに `GROUP BY won` と\
+     書くと、群の中で `won` が定数になって分散 0 になり、**必ず NULL が返る**。\
+     相関は群の中で両方の値が動いている必要がある",
+    "🔴 **複数の指標の相関は 1 回のスキャンで取る。** 指標ごとに `UNION ALL` で分けると\
+     同じ行を何度も読む（4 指標で 4 回）。まず `SELECT corr(won, kill) AS キル, \
+     corr(won, death) AS デス, ... FROM ... WHERE ...` と**横に並べて 1 行で取り**、\
+     その結果を `UNION ALL` で縦に展開する。実測で 5.0 秒 → 0.59 秒",
+    "🔴 **`UNION ALL` の各ブランチに絞り込みを書く。** CTE や 1 つのブランチに \
+     `WHERE` を書いても他のブランチには効かない。書き忘れたブランチが全件スキャンする",
+    "SQLite の日付修飾子は `start of day` / `start of month` / `start of year` だけ。\
+     **`start of season` は存在しない**（式全体が NULL になり 1 行も一致しなくなる）。\
+     シーズンで絞るときは「データの規模」に載っている**シーズンの開始日**を使う",
+    "🔴 **シーズンは `season` 列で絞らない。`source_date` の範囲で絞る。**\
+     `season` にはインデックスが無く、実測で 15 倍遅い（8.7 秒 → 0.59 秒）。\
+     シーズン名と日付の対応は「データの規模」に載っている",
     "UNION ALL で並べた結果を並べ替えるときは、**全体を副問い合わせで包む**。\
      複合 SELECT の ORDER BY には式を書けず、列名か位置しか使えない",
-    "🔴 **結果の形を指定されたら、その形で返す。** 「行は〜、列は〜」「表にして」と\
-     言われたら、縦に長い一覧ではなく指定どおりの表になるまで SQL の中で組み立てる。\
-     列方向へ並べるには `MAX(CASE WHEN 順位 = 1 THEN ... END) AS '1位'` を使う\
-     （SQLite に PIVOT 構文は無い）。**セルに複数の値を並べて書く**ときは\
-     `指標 || ' ' || ROUND(相関係数, 3)` のように **1 列の文字列に連結**する。\
-     相関係数だけにすると指標名が消える",
+    "🔴 **表の形は考えなくてよい。縦長（long format）で返す。**\
+     質問が「行は〜、列は〜」と形を指定していても、**ピボットは後段のアプリが行う**。\
+     1 行 = 1 つの組み合わせにして、必要な値をそれぞれ別の列に出す。\
+     `MAX(CASE WHEN 順位 = 1 THEN ... END)` のような列方向への展開は書かない",
+    "🔴 **値を文字列に連結しない。** `ブキ || ' ' || 勝率` ではなく、\
+     `weapon AS ブキ` と `ROUND(AVG(won) * 100, 1) AS 勝率` を**別の列**で返す。\
+     セルに何を並べるかは後段が決めるので、連結すると後段が数値を扱えなくなる",
     "**群ごとの上位 N** は `ROW_NUMBER() OVER (PARTITION BY 群 ORDER BY 指標 DESC)` で\
      順位を振ってから `WHERE 順位 <= N` で絞る。\
-     全体の `LIMIT N` や `ORDER BY 群, 指標` だけでは**群ごとの上位にならない**",
+     全体の `LIMIT N` や `ORDER BY 群, 指標` だけでは**群ごとの上位にならない**。\
+     **順位の列も結果に出す**（後段が列見出しに使う）",
     "複数指標の相関を比べるときは、横に corr 列を並べた行から ROW_NUMBER するのではなく、\
-     **UNION ALL で縦に並べてから** `PARTITION BY 群` で順位を振る。\
-     ピボット表にするなら `MAX(CASE WHEN 順位 = 1 THEN 相関係数 END)` を使う",
+     **UNION ALL で縦に並べてから** `PARTITION BY 群` で順位を振る",
     "数値を帯に区切るときは `CAST(x / 500 AS INT) * 500` のように**数値のまま**作り、\
      並べ替えもその数値で行う。`'500-999'` のような文字列で ORDER BY すると\
      辞書順になり `'3000+'` より後に来る。表示用の文字列は最後に組み立てる",
@@ -434,7 +450,8 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
     ),
     (
         // 実機で踏んだ。横に corr 列を並べて GREATEST + ROW_NUMBER すると壊れる。
-        // 縦に UNION ALL → PARTITION BY ルール → ピボットが正しい。
+        // 縦に UNION ALL → PARTITION BY ルール で順位を振る。
+        // 🔴 ピボットはしない。指標名・相関係数・順位を**別々の列**で返し、表の形は後段が作る。
         "ルールごとに勝率と相関が高い指標の上位5つ。ルール×相関係数の表で、セルには指標と相関係数を並べて",
         "WITH 指標 AS (\n\
          \x20 SELECT rule AS ルール, 'キル' AS 指標, corr(won, kill) AS 相関係数 FROM ai_battles\n\
@@ -451,14 +468,31 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
          \x20 SELECT *, ROW_NUMBER() OVER (PARTITION BY ルール ORDER BY ABS(相関係数) DESC) AS 順位\n\
          \x20 FROM 指標 WHERE 相関係数 IS NOT NULL\n\
          )\n\
-         SELECT ルール,\n\
-         \x20      MAX(CASE WHEN 順位 = 1 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '1位',\n\
-         \x20      MAX(CASE WHEN 順位 = 2 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '2位',\n\
-         \x20      MAX(CASE WHEN 順位 = 3 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '3位',\n\
-         \x20      MAX(CASE WHEN 順位 = 4 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '4位',\n\
-         \x20      MAX(CASE WHEN 順位 = 5 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '5位'\n\
+         SELECT ルール, 順位, 指標, ROUND(相関係数, 3) AS 相関係数\n\
          FROM 順位付き WHERE 順位 <= 5\n\
-         GROUP BY ルール ORDER BY ルール",
+         ORDER BY ルール, 順位",
+    ),
+    (
+        // 実機で踏んだ。4 分岐の UNION ALL は 3900 万行を 4 回スキャンして 5 秒（season で
+        // 絞ると 36 秒）。**1 回スキャンして横に取り、それを縦に展開**すれば 0.59 秒。
+        // シーズンは season 列ではなく **source_date の範囲**で絞る（season にインデックスが無い）。
+        "今シーズンのXマッチで、勝率と最も相関の高いバトル指標は？",
+        "WITH 相関 AS (\n\
+         \x20 -- 🔴 スキャンは 1 回だけ。指標ごとに UNION ALL で分けると同じ行を何度も読む。\n\
+         \x20 SELECT corr(won, kill) AS キル, corr(won, death) AS デス,\n\
+         \x20        corr(won, assist) AS アシスト, corr(won, inked) AS 塗り,\n\
+         \x20        COUNT(won) AS 件数\n\
+         \x20 FROM ai_env_slots\n\
+         \x20 WHERE lobby = 'xmatch'\n\
+         \x20   -- シーズンの開始日は「データの規模」の一覧から選ぶ（season 列では絞らない）。\n\
+         \x20   AND source_date >= '2026-06-01'\n\
+         )\n\
+         SELECT * FROM (\n\
+         \x20 SELECT '平均キル' AS 指標, キル AS 相関係数, 件数 FROM 相関\n\
+         \x20 UNION ALL SELECT '平均デス',     デス,     件数 FROM 相関\n\
+         \x20 UNION ALL SELECT '平均アシスト', アシスト, 件数 FROM 相関\n\
+         \x20 UNION ALL SELECT '平均塗り',     塗り,     件数 FROM 相関\n\
+         ) WHERE 相関係数 IS NOT NULL ORDER BY ABS(相関係数) DESC",
     ),
     (
         "ステージ別の勝率を 20 戦以上で",
@@ -477,27 +511,23 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
     ),
     (
         // 実機で踏んだ 3 点をまとめて示す例。
-        // ① 群ごとの上位 N は ROW_NUMBER、② 行と列を指定されたらピボット、
-        // ③ 数値の帯は数値で作って数値で並べる。
+        // ① 群ごとの上位 N は ROW_NUMBER、② 数値の帯は数値で作って数値で並べる、
+        // ③ 🔴 **形を指定されてもピボットしない**（後段が組み替える）。
+        // 帯・順位・ブキ・勝率を別々の列で返せば、後段が行 = 帯・列 = 順位の表にできる。
         "Xパワーを 500 ごとに区切って、パワー帯ごとの勝率上位 5 ブキを、行 = 帯・列 = 順位で",
         "WITH 帯 AS (\n\
          \x20 SELECT CAST(poster_power / 500 AS INT) * 500 AS 下限, weapon, won\n\
          \x20 FROM ai_env_slots\n\
          \x20 WHERE poster_power IS NOT NULL AND source_date >= date('now', '-30 days')\n\
          ), 集計 AS (\n\
-         \x20 SELECT 下限, weapon, ROUND(AVG(won) * 100, 1) AS 勝率, COUNT(won) AS 件数\n\
+         \x20 SELECT 下限, weapon AS ブキ, ROUND(AVG(won) * 100, 1) AS 勝率, COUNT(won) AS 件数\n\
          \x20 FROM 帯 GROUP BY 下限, weapon HAVING COUNT(won) >= 50\n\
          ), 順位付き AS (\n\
          \x20 SELECT *, ROW_NUMBER() OVER (PARTITION BY 下限 ORDER BY 勝率 DESC) AS 順位 FROM 集計\n\
          )\n\
-         SELECT 下限 || '〜' || (下限 + 499) AS Xパワー帯,\n\
-         \x20      MAX(CASE WHEN 順位 = 1 THEN weapon || ' ' || 勝率 || '%' END) AS '1位',\n\
-         \x20      MAX(CASE WHEN 順位 = 2 THEN weapon || ' ' || 勝率 || '%' END) AS '2位',\n\
-         \x20      MAX(CASE WHEN 順位 = 3 THEN weapon || ' ' || 勝率 || '%' END) AS '3位',\n\
-         \x20      MAX(CASE WHEN 順位 = 4 THEN weapon || ' ' || 勝率 || '%' END) AS '4位',\n\
-         \x20      MAX(CASE WHEN 順位 = 5 THEN weapon || ' ' || 勝率 || '%' END) AS '5位'\n\
+         SELECT 下限 || '〜' || (下限 + 499) AS Xパワー帯, 順位, ブキ, 勝率, 件数\n\
          FROM 順位付き WHERE 順位 <= 5\n\
-         GROUP BY 下限 ORDER BY 下限",
+         ORDER BY 下限, 順位",
     ),
     (
         "相手にイカ速を積んでいる人が多いと勝ちにくい？",
@@ -525,7 +555,14 @@ pub struct DataScale {
     pub env_min_date: Option<String>,
     pub env_max_date: Option<String>,
     pub my_battles: i64,
+    /// `lobby` 列に実際に入っている値。推測させないために載せる。
+    pub lobbies: Vec<String>,
+    /// `rule` 列に実際に入っている値。
+    pub rules: Vec<String>,
 }
+
+/// プロンプトに載せるシーズンの件数。全部並べても読まれない。
+const SEASONS_IN_PROMPT: usize = 6;
 
 impl DataScale {
     fn to_prompt(&self) -> String {
@@ -544,6 +581,47 @@ impl DataScale {
                  環境の質問には答えられないので、そう伝える SQL ではなく\
                  自分のバトルで答えられる形に読み替えてください\n",
             ),
+        }
+
+        if !self.lobbies.is_empty() {
+            s.push_str(&format!(
+                "\n`lobby` に入っている値: {}\n",
+                self.lobbies.iter().map(|v| format!("`{v}`")).collect::<Vec<_>>().join(", ")
+            ));
+        }
+        if !self.rules.is_empty() {
+            s.push_str(&format!(
+                "`rule` に入っている値: {}\n",
+                self.rules.iter().map(|v| format!("`{v}`")).collect::<Vec<_>>().join(", ")
+            ));
+        }
+
+        // 「今シーズン」を日付で表現できるようにする。
+        // 🔴 season 列で絞らせない（インデックスが無く 15 倍遅い）。
+        if let (Some(min), Some(max)) = (&self.env_min_date, &self.env_max_date) {
+            let seasons = crate::season::seasons_in(min, max, SEASONS_IN_PROMPT);
+            if !seasons.is_empty() {
+                s.push_str(
+                    "\n### シーズン\n\n\
+                     **`season` 列では絞らないでください**（インデックスが無く 15 倍遅い）。\
+                     下の開始日・終了日を `source_date` の条件に使ってください。\n\n",
+                );
+                for (i, sea) in seasons.iter().enumerate() {
+                    // 最新シーズンの終端はまだ未来なので、データの最終日で止める。
+                    let until = if i == 0 && sea.until.as_str() > max.as_str() {
+                        format!("{max}（データの最終日）")
+                    } else {
+                        sea.until.clone()
+                    };
+                    s.push_str(&format!(
+                        "- {}{} — `source_date >= '{}' AND source_date <= '{}'`\n",
+                        sea.name,
+                        if i == 0 { "（**今シーズン**）" } else { "" },
+                        sea.since,
+                        until,
+                    ));
+                }
+            }
         }
         s.push('\n');
         s
@@ -1040,6 +1118,46 @@ mod tests {
         assert!(p.contains("世界"), "環境が世界の話だと書かれていない");
     }
 
+    /// 実例が**縦長（long format）**を守っているか。
+    ///
+    /// 🔴 表の形は AI②（`ai_present`）とアプリが作る。実例にピボットが残っていると
+    /// AI① がそれを真似して列方向へ展開し、後段が組み替えられなくなる。
+    /// 実機で「形は SQL では守られない」と分かって役割を分けたので、境界をテストで守る。
+    #[test]
+    fn 実例はピボットしない() {
+        for (q, sql) in SQL_EXAMPLES {
+            assert!(
+                !sql.contains("CASE WHEN 順位"),
+                "実例「{q}」が列方向に展開している（ピボットは後段の仕事）: {sql}"
+            );
+            assert!(
+                !sql.contains("|| ' ' ||"),
+                "実例「{q}」が値を文字列に連結している（セルの組み立ては後段の仕事）: {sql}"
+            );
+        }
+        let p = analysis_prompt(None);
+        assert!(p.contains("縦長"), "縦長で返す指示がプロンプトに無い");
+        assert!(p.contains("ピボットは後段"), "役割分担がプロンプトに書かれていない");
+    }
+
+    /// 群ごとの上位 N の実例が、**順位の列を結果に出している**か。
+    ///
+    /// 後段が列見出しに使うので、`WHERE 順位 <= 5` で絞るだけで列に出さないと
+    /// ピボットできない。
+    #[test]
+    fn 順位で絞る実例は順位を列に出す() {
+        for (q, sql) in SQL_EXAMPLES {
+            if !sql.contains("ROW_NUMBER") {
+                continue;
+            }
+            let select = sql.rsplit("SELECT").next().unwrap_or("");
+            assert!(
+                select.contains("順位"),
+                "実例「{q}」が順位を結果に出していない: {select}"
+            );
+        }
+    }
+
     /// 環境データを使う実例が、**必ず期間で絞っている**か。
     ///
     /// 🔴 実データで計測した結果、全期間の集計は **77 秒**（10 秒で中断される）、
@@ -1065,6 +1183,8 @@ mod tests {
             env_min_date: Some("2022-09-26".into()),
             env_max_date: Some("2026-07-29".into()),
             my_battles: 1_382,
+            lobbies: vec!["xmatch".into(), "bankara_open".into()],
+            rules: vec!["area".into(), "hoko".into()],
         };
         let p = analysis_prompt(Some(&scale));
         assert!(p.contains("5541963"), "環境データの件数が無い");
@@ -1072,6 +1192,51 @@ mod tests {
         assert!(p.contains("1382"), "自分のバトル数が無い");
         // 1 バトル 7 行という増え方まで伝える。
         assert!(p.contains("38793741"), "行数が示されていない");
+    }
+
+    /// ロビーとルールの**実際の値**が載るか。
+    ///
+    /// 実機で AI が `lobby = 'xmatch'` を推測で当てた。外れれば 0 件になるので、
+    /// 推測させずに一覧を渡す。
+    #[test]
+    fn ロビーとルールの値が載る() {
+        let scale = DataScale {
+            env_battles: 100,
+            env_min_date: Some("2026-06-01".into()),
+            env_max_date: Some("2026-07-29".into()),
+            my_battles: 10,
+            lobbies: vec!["xmatch".into(), "bankara_open".into()],
+            rules: vec!["area".into(), "hoko".into()],
+        };
+        let p = analysis_prompt(Some(&scale));
+        assert!(p.contains("`xmatch`"), "lobby の値が無い");
+        assert!(p.contains("`area`"), "rule の値が無い");
+    }
+
+    /// シーズンが**日付範囲つき**で載るか。
+    ///
+    /// 実機で AI が `date('now', 'start of season')`（存在しない修飾子）を書いて
+    /// タイムアウトした。「今シーズン」を日付で表現できる材料を渡す。
+    #[test]
+    fn シーズンが日付範囲つきで載る() {
+        let scale = DataScale {
+            env_battles: 5_541_963,
+            env_min_date: Some("2022-09-26".into()),
+            env_max_date: Some("2026-07-29".into()),
+            my_battles: 1_382,
+            lobbies: vec![],
+            rules: vec![],
+        };
+        let p = analysis_prompt(Some(&scale));
+
+        assert!(p.contains("Sizzle Season 2026"), "今シーズンの名前が無い");
+        assert!(p.contains("今シーズン"), "どれが今シーズンか分からない");
+        assert!(p.contains("source_date >= '2026-06-01'"), "日付での絞り方が示されていない");
+        assert!(p.contains("Fresh Season 2026"), "過去のシーズンが無い");
+        // 最新シーズンの終端は未来なので、データの最終日で止める。
+        assert!(p.contains("2026-07-29（データの最終日）"), "終端が未来のままになっている");
+        // season 列で絞らせない（インデックスが無く 15 倍遅い）。
+        assert!(p.contains("`season` 列では絞らないでください"), "season 列の注意が無い");
     }
 
     /// 環境データが無いときに、環境の質問へ空振りの SQL を書かせないか。
@@ -1082,6 +1247,8 @@ mod tests {
             env_min_date: None,
             env_max_date: None,
             my_battles: 10,
+            lobbies: vec![],
+            rules: vec![],
         };
         let p = analysis_prompt(Some(&scale));
         assert!(p.contains("まだ取り込まれていません"), "未取り込みが伝わらない");

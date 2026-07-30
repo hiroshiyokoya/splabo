@@ -16,7 +16,8 @@ import { filtersToRange, resultLabel } from '../types'
 /** FilterBar と表示を揃えるための選択肢定義。UI とキャプションで文言をぶらさない。 */
 export const PERIOD_OPTIONS: { id: Period; label: string }[] = [
   { id: 'all',            label: '全期間' },
-  { id: 'current_season', label: '今シーズン' },
+  // 🔴 'current_season' と 'season' はボタンではなくシーズンのプルダウンで選ぶ（#585）。
+  // ここに並べるとボタンとプルダウンで同じものが 2 つ出るため入れない。
   { id: '1y',             label: '1年' },
   { id: '180d',           label: '180日' },
   { id: '30d',            label: '30日' },
@@ -99,6 +100,11 @@ export function formatAbsolutePeriodRange(
 /** 保存キャプション用の期間文言。UI プリセット名は使わない。 */
 function periodText(f: Filters, now = new Date()): string {
   if (f.period === 'all') return '全期間'
+  // シーズンだけは名前を出す(#585)。「今シーズン」のような相対名と違い、
+  // シーズン名は後から見ても一意に決まるので日付に開く必要がない。
+  if (f.period === 'season' && f.seasonName) {
+    return `${f.seasonName} (${f.customFrom ?? '-'}~${f.customTo ?? '-'})`
+  }
   if (f.period === 'custom') {
     return `${f.customFrom ?? '-'}~${f.customTo ?? '-'}`
   }
