@@ -2059,6 +2059,23 @@ body {
 }
 .ai-fix-btn { margin-top: 10px; }
 
+/* AI が決めた表の見出し（#566 第 1 段 B）。 */
+.ai-result-title {
+  font-size: 15px;
+  margin: 16px 0 0;
+}
+
+/* 見せ方を決められなかった / マスが重なった等の注記。
+   表自体は出ているのでエラー色にはせず、見落とさない程度に目立たせる。 */
+.ai-shape-note {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-muted);
+  border-left: 3px solid var(--border);
+  padding-left: 10px;
+  margin: 12px 0;
+}
+
 .ai-result-meta {
   color: var(--text-muted);
   font-size: 12px;

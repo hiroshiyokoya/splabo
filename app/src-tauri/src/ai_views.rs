@@ -382,18 +382,19 @@ const COMMON_MISTAKES: &[&str] = &[
     "相関を聞かれたら平均を並べず corr() を使う。平均を見比べても相関は分からない",
     "UNION ALL で並べた結果を並べ替えるときは、**全体を副問い合わせで包む**。\
      複合 SELECT の ORDER BY には式を書けず、列名か位置しか使えない",
-    "🔴 **結果の形を指定されたら、その形で返す。** 「行は〜、列は〜」「表にして」と\
-     言われたら、縦に長い一覧ではなく指定どおりの表になるまで SQL の中で組み立てる。\
-     列方向へ並べるには `MAX(CASE WHEN 順位 = 1 THEN ... END) AS '1位'` を使う\
-     （SQLite に PIVOT 構文は無い）。**セルに複数の値を並べて書く**ときは\
-     `指標 || ' ' || ROUND(相関係数, 3)` のように **1 列の文字列に連結**する。\
-     相関係数だけにすると指標名が消える",
+    "🔴 **表の形は考えなくてよい。縦長（long format）で返す。**\
+     質問が「行は〜、列は〜」と形を指定していても、**ピボットは後段のアプリが行う**。\
+     1 行 = 1 つの組み合わせにして、必要な値をそれぞれ別の列に出す。\
+     `MAX(CASE WHEN 順位 = 1 THEN ... END)` のような列方向への展開は書かない",
+    "🔴 **値を文字列に連結しない。** `ブキ || ' ' || 勝率` ではなく、\
+     `weapon AS ブキ` と `ROUND(AVG(won) * 100, 1) AS 勝率` を**別の列**で返す。\
+     セルに何を並べるかは後段が決めるので、連結すると後段が数値を扱えなくなる",
     "**群ごとの上位 N** は `ROW_NUMBER() OVER (PARTITION BY 群 ORDER BY 指標 DESC)` で\
      順位を振ってから `WHERE 順位 <= N` で絞る。\
-     全体の `LIMIT N` や `ORDER BY 群, 指標` だけでは**群ごとの上位にならない**",
+     全体の `LIMIT N` や `ORDER BY 群, 指標` だけでは**群ごとの上位にならない**。\
+     **順位の列も結果に出す**（後段が列見出しに使う）",
     "複数指標の相関を比べるときは、横に corr 列を並べた行から ROW_NUMBER するのではなく、\
-     **UNION ALL で縦に並べてから** `PARTITION BY 群` で順位を振る。\
-     ピボット表にするなら `MAX(CASE WHEN 順位 = 1 THEN 相関係数 END)` を使う",
+     **UNION ALL で縦に並べてから** `PARTITION BY 群` で順位を振る",
     "数値を帯に区切るときは `CAST(x / 500 AS INT) * 500` のように**数値のまま**作り、\
      並べ替えもその数値で行う。`'500-999'` のような文字列で ORDER BY すると\
      辞書順になり `'3000+'` より後に来る。表示用の文字列は最後に組み立てる",
@@ -434,7 +435,8 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
     ),
     (
         // 実機で踏んだ。横に corr 列を並べて GREATEST + ROW_NUMBER すると壊れる。
-        // 縦に UNION ALL → PARTITION BY ルール → ピボットが正しい。
+        // 縦に UNION ALL → PARTITION BY ルール で順位を振る。
+        // 🔴 ピボットはしない。指標名・相関係数・順位を**別々の列**で返し、表の形は後段が作る。
         "ルールごとに勝率と相関が高い指標の上位5つ。ルール×相関係数の表で、セルには指標と相関係数を並べて",
         "WITH 指標 AS (\n\
          \x20 SELECT rule AS ルール, 'キル' AS 指標, corr(won, kill) AS 相関係数 FROM ai_battles\n\
@@ -451,14 +453,9 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
          \x20 SELECT *, ROW_NUMBER() OVER (PARTITION BY ルール ORDER BY ABS(相関係数) DESC) AS 順位\n\
          \x20 FROM 指標 WHERE 相関係数 IS NOT NULL\n\
          )\n\
-         SELECT ルール,\n\
-         \x20      MAX(CASE WHEN 順位 = 1 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '1位',\n\
-         \x20      MAX(CASE WHEN 順位 = 2 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '2位',\n\
-         \x20      MAX(CASE WHEN 順位 = 3 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '3位',\n\
-         \x20      MAX(CASE WHEN 順位 = 4 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '4位',\n\
-         \x20      MAX(CASE WHEN 順位 = 5 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '5位'\n\
+         SELECT ルール, 順位, 指標, ROUND(相関係数, 3) AS 相関係数\n\
          FROM 順位付き WHERE 順位 <= 5\n\
-         GROUP BY ルール ORDER BY ルール",
+         ORDER BY ルール, 順位",
     ),
     (
         "ステージ別の勝率を 20 戦以上で",
@@ -477,27 +474,23 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
     ),
     (
         // 実機で踏んだ 3 点をまとめて示す例。
-        // ① 群ごとの上位 N は ROW_NUMBER、② 行と列を指定されたらピボット、
-        // ③ 数値の帯は数値で作って数値で並べる。
+        // ① 群ごとの上位 N は ROW_NUMBER、② 数値の帯は数値で作って数値で並べる、
+        // ③ 🔴 **形を指定されてもピボットしない**（後段が組み替える）。
+        // 帯・順位・ブキ・勝率を別々の列で返せば、後段が行 = 帯・列 = 順位の表にできる。
         "Xパワーを 500 ごとに区切って、パワー帯ごとの勝率上位 5 ブキを、行 = 帯・列 = 順位で",
         "WITH 帯 AS (\n\
          \x20 SELECT CAST(poster_power / 500 AS INT) * 500 AS 下限, weapon, won\n\
          \x20 FROM ai_env_slots\n\
          \x20 WHERE poster_power IS NOT NULL AND source_date >= date('now', '-30 days')\n\
          ), 集計 AS (\n\
-         \x20 SELECT 下限, weapon, ROUND(AVG(won) * 100, 1) AS 勝率, COUNT(won) AS 件数\n\
+         \x20 SELECT 下限, weapon AS ブキ, ROUND(AVG(won) * 100, 1) AS 勝率, COUNT(won) AS 件数\n\
          \x20 FROM 帯 GROUP BY 下限, weapon HAVING COUNT(won) >= 50\n\
          ), 順位付き AS (\n\
          \x20 SELECT *, ROW_NUMBER() OVER (PARTITION BY 下限 ORDER BY 勝率 DESC) AS 順位 FROM 集計\n\
          )\n\
-         SELECT 下限 || '〜' || (下限 + 499) AS Xパワー帯,\n\
-         \x20      MAX(CASE WHEN 順位 = 1 THEN weapon || ' ' || 勝率 || '%' END) AS '1位',\n\
-         \x20      MAX(CASE WHEN 順位 = 2 THEN weapon || ' ' || 勝率 || '%' END) AS '2位',\n\
-         \x20      MAX(CASE WHEN 順位 = 3 THEN weapon || ' ' || 勝率 || '%' END) AS '3位',\n\
-         \x20      MAX(CASE WHEN 順位 = 4 THEN weapon || ' ' || 勝率 || '%' END) AS '4位',\n\
-         \x20      MAX(CASE WHEN 順位 = 5 THEN weapon || ' ' || 勝率 || '%' END) AS '5位'\n\
+         SELECT 下限 || '〜' || (下限 + 499) AS Xパワー帯, 順位, ブキ, 勝率, 件数\n\
          FROM 順位付き WHERE 順位 <= 5\n\
-         GROUP BY 下限 ORDER BY 下限",
+         ORDER BY 下限, 順位",
     ),
     (
         "相手にイカ速を積んでいる人が多いと勝ちにくい？",
@@ -1038,6 +1031,46 @@ mod tests {
         // 環境の質問を自分の記録のビューへ流さないための言い換え。
         assert!(p.contains("使用率"), "「使用率」の行き先が案内されていない");
         assert!(p.contains("世界"), "環境が世界の話だと書かれていない");
+    }
+
+    /// 実例が**縦長（long format）**を守っているか。
+    ///
+    /// 🔴 表の形は AI②（`ai_present`）とアプリが作る。実例にピボットが残っていると
+    /// AI① がそれを真似して列方向へ展開し、後段が組み替えられなくなる。
+    /// 実機で「形は SQL では守られない」と分かって役割を分けたので、境界をテストで守る。
+    #[test]
+    fn 実例はピボットしない() {
+        for (q, sql) in SQL_EXAMPLES {
+            assert!(
+                !sql.contains("CASE WHEN 順位"),
+                "実例「{q}」が列方向に展開している（ピボットは後段の仕事）: {sql}"
+            );
+            assert!(
+                !sql.contains("|| ' ' ||"),
+                "実例「{q}」が値を文字列に連結している（セルの組み立ては後段の仕事）: {sql}"
+            );
+        }
+        let p = analysis_prompt(None);
+        assert!(p.contains("縦長"), "縦長で返す指示がプロンプトに無い");
+        assert!(p.contains("ピボットは後段"), "役割分担がプロンプトに書かれていない");
+    }
+
+    /// 群ごとの上位 N の実例が、**順位の列を結果に出している**か。
+    ///
+    /// 後段が列見出しに使うので、`WHERE 順位 <= 5` で絞るだけで列に出さないと
+    /// ピボットできない。
+    #[test]
+    fn 順位で絞る実例は順位を列に出す() {
+        for (q, sql) in SQL_EXAMPLES {
+            if !sql.contains("ROW_NUMBER") {
+                continue;
+            }
+            let select = sql.rsplit("SELECT").next().unwrap_or("");
+            assert!(
+                select.contains("順位"),
+                "実例「{q}」が順位を結果に出していない: {select}"
+            );
+        }
     }
 
     /// 環境データを使う実例が、**必ず期間で絞っている**か。

@@ -33,7 +33,7 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::time::{Duration, Instant};
 
 use libsqlite3_sys as ffi;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{Column, Connection, Row, SqliteConnection};
 use tauri::AppHandle;
@@ -66,7 +66,8 @@ const DENIED_COLUMNS: &[(&str, &str)] = &[
 ];
 
 /// AI の SQL の実行結果。
-#[derive(Debug, Serialize)]
+/// `ai_apply_presentation` でフロントから受け取り直すので `Deserialize` も要る。
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AnalysisResult {
     pub columns: Vec<String>,
     /// 行 × 列。値は数値 / 文字列 / null のいずれか。
@@ -186,6 +187,24 @@ async fn data_scale(app: &AppHandle) -> Option<crate::ai_views::DataScale> {
 #[tauri::command]
 pub async fn ai_run_sql(app: AppHandle, sql: String) -> Result<AnalysisResult, String> {
     run_analysis_sql(&app, &sql).await
+}
+
+/// AI②（見せ方を決める段）に渡す指示を返す。
+#[tauri::command]
+pub fn ai_presentation_prompt() -> String {
+    crate::ai_present::presentation_prompt()
+}
+
+/// AI② が返した見せ方を集計結果に適用し、表の形にする。
+///
+/// **数値はここで作らない。** 行・列の組み替えとセルの連結だけを行う。
+/// 指定が結果と合っていなければ、実際の列名を添えて `Err` を返す（AI が読んで直せる形）。
+#[tauri::command]
+pub fn ai_apply_presentation(
+    result: AnalysisResult,
+    spec: crate::ai_present::PresentationSpec,
+) -> Result<crate::ai_present::ShapedTable, String> {
+    crate::ai_present::apply(&result.columns, &result.rows, &spec)
 }
 
 async fn fetch_rows(conn: &mut SqliteConnection, sql: &str) -> Result<AnalysisResult, String> {
@@ -725,6 +744,51 @@ mod tests {
         let t = Instant::now();
         let rows = sqlx::query(&win90).fetch_all(&pool).await;
         println!("ウィンドウ関数+90日: {:?} / {:?}", t.elapsed(), rows.map(|r| r.len()));
+
+        // 🔴 実機で守られなかった指定「行はパワー帯、列は順位 1〜5」を、
+        // AI① の実例 SQL（縦長）+ PresentationSpec で**本当に作れるか**を通しで確かめる。
+        // これが第 1 段 B の成立条件。
+        {
+            let (_, sql) = crate::ai_views::SQL_EXAMPLES
+                .iter()
+                .find(|(q, _)| q.contains("Xパワー"))
+                .expect("Xパワー帯の実例が無い");
+            let rows = sqlx::query(sql).fetch_all(&pool).await.unwrap();
+            let columns: Vec<String> = rows[0]
+                .columns()
+                .iter()
+                .map(|c| c.name().to_string())
+                .collect();
+            let values: Vec<Vec<serde_json::Value>> = rows
+                .iter()
+                .map(|r| (0..r.len()).map(|i| value_at(r, i)).collect())
+                .collect();
+
+            let spec: crate::ai_present::PresentationSpec = serde_json::from_str(
+                r#"{"shape":"pivot","title":"Xパワー帯ごとの勝率上位ブキ",
+                    "row_key":"Xパワー帯","column_key":"順位","column_suffix":"位",
+                    "cell_template":"{ブキ} {勝率}%"}"#,
+            )
+            .unwrap();
+
+            let t = crate::ai_present::apply(&columns, &values, &spec).unwrap();
+            println!("\n=== 通し確認: 行 = パワー帯 / 列 = 順位 ===");
+            println!("{}", t.columns.join(" | "));
+            for r in t.rows.iter().take(6) {
+                println!(
+                    "{}",
+                    r.iter()
+                        .map(|v| match v {
+                            serde_json::Value::String(s) => s.clone(),
+                            serde_json::Value::Null => "-".into(),
+                            other => other.to_string(),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" | ")
+                );
+            }
+            println!("警告: {:?}\n", t.warnings);
+        }
 
         // プロンプトに載せている実例そのものを、実データで計測する。
         // ここが QUERY_TIMEOUT を超えていたら実例が壊れている。
