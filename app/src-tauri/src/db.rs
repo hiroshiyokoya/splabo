@@ -40,29 +40,37 @@ pub async fn init_db(app: &AppHandle) -> Result<DbPool, String> {
 
     let pool = SqlitePool::connect_with(opts).await.map_err(|e| e.to_string())?;
     sqlx::query(SCHEMA).execute(&pool).await.map_err(|e| e.to_string())?;
-    // 既存 DB への追加カラム（失敗は無視 = 既存カラムなら OK）
-    for sql in [
-        "ALTER TABLE battles ADD COLUMN detail_fetched INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE battles ADD COLUMN knockout       TEXT",
-        "ALTER TABLE battles ADD COLUMN sub_weapon     TEXT",
-        "ALTER TABLE battles ADD COLUMN special_weapon TEXT",
-        "ALTER TABLE battles ADD COLUMN awards         TEXT",
-        "ALTER TABLE battles ADD COLUMN my_team        TEXT",
-        "ALTER TABLE battles ADD COLUMN other_teams    TEXT",
-        "ALTER TABLE battles ADD COLUMN stage_name     TEXT",
-        "ALTER TABLE battles ADD COLUMN statink_uuid  TEXT",
-        // historyGroups の親ノード（bankaraMatchChallenge or xMatchMeasurement）の JSON。
-        // 各 group の最新バトル（idx==0）にのみセットされる。NULL も多い。
-        "ALTER TABLE battles ADD COLUMN parent_json   TEXT",
-        "ALTER TABLE weapons ADD COLUMN sub_weapon_image     TEXT",
-        "ALTER TABLE weapons ADD COLUMN special_weapon_image TEXT",
-    ] {
-        let _ = sqlx::query(sql).execute(&pool).await;
+    for sql in LEGACY_ALTERS {
+        let _ = sqlx::query(*sql).execute(&pool).await;
     }
     Ok(Arc::new(pool))
 }
 
-const SCHEMA: &str = r#"
+/// 既存 DB への追加カラム。失敗は無視する（既にあれば OK）。
+///
+/// **マイグレーション（`migrate_battle_ids`）はこれらの列を前提にしている**ので、
+/// `SCHEMA` の直後・マイグレーションより前に当てること。AI 用ビューのテストも
+/// 同じ順序で土台を組むため、一覧をここに切り出してある。
+pub(crate) const LEGACY_ALTERS: &[&str] = &[
+    "ALTER TABLE battles ADD COLUMN detail_fetched INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE battles ADD COLUMN knockout       TEXT",
+    "ALTER TABLE battles ADD COLUMN sub_weapon     TEXT",
+    "ALTER TABLE battles ADD COLUMN special_weapon TEXT",
+    "ALTER TABLE battles ADD COLUMN awards         TEXT",
+    "ALTER TABLE battles ADD COLUMN my_team        TEXT",
+    "ALTER TABLE battles ADD COLUMN other_teams    TEXT",
+    "ALTER TABLE battles ADD COLUMN stage_name     TEXT",
+    "ALTER TABLE battles ADD COLUMN statink_uuid  TEXT",
+    // historyGroups の親ノード（bankaraMatchChallenge or xMatchMeasurement）の JSON。
+    // 各 group の最新バトル（idx==0）にのみセットされる。NULL も多い。
+    "ALTER TABLE battles ADD COLUMN parent_json   TEXT",
+    "ALTER TABLE weapons ADD COLUMN sub_weapon_image     TEXT",
+    "ALTER TABLE weapons ADD COLUMN special_weapon_image TEXT",
+];
+
+/// 初期スキーマ（旧 `battles` 系）。AI 用ビューのテストが本番と同じ順序
+/// （SCHEMA → LEGACY_ALTERS → マイグレーション）で土台を組むため公開している。
+pub(crate) const SCHEMA: &str = r#"
     CREATE TABLE IF NOT EXISTS battles (
         id          TEXT PRIMARY KEY,
         played_at   TEXT NOT NULL,
@@ -128,7 +136,9 @@ const SCHEMA: &str = r#"
 //   result: win / lose / draw
 //   ability: abilities::ABILITY_HASHES の stat.ink キー（ink_saver_main 等）
 
-const SCHEMA_V6: &str = r#"
+/// stat.ink 互換の正規化スキーマ（migration v6 で適用）。
+/// AI 用ビュー（`ai_views`）が参照する土台なので、そちらのテストからも使う。
+pub(crate) const SCHEMA_V6: &str = r#"
     CREATE TABLE IF NOT EXISTS lobby (
         id  INTEGER PRIMARY KEY,
         key TEXT    NOT NULL UNIQUE

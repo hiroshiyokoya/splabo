@@ -5,6 +5,7 @@ use tauri::{
 };
 
 pub mod abilities;
+pub mod ai_views;
 pub mod auth;
 pub mod battle_export;
 pub mod companion;
@@ -192,6 +193,14 @@ pub fn run() {
                                 Ok(n) if n > 0 => log::info!("[移行] mode/rule/stage/result を正規化 {n}件"),
                                 Ok(_) => {},
                                 Err(e) => log::warn!("[移行] 失敗: {e}"),
+                            }
+                        }
+                        // AI 用ビューを張り直す（#572）。**マイグレーションの後**であること。
+                        // rule_id の nullable 化(v11)・環境の KDA 列(v21)を前提にしている。
+                        // 毎起動 drop→create するので版管理は不要（コードが常に正）。
+                        if let Some(pool) = handle.try_state::<db::DbPool>() {
+                            if let Err(e) = ai_views::create_views(&pool).await {
+                                log::warn!("[AI ビュー] {e}");
                             }
                         }
                         // DB 準備完了後に起動時フェッチ（未ログインならスキップ）
