@@ -27,10 +27,12 @@
 //! 焼き込めない「意味」（ナワバリだけ塗り率で決まる、ギアの AP 重み、合計がバトル数を
 //! 超えるのは正常、など）は #575 のドメイン知識パックで言葉として渡す。
 //!
-//! # 環境（stat.ink）側のビューは別 PR
+//! # 環境（stat.ink）側
 //!
-//! `ai_env_slots`（1 行 = バトル × 投稿者を除く 7 スロット）は 7 way の UNION ALL で
-//! 独自の注意点があるため分けた。
+//! `ai_env_slots` は 1 行 = バトル × 投稿者を除く 7 スロット。**投稿者（`a1`）は含めない**
+//! （#501・stat.ink の全体統計と同じ数え方）。SQL は 7 way の UNION ALL になるが、
+//! 手書きするとスロットの取り違え（`a2` の勝敗に `a3` の KDA を付ける等）が静かに起きるので
+//! Rust 側で生成する。
 
 use crate::db::DbPool;
 
@@ -147,6 +149,76 @@ JOIN weapon w ON w.id = bp.weapon_id
 WHERE NOT (bp.is_our_team = 1 AND bp.is_me = 1);
 "#;
 
+/// 環境ビューが展開するスロットと、そのスロットが属するチーム。
+///
+/// 🔴 **投稿者（`a1`）を含めてはいけない。** stat.ink の全体統計は投稿者を母数から外して
+/// おり（自分のバトルだけを上げる人が多く、投稿者のブキと勝敗に偏りが出る）、splabo も
+/// それに倣っている（#501）。`db.rs` の `SELF_SLOTS` / `OPP_SLOTS` と同じ 7 スロット。
+const ENV_SLOTS: &[(&str, &str)] = &[
+    ("a2", "alpha"),
+    ("a3", "alpha"),
+    ("a4", "alpha"),
+    ("b1", "bravo"),
+    ("b2", "bravo"),
+    ("b3", "bravo"),
+    ("b4", "bravo"),
+];
+
+/// `ai_env_slots` の DDL を組む。
+///
+/// 7 way の UNION ALL を手書きすると、スロット名を 1 か所書き間違えただけで
+/// 「あるブキの行に別スロットの KDA が付く」という**気づけない壊れ方**をする。
+/// スロット定義を 1 つ持って生成する。
+///
+/// 🔴 `lobby` / `rule` / `map` は **LEFT JOIN**。`env_battles` のこれらは NOT NULL 制約が
+/// 無く、取り込み時に解決できなければ NULL になる。INNER JOIN にすると黙って母数が減る。
+fn env_view_sql() -> String {
+    let selects: Vec<String> = ENV_SLOTS
+        .iter()
+        .map(|(slot, team)| {
+            format!(
+                "SELECT
+    eb.id                                           AS battle_id,
+    eb.source_date                                  AS source_date,
+    eb.season                                       AS season,
+    eb.game_ver                                     AS game_ver,
+    l.key                                           AS lobby,
+    r.key                                           AS rule,
+    COALESCE(m.name_ja, m.key)                      AS stage,
+    eb.poster_rank                                  AS poster_rank,
+    eb.poster_power                                 AS poster_power,
+    '{slot}'                                        AS slot,
+    {is_poster_team}                                AS is_poster_team,
+    COALESCE(w.name_ja, w.key)                      AS weapon,
+    COALESCE(NULLIF(w.category_key, ''), '(未分類)') AS weapon_category,
+    COALESCE(w.sub_key,     '(不明)')                AS sub_weapon,
+    COALESCE(w.special_key, '(不明)')                AS special_weapon,
+    CASE eb.win_team WHEN '{team}' THEN 1 WHEN 'alpha' THEN 0 WHEN 'bravo' THEN 0 END AS won,
+    eb.knockout                                     AS is_knockout,
+    eb.{slot}_kill                                  AS kill,
+    eb.{slot}_death                                 AS death,
+    eb.{slot}_assist                                AS assist,
+    eb.{slot}_inked                                 AS inked,
+    CASE WHEN eb.{slot}_kill IS NOT NULL THEN 1 ELSE 0 END AS has_kda
+FROM env_battles eb
+JOIN      weapon w ON w.id = eb.{slot}_weapon_id
+LEFT JOIN lobby  l ON l.id = eb.lobby_id
+LEFT JOIN rule   r ON r.id = eb.rule_id
+LEFT JOIN map    m ON m.id = eb.map_id",
+                slot = slot,
+                team = team,
+                // 投稿者チーム = alpha 側。`a*` なら 1。
+                is_poster_team = if team == &"alpha" { 1 } else { 0 },
+            )
+        })
+        .collect();
+
+    format!(
+        "DROP VIEW IF EXISTS ai_env_slots;\nCREATE VIEW ai_env_slots AS\n{};\n",
+        selects.join("\nUNION ALL\n")
+    )
+}
+
 /// ビュー 1 つの説明。**列は実ビューと一致していなければならない**（テストで検証する）。
 pub struct ViewDoc {
     pub name: &'static str,
@@ -225,6 +297,36 @@ pub const AI_VIEWS: &[ViewDoc] = &[
         ],
     },
     ViewDoc {
+        name: "ai_env_slots",
+        row_meaning: "1 行 = 環境データ（stat.ink の全世界のバトル）1 件 × スロット 1 つ。\
+                      スロットは投稿者本人を除く 7 人分（味方 3 + 相手 4）。\
+                      投稿者は母数に入っていない（stat.ink の全体統計と同じ数え方）",
+        columns: &[
+            ("battle_id", "環境バトルの ID"),
+            ("source_date", "stat.ink 上の日付"),
+            ("season", "シーズン"),
+            ("game_ver", "ゲームのバージョン。バランス調整で環境が変わるので、期間を跨ぐ比較では絞ること"),
+            ("lobby", "regular / bankara_open / bankara_challenge / xmatch など。解決できなければ NULL"),
+            ("rule", "nawabari / area / yagura / hoko / asari。解決できなければ NULL"),
+            ("stage", "ステージ名（和名）"),
+            ("poster_rank", "**投稿者本人**のウデマエ。この行のプレイヤーのものではない"),
+            ("poster_power", "**投稿者本人**の X パワー。この行のプレイヤーのものではない"),
+            ("slot", "a2 / a3 / a4 / b1 / b2 / b3 / b4。投稿者の a1 は含まれない"),
+            ("is_poster_team", "投稿者と同じチーム（a 側）なら 1"),
+            ("weapon", "そのスロットのブキ（和名）"),
+            ("weapon_category", "ブキのカテゴリ"),
+            ("sub_weapon", "サブウェポン"),
+            ("special_weapon", "スペシャルウェポン"),
+            ("won", "このスロットのチームが勝ったら 1、負けたら 0、判定不能なら NULL。AVG(won) が勝率になる"),
+            ("is_knockout", "ノックアウト決着なら 1"),
+            ("kill", "そのスロットのキル数。記録が無ければ NULL"),
+            ("death", "デス数。記録が無ければ NULL"),
+            ("assist", "アシスト数。記録が無ければ NULL"),
+            ("inked", "塗りポイント。記録が無ければ NULL"),
+            ("has_kda", "KDA が記録されている行なら 1。再取得前のデータは 1 人分しか記録が無いので、KDA を見る集計では WHERE has_kda で絞る"),
+        ],
+    },
+    ViewDoc {
         name: "ai_battle_weapon_presence",
         row_meaning: "1 行 = 「そのバトルのその陣営に、そのブキが居た」という事実。\
                       同一バトル内の同じブキは 1 行に畳んであり、ally からは自分を除いてある。\
@@ -251,6 +353,10 @@ pub async fn create_views(pool: &DbPool) -> Result<(), String> {
         .execute(pool.as_ref())
         .await
         .map_err(|e| format!("AI 用ビューの作成に失敗: {e}"))?;
+    sqlx::raw_sql(&env_view_sql())
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| format!("AI 用ビュー(環境)の作成に失敗: {e}"))?;
     Ok(())
 }
 
@@ -481,6 +587,132 @@ mod tests {
         assert_eq!(row.get::<String, _>("head_sub1"), "test_sub");
         assert!(row.get::<Option<String>, _>("head_sub2").is_none(), "空きスロットは NULL");
         assert!(row.get::<Option<String>, _>("clothing_primary").is_none(), "未設定の部位は NULL");
+    }
+
+    /// 環境バトル 1 件を入れる。8 スロット全員に武器を置き、KDA は `kda_slots` のみ埋める。
+    async fn insert_env_battle(pool: &DbPool, id: i64, win_team: &str, kda_slots: &[&str]) {
+        sqlx::query("INSERT OR IGNORE INTO lobby (id, key) VALUES (1, 'bankara_open')")
+            .execute(pool.as_ref()).await.unwrap();
+        sqlx::query("INSERT OR IGNORE INTO rule (id, key) VALUES (2, 'area')")
+            .execute(pool.as_ref()).await.unwrap();
+        sqlx::query("INSERT OR IGNORE INTO map (id, key, name_ja) VALUES (1, 'yunohana', 'ユノハナ大渓谷')")
+            .execute(pool.as_ref()).await.unwrap();
+        sqlx::query(
+            "INSERT OR IGNORE INTO weapon (id, key, name_ja, category_key, sub_key, special_key)
+             VALUES (1, 'splattershot', 'スプラシューター', 'shooter', 'kyubanbomb', 'kanibuki')",
+        ).execute(pool.as_ref()).await.unwrap();
+
+        sqlx::query(
+            "INSERT INTO env_battles
+               (id, source_date, lobby_id, rule_id, map_id, period, season, game_ver,
+                win_team, knockout, poster_rank, poster_power,
+                a1_weapon_id, a2_weapon_id, a3_weapon_id, a4_weapon_id,
+                b1_weapon_id, b2_weapon_id, b3_weapon_id, b4_weapon_id)
+             VALUES (?, '2026-07-30', 1, 2, 1, 'p', 'S9', '900',
+                     ?, 1, 'splus', 2500.0,
+                     1, 1, 1, 1, 1, 1, 1, 1)",
+        )
+        .bind(id).bind(win_team)
+        .execute(pool.as_ref()).await.unwrap();
+
+        for slot in kda_slots {
+            sqlx::query(&format!(
+                "UPDATE env_battles SET {slot}_kill = 5, {slot}_death = 3,
+                                        {slot}_assist = 1, {slot}_inked = 900 WHERE id = ?"
+            ))
+            .bind(id)
+            .execute(pool.as_ref()).await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn 環境ビューは投稿者を除く7スロットを展開する() {
+        let pool = setup().await;
+        insert_env_battle(&pool, 1, "alpha", &[]).await;
+
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ai_env_slots")
+            .fetch_one(pool.as_ref()).await.unwrap();
+        assert_eq!(n, 7, "1 バトルから 7 行（投稿者 a1 を除く）出るべき");
+
+        let slots: Vec<String> = sqlx::query_scalar("SELECT slot FROM ai_env_slots ORDER BY slot")
+            .fetch_all(pool.as_ref()).await.unwrap();
+        assert_eq!(slots, vec!["a2", "a3", "a4", "b1", "b2", "b3", "b4"]);
+        assert!(!slots.contains(&"a1".to_string()), "投稿者 a1 が混ざっている(#501)");
+    }
+
+    #[tokio::test]
+    async fn 環境ビューの勝敗がチームごとに正しい() {
+        let pool = setup().await;
+        insert_env_battle(&pool, 1, "alpha", &[]).await;
+
+        // alpha 勝ち → a* は won=1、b* は won=0
+        let alpha_won: Vec<i64> = sqlx::query_scalar(
+            "SELECT won FROM ai_env_slots WHERE is_poster_team = 1",
+        ).fetch_all(pool.as_ref()).await.unwrap();
+        assert_eq!(alpha_won, vec![1, 1, 1]);
+
+        let bravo_won: Vec<i64> = sqlx::query_scalar(
+            "SELECT won FROM ai_env_slots WHERE is_poster_team = 0",
+        ).fetch_all(pool.as_ref()).await.unwrap();
+        assert_eq!(bravo_won, vec![0, 0, 0, 0]);
+
+        // 全 7 スロットの勝率は 3/7
+        let rate: f64 = sqlx::query_scalar("SELECT AVG(won) FROM ai_env_slots")
+            .fetch_one(pool.as_ref()).await.unwrap();
+        assert!((rate - 3.0 / 7.0).abs() < 1e-12, "勝率 = {rate}");
+    }
+
+    #[tokio::test]
+    async fn 環境ビューの_has_kda_で記録済みだけ絞れる() {
+        let pool = setup().await;
+        // 再取得前のデータを模して b1 だけ KDA を持たせる
+        insert_env_battle(&pool, 1, "bravo", &["b1"]).await;
+
+        let with: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ai_env_slots WHERE has_kda = 1")
+            .fetch_one(pool.as_ref()).await.unwrap();
+        assert_eq!(with, 1, "KDA があるのは b1 だけ");
+
+        let without: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ai_env_slots WHERE has_kda = 0")
+            .fetch_one(pool.as_ref()).await.unwrap();
+        assert_eq!(without, 6);
+
+        // has_kda で絞れば平均キルが母数の違いに引きずられない
+        let avg: f64 = sqlx::query_scalar(
+            "SELECT AVG(kill) FROM ai_env_slots WHERE has_kda = 1",
+        ).fetch_one(pool.as_ref()).await.unwrap();
+        assert!((avg - 5.0).abs() < 1e-12, "平均キル = {avg}");
+    }
+
+    /// スロット定義そのものの回帰防止。投稿者を足すと環境の全数字が変わる。
+    #[test]
+    fn 環境スロットは投稿者を除く7つ() {
+        assert_eq!(ENV_SLOTS.len(), 7);
+        assert!(!ENV_SLOTS.iter().any(|(s, _)| *s == "a1"), "投稿者 a1 は母数外(#501)");
+        let alpha = ENV_SLOTS.iter().filter(|(_, t)| *t == "alpha").count();
+        let bravo = ENV_SLOTS.iter().filter(|(_, t)| *t == "bravo").count();
+        assert_eq!((alpha, bravo), (3, 4), "味方 3 人 + 相手 4 人");
+    }
+
+    /// 生成 SQL でスロット名が取り違えられていないか。
+    /// 「a2 の行に a3 の KDA が付く」類は実データでは気づけないので、SQL の形で確かめる。
+    #[test]
+    fn 環境ビューの各スロットが自分の列だけを参照する() {
+        let sql = env_view_sql();
+        for (slot, _) in ENV_SLOTS {
+            let block = sql
+                .split("UNION ALL")
+                .find(|b| b.contains(&format!("'{slot}'                                        AS slot")))
+                .unwrap_or_else(|| panic!("{slot} のブロックが見つからない"));
+            for (other, _) in ENV_SLOTS {
+                if other == slot {
+                    continue;
+                }
+                assert!(
+                    !block.contains(&format!("eb.{other}_")),
+                    "{slot} のブロックが {other} の列を参照している"
+                );
+            }
+        }
     }
 
     /// `rule` を INNER JOIN に「直して」しまう回帰を防ぐ。
