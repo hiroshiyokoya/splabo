@@ -154,6 +154,17 @@ const KINDS: &[Kind] = &[
     Kind::RegrIntercept,
 ];
 
+/// AI に渡す関数の説明。**登録している関数と一致していること**をテストで検証する。
+///
+/// プロンプトに手書きの一覧を別に持つと、関数を足したときに書き忘れる。
+pub const FUNCTION_DOCS: &[(&str, &str)] = &[
+    ("corr(x, y)", "ピアソン相関。-1〜1。符号は向き、絶対値は強さ"),
+    ("variance(x)", "標本分散（n-1 で割る）"),
+    ("stddev(x)", "標本標準偏差"),
+    ("regr_slope(y, x)", "回帰直線の傾き。**説明変数は第 2 引数**"),
+    ("regr_intercept(y, x)", "回帰直線の切片"),
+];
+
 /// 生の接続ハンドルに全関数を登録する。
 ///
 /// 失敗した関数名を返す（呼び出し側でログに出す用）。1 つ失敗しても残りは登録を試みる。
@@ -273,6 +284,21 @@ mod tests {
             a.push(x, y);
         }
         a
+    }
+
+    /// 登録した関数がすべてプロンプト用の説明に載っているか。
+    /// 関数を足して説明を書き忘れると、AI はその関数を知らないままになる。
+    #[test]
+    fn 登録した関数がすべて説明されている() {
+        for kind in KINDS {
+            let name = kind.name();
+            let name = std::str::from_utf8(&name[..name.len() - 1]).unwrap();
+            assert!(
+                FUNCTION_DOCS.iter().any(|(sig, _)| sig.starts_with(name)),
+                "{name} の説明が FUNCTION_DOCS に無い"
+            );
+        }
+        assert_eq!(FUNCTION_DOCS.len(), KINDS.len(), "説明の数と登録数が合わない");
     }
 
     #[test]

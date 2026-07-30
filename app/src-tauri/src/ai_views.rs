@@ -371,11 +371,88 @@ pub async fn create_views(pool: &DbPool) -> Result<(), String> {
 /// 実行時にファイルを探さないため、配布物に同梱する必要もない。
 pub const DOMAIN_KNOWLEDGE: &str = include_str!("../../../docs/ai-domain-knowledge.md");
 
-/// AI に渡すプロンプトの土台。**ビューの一覧 + ドメイン知識**。
+/// AI が踏みやすい間違い。実機で実際に出たものを足していく。
+const COMMON_MISTAKES: &[&str] = &[
+    "各ビューの「1 行が何か」を必ず確認する。ai_battles の battle_id は一意なので、\
+     GROUP BY battle_id はグループが 1 行ずつになるだけで意味がない",
+    "足切りはグループごとの件数に対して行う。グループが 1 行しかない集計に \
+     HAVING COUNT(*) >= 5 を付けると、全部消えて 0 件になる",
+    "相関を聞かれたら平均を並べず corr() を使う。平均を見比べても相関は分からない",
+    "UNION ALL で並べた結果を並べ替えるときは、**全体を副問い合わせで包む**。\
+     複合 SELECT の ORDER BY には式を書けず、列名か位置しか使えない",
+];
+
+/// AI に見せる書き方の実例（few-shot）。
 ///
+/// 🔴 **ここの SQL は実際に実行できることをテストで検証している。**
+/// 関数の一覧だけ渡しても使いどころが伝わらないので実例が要るが、**壊れた例を渡すと
+/// AI はそれを忠実に真似する**（複合 SELECT の ORDER BY で実際に踏んだ）。
+pub const SQL_EXAMPLES: &[(&str, &str)] = &[
+    (
+        "勝率と最も相関の高いバトル指標は？",
+        // 複合 SELECT の ORDER BY に ABS(...) は書けないので、副問い合わせで包む。
+        "SELECT * FROM (\n\
+         \x20 SELECT '平均キル' AS 指標, corr(won, kill) AS 相関係数, COUNT(won) AS 件数 FROM ai_battles\n\
+         \x20 UNION ALL SELECT '平均デス',     corr(won, death),  COUNT(won) FROM ai_battles\n\
+         \x20 UNION ALL SELECT '平均アシスト', corr(won, assist), COUNT(won) FROM ai_battles\n\
+         \x20 UNION ALL SELECT '平均塗り',     corr(won, inked),  COUNT(won) FROM ai_battles\n\
+         ) ORDER BY ABS(相関係数) DESC",
+    ),
+    (
+        "ステージ別の勝率を 20 戦以上で",
+        "SELECT stage AS ステージ, ROUND(AVG(won) * 100, 1) AS 勝率, COUNT(won) AS 件数\n\
+         FROM ai_battles GROUP BY stage HAVING COUNT(won) >= 20 ORDER BY 勝率 DESC",
+    ),
+    (
+        "ウデマエ帯ごとの武器使用率を上位 10 件",
+        "SELECT poster_rank AS ウデマエ, weapon AS ブキ, COUNT(*) AS 出現数,\n\
+         \x20      ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY poster_rank), 2) AS 使用率\n\
+         FROM ai_env_slots WHERE poster_rank IS NOT NULL\n\
+         GROUP BY poster_rank, weapon ORDER BY 使用率 DESC LIMIT 10",
+    ),
+    (
+        "相手にイカ速を積んでいる人が多いと勝ちにくい？",
+        "SELECT CASE WHEN 積み人数 = 0 THEN '0 人' WHEN 積み人数 <= 2 THEN '1〜2 人' ELSE '3 人以上' END AS 相手の人数,\n\
+         \x20      ROUND(AVG(won) * 100, 1) AS 勝率, COUNT(won) AS 件数\n\
+         FROM (\n\
+         \x20 SELECT b.battle_id, b.won,\n\
+         \x20        (SELECT COUNT(*) FROM ai_battle_players p\n\
+         \x20          WHERE p.battle_id = b.battle_id AND p.is_our_team = 0\n\
+         \x20            AND 'run_speed_up' IN (p.head_primary, p.clothing_primary, p.shoes_primary)) AS 積み人数\n\
+         \x20 FROM ai_battles b WHERE b.has_players = 1\n\
+         ) GROUP BY 相手の人数 ORDER BY 相手の人数",
+    ),
+];
+
+/// AI に渡すプロンプトの土台。
+///
+/// **ビューの一覧 + 使える関数 + よくある間違い + 実例 + ドメイン知識。**
 /// データは 1 行も含まない。ここに載っているのは「どんな列があるか」と「その意味」だけ。
+///
+/// フロント側に散らさないのは、**プロンプトの中身をテストできる場所に置く**ため。
+/// 実例の SQL は実際に実行して検証している（壊れた例を渡すと AI が真似する）。
 pub fn analysis_prompt() -> String {
-    format!("{}\n---\n\n{}", schema_prompt(), DOMAIN_KNOWLEDGE)
+    let mut s = schema_prompt();
+
+    s.push_str("---\n\n## 使える統計関数\n\nこのアプリが SQLite に足したものです。\
+                いずれも引数に NULL がある行は母数から外れ、件数不足や分散 0 では NULL を返します。\n\n");
+    for (sig, desc) in crate::sql_functions::FUNCTION_DOCS {
+        s.push_str(&format!("- `{sig}` — {desc}\n"));
+    }
+
+    s.push_str("\n## よくある間違い\n\n");
+    for m in COMMON_MISTAKES {
+        s.push_str(&format!("- {m}\n"));
+    }
+
+    s.push_str("\n## 書き方の例\n\n");
+    for (q, sql) in SQL_EXAMPLES {
+        s.push_str(&format!("質問「{q}」\n\n```sql\n{sql}\n```\n\n"));
+    }
+
+    s.push_str("---\n\n");
+    s.push_str(DOMAIN_KNOWLEDGE);
+    s
 }
 
 /// AI に渡すスキーマ説明を組む。**ここが唯一の出力元**で、手書きの一覧を別に持たない。
@@ -410,6 +487,18 @@ mod tests {
     async fn setup() -> DbPool {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
+            // 本番（init_db）と同じく統計関数を登録する。入れないとプロンプトの実例に
+            // 出てくる corr() が「no such function」になり、実例の検証ができない。
+            .after_connect(|conn, _meta| {
+                Box::pin(async move {
+                    let mut handle = conn.lock_handle().await?;
+                    let failed = unsafe {
+                        crate::sql_functions::register_all(handle.as_raw_handle().as_ptr())
+                    };
+                    assert!(failed.is_empty(), "統計関数の登録に失敗: {failed:?}");
+                    Ok(())
+                })
+            })
             .connect("sqlite::memory:")
             .await
             .unwrap();
@@ -741,6 +830,39 @@ mod tests {
             AI_VIEWS_SQL.contains("LEFT JOIN rule"),
             "battle.rule_id は nullable(v11)。INNER JOIN にすると詳細未取得のバトルが黙って落ちる"
         );
+    }
+
+    /// 🔴 **プロンプトに載せている実例が、実際に実行できるか。**
+    ///
+    /// 初版では相関の例に `UNION ALL ... ORDER BY ABS(相関係数)` を書いていて、
+    /// SQLite の複合 SELECT では ORDER BY に式が使えないため実行できなかった。
+    /// **AI は壊れた例を忠実に真似する**ので、例そのものを検証する。
+    ///
+    /// データは空でよい（構文と列名の妥当性を見る）。
+    #[tokio::test]
+    async fn プロンプトの実例がすべて実行できる() {
+        let pool = setup().await;
+        for (question, sql) in SQL_EXAMPLES {
+            let r = sqlx::query(sql).fetch_all(pool.as_ref()).await;
+            assert!(
+                r.is_ok(),
+                "実例が実行できない（質問「{question}」）: {}\n{sql}",
+                r.err().map(|e| e.to_string()).unwrap_or_default()
+            );
+        }
+    }
+
+    #[test]
+    fn プロンプトに関数と実例とよくある間違いが載る() {
+        let p = analysis_prompt();
+        for (sig, _) in crate::sql_functions::FUNCTION_DOCS {
+            assert!(p.contains(sig), "{sig} がプロンプトに無い");
+        }
+        for (q, _) in SQL_EXAMPLES {
+            assert!(p.contains(q), "実例「{q}」がプロンプトに無い");
+        }
+        assert!(p.contains("GROUP BY battle_id"), "粒度の注意がプロンプトに無い");
+        assert!(p.contains("複合 SELECT"), "複合 SELECT の注意がプロンプトに無い");
     }
 
     /// ドメイン知識から**落ちてはいけない事実**が残っているか。

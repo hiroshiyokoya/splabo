@@ -202,50 +202,24 @@ function formatNumber(v: number): string {
 // ---------------------------------------------------------------------------
 
 function buildSystemPrompt(schema: string): string {
+  // 🔴 スキーマ・使える関数・よくある間違い・書き方の例は **すべて schema に含まれる**
+  // （Rust の `analysis_prompt()` が組む）。ここに書き足さないこと。
+  // 実例の SQL は「実際に実行できるか」を Rust 側のテストで検証している。
+  // 壊れた例を渡すと AI はそれを忠実に真似するので、テストできる場所に置いてある。
   return `あなたは splabo（Splatoon 3 の戦績分析アプリ）の分析アシスタントです。
 ユーザーの質問に答えるための SQLite の SELECT を 1 つ書いてください。
 
 ${schema}
 
-## 使える統計関数
+---
 
-このアプリが SQLite に足したものです。
-
-- corr(x, y) — ピアソン相関
-- variance(x) / stddev(x) — 標本分散 / 標本標準偏差
-- regr_slope(y, x) / regr_intercept(y, x) — 回帰の傾き / 切片
-
-いずれも引数に NULL がある行は母数から外れます。件数不足や分散 0 では NULL を返します。
-
-## 制約
+## 守ること
 
 - **読み取り専用です。** SELECT 以外は実行できません（ATTACH / PRAGMA / 書き込みは拒否されます）
 - **上に挙げたビューだけを使ってください。** 他のテーブルは参照しないでください
 - 結果は行数に上限があります。ランキングなら ORDER BY と LIMIT を付けてください
 - 列名は結果表の見出しになります。**日本語の別名**を付けてください
-
-## よくある間違い
-
-- **各ビューの「1 行が何か」を必ず確認してください。** \`ai_battles\` の \`battle_id\` は一意なので、
-  \`GROUP BY battle_id\` はグループが 1 行ずつになるだけで意味がありません
-- **足切りはグループごとの件数に対して行ってください。** グループが 1 行しかない集計に
-  \`HAVING COUNT(*) >= 5\` を付けると、全部消えて 0 件になります
-- **相関を聞かれたら平均を並べず \`corr()\` を使ってください。** 平均を見比べても相関は分かりません
-- 集計しない列を SELECT に混ぜないでください
-
-## 書き方の例
-
-質問「勝率と最も相関の高いバトル指標は？」
-
-{"sql": "SELECT '平均キル' AS 指標, corr(won, kill) AS 相関係数, COUNT(won) AS 件数 FROM ai_battles UNION ALL SELECT '平均デス', corr(won, death), COUNT(won) FROM ai_battles UNION ALL SELECT '平均アシスト', corr(won, assist), COUNT(won) FROM ai_battles UNION ALL SELECT '平均塗り', corr(won, inked), COUNT(won) FROM ai_battles ORDER BY ABS(相関係数) DESC", "explanation": "各指標と勝敗の相関係数を並べ、絶対値の大きい順にしました。負の値は「多いほど負けやすい」を意味します。"}
-
-質問「ステージ別の勝率を 20 戦以上で」
-
-{"sql": "SELECT stage AS ステージ, ROUND(AVG(won) * 100, 1) AS 勝率, COUNT(won) AS 件数 FROM ai_battles GROUP BY stage HAVING COUNT(won) >= 20 ORDER BY 勝率 DESC", "explanation": "ステージごとの勝率を、20 戦以上あるステージに絞って高い順に並べました。"}
-
-質問「ウデマエ帯ごとの武器使用率を上位10件」
-
-{"sql": "SELECT poster_rank AS ウデマエ, weapon AS ブキ, COUNT(*) AS 出現数, ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY poster_rank), 2) AS 使用率 FROM ai_env_slots WHERE poster_rank IS NOT NULL GROUP BY poster_rank, weapon ORDER BY 使用率 DESC LIMIT 10", "explanation": "ウデマエ帯ごとのブキ出現数と、その帯の中での使用率を出しました。母数は投稿者を除く 7 人です。"}
+- 「よくある間違い」と「書き方の例」に必ず目を通してください
 
 ## 返し方
 
