@@ -31,6 +31,8 @@ export interface EnvPrefs {
   period:      string
   customSince: string
   customUntil: string
+  /** 名指しで選んだシーズン名（`period === 'season'` のときだけ意味を持つ・#585）。 */
+  seasonName:  string
   lobbyKeys:   string[]
   ruleKeys:    string[]
   /** 武器キー（weapon.key）複数。空 = 絞り込まない（#477）。 */
@@ -58,6 +60,7 @@ export const DEFAULT_ENV_PREFS: EnvPrefs = {
   period:      '30d',
   customSince: '',
   customUntil: '',
+  seasonName:  '',
   lobbyKeys:   [],
   ruleKeys:    [],
   weaponKeys:  [],
@@ -107,6 +110,7 @@ export function loadEnvPrefs(): EnvPrefs {
       period:      str(p.period, d.period),
       customSince: str(p.customSince, d.customSince),
       customUntil: str(p.customUntil, d.customUntil),
+      seasonName:  str(p.seasonName, d.seasonName),
       lobbyKeys:   strArray(p.lobbyKeys, d.lobbyKeys),
       ruleKeys:    strArray(p.ruleKeys, d.ruleKeys),
       weaponKeys:  strArray(p.weaponKeys, d.weaponKeys),

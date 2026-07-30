@@ -9,7 +9,22 @@ export type BookView = 'panel' | 'list'
 /** 設定タブ内のサブタブ(#428 / #434)。連携・データ・表示・AI。 */
 export type SettingsTab = 'link' | 'data' | 'display' | 'ai'
 
-export type Period = 'all' | 'current_season' | '1y' | '180d' | '30d' | '7d' | 'custom'
+/**
+ * 期間の絞り込み。
+ *
+ * `current_season` は**今のシーズンに自動で追従する**（日が変わればシーズンも変わる）。
+ * `season` は**特定のシーズンを名指しで選んだ状態**（#585）。過去のシーズンを見るために使う。
+ */
+export type Period = 'all' | 'current_season' | 'season' | '1y' | '180d' | '30d' | '7d' | 'custom'
+
+/** `list_seasons` コマンドの返却型（#585）。計算は Rust の `season.rs` が持つ。 */
+export interface Season {
+  name: string
+  /** 開始日 (YYYY-MM-DD)。 */
+  since: string
+  /** 終了日 (YYYY-MM-DD)。**この日を含む。** */
+  until: string
+}
 
 /** Splatoon 3 シーズンの開始日 (YYYY-MM-DD) を返す。
  *  シーズンは 3/6/9/12 月の 1 日始まりの 3 ヶ月サイクル。 */
@@ -35,6 +50,14 @@ export interface Filters {
   stage: string[]
   customFrom: string | null
   customTo: string | null
+  /**
+   * 名指しで選んだシーズン名（`period === 'season'` のときだけ意味を持つ・#585）。
+   *
+   * 日付範囲は `customFrom` / `customTo` に入れる。**シーズンの計算はフロントに置かない**
+   * （Rust の `season.rs` が唯一の出力元）ので、選んだ時点で解決した範囲を持ち回る。
+   * 名前を別に持つのは、保存画像のキャプションに日付ではなくシーズン名を出すため。
+   */
+  seasonName: string | null
 }
 
 export const DEFAULT_FILTERS: Filters = {
@@ -46,6 +69,7 @@ export const DEFAULT_FILTERS: Filters = {
   stage: [],
   customFrom: null,
   customTo: null,
+  seasonName: null,
 }
 
 /** 複数選択モード配列 → バックエンドのパイプ区切り mode 引数(空なら null)。
@@ -64,7 +88,8 @@ export function ruleFilterArg(rule: string[]): string | null {
 /** 相対期間プリセットを「今日を含む N 日間」の開始日 (YYYY-MM-DD) にする(#466)。
  *  環境分析と同じく終端日を含めて N 日になるよう、今日から (N-1) 日遡る。 */
 export function periodToSince(period: Period): string | null {
-  if (period === 'all' || period === 'custom') return null
+  // 'season' は選んだ時点で解決した範囲を customFrom / customTo に持つ（#585）。
+  if (period === 'all' || period === 'custom' || period === 'season') return null
   if (period === 'current_season') return currentSeasonStart()
   const daysBack =
     period === '1y'   ? 364 :
@@ -77,7 +102,8 @@ export function periodToSince(period: Period): string | null {
 }
 
 export function filtersToRange(filters: Filters): { since: string | null; until: string | null } {
-  if (filters.period === 'custom') {
+  // シーズン指定も、選んだ時点で解決した範囲をそのまま使う（#585）。
+  if (filters.period === 'custom' || filters.period === 'season') {
     return { since: filters.customFrom, until: filters.customTo }
   }
   return { since: periodToSince(filters.period), until: null }

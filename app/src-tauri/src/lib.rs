@@ -137,6 +137,7 @@ pub fn run() {
             db::env_scatter_stats,
             db::env_matrix_stats,
             db::env_season_range,
+            season::list_seasons,
             db::env_versions,
             db::env_ranks,
             db::env_weapons,

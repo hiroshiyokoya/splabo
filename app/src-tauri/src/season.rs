@@ -19,7 +19,7 @@
 //! （Chill Season 2025 は 2025-12-01〜2026-02-28）。DB を引かずに求められる。
 
 /// シーズンの名前と、その期間（`until` は**含む**）。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Season {
     pub name: String,
     /// 開始日（`YYYY-MM-DD`）。
@@ -129,6 +129,38 @@ pub fn seasons_in(min_date: &str, max_date: &str, limit: usize) -> Vec<Season> {
         }
     }
     out
+}
+
+/// 一覧に出すシーズンの上限。プルダウンに並べる数。
+const MAX_SEASONS: usize = 24;
+
+/// 絞り込みに使えるシーズンを**新しい順**に返す（#585）。
+///
+/// `source` は `"battle"`（自分の戦績）か `"env"`（stat.ink の環境データ）。
+/// データがある期間に重なるシーズンだけを返すので、**空振りする選択肢が出ない**。
+///
+/// 🔴 フロント側に同じ計算を置かない。ここが唯一の出力元で、
+/// 画面はここから受け取った日付範囲をそのまま絞り込みに使う。
+#[tauri::command]
+pub async fn list_seasons(
+    db: tauri::State<'_, crate::db::DbPool>,
+    source: String,
+) -> Result<Vec<Season>, String> {
+    // battle.played_at は UTC。シーズンの境目は JST 9:00 = UTC 0:00 なので、
+    // 日付部分をそのまま使えばずれない（ドメイン知識の「9 時境界」と同じ理屈）。
+    let sql = match source.as_str() {
+        "env" => "SELECT MIN(source_date), MAX(source_date) FROM env_battles",
+        "battle" => "SELECT MIN(substr(played_at, 1, 10)), MAX(substr(played_at, 1, 10)) FROM battle",
+        other => return Err(format!("source が不正です: {other}")),
+    };
+    let row: (Option<String>, Option<String>) =
+        sqlx::query_as(sql).fetch_one(db.as_ref()).await.map_err(|e| e.to_string())?;
+
+    let (Some(min), Some(max)) = row else {
+        // データがまだ無いときは選択肢を出さない（空振りさせない）。
+        return Ok(Vec::new());
+    };
+    Ok(seasons_in(&min, &max, MAX_SEASONS))
 }
 
 #[cfg(test)]

@@ -751,6 +751,21 @@ mod tests {
             let r = sqlx::query(&sql).fetch_all(&pool).await;
             println!("{label}: {:?} / {:?}", t.elapsed(), r.map(|v| v.len()));
         }
+        // 画面のシーズン選択（#585）に出る一覧を確かめる。
+        for (label, sql) in [
+            ("env", "SELECT MIN(source_date), MAX(source_date) FROM env_battles"),
+            ("battle", "SELECT MIN(substr(played_at,1,10)), MAX(substr(played_at,1,10)) FROM battle"),
+        ] {
+            let (min, max): (Option<String>, Option<String>) =
+                sqlx::query_as(sql).fetch_one(&pool).await.unwrap();
+            println!("--- list_seasons({label}) {min:?}〜{max:?} ---");
+            if let (Some(a), Some(b)) = (min, max) {
+                for s in crate::season::seasons_in(&a, &b, 24).iter().take(5) {
+                    println!("  {} : {} 〜 {}", s.name, s.since, s.until);
+                }
+            }
+        }
+
         let t = Instant::now();
         let rows = sqlx::query(
             "SELECT season, COUNT(*) AS n, MIN(source_date) AS d0, MAX(source_date) AS d1

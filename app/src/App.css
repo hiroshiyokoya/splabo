@@ -1137,6 +1137,26 @@ body {
   transition: color 0.12s, border-color 0.12s, background 0.12s;
 }
 .filter-btn:hover { color: var(--text); border-color: var(--text-muted); }
+
+/* シーズン選択(#585)。期間ボタンの並びに置くので、見た目を filter-btn に揃える。
+   環境分析では label の中に入るので、そちらの select 指定が優先される。 */
+.filter-bar .season-select {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-muted);
+  padding: 3px 6px;
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 200px;
+}
+.filter-bar .season-select:hover { color: var(--text); border-color: var(--text-muted); }
+/* 特定のシーズンを選んでいる間は、期間ボタンの active と同じ強調にする。 */
+.filter-bar .season-select.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
 .filter-btn.active {
   color: var(--accent);
   border-color: var(--accent);
