@@ -751,6 +751,17 @@ mod tests {
             let r = sqlx::query(&sql).fetch_all(&pool).await;
             println!("{label}: {:?} / {:?}", t.elapsed(), r.map(|v| v.len()));
         }
+        // 環境分析の起動時に直列で待つ選択肢の取得コスト。
+        // シーズンのプルダウンがこれらの後ろにあると、その間ずっと出てこない。
+        for (label, sql) in [
+            ("env_versions 相当", "SELECT game_ver, COUNT(*) FROM env_battles GROUP BY game_ver"),
+            ("env_ranks 相当", "SELECT poster_rank, COUNT(*) FROM env_battles GROUP BY poster_rank"),
+        ] {
+            let t = Instant::now();
+            let r = sqlx::query(sql).fetch_all(&pool).await;
+            println!("{label}: {:?} / {:?}", t.elapsed(), r.map(|v| v.len()));
+        }
+
         // 画面のシーズン選択（#585）に出る一覧を確かめる。
         for (label, sql) in [
             ("env", "SELECT MIN(source_date), MAX(source_date) FROM env_battles"),

@@ -467,18 +467,24 @@ export function EnvAnalysis() {
       const s = await invoke<EnvStatus>('env_status')
       setStatus(s)
       if (s.total_rows > 0) {
-        try { setVersionOptions(await invoke<EnvVersion[]>('env_versions')) } catch { /* noop */ }
-        try { setRankOptions(await invoke<EnvRank[]>('env_ranks')) } catch { /* noop */ }
-        try { setWeaponOptions(await invoke<EnvFilterOption[]>('env_weapons')) } catch { /* noop */ }
-        try { setStageOptions(await invoke<EnvFilterOption[]>('env_stages')) } catch { /* noop */ }
-        // 選べるシーズン（新しい順・#585）。取り込み済みの期間に重なるものだけ返る。
-        // 🔴 ここが失敗するとプルダウンが**黙って消える**（空なら描画しない）ので、
-        // 他の選択肢と違って握り潰さずログに出す。
+        // 🔴 シーズンを最初に取る（#585）。以降の選択肢は 550 万行を集計するので秒単位かかり、
+        // 直列に await していると**シーズンのプルダウンだけ最後まで出てこない**。
+        // こちらは MIN/MAX を引くだけなので一瞬で返る。
+        // 失敗すると選択肢が空になってプルダウンが黙って消えるため、握り潰さずログに出す。
         try {
           setSeasons(await invoke<Season[]>('list_seasons', { source: 'env' }))
         } catch (e) {
           console.error('[EnvAnalysis] list_seasons 失敗:', e)
         }
+        // 🔴 直列に await しない。どれも 550 万行の集計で数秒かかるため
+        // （実測: バージョン 2.6 秒 / ウデマエ帯 3.9 秒）、順に待つと**後ろのものほど
+        // 遅れて出てくる**。互いに依存しないので同時に投げ、取れたものから反映する。
+        void Promise.allSettled([
+          invoke<EnvVersion[]>('env_versions').then(setVersionOptions),
+          invoke<EnvRank[]>('env_ranks').then(setRankOptions),
+          invoke<EnvFilterOption[]>('env_weapons').then(setWeaponOptions),
+          invoke<EnvFilterOption[]>('env_stages').then(setStageOptions),
+        ])
       }
     } catch (e) {
       console.error('[EnvAnalysis] env_status 失敗:', e)
