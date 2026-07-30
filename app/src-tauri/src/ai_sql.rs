@@ -96,8 +96,9 @@ pub async fn run_analysis_sql(app: &AppHandle, sql: &str) -> Result<AnalysisResu
 
     // 統計関数（corr / stddev 等）はコネクションごとの登録なので、この接続にも入れる。
     // 入れ忘れると AI が corr を書いた瞬間に「no such function」になる。
-    let deadline = Box::new(Instant::now() + QUERY_TIMEOUT);
-    let deadline_ptr = Box::into_raw(deadline);
+    // 🔴 生ポインタを await 越しに持つと future が Send にならず、Tauri コマンドにできない。
+    // アドレスを usize で持ち回し、await を挟まない unsafe ブロックの中だけでポインタに戻す。
+    let deadline_addr = Box::into_raw(Box::new(Instant::now() + QUERY_TIMEOUT)) as usize;
     {
         let mut handle = conn
             .lock_handle()
@@ -112,7 +113,7 @@ pub async fn run_analysis_sql(app: &AppHandle, sql: &str) -> Result<AnalysisResu
             }
             ffi::sqlite3_set_authorizer(raw, Some(authorizer), std::ptr::null_mut());
             // 第 2 引数は「何 VM 命令ごとにコールバックを呼ぶか」。
-            ffi::sqlite3_progress_handler(raw, 1_000, Some(progress), deadline_ptr.cast());
+            ffi::sqlite3_progress_handler(raw, 1_000, Some(progress), deadline_addr as *mut c_void);
         }
     }
 
@@ -126,13 +127,28 @@ pub async fn run_analysis_sql(app: &AppHandle, sql: &str) -> Result<AnalysisResu
             ffi::sqlite3_set_authorizer(raw, None, std::ptr::null_mut());
         }
     }
-    // SAFETY: into_raw で作った 1 つだけのポインタを、ここで 1 回だけ回収する。
+    // SAFETY: into_raw で作った 1 つだけのアドレスを、ここで 1 回だけ回収する。
     unsafe {
-        drop(Box::from_raw(deadline_ptr));
+        drop(Box::from_raw(deadline_addr as *mut Instant));
     }
     let _ = conn.close().await;
 
     result
+}
+
+/// AI に渡すプロンプトの土台（ビュー一覧 + ドメイン知識）をフロントへ返す。
+///
+/// フロント側で組み立てず Rust から取るのは、**ビュー定義とプロンプトを 1 つの出力元に
+/// 保つ**ため（`ai_views::AI_VIEWS` が唯一の正）。
+#[tauri::command]
+pub fn ai_analysis_prompt() -> String {
+    crate::ai_views::analysis_prompt()
+}
+
+/// AI が書いた SELECT を実行する。
+#[tauri::command]
+pub async fn ai_run_sql(app: AppHandle, sql: String) -> Result<AnalysisResult, String> {
+    run_analysis_sql(&app, &sql).await
 }
 
 async fn fetch_rows(conn: &mut SqliteConnection, sql: &str) -> Result<AnalysisResult, String> {

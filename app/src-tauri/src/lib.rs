@@ -110,6 +110,9 @@ pub fn run() {
             db::db_grouped_stats_2d,
             db::db_list_weapons,
             db::backfill_battle_players,
+            // AI 分析（#566）: プロンプトの土台を返す / AI が書いた SELECT を安全に実行する
+            ai_sql::ai_analysis_prompt,
+            ai_sql::ai_run_sql,
             images::read_image,
             image_export::save_panel_image,
             fetch_battles_full,
