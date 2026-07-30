@@ -382,6 +382,19 @@ const COMMON_MISTAKES: &[&str] = &[
     "相関を聞かれたら平均を並べず corr() を使う。平均を見比べても相関は分からない",
     "UNION ALL で並べた結果を並べ替えるときは、**全体を副問い合わせで包む**。\
      複合 SELECT の ORDER BY には式を書けず、列名か位置しか使えない",
+    "🔴 `ai_env_slots` を使うときは **`source_date` で期間を必ず絞る**。\
+     環境データは 500 万バトル超（1 バトル 7 行なので数千万行）あり、\
+     **全期間の集計は 70 秒以上かかって必ず中断される**。直近 30 日なら 1 秒未満。\
+     質問が期間を指定していないなら `source_date >= date('now', '-30 days')` を付け、\
+     どの期間で集計したかを explanation に書く",
+    "期間の最新日を `ai_env_slots` から取らない。\
+     `SELECT MAX(source_date) FROM ai_env_slots` は 100 秒以上かかる。\
+     データがある期間は「データの規模」に書いてあるのでそれを使う",
+    "群ごとの合計に対する**割合**は、必ず**ウィンドウ関数**で出す。\
+     `COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY poster_rank)`。\
+     `(SELECT COUNT(*) FROM ai_env_slots WHERE poster_rank = es.poster_rank)` のように\
+     **大きいビューを 1 行ごとに数え直す副問い合わせは必ずタイムアウトする**\
+     （`battle_id` で 1 件を引くだけの副問い合わせは軽いので問題ない）",
     "ビューごとに列が違う。列を他のビューから借りてこないこと。\
      とくに**ウデマエ**は、自分の戦績（ai_battles）では rank_before / rank_after、\
      環境（ai_env_slots）では poster_rank。名前が違うだけでなく、\
@@ -411,9 +424,12 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
     ),
     (
         "ウデマエ帯ごとの武器使用率を上位 10 件",
+        // 🔴 source_date の絞り込みは**必須**。実データ（550 万バトル = 3900 万行）では
+        // 全期間の集計に 77 秒かかり、必ずタイムアウトする。直近 30 日なら 0.7 秒。
         "SELECT poster_rank AS ウデマエ, weapon AS ブキ, COUNT(*) AS 出現数,\n\
          \x20      ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY poster_rank), 2) AS 使用率\n\
-         FROM ai_env_slots WHERE poster_rank IS NOT NULL\n\
+         FROM ai_env_slots\n\
+         WHERE poster_rank IS NOT NULL AND source_date >= date('now', '-30 days')\n\
          GROUP BY poster_rank, weapon ORDER BY 使用率 DESC LIMIT 10",
     ),
     (
@@ -430,15 +446,56 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
     ),
 ];
 
+/// プロンプトに載せるデータの規模。
+///
+/// **期間の絞り方を AI に決めさせるために要る。** 環境データは全期間で数千万行あり、
+/// 絞らないと必ずタイムアウトする。一方 `date('now', '-30 days')` と書かせるには、
+/// **そこにデータがある**ことが分かっていないといけない（取り込みが古いと 0 件になる）。
+///
+/// バトルの中身は含まない。件数と日付の範囲だけ。
+pub struct DataScale {
+    pub env_battles: i64,
+    pub env_min_date: Option<String>,
+    pub env_max_date: Option<String>,
+    pub my_battles: i64,
+}
+
+impl DataScale {
+    fn to_prompt(&self) -> String {
+        let mut s = String::from("---\n\n## データの規模\n\n");
+        s.push_str(&format!("- 自分のバトル（`ai_battles`）: {} 件\n", self.my_battles));
+        match (&self.env_min_date, &self.env_max_date) {
+            (Some(min), Some(max)) => s.push_str(&format!(
+                "- 環境データ（`ai_env_slots`）: {} バトル、{min} 〜 {max}\n\
+                 \x20 - 1 バトルが 7 行になるので **{} 行** あります。\
+                 **`source_date` で絞らない集計は中断されます**\n",
+                self.env_battles,
+                self.env_battles * 7,
+            )),
+            _ => s.push_str(
+                "- 環境データ（`ai_env_slots`）: **まだ取り込まれていません**。\
+                 環境の質問には答えられないので、そう伝える SQL ではなく\
+                 自分のバトルで答えられる形に読み替えてください\n",
+            ),
+        }
+        s.push('\n');
+        s
+    }
+}
+
 /// AI に渡すプロンプトの土台。
 ///
-/// **ビューの一覧 + 使える関数 + よくある間違い + 実例 + ドメイン知識。**
-/// データは 1 行も含まない。ここに載っているのは「どんな列があるか」と「その意味」だけ。
+/// **ビューの一覧 + データの規模 + 使える関数 + よくある間違い + ドメイン知識 + 実例。**
+/// バトルの中身は含まない。載るのは「どんな列があるか」「その意味」「件数と期間の範囲」だけ。
 ///
 /// フロント側に散らさないのは、**プロンプトの中身をテストできる場所に置く**ため。
 /// 実例の SQL は実際に実行して検証している（壊れた例を渡すと AI が真似する）。
-pub fn analysis_prompt() -> String {
+pub fn analysis_prompt(scale: Option<&DataScale>) -> String {
     let mut s = schema_prompt();
+
+    if let Some(scale) = scale {
+        s.push_str(&scale.to_prompt());
+    }
 
     s.push_str("---\n\n## 使える統計関数\n\nこのアプリが SQLite に足したものです。\
                 いずれも引数に NULL がある行は母数から外れ、件数不足や分散 0 では NULL を返します。\n\n");
@@ -890,7 +947,7 @@ mod tests {
 
     #[test]
     fn プロンプトに関数と実例とよくある間違いが載る() {
-        let p = analysis_prompt();
+        let p = analysis_prompt(None);
         for (sig, _) in crate::sql_functions::FUNCTION_DOCS {
             assert!(p.contains(sig), "{sig} がプロンプトに無い");
         }
@@ -907,7 +964,7 @@ mod tests {
     /// 選ばれた。列を並べるだけでは母集団の選択を間違える。
     #[test]
     fn ビューの選び方が列の説明より前に出る() {
-        let p = analysis_prompt();
+        let p = analysis_prompt(None);
         let choice = p.find("どのビューを使うか").expect("ビューの選び方が無い");
         let columns = p.find("- `battle_id`").expect("列の説明が無い");
         assert!(choice < columns, "ビューの選び方が列の説明より後ろにある");
@@ -916,13 +973,60 @@ mod tests {
         assert!(p.contains("世界"), "環境が世界の話だと書かれていない");
     }
 
+    /// 環境データを使う実例が、**必ず期間で絞っている**か。
+    ///
+    /// 🔴 実データで計測した結果、全期間の集計は **77 秒**（10 秒で中断される）、
+    /// 直近 30 日なら 0.7 秒。実例に絞り込みが無いと AI はそれを真似して必ず失敗する。
+    /// 「実行できる」だけのテストでは、テスト DB が小さいので通ってしまい気付けない。
+    #[test]
+    fn 環境データの実例は期間で絞っている() {
+        for (q, sql) in SQL_EXAMPLES {
+            if sql.contains("ai_env_slots") {
+                assert!(sql.contains("source_date"), "実例「{q}」が期間を絞っていない: {sql}");
+            }
+        }
+        // 注意書きの側にも残っているか（実例だけ直して注意が消える事故を防ぐ）。
+        let p = analysis_prompt(None);
+        assert!(p.contains("source_date"), "期間を絞る注意がプロンプトに無い");
+    }
+
+    /// データの規模が、AI が期間を書けるだけの情報になっているか。
+    #[test]
+    fn データの規模に件数と期間が出る() {
+        let scale = DataScale {
+            env_battles: 5_541_963,
+            env_min_date: Some("2022-09-26".into()),
+            env_max_date: Some("2026-07-29".into()),
+            my_battles: 1_382,
+        };
+        let p = analysis_prompt(Some(&scale));
+        assert!(p.contains("5541963"), "環境データの件数が無い");
+        assert!(p.contains("2026-07-29"), "最新日が無い（date('now') で 0 件になる恐れ）");
+        assert!(p.contains("1382"), "自分のバトル数が無い");
+        // 1 バトル 7 行という増え方まで伝える。
+        assert!(p.contains("38793741"), "行数が示されていない");
+    }
+
+    /// 環境データが無いときに、環境の質問へ空振りの SQL を書かせないか。
+    #[test]
+    fn 環境データが無いときはそう書く() {
+        let scale = DataScale {
+            env_battles: 0,
+            env_min_date: None,
+            env_max_date: None,
+            my_battles: 10,
+        };
+        let p = analysis_prompt(Some(&scale));
+        assert!(p.contains("まだ取り込まれていません"), "未取り込みが伝わらない");
+    }
+
     /// 実例が**プロンプトの末尾**にあるか。
     ///
     /// 実例とほぼ同じ質問で別のビューを選ばれた。長いドメイン知識を後ろに積むと
     /// 実例が埋もれるので末尾へ移した。並び替えで元に戻らないよう固定する。
     #[test]
     fn 実例はドメイン知識より後ろにある() {
-        let p = analysis_prompt();
+        let p = analysis_prompt(None);
         let domain = p.find("9 時境界").expect("ドメイン知識が無い");
         let examples = p.find("## 書き方の例").expect("実例の節が無い");
         assert!(examples > domain, "実例がドメイン知識より前にあり埋もれる");
@@ -960,7 +1064,7 @@ mod tests {
     /// プロンプトはビュー一覧とドメイン知識の両方を含み、トークンが暴れない大きさに収まるか。
     #[test]
     fn プロンプトが両方を含み大きさが妥当() {
-        let p = analysis_prompt();
+        let p = analysis_prompt(None);
         assert!(p.contains("ai_battles"), "ビュー一覧が入っていない");
         assert!(p.contains("9 時境界"), "ドメイン知識が入っていない");
         // 目安。データは 1 行も入らない前提なので、これを大きく超えたら何か混ざっている。

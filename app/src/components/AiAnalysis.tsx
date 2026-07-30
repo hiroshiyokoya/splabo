@@ -10,7 +10,7 @@
  * この版はまず「生成された SQL と結果の表」を出すところまで（#566 の第 1 段）。
  * 結果を既存のグラフ部品で描く導線と、画面ごとの入力欄は次の段で入れる。
  */
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { AppSettings } from '../types'
 import { defaultModelFor } from '../utils/aiModels'
@@ -62,14 +62,10 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
   /** 何回 AI に書かせたか。自動で書き直した事実を隠さないために出す。 */
   const [attempts, setAttempts] = useState(0)
 
-  // ビュー定義とドメイン知識はビルド時に固定なので、一度取ったら使い回す。
-  const schemaRef = useRef<string | null>(null)
-
+  // 分析ごとに取り直す。**データの規模（件数と期間）が入る**ので、
+  // 取り込みの前後で内容が変わる。件数の集計は 50ms 程度なので毎回引いて問題ない。
   async function schemaPrompt(): Promise<string> {
-    if (schemaRef.current === null) {
-      schemaRef.current = await invoke<string>('ai_analysis_prompt')
-    }
-    return schemaRef.current
+    return await invoke<string>('ai_analysis_prompt')
   }
 
   /**
@@ -149,7 +145,8 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
       <p className="ai-hint">
         聞きたいことを日本語で入力してください。AI が SQL を書き、<strong>この PC の中だけで実行</strong>します。
         <br />
-        AI に送られるのは<strong>質問文とデータの構造の説明だけ</strong>で、バトルデータそのものは送りません。
+        AI に送られるのは<strong>質問文・データの構造の説明・件数と期間の範囲だけ</strong>で、
+        バトルの内容は送りません。
       </p>
 
       <div className="ai-examples">
