@@ -90,6 +90,7 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
           <SeasonSelect
             seasons={seasons}
             value={filters.period === 'season' ? filters.seasonName : null}
+            isCurrent={filters.period === 'current_season'}
             onSelect={s =>
               onChange(
                 s

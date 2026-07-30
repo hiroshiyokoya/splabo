@@ -12,44 +12,58 @@ import type { Season } from '../types'
 interface Props {
   /** 選べるシーズン（**新しい順**）。データがある期間に重なるものだけが来る。 */
   seasons: Season[]
-  /** 選択中のシーズン名。null なら「今シーズン」。 */
+  /** 名指しで選んでいるシーズン名。選んでいなければ null。 */
   value: string | null
-  /** シーズンを選んだ。null は未選択に戻す。 */
+  /** 「今シーズン」（自動追従）が選ばれているか。期間ボタン側の状態。 */
+  isCurrent: boolean
+  /** シーズンを選んだ。null は「今シーズン」（自動追従）。 */
   onSelect: (season: Season | null) => void
-  /**
-   * 未選択のときの表示。
-   *
-   * 呼び出し元で意味が違う。バトル・武器・ステージでは「今シーズン」ボタンの置き換えなので
-   * `今シーズン`、環境分析は期間プルダウンに「今シーズン」が既にあるので `指定なし`。
-   */
-  emptyLabel?: string
   /** 無効化（読み込み中など）。 */
   disabled?: boolean
 }
 
-export function SeasonSelect({ seasons, value, onSelect, emptyLabel = '今シーズン', disabled }: Props) {
+/** 「今シーズン」を表す内部値。シーズン名と衝突しない文字列にする。 */
+const CURRENT = '__current__'
+
+/**
+ * プルダウンに出す短い名前。`Sizzle Season 2026` → `Sizzle 2026`。
+ *
+ * 期間ボタンの横に置くので、最長の選択肢の幅がそのままコントロールの幅になる。
+ * `Season` は全項目に付いていて区別に寄与しないので落とす。
+ * キャプションや AI へ渡すのは**元の名前のまま**（表示だけを縮める）。
+ */
+function shortName(name: string): string {
+  return name.replace(' Season ', ' ')
+}
+
+export function SeasonSelect({ seasons, value, isCurrent, onSelect, disabled }: Props) {
   // データが無ければ選択肢も無いので出さない（空のプルダウンを置かない）。
   if (seasons.length === 0) return null
+
+  // 期間ボタンで別の期間（30日 等）を選んでいる間は、どのシーズンも効いていない。
+  // ここで「今シーズン」と表示すると、期間が二重に効いているように見える。
+  const selected = value ?? (isCurrent ? CURRENT : '')
 
   return (
     <select
       // 🔴 選択中かどうかはクラスで持つ。React は select の value を属性に落とさないので、
       // CSS の [value=''] では判定できない。
-      className={`season-select${value ? ' active' : ''}`}
-      value={value ?? ''}
+      className={`season-select${selected ? ' active' : ''}`}
+      value={selected}
       disabled={disabled}
       onChange={e => {
-        const name = e.target.value
-        onSelect(name ? seasons.find(s => s.name === name) ?? null : null)
+        const v = e.target.value
+        onSelect(v === CURRENT ? null : seasons.find(s => s.name === v) ?? null)
       }}
-      title="シーズンを選ぶ"
+      title="シーズンで絞り込む"
     >
-      <option value="">{emptyLabel}</option>
-      {seasons.map((s, i) => (
-        <option key={s.name} value={s.name}>
-          {/* 先頭が最新。今シーズンとの対応が分かるように印を付ける。 */}
-          {s.name}{i === 0 ? '（今）' : ''}
-        </option>
+      {/* 何も効いていないときだけ出る見出し。選び直せる項目ではない。 */}
+      {!selected && <option value="" disabled>シーズン</option>}
+      {/* 「今シーズン」は自動追従。一覧の最新と同じ期間を指すので、最新には印を付けない
+          （同じものが 2 つ並んでいるように見える）。 */}
+      <option value={CURRENT}>今シーズン</option>
+      {seasons.map(s => (
+        <option key={s.name} value={s.name}>{shortName(s.name)}</option>
       ))}
     </select>
   )

@@ -1139,20 +1139,25 @@ body {
 .filter-btn:hover { color: var(--text); border-color: var(--text-muted); }
 
 /* シーズン選択(#585)。期間ボタンの並びに置くので、見た目を filter-btn に揃える。
-   環境分析では label の中に入るので、そちらの select 指定が優先される。 */
-.filter-bar .season-select {
+   幅は中身なり（select は最長の選択肢に合わせて自動で決まる）。余白を足さない。 */
+.season-select {
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 5px;
   color: var(--text-muted);
-  padding: 3px 6px;
+  padding: 3px 4px;
   font-size: 12px;
   cursor: pointer;
-  max-width: 200px;
 }
-.filter-bar .season-select:hover { color: var(--text); border-color: var(--text-muted); }
+/* 環境分析の `.env-filters select` に負けないようにする（隣の期間ボタンと大きさを揃える）。 */
+.env-filters .season-select {
+  padding: 3px 4px;
+  font-size: 12px;
+  background: var(--surface2);
+}
+.season-select:hover { color: var(--text); border-color: var(--text-muted); }
 /* 特定のシーズンを選んでいる間は、期間ボタンの active と同じ強調にする。 */
-.filter-bar .season-select.active {
+.season-select.active {
   color: var(--accent);
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -2863,6 +2868,13 @@ body {
   gap: 4px;
   font-size: 12px;
   color: var(--text-muted);
+}
+/* 環境分析の期間ボタン列(#585)。バトル・武器・ステージの FilterBar と揃える。 */
+.env-period-btns {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 .env-filters select {
   padding: 4px 8px;

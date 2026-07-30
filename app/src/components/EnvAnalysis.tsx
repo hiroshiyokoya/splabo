@@ -226,7 +226,8 @@ function dimKeyLabeller(dim: string): (k: string) => string {
 type Period = 'all' | 'current_season' | 'season' | '1y' | '180d' | '30d' | 'custom'
 const PERIOD_OPTIONS: { key: Period; label: string }[] = [
   { key: 'all',            label: '全期間' },
-  { key: 'current_season', label: '今シーズン' },
+  // 🔴 'current_season' と 'season' はボタンに出さない（#585）。
+  // シーズンのプルダウン側にあるので、両方に出すと同じものが 2 つ並ぶ。
   { key: '1y',             label: '1年' },
   { key: '180d',           label: '180日' },
   { key: '30d',            label: '30日' },
@@ -301,10 +302,6 @@ export function EnvAnalysis() {
   const [seasons, setSeasons] = useState<Season[]>([])
   /** 名指しで選んだシーズン名（`period === 'season'` のときだけ意味を持つ）。 */
   const [seasonName, setSeasonName] = useState<string | null>(prefs.seasonName ?? null)
-  /** シーズンを選ぶ前の期間。シーズンを外したときにここへ戻す（既定に落とさない）。 */
-  const periodBeforeSeason = useRef<Period>(
-    prefs.period === 'season' ? (DEFAULT_ENV_PREFS.period as Period) : (prefs.period as Period)
-  )
 
   // フィルタ拡充(#189): バージョン / ウデマエ帯 / Xパワー帯
   // 武器・ステージ(#477)
@@ -878,32 +875,30 @@ export function EnvAnalysis() {
 
           {/* 共通フィルタ(並びは FilterBar＝期間→ロビー→ルール→武器→ステージ に合わせる) */}
           <div className="env-filters">
+            {/* 期間はバトル・武器・ステージと同じくボタンを並べる（#585）。
+                「今シーズン」はボタンではなくシーズンのプルダウンの先頭にある。 */}
             <label>期間
-              <select value={period} onChange={e => setPeriod(e.target.value as Period)}>
-                {PERIOD_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-              </select>
-            </label>
-            {/* 期間の隣にシーズン（#585）。選ぶと period も 'season' に切り替わる。 */}
-            {seasons.length > 0 && (
-              <label>シーズン
+              <span className="env-period-btns">
+                {PERIOD_OPTIONS.map(o => (
+                  <button
+                    key={o.key}
+                    type="button"
+                    className={`filter-btn${period === o.key ? ' active' : ''}`}
+                    onClick={() => setPeriod(o.key)}
+                  >{o.label}</button>
+                ))}
                 <SeasonSelect
                   seasons={seasons}
-                  emptyLabel="指定なし"
                   value={period === 'season' ? seasonName : null}
+                  isCurrent={period === 'current_season'}
                   onSelect={s => {
-                    if (s) {
-                      // シーズンに切り替える前の期間を覚えておく。外したときに戻す。
-                      if (period !== 'season') periodBeforeSeason.current = period
-                      setSeasonName(s.name)
-                      setPeriod('season')
-                    } else {
-                      setSeasonName(null)
-                      setPeriod(periodBeforeSeason.current)
-                    }
+                    if (s) { setSeasonName(s.name); setPeriod('season') }
+                    // 先頭は「今シーズン」= 自動追従。外したらそこへ戻す。
+                    else   { setSeasonName(null);   setPeriod('current_season') }
                   }}
                 />
-              </label>
-            )}
+              </span>
+            </label>
             {period === 'custom' && (
               <>
                 <label>開始
