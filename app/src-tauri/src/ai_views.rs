@@ -230,9 +230,11 @@ pub struct ViewDoc {
 pub const AI_VIEWS: &[ViewDoc] = &[
     ViewDoc {
         name: "ai_battles",
-        row_meaning: "1 行 = 自分が遊んだバトル 1 件",
+        row_meaning: "1 行 = 自分が遊んだバトル 1 件。\
+                      battle_id は一意なので GROUP BY battle_id は意味を持たない（グループが 1 行ずつになる）。\
+                      勝率は AVG(won)、バトル数は COUNT(*) で出す",
         columns: &[
-            ("battle_id", "バトルの ID。他のビューと結合するキー"),
+            ("battle_id", "バトルの ID。他のビューと結合するキー。**一意なので集計の単位には使わない**"),
             ("played_at", "遊んだ時刻（UTC の ISO8601）"),
             ("day", "スプラ日（9 時境界）。YYYY-MM-DD。計算済みなので時刻をずらさないこと"),
             ("week", "週（月曜始まり）。YYYY-Www"),

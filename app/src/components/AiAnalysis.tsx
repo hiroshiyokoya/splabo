@@ -80,7 +80,13 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
       setPlan(issued)
 
       setPhase('sql')
-      setResult(await invoke<AnalysisResult>('ai_run_sql', { sql: issued.sql }))
+      const next = await invoke<AnalysisResult>('ai_run_sql', { sql: issued.sql })
+      setResult(next)
+      // 0 件はエラーにならないが、たいてい SQL の作りが間違っている
+      // （1 行 1 件のビューに HAVING COUNT(*) >= 5 を付けた等）。直させる導線を出す。
+      if (next.rows.length === 0) {
+        setSqlError('結果が 0 件でした。絞り込みが厳しすぎるか、集計の粒度が合っていない可能性があります。')
+      }
     } catch (e) {
       // SQL を受け取った後の失敗 = 実行時エラー。「AI に直させる」で回復できる。
       if (issued) setSqlError(String(e))
@@ -149,15 +155,12 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
         </div>
       )}
 
-      {result && <ResultTable result={result} />}
+      {result && result.rows.length > 0 && <ResultTable result={result} />}
     </div>
   )
 }
 
 function ResultTable({ result }: { result: AnalysisResult }) {
-  if (result.rows.length === 0) {
-    return <div className="empty">条件に一致するデータがありませんでした。</div>
-  }
   const shown = result.rows.slice(0, DISPLAY_ROWS)
   return (
     <>
@@ -220,7 +223,29 @@ ${schema}
 - **上に挙げたビューだけを使ってください。** 他のテーブルは参照しないでください
 - 結果は行数に上限があります。ランキングなら ORDER BY と LIMIT を付けてください
 - 列名は結果表の見出しになります。**日本語の別名**を付けてください
-- 件数を伴う集計では、件数の列も一緒に出してください（サンプル数が分からないと読めません）
+
+## よくある間違い
+
+- **各ビューの「1 行が何か」を必ず確認してください。** \`ai_battles\` の \`battle_id\` は一意なので、
+  \`GROUP BY battle_id\` はグループが 1 行ずつになるだけで意味がありません
+- **足切りはグループごとの件数に対して行ってください。** グループが 1 行しかない集計に
+  \`HAVING COUNT(*) >= 5\` を付けると、全部消えて 0 件になります
+- **相関を聞かれたら平均を並べず \`corr()\` を使ってください。** 平均を見比べても相関は分かりません
+- 集計しない列を SELECT に混ぜないでください
+
+## 書き方の例
+
+質問「勝率と最も相関の高いバトル指標は？」
+
+{"sql": "SELECT '平均キル' AS 指標, corr(won, kill) AS 相関係数, COUNT(won) AS 件数 FROM ai_battles UNION ALL SELECT '平均デス', corr(won, death), COUNT(won) FROM ai_battles UNION ALL SELECT '平均アシスト', corr(won, assist), COUNT(won) FROM ai_battles UNION ALL SELECT '平均塗り', corr(won, inked), COUNT(won) FROM ai_battles ORDER BY ABS(相関係数) DESC", "explanation": "各指標と勝敗の相関係数を並べ、絶対値の大きい順にしました。負の値は「多いほど負けやすい」を意味します。"}
+
+質問「ステージ別の勝率を 20 戦以上で」
+
+{"sql": "SELECT stage AS ステージ, ROUND(AVG(won) * 100, 1) AS 勝率, COUNT(won) AS 件数 FROM ai_battles GROUP BY stage HAVING COUNT(won) >= 20 ORDER BY 勝率 DESC", "explanation": "ステージごとの勝率を、20 戦以上あるステージに絞って高い順に並べました。"}
+
+質問「ウデマエ帯ごとの武器使用率を上位10件」
+
+{"sql": "SELECT poster_rank AS ウデマエ, weapon AS ブキ, COUNT(*) AS 出現数, ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY poster_rank), 2) AS 使用率 FROM ai_env_slots WHERE poster_rank IS NOT NULL GROUP BY poster_rank, weapon ORDER BY 使用率 DESC LIMIT 10", "explanation": "ウデマエ帯ごとのブキ出現数と、その帯の中での使用率を出しました。母数は投稿者を除く 7 人です。"}
 
 ## 返し方
 
@@ -238,16 +263,22 @@ async function askForSql(
   const system = buildSystemPrompt(schema)
   let user = `質問: ${question}`
   if (fixHint) {
-    // 失敗した SQL とエラーを添えて書き直させる。何が悪かったか分からないと同じ物を返す。
+    // 失敗した SQL と理由を添えて書き直させる。何が悪かったか分からないと同じ物を返す。
+    // 0 件だった場合もここに来る（エラーではないが、たいてい作りが間違っている）。
     user += `
 
-前回この SQL を実行したらエラーになりました。原因を踏まえて書き直してください。
+前回この SQL は期待どおりの結果になりませんでした。原因を踏まえて書き直してください。
 
-失敗した SQL:
+前回の SQL:
 ${fixHint.sql}
 
-エラー:
-${fixHint.error}`
+問題:
+${fixHint.error}
+
+特に次を確認してください。
+- 各ビューの「1 行が何か」に対して GROUP BY の単位が正しいか
+- HAVING の足切りが、1 行しかないグループに当たっていないか
+- 相関を求められているなら corr() を使っているか`
   }
 
   const provider = settings.ai.provider
