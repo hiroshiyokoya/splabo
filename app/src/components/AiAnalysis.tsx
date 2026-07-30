@@ -49,6 +49,7 @@ const EMPTY_PROBLEM =
 const EXAMPLES = [
   '勝率と最も相関の高いバトル指標は？',
   'ウデマエ帯ごとの武器使用率を上位10件',
+  'Xパワーを 500 ごとに区切って、パワー帯ごとの勝率上位 5 ブキを、行 = 帯・列 = 順位で',
   'ステージ別の勝率を、20戦以上に絞ってランキングで',
 ]
 
@@ -91,12 +92,15 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
     // それでも 0 件ならそれが答えだと受け取る（無駄に API を叩かない）。
     let emptyRetried = false
 
+    // 1 回の分析中は同じスキーマで十分（リトライごとに DB を引き直す必要はない）。
+    const schema = await schemaPrompt()
+
     try {
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         setPhase({ kind: 'ai', attempt })
         let issued: SqlPlan
         try {
-          issued = await askForSql(settings, prompt, await schemaPrompt(), hint)
+          issued = await askForSql(settings, prompt, schema, hint)
         } catch (e) {
           // AI 呼び出し自体の失敗（キー・通信・JSON 不正）は書き直しても直らない。
           setError(String(e))
@@ -256,6 +260,7 @@ function buildSystemPrompt(schema: string): string {
   // （Rust の `analysis_prompt()` が組む）。ここに書き足さないこと。
   // 実例の SQL は「実際に実行できるか」を Rust 側のテストで検証している。
   // 壊れた例を渡すと AI はそれを忠実に真似するので、テストできる場所に置いてある。
+  // 「結果はそのまま表」だけは、返答フォーマットの直前で再強調する（Rust 側にも同趣旨あり）。
   return `あなたは splabo（Splatoon 3 の戦績分析アプリ）の分析アシスタントです。
 ユーザーの質問に答えるための SQLite の SELECT を 1 つ書いてください。
 
@@ -271,7 +276,7 @@ ${schema}
 - 列名は結果表の見出しになります。**日本語の別名**を付けてください
 - **結果はそのまま表として表示されます。** グラフや後処理は入りません。
   「行は〇〇、列は〇〇」「表にして」と形を指定されたら、**SQL の結果がその形になるまで
-  組み立ててください**（列方向に並べるには `MAX(CASE WHEN ... THEN ... END)` を使う）
+  組み立ててください**（列方向に並べるには \`MAX(CASE WHEN ... THEN ... END)\` を使う）
 - 「よくある間違い」と「書き方の例」に必ず目を通してください
 
 ## 返し方
@@ -305,7 +310,10 @@ ${fixHint.error}
 特に次を確認してください。
 - 各ビューの「1 行が何か」に対して GROUP BY の単位が正しいか
 - HAVING の足切りが、1 行しかないグループに当たっていないか
-- 相関を求められているなら corr() を使っているか`
+- 相関を求められているなら corr() を使っているか
+- 群ごとの上位 N なら ROW_NUMBER() OVER (PARTITION BY ...) で順位を振っているか
+- 「行は〇〇、列は〇〇」と指定されたなら、縦長一覧ではなくピボットした表になっているか
+- 数値の帯は文字列ではなく数値で作り、ORDER BY もその数値で並べているか`
   }
 
   const provider = settings.ai.provider
