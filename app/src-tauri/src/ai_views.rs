@@ -230,9 +230,11 @@ pub struct ViewDoc {
 pub const AI_VIEWS: &[ViewDoc] = &[
     ViewDoc {
         name: "ai_battles",
-        row_meaning: "1 行 = 自分が遊んだバトル 1 件",
+        row_meaning: "1 行 = 自分が遊んだバトル 1 件。\
+                      battle_id は一意なので GROUP BY battle_id は意味を持たない（グループが 1 行ずつになる）。\
+                      勝率は AVG(won)、バトル数は COUNT(*) で出す",
         columns: &[
-            ("battle_id", "バトルの ID。他のビューと結合するキー"),
+            ("battle_id", "バトルの ID。他のビューと結合するキー。**一意なので集計の単位には使わない**"),
             ("played_at", "遊んだ時刻（UTC の ISO8601）"),
             ("day", "スプラ日（9 時境界）。YYYY-MM-DD。計算済みなので時刻をずらさないこと"),
             ("week", "週（月曜始まり）。YYYY-Www"),
@@ -309,8 +311,10 @@ pub const AI_VIEWS: &[ViewDoc] = &[
             ("lobby", "regular / bankara_open / bankara_challenge / xmatch など。解決できなければ NULL"),
             ("rule", "nawabari / area / yagura / hoko / asari。解決できなければ NULL"),
             ("stage", "ステージ名（和名）"),
-            ("poster_rank", "**投稿者本人**のウデマエ。この行のプレイヤーのものではない"),
-            ("poster_power", "**投稿者本人**の X パワー。この行のプレイヤーのものではない"),
+            ("poster_rank", "**投稿者本人**のウデマエ。この行のプレイヤーのものではない。\
+                             環境をウデマエで分けるときはこの列を使う（このビューに rank_before は無い）"),
+            ("poster_power", "**投稿者本人**の X パワー。この行のプレイヤーのものではない\
+                              （このビューに x_power_before は無い）"),
             ("slot", "a2 / a3 / a4 / b1 / b2 / b3 / b4。投稿者の a1 は含まれない"),
             ("is_poster_team", "投稿者と同じチーム（a 側）なら 1"),
             ("weapon", "そのスロットのブキ（和名）"),
@@ -369,16 +373,251 @@ pub async fn create_views(pool: &DbPool) -> Result<(), String> {
 /// 実行時にファイルを探さないため、配布物に同梱する必要もない。
 pub const DOMAIN_KNOWLEDGE: &str = include_str!("../../../docs/ai-domain-knowledge.md");
 
-/// AI に渡すプロンプトの土台。**ビューの一覧 + ドメイン知識**。
+/// AI が踏みやすい間違い。実機で実際に出たものを足していく。
+const COMMON_MISTAKES: &[&str] = &[
+    "各ビューの「1 行が何か」を必ず確認する。ai_battles の battle_id は一意なので、\
+     GROUP BY battle_id はグループが 1 行ずつになるだけで意味がない",
+    "足切りはグループごとの件数に対して行う。グループが 1 行しかない集計に \
+     HAVING COUNT(*) >= 5 を付けると、全部消えて 0 件になる",
+    "相関を聞かれたら平均を並べず corr() を使う。平均を見比べても相関は分からない",
+    "UNION ALL で並べた結果を並べ替えるときは、**全体を副問い合わせで包む**。\
+     複合 SELECT の ORDER BY には式を書けず、列名か位置しか使えない",
+    "🔴 **結果の形を指定されたら、その形で返す。** 「行は〜、列は〜」「表にして」と\
+     言われたら、縦に長い一覧ではなく指定どおりの表になるまで SQL の中で組み立てる。\
+     列方向へ並べるには `MAX(CASE WHEN 順位 = 1 THEN ... END) AS '1位'` を使う\
+     （SQLite に PIVOT 構文は無い）。**セルに複数の値を並べて書く**ときは\
+     `指標 || ' ' || ROUND(相関係数, 3)` のように **1 列の文字列に連結**する。\
+     相関係数だけにすると指標名が消える",
+    "**群ごとの上位 N** は `ROW_NUMBER() OVER (PARTITION BY 群 ORDER BY 指標 DESC)` で\
+     順位を振ってから `WHERE 順位 <= N` で絞る。\
+     全体の `LIMIT N` や `ORDER BY 群, 指標` だけでは**群ごとの上位にならない**",
+    "複数指標の相関を比べるときは、横に corr 列を並べた行から ROW_NUMBER するのではなく、\
+     **UNION ALL で縦に並べてから** `PARTITION BY 群` で順位を振る。\
+     ピボット表にするなら `MAX(CASE WHEN 順位 = 1 THEN 相関係数 END)` を使う",
+    "数値を帯に区切るときは `CAST(x / 500 AS INT) * 500` のように**数値のまま**作り、\
+     並べ替えもその数値で行う。`'500-999'` のような文字列で ORDER BY すると\
+     辞書順になり `'3000+'` より後に来る。表示用の文字列は最後に組み立てる",
+    "🔴 `ai_env_slots` を使うときは **`source_date` で期間を必ず絞る**。\
+     環境データは 500 万バトル超（1 バトル 7 行なので数千万行）あり、\
+     **全期間の集計は 70 秒以上かかって必ず中断される**。直近 30 日なら 1 秒未満。\
+     質問が期間を指定していないなら `source_date >= date('now', '-30 days')` を付け、\
+     どの期間で集計したかを explanation に書く",
+    "期間の最新日を `ai_env_slots` から取らない。\
+     `SELECT MAX(source_date) FROM ai_env_slots` は 100 秒以上かかる。\
+     データがある期間は「データの規模」に書いてあるのでそれを使う",
+    "群ごとの合計に対する**割合**は、必ず**ウィンドウ関数**で出す。\
+     `COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY poster_rank)`。\
+     `(SELECT COUNT(*) FROM ai_env_slots WHERE poster_rank = es.poster_rank)` のように\
+     **大きいビューを 1 行ごとに数え直す副問い合わせは必ずタイムアウトする**\
+     （`battle_id` で 1 件を引くだけの副問い合わせは軽いので問題ない）",
+    "ビューごとに列が違う。列を他のビューから借りてこないこと。\
+     とくに**ウデマエ**は、自分の戦績（ai_battles）では rank_before / rank_after、\
+     環境（ai_env_slots）では poster_rank。名前が違うだけでなく、\
+     ai_env_slots に rank_before は存在しない",
+];
+
+/// AI に見せる書き方の実例（few-shot）。
 ///
-/// データは 1 行も含まない。ここに載っているのは「どんな列があるか」と「その意味」だけ。
-pub fn analysis_prompt() -> String {
-    format!("{}\n---\n\n{}", schema_prompt(), DOMAIN_KNOWLEDGE)
+/// 🔴 **ここの SQL は実際に実行できることをテストで検証している。**
+/// 関数の一覧だけ渡しても使いどころが伝わらないので実例が要るが、**壊れた例を渡すと
+/// AI はそれを忠実に真似する**（複合 SELECT の ORDER BY で実際に踏んだ）。
+pub const SQL_EXAMPLES: &[(&str, &str)] = &[
+    (
+        "勝率と最も相関の高いバトル指標は？",
+        // 複合 SELECT の ORDER BY に ABS(...) は書けないので、副問い合わせで包む。
+        "SELECT * FROM (\n\
+         \x20 SELECT '平均キル' AS 指標, corr(won, kill) AS 相関係数, COUNT(won) AS 件数 FROM ai_battles\n\
+         \x20 UNION ALL SELECT '平均デス',     corr(won, death),  COUNT(won) FROM ai_battles\n\
+         \x20 UNION ALL SELECT '平均アシスト', corr(won, assist), COUNT(won) FROM ai_battles\n\
+         \x20 UNION ALL SELECT '平均塗り',     corr(won, inked),  COUNT(won) FROM ai_battles\n\
+         ) ORDER BY ABS(相関係数) DESC",
+    ),
+    (
+        // 実機で踏んだ。横に corr 列を並べて GREATEST + ROW_NUMBER すると壊れる。
+        // 縦に UNION ALL → PARTITION BY ルール → ピボットが正しい。
+        "ルールごとに勝率と相関が高い指標の上位5つ。ルール×相関係数の表で、セルには指標と相関係数を並べて",
+        "WITH 指標 AS (\n\
+         \x20 SELECT rule AS ルール, 'キル' AS 指標, corr(won, kill) AS 相関係数 FROM ai_battles\n\
+         \x20   WHERE rule IS NOT NULL GROUP BY rule HAVING COUNT(*) >= 30\n\
+         \x20 UNION ALL SELECT rule, 'デス', corr(won, death) FROM ai_battles\n\
+         \x20   WHERE rule IS NOT NULL GROUP BY rule HAVING COUNT(*) >= 30\n\
+         \x20 UNION ALL SELECT rule, 'アシスト', corr(won, assist) FROM ai_battles\n\
+         \x20   WHERE rule IS NOT NULL GROUP BY rule HAVING COUNT(*) >= 30\n\
+         \x20 UNION ALL SELECT rule, '塗り', corr(won, inked) FROM ai_battles\n\
+         \x20   WHERE rule IS NOT NULL GROUP BY rule HAVING COUNT(*) >= 30\n\
+         \x20 UNION ALL SELECT rule, '貢献キル', corr(won, kill_or_assist) FROM ai_battles\n\
+         \x20   WHERE rule IS NOT NULL GROUP BY rule HAVING COUNT(*) >= 30\n\
+         ), 順位付き AS (\n\
+         \x20 SELECT *, ROW_NUMBER() OVER (PARTITION BY ルール ORDER BY ABS(相関係数) DESC) AS 順位\n\
+         \x20 FROM 指標 WHERE 相関係数 IS NOT NULL\n\
+         )\n\
+         SELECT ルール,\n\
+         \x20      MAX(CASE WHEN 順位 = 1 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '1位',\n\
+         \x20      MAX(CASE WHEN 順位 = 2 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '2位',\n\
+         \x20      MAX(CASE WHEN 順位 = 3 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '3位',\n\
+         \x20      MAX(CASE WHEN 順位 = 4 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '4位',\n\
+         \x20      MAX(CASE WHEN 順位 = 5 THEN 指標 || ' ' || ROUND(相関係数, 3) END) AS '5位'\n\
+         FROM 順位付き WHERE 順位 <= 5\n\
+         GROUP BY ルール ORDER BY ルール",
+    ),
+    (
+        "ステージ別の勝率を 20 戦以上で",
+        "SELECT stage AS ステージ, ROUND(AVG(won) * 100, 1) AS 勝率, COUNT(won) AS 件数\n\
+         FROM ai_battles GROUP BY stage HAVING COUNT(won) >= 20 ORDER BY 勝率 DESC",
+    ),
+    (
+        "ウデマエ帯ごとの武器使用率を上位 10 件",
+        // 🔴 source_date の絞り込みは**必須**。実データ（550 万バトル = 3900 万行）では
+        // 全期間の集計に 77 秒かかり、必ずタイムアウトする。直近 30 日なら 0.7 秒。
+        "SELECT poster_rank AS ウデマエ, weapon AS ブキ, COUNT(*) AS 出現数,\n\
+         \x20      ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY poster_rank), 2) AS 使用率\n\
+         FROM ai_env_slots\n\
+         WHERE poster_rank IS NOT NULL AND source_date >= date('now', '-30 days')\n\
+         GROUP BY poster_rank, weapon ORDER BY 使用率 DESC LIMIT 10",
+    ),
+    (
+        // 実機で踏んだ 3 点をまとめて示す例。
+        // ① 群ごとの上位 N は ROW_NUMBER、② 行と列を指定されたらピボット、
+        // ③ 数値の帯は数値で作って数値で並べる。
+        "Xパワーを 500 ごとに区切って、パワー帯ごとの勝率上位 5 ブキを、行 = 帯・列 = 順位で",
+        "WITH 帯 AS (\n\
+         \x20 SELECT CAST(poster_power / 500 AS INT) * 500 AS 下限, weapon, won\n\
+         \x20 FROM ai_env_slots\n\
+         \x20 WHERE poster_power IS NOT NULL AND source_date >= date('now', '-30 days')\n\
+         ), 集計 AS (\n\
+         \x20 SELECT 下限, weapon, ROUND(AVG(won) * 100, 1) AS 勝率, COUNT(won) AS 件数\n\
+         \x20 FROM 帯 GROUP BY 下限, weapon HAVING COUNT(won) >= 50\n\
+         ), 順位付き AS (\n\
+         \x20 SELECT *, ROW_NUMBER() OVER (PARTITION BY 下限 ORDER BY 勝率 DESC) AS 順位 FROM 集計\n\
+         )\n\
+         SELECT 下限 || '〜' || (下限 + 499) AS Xパワー帯,\n\
+         \x20      MAX(CASE WHEN 順位 = 1 THEN weapon || ' ' || 勝率 || '%' END) AS '1位',\n\
+         \x20      MAX(CASE WHEN 順位 = 2 THEN weapon || ' ' || 勝率 || '%' END) AS '2位',\n\
+         \x20      MAX(CASE WHEN 順位 = 3 THEN weapon || ' ' || 勝率 || '%' END) AS '3位',\n\
+         \x20      MAX(CASE WHEN 順位 = 4 THEN weapon || ' ' || 勝率 || '%' END) AS '4位',\n\
+         \x20      MAX(CASE WHEN 順位 = 5 THEN weapon || ' ' || 勝率 || '%' END) AS '5位'\n\
+         FROM 順位付き WHERE 順位 <= 5\n\
+         GROUP BY 下限 ORDER BY 下限",
+    ),
+    (
+        "相手にイカ速を積んでいる人が多いと勝ちにくい？",
+        "SELECT CASE WHEN 積み人数 = 0 THEN '0 人' WHEN 積み人数 <= 2 THEN '1〜2 人' ELSE '3 人以上' END AS 相手の人数,\n\
+         \x20      ROUND(AVG(won) * 100, 1) AS 勝率, COUNT(won) AS 件数\n\
+         FROM (\n\
+         \x20 SELECT b.battle_id, b.won,\n\
+         \x20        (SELECT COUNT(*) FROM ai_battle_players p\n\
+         \x20          WHERE p.battle_id = b.battle_id AND p.is_our_team = 0\n\
+         \x20            AND 'run_speed_up' IN (p.head_primary, p.clothing_primary, p.shoes_primary)) AS 積み人数\n\
+         \x20 FROM ai_battles b WHERE b.has_players = 1\n\
+         ) GROUP BY 相手の人数 ORDER BY 相手の人数",
+    ),
+];
+
+/// プロンプトに載せるデータの規模。
+///
+/// **期間の絞り方を AI に決めさせるために要る。** 環境データは全期間で数千万行あり、
+/// 絞らないと必ずタイムアウトする。一方 `date('now', '-30 days')` と書かせるには、
+/// **そこにデータがある**ことが分かっていないといけない（取り込みが古いと 0 件になる）。
+///
+/// バトルの中身は含まない。件数と日付の範囲だけ。
+pub struct DataScale {
+    pub env_battles: i64,
+    pub env_min_date: Option<String>,
+    pub env_max_date: Option<String>,
+    pub my_battles: i64,
 }
+
+impl DataScale {
+    fn to_prompt(&self) -> String {
+        let mut s = String::from("---\n\n## データの規模\n\n");
+        s.push_str(&format!("- 自分のバトル（`ai_battles`）: {} 件\n", self.my_battles));
+        match (&self.env_min_date, &self.env_max_date) {
+            (Some(min), Some(max)) => s.push_str(&format!(
+                "- 環境データ（`ai_env_slots`）: {} バトル、{min} 〜 {max}\n\
+                 \x20 - 1 バトルが 7 行になるので **{} 行** あります。\
+                 **`source_date` で絞らない集計は中断されます**\n",
+                self.env_battles,
+                self.env_battles * 7,
+            )),
+            _ => s.push_str(
+                "- 環境データ（`ai_env_slots`）: **まだ取り込まれていません**。\
+                 環境の質問には答えられないので、そう伝える SQL ではなく\
+                 自分のバトルで答えられる形に読み替えてください\n",
+            ),
+        }
+        s.push('\n');
+        s
+    }
+}
+
+/// AI に渡すプロンプトの土台。
+///
+/// **ビューの一覧 + データの規模 + 使える関数 + よくある間違い + ドメイン知識 + 実例。**
+/// バトルの中身は含まない。載るのは「どんな列があるか」「その意味」「件数と期間の範囲」だけ。
+///
+/// フロント側に散らさないのは、**プロンプトの中身をテストできる場所に置く**ため。
+/// 実例の SQL は実際に実行して検証している（壊れた例を渡すと AI が真似する）。
+pub fn analysis_prompt(scale: Option<&DataScale>) -> String {
+    let mut s = schema_prompt();
+
+    if let Some(scale) = scale {
+        s.push_str(&scale.to_prompt());
+    }
+
+    s.push_str("---\n\n## 使える統計関数\n\nこのアプリが SQLite に足したものです。\
+                いずれも引数に NULL がある行は母数から外れ、件数不足や分散 0 では NULL を返します。\n\n");
+    for (sig, desc) in crate::sql_functions::FUNCTION_DOCS {
+        s.push_str(&format!("- `{sig}` — {desc}\n"));
+    }
+
+    s.push_str("\n## よくある間違い\n\n");
+    for m in COMMON_MISTAKES {
+        s.push_str(&format!("- {m}\n"));
+    }
+
+    s.push_str("---\n\n");
+    s.push_str(DOMAIN_KNOWLEDGE);
+
+    // 🔴 実例は**最後**に置く。実機で「ウデマエ帯ごとの武器使用率」（実例とほぼ同じ質問）に
+    // 別のビューを選ばれた。長いドメイン知識を後ろに積むと実例が埋もれるので、末尾に移した。
+    s.push_str("\n---\n\n## 書き方の例\n\n\
+                質問が下のどれかに近いときは、**その SQL をそのまま土台にしてください。**\n\n");
+    for (q, sql) in SQL_EXAMPLES {
+        s.push_str(&format!("質問「{q}」\n\n```sql\n{sql}\n```\n\n"));
+    }
+    s
+}
+
+/// どのビューを使うかの案内。**列の説明より前に読ませる。**
+///
+/// 実機で「ウデマエ帯ごとのブキ使用率」に `ai_battle_players`（自分のバトルの同卓者）を
+/// 選ばれた。列を並べるだけでは、**そもそも母集団の選択を間違える**。
+const VIEW_CHOICE: &str = "\
+まず**どのビューを使うか**を決めてください。母集団が違います。
+
+| 聞かれていること | 使うビュー |
+|---|---|
+| 自分の勝率・成績・その推移 | `ai_battles` |
+| 自分のバトルに居た人（味方・相手）のブキやギア | `ai_battle_players` |
+| **世界全体の環境**（流行りのブキ、ブキの強さ、ウデマエ帯ごとの傾向） | `ai_env_slots` |
+| 自分のバトルで「その陣営にそのブキが居たか」 | `ai_battle_weapon_presence` |
+
+判断の目安:
+
+- 「**環境**」「流行」「使用率」「ピック率」「world」「みんな」「一般に」\
+——**自分の記録ではなく世界の話**なので `ai_env_slots`
+- 「**ウデマエ帯ごと**」「Xパワー帯ごと」に世界の傾向を見るなら \
+`ai_env_slots` の `poster_rank` / `poster_power` で分ける
+- 「自分の」「私が」と付いていれば `ai_battles`（同卓者の話なら `ai_battle_players`）
+
+`ai_battle_players` は**自分が遊んだバトルの参加者だけ**で、世界の使用率にはなりません。
+
+";
 
 /// AI に渡すスキーマ説明を組む。**ここが唯一の出力元**で、手書きの一覧を別に持たない。
 pub fn schema_prompt() -> String {
-    let mut s = String::from(
+    let mut s = String::from(VIEW_CHOICE);
+    s.push_str(
         "分析に使えるビューは以下だけです。他のテーブルは参照できません。\n\n",
     );
     for v in AI_VIEWS {
@@ -408,6 +647,18 @@ mod tests {
     async fn setup() -> DbPool {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
+            // 本番（init_db）と同じく統計関数を登録する。入れないとプロンプトの実例に
+            // 出てくる corr() が「no such function」になり、実例の検証ができない。
+            .after_connect(|conn, _meta| {
+                Box::pin(async move {
+                    let mut handle = conn.lock_handle().await?;
+                    let failed = unsafe {
+                        crate::sql_functions::register_all(handle.as_raw_handle().as_ptr())
+                    };
+                    assert!(failed.is_empty(), "統計関数の登録に失敗: {failed:?}");
+                    Ok(())
+                })
+            })
             .connect("sqlite::memory:")
             .await
             .unwrap();
@@ -741,6 +992,113 @@ mod tests {
         );
     }
 
+    /// 🔴 **プロンプトに載せている実例が、実際に実行できるか。**
+    ///
+    /// 初版では相関の例に `UNION ALL ... ORDER BY ABS(相関係数)` を書いていて、
+    /// SQLite の複合 SELECT では ORDER BY に式が使えないため実行できなかった。
+    /// **AI は壊れた例を忠実に真似する**ので、例そのものを検証する。
+    ///
+    /// データは空でよい（構文と列名の妥当性を見る）。
+    #[tokio::test]
+    async fn プロンプトの実例がすべて実行できる() {
+        let pool = setup().await;
+        for (question, sql) in SQL_EXAMPLES {
+            let r = sqlx::query(sql).fetch_all(pool.as_ref()).await;
+            assert!(
+                r.is_ok(),
+                "実例が実行できない（質問「{question}」）: {}\n{sql}",
+                r.err().map(|e| e.to_string()).unwrap_or_default()
+            );
+        }
+    }
+
+    #[test]
+    fn プロンプトに関数と実例とよくある間違いが載る() {
+        let p = analysis_prompt(None);
+        for (sig, _) in crate::sql_functions::FUNCTION_DOCS {
+            assert!(p.contains(sig), "{sig} がプロンプトに無い");
+        }
+        for (q, _) in SQL_EXAMPLES {
+            assert!(p.contains(q), "実例「{q}」がプロンプトに無い");
+        }
+        assert!(p.contains("GROUP BY battle_id"), "粒度の注意がプロンプトに無い");
+        assert!(p.contains("複合 SELECT"), "複合 SELECT の注意がプロンプトに無い");
+    }
+
+    /// **どのビューを使うか**の案内が、列の説明より前に出ているか。
+    ///
+    /// 実機で「ウデマエ帯ごとのブキ使用率」に `ai_battle_players`（自分のバトルの同卓者）を
+    /// 選ばれた。列を並べるだけでは母集団の選択を間違える。
+    #[test]
+    fn ビューの選び方が列の説明より前に出る() {
+        let p = analysis_prompt(None);
+        let choice = p.find("どのビューを使うか").expect("ビューの選び方が無い");
+        let columns = p.find("- `battle_id`").expect("列の説明が無い");
+        assert!(choice < columns, "ビューの選び方が列の説明より後ろにある");
+        // 環境の質問を自分の記録のビューへ流さないための言い換え。
+        assert!(p.contains("使用率"), "「使用率」の行き先が案内されていない");
+        assert!(p.contains("世界"), "環境が世界の話だと書かれていない");
+    }
+
+    /// 環境データを使う実例が、**必ず期間で絞っている**か。
+    ///
+    /// 🔴 実データで計測した結果、全期間の集計は **77 秒**（10 秒で中断される）、
+    /// 直近 30 日なら 0.7 秒。実例に絞り込みが無いと AI はそれを真似して必ず失敗する。
+    /// 「実行できる」だけのテストでは、テスト DB が小さいので通ってしまい気付けない。
+    #[test]
+    fn 環境データの実例は期間で絞っている() {
+        for (q, sql) in SQL_EXAMPLES {
+            if sql.contains("ai_env_slots") {
+                assert!(sql.contains("source_date"), "実例「{q}」が期間を絞っていない: {sql}");
+            }
+        }
+        // 注意書きの側にも残っているか（実例だけ直して注意が消える事故を防ぐ）。
+        let p = analysis_prompt(None);
+        assert!(p.contains("source_date"), "期間を絞る注意がプロンプトに無い");
+    }
+
+    /// データの規模が、AI が期間を書けるだけの情報になっているか。
+    #[test]
+    fn データの規模に件数と期間が出る() {
+        let scale = DataScale {
+            env_battles: 5_541_963,
+            env_min_date: Some("2022-09-26".into()),
+            env_max_date: Some("2026-07-29".into()),
+            my_battles: 1_382,
+        };
+        let p = analysis_prompt(Some(&scale));
+        assert!(p.contains("5541963"), "環境データの件数が無い");
+        assert!(p.contains("2026-07-29"), "最新日が無い（date('now') で 0 件になる恐れ）");
+        assert!(p.contains("1382"), "自分のバトル数が無い");
+        // 1 バトル 7 行という増え方まで伝える。
+        assert!(p.contains("38793741"), "行数が示されていない");
+    }
+
+    /// 環境データが無いときに、環境の質問へ空振りの SQL を書かせないか。
+    #[test]
+    fn 環境データが無いときはそう書く() {
+        let scale = DataScale {
+            env_battles: 0,
+            env_min_date: None,
+            env_max_date: None,
+            my_battles: 10,
+        };
+        let p = analysis_prompt(Some(&scale));
+        assert!(p.contains("まだ取り込まれていません"), "未取り込みが伝わらない");
+    }
+
+    /// 実例が**プロンプトの末尾**にあるか。
+    ///
+    /// 実例とほぼ同じ質問で別のビューを選ばれた。長いドメイン知識を後ろに積むと
+    /// 実例が埋もれるので末尾へ移した。並び替えで元に戻らないよう固定する。
+    #[test]
+    fn 実例はドメイン知識より後ろにある() {
+        let p = analysis_prompt(None);
+        let domain = p.find("9 時境界").expect("ドメイン知識が無い");
+        let examples = p.find("## 書き方の例").expect("実例の節が無い");
+        assert!(examples > domain, "実例がドメイン知識より前にあり埋もれる");
+    }
+
     /// ドメイン知識から**落ちてはいけない事実**が残っているか。
     ///
     /// 文書なので細かい表現は変わってよいが、ここに挙げた規約が消えると
@@ -773,7 +1131,7 @@ mod tests {
     /// プロンプトはビュー一覧とドメイン知識の両方を含み、トークンが暴れない大きさに収まるか。
     #[test]
     fn プロンプトが両方を含み大きさが妥当() {
-        let p = analysis_prompt();
+        let p = analysis_prompt(None);
         assert!(p.contains("ai_battles"), "ビュー一覧が入っていない");
         assert!(p.contains("9 時境界"), "ドメイン知識が入っていない");
         // 目安。データは 1 行も入らない前提なので、これを大きく超えたら何か混ざっている。

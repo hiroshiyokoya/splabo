@@ -96,8 +96,9 @@ pub async fn run_analysis_sql(app: &AppHandle, sql: &str) -> Result<AnalysisResu
 
     // 統計関数（corr / stddev 等）はコネクションごとの登録なので、この接続にも入れる。
     // 入れ忘れると AI が corr を書いた瞬間に「no such function」になる。
-    let deadline = Box::new(Instant::now() + QUERY_TIMEOUT);
-    let deadline_ptr = Box::into_raw(deadline);
+    // 🔴 生ポインタを await 越しに持つと future が Send にならず、Tauri コマンドにできない。
+    // アドレスを usize で持ち回し、await を挟まない unsafe ブロックの中だけでポインタに戻す。
+    let deadline_addr = Box::into_raw(Box::new(Instant::now() + QUERY_TIMEOUT)) as usize;
     {
         let mut handle = conn
             .lock_handle()
@@ -112,7 +113,7 @@ pub async fn run_analysis_sql(app: &AppHandle, sql: &str) -> Result<AnalysisResu
             }
             ffi::sqlite3_set_authorizer(raw, Some(authorizer), std::ptr::null_mut());
             // 第 2 引数は「何 VM 命令ごとにコールバックを呼ぶか」。
-            ffi::sqlite3_progress_handler(raw, 1_000, Some(progress), deadline_ptr.cast());
+            ffi::sqlite3_progress_handler(raw, 1_000, Some(progress), deadline_addr as *mut c_void);
         }
     }
 
@@ -126,13 +127,65 @@ pub async fn run_analysis_sql(app: &AppHandle, sql: &str) -> Result<AnalysisResu
             ffi::sqlite3_set_authorizer(raw, None, std::ptr::null_mut());
         }
     }
-    // SAFETY: into_raw で作った 1 つだけのポインタを、ここで 1 回だけ回収する。
+    // SAFETY: into_raw で作った 1 つだけのアドレスを、ここで 1 回だけ回収する。
     unsafe {
-        drop(Box::from_raw(deadline_ptr));
+        drop(Box::from_raw(deadline_addr as *mut Instant));
     }
     let _ = conn.close().await;
 
     result
+}
+
+/// AI に渡すプロンプトの土台（ビュー一覧 + データの規模 + ドメイン知識）をフロントへ返す。
+///
+/// フロント側で組み立てず Rust から取るのは、**ビュー定義とプロンプトを 1 つの出力元に
+/// 保つ**ため（`ai_views::AI_VIEWS` が唯一の正）。
+///
+/// データの規模（件数と日付の範囲）は実 DB から引く。環境データは数千万行あり、
+/// **期間を絞らない集計は必ずタイムアウトする**。AI に `source_date` の条件を書かせるには、
+/// どこにデータがあるかを教える必要がある。バトルの中身は渡さない。
+#[tauri::command]
+pub async fn ai_analysis_prompt(app: AppHandle) -> String {
+    let scale = data_scale(&app).await;
+    crate::ai_views::analysis_prompt(scale.as_ref())
+}
+
+/// データの規模を DB から引く。
+///
+/// 🔴 日付の範囲は**基底表 `env_battles`** から取る。`ai_env_slots` は 7 分岐の
+/// UNION ALL なのでインデックスが効かず、`MAX(source_date)` に 100 秒以上かかる。
+/// 基底表なら 1 ミリ秒未満。
+///
+/// 失敗しても分析自体は続けられるので、取れなければ None（規模の節を省く）。
+async fn data_scale(app: &AppHandle) -> Option<crate::ai_views::DataScale> {
+    let path = crate::db::db_file_path(app).ok()?;
+    let opts = SqliteConnectOptions::new().filename(path).read_only(true);
+    let mut conn = SqliteConnection::connect_with(&opts).await.ok()?;
+
+    let env_battles: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM env_battles")
+        .fetch_one(&mut conn).await.unwrap_or(0);
+    let my_battles: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM battle")
+        .fetch_one(&mut conn).await.unwrap_or(0);
+    // 0 件のときは MIN/MAX が NULL になり、期間の案内も出せない。
+    let (env_min_date, env_max_date) = if env_battles > 0 {
+        (
+            sqlx::query_scalar("SELECT MIN(source_date) FROM env_battles")
+                .fetch_one(&mut conn).await.unwrap_or(None),
+            sqlx::query_scalar("SELECT MAX(source_date) FROM env_battles")
+                .fetch_one(&mut conn).await.unwrap_or(None),
+        )
+    } else {
+        (None, None)
+    };
+    let _ = conn.close().await;
+
+    Some(crate::ai_views::DataScale { env_battles, env_min_date, env_max_date, my_battles })
+}
+
+/// AI が書いた SELECT を実行する。
+#[tauri::command]
+pub async fn ai_run_sql(app: AppHandle, sql: String) -> Result<AnalysisResult, String> {
+    run_analysis_sql(&app, &sql).await
 }
 
 async fn fetch_rows(conn: &mut SqliteConnection, sql: &str) -> Result<AnalysisResult, String> {
@@ -140,7 +193,7 @@ async fn fetch_rows(conn: &mut SqliteConnection, sql: &str) -> Result<AnalysisRe
     let rows = sqlx::query(sql)
         .fetch_all(&mut *conn)
         .await
-        .map_err(|e| classify_error(&e.to_string()))?;
+        .map_err(|e| classify_error(&e.to_string(), sql))?;
 
     let truncated = rows.len() > MAX_ROWS;
     let rows = &rows[..rows.len().min(MAX_ROWS)];
@@ -173,12 +226,17 @@ fn value_at(row: &sqlx::sqlite::SqliteRow, idx: usize) -> serde_json::Value {
 }
 
 /// AI に返しても意味が通るエラー文にする。原因の区別が付かないと再試行できない。
-fn classify_error(msg: &str) -> String {
+///
+/// 列名・テーブル名の間違いには、**使っているビューの実際の列一覧を添える**。
+/// ビューごとに列が違うので取り違えが起きやすく（`ai_battles` の `rank_before` を
+/// `ai_env_slots` に書く等）、一覧が手元にないと AI は同じ間違いを繰り返す。
+fn classify_error(msg: &str, sql: &str) -> String {
     let lower = msg.to_ascii_lowercase();
     if lower.contains("interrupted") {
         return format!(
-            "クエリが {} 秒を超えたため中断しました。絞り込みを足すか、集計を軽くしてください",
-            QUERY_TIMEOUT.as_secs()
+            "クエリが {} 秒を超えたため中断しました。{}",
+            QUERY_TIMEOUT.as_secs(),
+            slow_query_hint(sql)
         );
     }
     // authorizer が弾いたとき SQLite が返す文言は 2 種類ある。
@@ -189,7 +247,94 @@ fn classify_error(msg: &str) -> String {
     if lower.contains("readonly") || lower.contains("attempt to write") {
         return format!("書き込みはできません: {msg}");
     }
+    if lower.contains("no such column") || lower.contains("no such table") {
+        if let Some(hint) = view_columns_hint(msg, sql) {
+            return format!("{msg}\n\n{hint}");
+        }
+    }
     msg.to_string()
+}
+
+/// SQL が使っている AI 用ビューの列一覧と、**探している列が別のビューにあるならその案内**。
+///
+/// 「列名を間違えた」の実体はたいてい**ビューの選び間違い**なので、
+/// 列一覧を並べるだけでなく「その列は X にあります」まで言う。
+fn view_columns_hint(msg: &str, sql: &str) -> Option<String> {
+    let used: Vec<&crate::ai_views::ViewDoc> = crate::ai_views::AI_VIEWS
+        .iter()
+        .filter(|v| sql.contains(v.name))
+        .collect();
+
+    let mut s = String::new();
+
+    // 探していた列が他のビューにあるなら、そこへ誘導する。
+    if let Some(col) = missing_column(msg) {
+        let owners: Vec<&str> = crate::ai_views::AI_VIEWS
+            .iter()
+            .filter(|v| v.columns.iter().any(|(c, _)| *c == col))
+            .map(|v| v.name)
+            .collect();
+        if !owners.is_empty() {
+            s.push_str(&format!(
+                "`{col}` があるのは {} です。使うビューを間違えていないか確認してください。\n\n",
+                owners.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(" / ")
+            ));
+        }
+    }
+
+    if used.is_empty() {
+        return if s.is_empty() { None } else { Some(s) };
+    }
+    s.push_str("使っているビューに実際にある列は次のとおりです。ここに無い列は使えません。");
+    for v in used {
+        let cols: Vec<&str> = v.columns.iter().map(|(c, _)| *c).collect();
+        s.push_str(&format!("\n\n- `{}`: {}", v.name, cols.join(", ")));
+    }
+    Some(s)
+}
+
+/// 遅い SQL に対して、**何をどう直すか**を具体的に返す。
+///
+/// 「絞り込みを足してください」だけでは AI は LIMIT を小さくするなど的外れな直し方をする。
+/// 実機で踏んだのは**相関副問い合わせ**（`(SELECT COUNT(*) ... WHERE x = es.x)`）で、
+/// 1 行ごとに再実行されるため環境データでは必ずタイムアウトする。
+fn slow_query_hint(sql: &str) -> String {
+    let upper = sql.to_ascii_uppercase();
+    let mut hints: Vec<&str> = Vec::new();
+
+    // 最も効く順に並べる。実データでは全期間 77 秒 → 直近 30 日 0.7 秒。
+    if sql.contains("ai_env_slots") && !sql.contains("source_date") {
+        hints.push(
+            "環境データは数千万行あります。**`source_date` で期間を絞ってください**\n\
+             例: `WHERE source_date >= date('now', '-30 days')`\n\
+             どの期間で集計したかは explanation に書いてください",
+        );
+    }
+    // 副問い合わせがあってウィンドウ関数が無い = 割合の出し方を間違えている可能性が高い。
+    if upper.contains("(SELECT") && !upper.contains(" OVER ") {
+        hints.push(
+            "大きいビューを 1 行ごとに数え直す副問い合わせ（相関副問い合わせ）が入っていませんか。\n\
+             群ごとの合計に対する割合は**ウィンドウ関数**で出してください。\n\
+             悪い例: `COUNT(*) * 100.0 / (SELECT COUNT(*) FROM ai_env_slots WHERE poster_rank = es.poster_rank)`\n\
+             良い例: `COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY poster_rank)`",
+        );
+    }
+    if hints.is_empty() {
+        hints.push(
+            "絞り込みを足すか、集計を軽くしてください。\
+             大きいビューを 2 回以上スキャンする書き方（自己結合・副問い合わせ）は避けてください",
+        );
+    }
+    hints.join("\n\n")
+}
+
+/// `no such column: t.rank_before` から `rank_before` を取り出す。
+fn missing_column(msg: &str) -> Option<String> {
+    let idx = msg.to_ascii_lowercase().find("no such column:")?;
+    let rest = msg[idx + "no such column:".len()..].trim();
+    let name = rest.split_whitespace().next()?;
+    // 修飾子（別名）が付いていれば落とす。
+    Some(name.rsplit('.').next()?.trim().to_string())
 }
 
 /// 進行コールバック。0 以外を返すとクエリが中断される。
@@ -314,7 +459,8 @@ mod tests {
         // 列単位の拒否は "access to battle.raw_json is prohibited" になる。
         let e = err_of(sqlx::query("SELECT raw_json FROM battle").fetch_all(&mut conn).await);
         assert!(e.contains("prohibited"), "raw_json が読めてしまう: {e}");
-        assert!(classify_error(&e).contains("許可されていない"), "エラー文が AI に伝わらない");
+        assert!(classify_error(&e, "SELECT raw_json FROM battle").contains("許可されていない"),
+                "エラー文が AI に伝わらない");
 
         let e = err_of(sqlx::query("SELECT name FROM battle_player").fetch_all(&mut conn).await);
         assert!(e.contains("prohibited"), "他プレイヤー名が読めてしまう: {e}");
@@ -372,7 +518,7 @@ mod tests {
             e.to_ascii_lowercase().contains("interrupt"),
             "中断されていない: {e}"
         );
-        assert!(classify_error(&e).contains("中断"), "エラー文が AI に伝わらない: {}", classify_error(&e));
+        assert!(classify_error(&e, "").contains("中断"), "エラー文が AI に伝わらない");
 
         {
             let mut handle = conn.lock_handle().await.unwrap();
@@ -414,6 +560,191 @@ mod tests {
         assert_eq!(res.rows[0][2], serde_json::json!("a"));
         assert_eq!(res.rows[0][3], serde_json::Value::Null);
         assert!(!res.truncated);
+    }
+
+    /// 列名を間違えたときに、**使っているビューの列一覧が添えられる**か。
+    ///
+    /// 実機で AI が `ai_env_slots` に `rank_before`（`ai_battles` の列）を書いて落ちた。
+    /// 一覧が手元にないと同じ間違いを繰り返すので、エラーに載せる。
+    #[test]
+    fn 列名の間違いには使っているビューの列一覧が付く() {
+        let sql = "SELECT rank_before FROM ai_env_slots GROUP BY rank_before";
+        let out = classify_error("no such column: rank_before", sql);
+
+        assert!(out.contains("no such column"), "元のエラーが消えている: {out}");
+        assert!(out.contains("ai_env_slots"), "どのビューか分からない: {out}");
+        // 正解の列名が含まれていること
+        assert!(out.contains("poster_rank"), "正しい列名が示されていない: {out}");
+        // 「その列があるのは ai_battles」まで言えていること。
+        // 列名の間違いは実体としてビューの選び間違いなので、行き先を示す。
+        assert!(out.contains("ai_battles"), "列がどのビューにあるか示していない: {out}");
+        // 関係ないビューの列は混ぜない（プロンプトを無駄に太らせない）
+        assert!(!out.contains("ai_battle_players"), "使っていないビューまで載っている: {out}");
+        // 実際に AI へ渡る文面を目で確認できるようにしておく（cargo test -- --nocapture）
+        println!("--- AI に返る文面 ---\n{out}\n---");
+    }
+
+    /// 実機 2 例目。`ai_battle_players` にウデマエで絞ろうとした。
+    /// ビュー自体の選び間違いなので、正しい行き先（ai_battles / ai_env_slots）を示す。
+    #[test]
+    fn 別のビューを選んでいても行き先を示す() {
+        let sql = "SELECT weapon FROM ai_battle_players GROUP BY rank_before, weapon";
+        let out = classify_error("no such column: rank_before", sql);
+
+        assert!(out.contains("ai_battles"), "行き先が示されていない: {out}");
+        assert!(out.contains("ai_battle_players"), "今使っているビューの列が無い: {out}");
+        println!("--- AI に返る文面 ---\n{out}\n---");
+    }
+
+    /// 別名付き（`t.rank_before`）でも列名を取り出せるか。
+    #[test]
+    fn 別名が付いた列名からも行き先を引ける() {
+        let out = classify_error("no such column: t.poster_rank", "SELECT 1 FROM x");
+        assert!(out.contains("ai_env_slots"), "別名を落とせていない: {out}");
+    }
+
+    /// タイムアウトのとき、**何をどう直すか**が返るか。
+    ///
+    /// 実機で相関副問い合わせ（行ごとにビュー全体を数え直す）を書かれて中断した。
+    /// 「絞り込みを足して」だけでは LIMIT を小さくするなど的外れな直し方をされる。
+    #[test]
+    fn 遅いクエリにはウィンドウ関数への直し方が返る() {
+        let sql = "SELECT poster_rank, COUNT(*) * 100.0 / \
+                   (SELECT COUNT(*) FROM ai_env_slots WHERE poster_rank = es.poster_rank) \
+                   FROM ai_env_slots es GROUP BY poster_rank, weapon";
+        let out = classify_error("interrupted", sql);
+
+        assert!(out.contains("中断"), "中断だと分からない: {out}");
+        assert!(out.contains("OVER (PARTITION BY"), "ウィンドウ関数へ誘導していない: {out}");
+        assert!(out.contains("相関副問い合わせ"), "原因が示されていない: {out}");
+        println!("--- AI に返る文面 ---\n{out}\n---");
+    }
+
+    /// すでにウィンドウ関数で書いているなら、書き換えを勧めても意味がない。
+    #[test]
+    fn ウィンドウ関数を使った遅いクエリには副問い合わせの話をしない() {
+        let sql = "SELECT SUM(COUNT(*)) OVER (PARTITION BY poster_rank) FROM ai_env_slots \
+                   WHERE source_date >= date('now', '-30 days') GROUP BY poster_rank";
+        let out = classify_error("interrupted", sql);
+        assert!(!out.contains("相関副問い合わせ"), "的外れな助言をしている: {out}");
+        assert!(out.contains("集計を軽く"), "助言が無い: {out}");
+    }
+
+    /// 環境データを期間で絞っていない遅いクエリには、**まず期間の絞り込み**を勧めるか。
+    ///
+    /// 実データで全期間 77 秒 / 直近 30 日 0.7 秒。ここが一番効く。
+    #[test]
+    fn 期間を絞っていない環境クエリには絞り込みを勧める() {
+        let sql = "SELECT weapon, COUNT(*) FROM ai_env_slots GROUP BY weapon";
+        let out = classify_error("interrupted", sql);
+        assert!(out.contains("source_date"), "期間の絞り込みを勧めていない: {out}");
+        assert!(out.contains("-30 days"), "書き方が示されていない: {out}");
+        println!("--- AI に返る文面 ---\n{out}\n---");
+    }
+
+    /// 実データでの計測用（普段は走らせない）。
+    ///
+    /// テスト DB は小さいので「実行できる」テストだけでは**遅さに気付けない**。
+    /// プロンプトの実例を変えたら、実 DB で時間を測って `QUERY_TIMEOUT` に収まるか見る。
+    ///
+    /// ```text
+    /// SPLABO_DB=<db path> cargo test --lib 実データ計測 -- --ignored --nocapture
+    /// ```
+    ///
+    /// 2026-07-30 の計測（env_battles 554 万件）:
+    /// 全期間の使用率集計 77 秒 / 直近 30 日 0.7 秒 / 直近 90 日 2.6 秒 /
+    /// `MAX(source_date)` はビュー経由 113 秒・基底表 0.5 ミリ秒。
+    #[tokio::test]
+    #[ignore]
+    async fn 実データ計測() {
+        use std::time::Instant;
+        let path = std::env::var("SPLABO_DB").unwrap();
+        let opts = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(&path)
+            .read_only(true);
+        // 本番と同じく統計関数を登録する（corr を使う実例が測れない）。
+        let pool = SqlitePoolOptions::new()
+            .after_connect(|conn, _meta| {
+                Box::pin(async move {
+                    let mut handle = conn.lock_handle().await?;
+                    let failed =
+                        unsafe { crate::sql_functions::register_all(handle.as_raw_handle().as_ptr()) };
+                    assert!(failed.is_empty(), "統計関数の登録に失敗: {failed:?}");
+                    Ok(())
+                })
+            })
+            .connect_with(opts)
+            .await
+            .unwrap();
+
+        for (label, sql) in [
+            ("env_battles 件数", "SELECT COUNT(*) FROM env_battles"),
+            ("battle 件数", "SELECT COUNT(*) FROM battle"),
+        ] {
+            let t = Instant::now();
+            let n: i64 = sqlx::query_scalar(sql).fetch_one(&pool).await.unwrap();
+            println!("{label}: {n} ({:?})", t.elapsed());
+        }
+
+        let win = "SELECT poster_rank, weapon, COUNT(*) AS c,
+                   ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY poster_rank), 2)
+                   FROM ai_env_slots WHERE poster_rank IS NOT NULL
+                   GROUP BY poster_rank, weapon ORDER BY 4 DESC LIMIT 10";
+        let t = Instant::now();
+        let rows = sqlx::query(win).fetch_all(&pool).await;
+        println!("ウィンドウ関数版: {:?} / {:?}", t.elapsed(), rows.map(|r| r.len()));
+
+        let recent = "SELECT poster_rank, weapon, COUNT(*) AS c
+                      FROM ai_env_slots WHERE poster_rank IS NOT NULL
+                      AND source_date >= date('now', '-30 days')
+                      GROUP BY poster_rank, weapon ORDER BY c DESC LIMIT 10";
+        let t = Instant::now();
+        let rows = sqlx::query(recent).fetch_all(&pool).await;
+        println!("直近30日版: {:?} / {:?}", t.elapsed(), rows.map(|r| r.len()));
+
+        for (label, sql) in [
+            ("MAX(source_date) 基底表", "SELECT MAX(source_date) FROM env_battles"),
+            ("MIN(source_date) 基底表", "SELECT MIN(source_date) FROM env_battles"),
+            ("MAX(source_date) ビュー", "SELECT MAX(source_date) FROM ai_env_slots"),
+        ] {
+            let t = Instant::now();
+            let v: Result<Option<String>, _> = sqlx::query_scalar(sql).fetch_one(&pool).await;
+            println!("{label}: {:?} ({:?})", v, t.elapsed());
+        }
+
+        let win30 = "SELECT poster_rank, weapon, COUNT(*) AS c,
+                     ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY poster_rank), 2)
+                     FROM ai_env_slots
+                     WHERE poster_rank IS NOT NULL AND source_date >= date('now', '-30 days')
+                     GROUP BY poster_rank, weapon ORDER BY 4 DESC LIMIT 10";
+        let t = Instant::now();
+        let rows = sqlx::query(win30).fetch_all(&pool).await;
+        println!("ウィンドウ関数+30日: {:?} / {:?}", t.elapsed(), rows.map(|r| r.len()));
+
+        let win90 = win30.replace("-30 days", "-90 days");
+        let t = Instant::now();
+        let rows = sqlx::query(&win90).fetch_all(&pool).await;
+        println!("ウィンドウ関数+90日: {:?} / {:?}", t.elapsed(), rows.map(|r| r.len()));
+
+        // プロンプトに載せている実例そのものを、実データで計測する。
+        // ここが QUERY_TIMEOUT を超えていたら実例が壊れている。
+        for (q, sql) in crate::ai_views::SQL_EXAMPLES {
+            let t = Instant::now();
+            let rows = sqlx::query(sql).fetch_all(&pool).await;
+            let el = t.elapsed();
+            println!(
+                "実例「{q}」: {:?} / {:?}{}",
+                el,
+                rows.map(|r| r.len()),
+                if el > QUERY_TIMEOUT { "  ← 制限超過" } else { "" }
+            );
+        }
+    }
+
+    #[test]
+    fn ビューを使っていないエラーには一覧を付けない() {
+        let out = classify_error("no such column: foo", "SELECT foo");
+        assert_eq!(out, "no such column: foo");
     }
 
     /// 拒否列の一覧に、AI 用ビューが使っている列が混ざっていないか。

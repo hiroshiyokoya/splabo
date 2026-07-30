@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import {
-  BarChart, Bar, LineChart, Line, ScatterChart, Scatter,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
+  BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
 import { HoverTooltip } from './charts/HoverTooltip'
 import {
@@ -13,7 +13,7 @@ import {
 import {
   SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable'
-import type { Summary, SummaryEntry, ChartSpec, Filters, BattleStats, BattleRow, GroupedStatsRow, GroupedStatsRow2D, CustomChart, GroupByKey, WeaponRecord } from '../types'
+import type { Summary, SummaryEntry, Filters, BattleStats, BattleRow, GroupedStatsRow, GroupedStatsRow2D, CustomChart, GroupByKey, WeaponRecord } from '../types'
 import { BATTLE_NUMERIC_DEFAULT_BIN } from '../types'
 import {
   filtersToRange, stageAbbr, modeLabel, ruleLabel, modeFilterArg, ruleFilterArg,
@@ -79,7 +79,6 @@ type SortBy = 'total' | 'wins' | 'win_rate'
 
 interface Props {
   filters: Filters
-  aiChart: ChartSpec | null
   /** サイドバーの「最新データを取得」と同じ処理を空状態のボタンからも呼べるようにする。 */
   onFetchRequest?: () => void
   /** 「設定タブを開く」ためのコールバック(ログイン誘導用)。 */
@@ -88,7 +87,7 @@ interface Props {
   fetching?: boolean
 }
 
-export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fetching }: Props) {
+export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [stats, setStats]     = useState<BattleStats | null>(null)
   // #86 PR B: ユーザーが追加したカスタムグラフ。localStorage に永続化。
@@ -361,11 +360,6 @@ export function Dashboard({ filters, aiChart, onFetchRequest, onOpenSettings, fe
               </SortableContext>
             </DndContext>
 
-            {aiChart && (
-              <ChartCard title={aiChart.title} filterSummary={filterSummary}>
-                <AiChartRenderer spec={aiChart} />
-              </ChartCard>
-            )}
           </div>
 
           <div className="dashboard-add-row">
@@ -677,35 +671,3 @@ function ChartCard({
 // AI chart renderer
 // ---------------------------------------------------------------------------
 
-function AiChartRenderer({ spec }: { spec: ChartSpec }) {
-  const { chartType, data, xKey, yKey } = spec
-  return (
-    <ResponsiveContainer width="100%" height={240}>
-      {chartType === 'bar' ? (
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-          <XAxis dataKey={xKey} />
-          <YAxis />
-          <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }} />
-          <Bar dataKey={yKey} fill="var(--accent)" />
-        </BarChart>
-      ) : chartType === 'line' ? (
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-          <XAxis dataKey={xKey} />
-          <YAxis />
-          <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }} />
-          <Line dataKey={yKey} stroke="var(--accent)" dot={false} />
-        </LineChart>
-      ) : (
-        <ScatterChart>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-          <XAxis dataKey={xKey} />
-          <YAxis dataKey={yKey} />
-          <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }} />
-          <Scatter data={data} fill="var(--accent)" fillOpacity={0.55} />
-        </ScatterChart>
-      )}
-    </ResponsiveContainer>
-  )
-}

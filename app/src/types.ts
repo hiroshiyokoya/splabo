@@ -448,15 +448,6 @@ export interface EnvFilterOption {
   category?: string
 }
 
-export interface ChartSpec {
-  chartType: 'bar' | 'line' | 'scatter' | 'pie'
-  title: string
-  data: Record<string, unknown>[]
-  xKey: string
-  yKey: string
-  colorKey?: string
-}
-
 /** db_battle_stats の返り値型。
  *  avg_kill / avg_death / avg_assist は detail_fetched=1 のバトルのみで集計。詳細未取得しかない場合は null。 */
 export interface BattleStats {

@@ -13,7 +13,7 @@ import { About } from './components/About'
 import { GearSection } from './gear/GearSection'
 import { ViewToggle } from './components/ViewToggle'
 import type { ViewToggleOption } from './components/ViewToggle'
-import type { Tab, BattlesView, SettingsTab, AppSettings, ChartSpec, Filters } from './types'
+import type { Tab, BattlesView, SettingsTab, AppSettings, Filters } from './types'
 import { DEFAULT_FILTERS } from './types'
 import { loadViewPrefs, saveViewPrefs } from './utils/viewPrefs'
 import { initAppSettings } from './utils/appSettings'
@@ -73,7 +73,6 @@ export default function App() {
   // 「バトル」タブ内のビュー。前回選択を localStorage から復元する(#296)。
   const [battlesView, setBattlesViewState] = useState<BattlesView>(() => loadViewPrefs().battles)
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
-  const [aiChart, setAiChart] = useState<ChartSpec | null>(null)
   const [loginVersion, setLoginVersion] = useState(0)
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
   const [showAbout, setShowAbout] = useState(false)
@@ -310,13 +309,6 @@ export default function App() {
     saveViewPrefs({ ...loadViewPrefs(), battles: next })
   }
 
-  function handleAiChart(spec: ChartSpec) {
-    setAiChart(spec)
-    // 生成したグラフはダッシュボードに出るので、「バトル」タブのダッシュボードへ送る。
-    setTab('battles')
-    setBattlesView('dashboard')
-  }
-
   // サイドバーから呼ばれる「最新データを取得」処理(バトル → ギア best-effort)
   async function handleFetchFull() {
     if (fetching) return
@@ -389,7 +381,6 @@ export default function App() {
             {battlesView === 'dashboard' ? (
               <Dashboard
                 filters={filters}
-                aiChart={aiChart}
                 onFetchRequest={handleFetchFull}
                 onOpenSettings={() => openSettings('link')}
                 fetching={fetching}
@@ -411,7 +402,7 @@ export default function App() {
         {tab === 'stages'    && <StageBook  filters={filters} />}
         {tab === 'env'       && <EnvAnalysis />}
         {tab === 'gear'      && <GearSection />}
-        {tab === 'ai' && <AiAnalysis settings={settings} onChartReady={handleAiChart} />}
+        {tab === 'ai' && <AiAnalysis settings={settings} />}
         {tab === 'settings' && <Settings settings={settings} onSave={saveSettings} loginVersion={loginVersion} focus={settingsFocus} />}
       </main>
 

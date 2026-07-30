@@ -1,130 +1,376 @@
+/**
+ * AI 分析（#566）。
+ *
+ * **AI には SQL を書かせ、アプリが手元で実行する。** AI に渡すのはビュー定義と
+ * ドメイン知識（`ai_analysis_prompt`）と質問文だけで、データは 1 行も送らない。
+ *
+ * 以前はデータを渡して AI に数値を計算させ、その結果をグラフにしていた。
+ * **AI が幻覚した数値がそのままグラフになる**ので方式を変えた。数値は SQLite が出す。
+ *
+ * この版はまず「生成された SQL と結果の表」を出すところまで（#566 の第 1 段）。
+ * 結果を既存のグラフ部品で描く導線と、画面ごとの入力欄は次の段で入れる。
+ */
 import { useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { Summary, ChartSpec, AppSettings } from '../types'
+import type { AppSettings } from '../types'
 import { defaultModelFor } from '../utils/aiModels'
 
-interface Props {
-  settings: AppSettings
-  onChartReady: (spec: ChartSpec) => void
+/** AI に返させる形。SQL と、それが何を出すかの短い説明。 */
+interface SqlPlan {
+  sql: string
+  explanation?: string
 }
 
-export function AiAnalysis({ settings, onChartReady }: Props) {
-  const [prompt, setPrompt] = useState('')
-  const [response, setResponse] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+/** `ai_run_sql` の戻り。 */
+interface AnalysisResult {
+  columns: string[]
+  rows: (string | number | null)[][]
+  /** 行数上限で切られたか。切ったまま「全部」と見せないための印。 */
+  truncated: boolean
+}
 
-  async function analyze() {
+/** 画面に出す行数。バックエンドは 5000 行で切るが、DOM に全部出すと重い。 */
+const DISPLAY_ROWS = 200
+
+/**
+ * SQL を作らせる試行の上限（初回 + 自動の書き直し 2 回）。
+ *
+ * 列名の取り違えのような**エラーメッセージを読めば直せる失敗**が実際に多い。
+ * 毎回ユーザーに「AI に直させる」を押させるのは手間なので自動で回す。
+ * ただし 1 回ごとに API を呼ぶ（ユーザーの課金）ので上限を切り、回数を画面に出す。
+ */
+const MAX_ATTEMPTS = 3
+
+/** 0 件だったときの説明。エラーではないが、たいてい SQL の作りが間違っている。 */
+const EMPTY_PROBLEM =
+  '結果が 0 件でした。絞り込みが厳しすぎるか、集計の粒度が合っていない可能性があります。'
+
+/** 何を聞けるか分からないと使われないので例を置く。 */
+const EXAMPLES = [
+  '勝率と最も相関の高いバトル指標は？',
+  'ルールごとに勝率と相関が高い指標の上位5つ。ルール×相関係数の表で、セルには指標と相関係数を並べて',
+  'ウデマエ帯ごとの武器使用率を上位10件',
+  'Xパワーを 500 ごとに区切って、パワー帯ごとの勝率上位 5 ブキを、行 = 帯・列 = 順位で',
+]
+
+export function AiAnalysis({ settings }: { settings: AppSettings }) {
+  const [prompt, setPrompt] = useState('')
+  const [phase, setPhase] = useState<null | { kind: 'ai' | 'sql'; attempt: number }>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [plan, setPlan] = useState<SqlPlan | null>(null)
+  const [sqlError, setSqlError] = useState<string | null>(null)
+  const [result, setResult] = useState<AnalysisResult | null>(null)
+  /** 何回 AI に書かせたか。自動で書き直した事実を隠さないために出す。 */
+  const [attempts, setAttempts] = useState(0)
+
+  // 分析ごとに取り直す。**データの規模（件数と期間）が入る**ので、
+  // 取り込みの前後で内容が変わる。件数の集計は 50ms 程度なので毎回引いて問題ない。
+  async function schemaPrompt(): Promise<string> {
+    return await invoke<string>('ai_analysis_prompt')
+  }
+
+  /**
+   * 質問から SQL を作って実行する。**失敗したら自動で書き直させる**（上限 `MAX_ATTEMPTS`）。
+   *
+   * 実行エラーは AI にエラー文を渡せばだいたい直る（列名の取り違え、ビューの選び間違い等）。
+   * `fixHint` は、上限まで使い切ったあとユーザーが手動で押した「AI に直させる」から来る。
+   */
+  async function analyze(fixHint?: { sql: string; error: string }) {
     if (!prompt.trim()) return
     if (!settings.ai.apiKey) {
       setError('設定でAPIキーを入力してください')
       return
     }
-
-    setLoading(true)
     setError(null)
+    setSqlError(null)
+    setResult(null)
+    setAttempts(0)
+
+    // 🔴 判定に state を使わない。この関数の中では更新前の値が見えるので取り違える。
+    let hint = fixHint
+    // 0 件は「本当に該当なし」のこともある。書き直しは 1 回だけ試して、
+    // それでも 0 件ならそれが答えだと受け取る（無駄に API を叩かない）。
+    let emptyRetried = false
+
+    // 1 回の分析中は同じスキーマで十分（リトライごとに DB を引き直す必要はない）。
+    const schema = await schemaPrompt()
 
     try {
-      const summary = await invoke<Summary>('db_summary', { since: null })
-      const chartSpec = await callAiApi(settings, prompt, summary)
-      setResponse(JSON.stringify(chartSpec, null, 2))
-      onChartReady(chartSpec)
-    } catch (e) {
-      setError(String(e))
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        setPhase({ kind: 'ai', attempt })
+        let issued: SqlPlan
+        try {
+          issued = await askForSql(settings, prompt, schema, hint)
+        } catch (e) {
+          // AI 呼び出し自体の失敗（キー・通信・JSON 不正）は書き直しても直らない。
+          setError(String(e))
+          return
+        }
+        setPlan(issued)
+        setAttempts(attempt)
+
+        setPhase({ kind: 'sql', attempt })
+        let problem: string
+        try {
+          const next = await invoke<AnalysisResult>('ai_run_sql', { sql: issued.sql })
+          if (next.rows.length > 0) {
+            setResult(next)
+            return
+          }
+          setResult(next)
+          if (emptyRetried) {
+            setSqlError(EMPTY_PROBLEM)
+            return
+          }
+          emptyRetried = true
+          problem = EMPTY_PROBLEM
+        } catch (e) {
+          problem = String(e)
+        }
+
+        // 上限に達したら、ここから先はユーザーの判断（手動の「AI に直させる」）に委ねる。
+        if (attempt === MAX_ATTEMPTS) {
+          setSqlError(problem)
+          return
+        }
+        setResult(null)
+        hint = { sql: issued.sql, error: problem }
+      }
     } finally {
-      setLoading(false)
+      setPhase(null)
     }
   }
+
+  const busy = phase !== null
 
   return (
     <div className="ai-panel">
       <h2>AI分析</h2>
       <p className="ai-hint">
-        どんなグラフを見たいか日本語で入力してください。<br />
-        例:「武器別の勝率とバトル数の相関を散布図で見せて」
+        聞きたいことを日本語で入力してください。AI が SQL を書き、<strong>この PC の中だけで実行</strong>します。
+        <br />
+        AI に送られるのは<strong>質問文・データの構造の説明・件数と期間の範囲だけ</strong>で、
+        バトルの内容は送りません。
       </p>
+
+      <div className="ai-examples">
+        {EXAMPLES.map(ex => (
+          <button key={ex} className="ai-example" onClick={() => setPrompt(ex)} disabled={busy}>
+            {ex}
+          </button>
+        ))}
+      </div>
 
       <div className="ai-input-row">
         <textarea
           className="ai-textarea"
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="分析したい内容を入力..."
+          onChange={e => setPrompt(e.target.value)}
+          placeholder="聞きたいことを入力..."
           rows={3}
-          onKeyDown={(e) => {
+          onKeyDown={e => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) analyze()
           }}
         />
-        <button className="btn-primary" onClick={analyze} disabled={loading}>
-          {loading ? '分析中...' : '分析'}
+        <button className="btn-primary" onClick={() => analyze()} disabled={busy}>
+          {phase === null
+            ? '分析'
+            : (phase.kind === 'ai' ? 'AI に問い合わせ中' : '集計中') +
+              // 2 回目以降は書き直していることが分かるように出す。
+              (phase.attempt > 1 ? `（書き直し ${phase.attempt - 1} 回目）` : '') +
+              '...'}
         </button>
       </div>
 
       {error && <div className="error-box">{error}</div>}
 
-      {response && (
-        <details className="ai-raw">
-          <summary>AIの返答(raw)</summary>
-          <pre>{response}</pre>
+      {plan?.explanation && <p className="ai-explanation">{plan.explanation}</p>}
+
+      {plan && (
+        <details className="ai-sql">
+          <summary>
+            実行した SQL
+            {attempts > 1 && `（AI が ${attempts - 1} 回書き直しました）`}
+          </summary>
+          <pre>{plan.sql}</pre>
         </details>
       )}
+
+      {sqlError && (
+        <div className="error-box">
+          <div>{sqlError}</div>
+          <button
+            className="btn-secondary ai-fix-btn"
+            disabled={busy}
+            onClick={() => plan && analyze({ sql: plan.sql, error: sqlError })}
+          >
+            AI に直させる
+          </button>
+        </div>
+      )}
+
+      {result && result.rows.length > 0 && <ResultTable result={result} />}
     </div>
   )
 }
 
-// ---------------------------------------------------------------------------
-// AI API 呼び出し
-// ---------------------------------------------------------------------------
-
-async function callAiApi(settings: AppSettings, prompt: string, summary: Summary): Promise<ChartSpec> {
-  const systemPrompt = `あなたはSplatoon 3のバトルデータを可視化するアシスタントです。
-ユーザーの要求に応じて、Rechartsで描画できるグラフの仕様をJSONで返してください。
-
-返すJSONの形式:
-{
-  "chartType": "bar" | "line" | "scatter" | "pie",
-  "title": "グラフのタイトル",
-  "data": [ { <xKey>: ..., <yKey>: ... }, ... ],
-  "xKey": "X軸のキー名",
-  "yKey": "Y軸のキー名"
+function ResultTable({ result }: { result: AnalysisResult }) {
+  const shown = result.rows.slice(0, DISPLAY_ROWS)
+  return (
+    <>
+      <div className="ai-result-meta">
+        {result.rows.length.toLocaleString()} 行
+        {result.truncated && '（上限で打ち切り）'}
+        {result.rows.length > DISPLAY_ROWS && ` / 先頭 ${DISPLAY_ROWS} 行を表示`}
+      </div>
+      <div className="ai-result-wrap">
+        <table className="ai-result-table">
+          <thead>
+            <tr>{result.columns.map(c => <th key={c}>{c}</th>)}</tr>
+          </thead>
+          <tbody>
+            {shown.map((row, i) => (
+              <tr key={i}>
+                {row.map((v, j) => (
+                  <td key={j} className={typeof v === 'number' ? 'num' : undefined}>
+                    {v === null ? '-' : typeof v === 'number' ? formatNumber(v) : v}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
 }
 
-dataはサマリーデータから計算してください。JSONのみ返し、説明文は不要です。`
+/** 整数はそのまま、小数は 3 桁まで。相関係数のような小さい値が 0 に見えないように。 */
+function formatNumber(v: number): string {
+  if (Number.isInteger(v)) return v.toLocaleString()
+  return v.toFixed(3)
+}
 
-  const userMessage = `バトルデータのサマリー:\n${JSON.stringify(summary, null, 2)}\n\n要求: ${prompt}`
+// ---------------------------------------------------------------------------
+// AI 呼び出し
+// ---------------------------------------------------------------------------
+
+function buildSystemPrompt(schema: string): string {
+  // 🔴 スキーマ・使える関数・よくある間違い・書き方の例は **すべて schema に含まれる**
+  // （Rust の `analysis_prompt()` が組む）。ここに書き足さないこと。
+  // 実例の SQL は「実際に実行できるか」を Rust 側のテストで検証している。
+  // 壊れた例を渡すと AI はそれを忠実に真似するので、テストできる場所に置いてある。
+  // 「結果はそのまま表」だけは、返答フォーマットの直前で再強調する（Rust 側にも同趣旨あり）。
+  return `あなたは splabo（Splatoon 3 の戦績分析アプリ）の分析アシスタントです。
+ユーザーの質問に答えるための SQLite の SELECT を 1 つ書いてください。
+
+${schema}
+
+---
+
+## 守ること
+
+- **読み取り専用です。** SELECT 以外は実行できません（ATTACH / PRAGMA / 書き込みは拒否されます）
+- **上に挙げたビューだけを使ってください。** 他のテーブルは参照しないでください
+- 結果は行数に上限があります。ランキングなら ORDER BY と LIMIT を付けてください
+- 列名は結果表の見出しになります。**日本語の別名**を付けてください
+- **結果はそのまま表として表示されます。** グラフや後処理は入りません。
+  「行は〇〇、列は〇〇」「表にして」と形を指定されたら、**SQL の結果がその形になるまで
+  組み立ててください**（列方向に並べるには \`MAX(CASE WHEN ... THEN ... END)\` を使う）。
+  セルに複数の値を並べるときは \`指標 || ' ' || ROUND(相関係数, 3)\` のように連結する
+- 「よくある間違い」と「書き方の例」に必ず目を通してください
+
+## 返し方
+
+JSON だけを返してください。前後に説明を付けないでください。
+
+{"sql": "SELECT ...", "explanation": "この SQL が何を出すかの 1〜2 文の説明"}`
+}
+
+async function askForSql(
+  settings: AppSettings,
+  question: string,
+  schema: string,
+  fixHint?: { sql: string; error: string },
+): Promise<SqlPlan> {
+  const system = buildSystemPrompt(schema)
+  let user = `質問: ${question}`
+  if (fixHint) {
+    // 失敗した SQL と理由を添えて書き直させる。何が悪かったか分からないと同じ物を返す。
+    // 0 件だった場合もここに来る（エラーではないが、たいてい作りが間違っている）。
+    user += `
+
+前回この SQL は期待どおりの結果になりませんでした。原因を踏まえて書き直してください。
+
+前回の SQL:
+${fixHint.sql}
+
+問題:
+${fixHint.error}
+
+特に次を確認してください。
+- 各ビューの「1 行が何か」に対して GROUP BY の単位が正しいか
+- HAVING の足切りが、1 行しかないグループに当たっていないか
+- 相関を求められているなら corr() を使っているか
+- 群ごとの上位 N なら ROW_NUMBER() OVER (PARTITION BY ...) で順位を振っているか
+- 「行は〇〇、列は〇〇」と指定されたなら、縦長一覧ではなくピボットした表になっているか
+- 「指標と相関係数を並べて」と言われたなら、各セルを \`指標 || ' ' || 相関係数\` の1文字列にしているか
+- 数値の帯は文字列ではなく数値で作り、ORDER BY もその数値で並べているか`
+  }
 
   const provider = settings.ai.provider
-  const model    = settings.ai.model || defaultModelFor(provider)
-  switch (provider) {
-    case 'openai':    return callOpenAi(settings.ai.apiKey, model, systemPrompt, userMessage)
-    case 'gemini':    return callGemini(settings.ai.apiKey, model, systemPrompt, userMessage)
-    case 'anthropic': return callAnthropic(settings.ai.apiKey, model, systemPrompt, userMessage)
-    case 'grok':      return callGrok(settings.ai.apiKey, model, systemPrompt, userMessage)
+  const model = settings.ai.model || defaultModelFor(provider)
+  const text = await (() => {
+    switch (provider) {
+      case 'openai':    return callOpenAi(settings.ai.apiKey, model, system, user)
+      case 'gemini':    return callGemini(settings.ai.apiKey, model, system, user)
+      case 'anthropic': return callAnthropic(settings.ai.apiKey, model, system, user)
+      case 'grok':      return callGrok(settings.ai.apiKey, model, system, user)
+    }
+  })()
+
+  return parsePlan(text)
+}
+
+/** JSON だけを返すよう頼んでいるが、コードフェンスで包んでくることがあるので剥がす。 */
+function parsePlan(text: string): SqlPlan {
+  const stripped = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim()
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stripped)
+  } catch {
+    throw new Error(`AI の返答を JSON として読めませんでした:\n${text.slice(0, 500)}`)
+  }
+  const obj = parsed as { sql?: unknown; explanation?: unknown }
+  if (typeof obj.sql !== 'string' || !obj.sql.trim()) {
+    throw new Error(`AI の返答に sql が入っていません:\n${text.slice(0, 500)}`)
+  }
+  return {
+    sql: obj.sql.trim(),
+    explanation: typeof obj.explanation === 'string' ? obj.explanation : undefined,
   }
 }
 
-async function callOpenAi(apiKey: string, model: string, system: string, user: string): Promise<ChartSpec> {
+async function callOpenAi(apiKey: string, model: string, system: string, user: string): Promise<string> {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
     body: JSON.stringify({
       model,
       response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     }),
   })
   if (!res.ok) throw new Error(`OpenAI API error: ${res.status} ${await safeBodyText(res)}`)
   const json = await res.json()
-  return JSON.parse(json.choices[0].message.content) as ChartSpec
+  return json.choices[0].message.content
 }
 
-async function callGemini(apiKey: string, model: string, system: string, user: string): Promise<ChartSpec> {
+async function callGemini(apiKey: string, model: string, system: string, user: string): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
   const res = await fetch(url, {
     method: 'POST',
@@ -137,10 +383,10 @@ async function callGemini(apiKey: string, model: string, system: string, user: s
   })
   if (!res.ok) throw new Error(`Gemini API error: ${res.status} ${await safeBodyText(res)}`)
   const json = await res.json()
-  return JSON.parse(json.candidates[0].content.parts[0].text) as ChartSpec
+  return json.candidates[0].content.parts[0].text
 }
 
-async function callAnthropic(apiKey: string, model: string, system: string, user: string): Promise<ChartSpec> {
+async function callAnthropic(apiKey: string, model: string, system: string, user: string): Promise<string> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -150,43 +396,31 @@ async function callAnthropic(apiKey: string, model: string, system: string, user
       // ブラウザ環境(Tauri webview)から呼ぶため、CORS 制限を回避
       'anthropic-dangerous-direct-browser-access': 'true',
     },
-    body: JSON.stringify({
-      model,
-      max_tokens: 4096,
-      system,
-      messages: [{ role: 'user', content: user }],
-    }),
+    body: JSON.stringify({ model, max_tokens: 4096, system, messages: [{ role: 'user', content: user }] }),
   })
   if (!res.ok) throw new Error(`Anthropic API error: ${res.status} ${await safeBodyText(res)}`)
   const json = await res.json()
   // Anthropic の message.content は [{ type: 'text', text: '...' }, ...] 形式
-  const text = (json.content ?? [])
+  return (json.content ?? [])
     .filter((c: { type: string }) => c.type === 'text')
     .map((c: { text: string }) => c.text)
     .join('')
-  return JSON.parse(text) as ChartSpec
 }
 
-async function callGrok(apiKey: string, model: string, system: string, user: string): Promise<ChartSpec> {
+async function callGrok(apiKey: string, model: string, system: string, user: string): Promise<string> {
   // Grok (xAI) は OpenAI 互換 API
   const res = await fetch('https://api.x.ai/v1/chat/completions', {
     method: 'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
     body: JSON.stringify({
       model,
       response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user',   content: user   },
-      ],
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     }),
   })
   if (!res.ok) throw new Error(`Grok API error: ${res.status} ${await safeBodyText(res)}`)
   const json = await res.json()
-  return JSON.parse(json.choices[0].message.content) as ChartSpec
+  return json.choices[0].message.content
 }
 
 /** エラーレスポンス本文を安全に取り出す。失敗時は空文字。長すぎる場合は切る。 */
