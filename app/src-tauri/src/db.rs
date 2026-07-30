@@ -5,8 +5,8 @@
 //! - 全生データは raw_json に格納し、将来の分析に備える
 
 use serde::{Deserialize, Serialize};
-use sqlx::{Pool, Sqlite, SqlitePool, Row, FromRow};
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
+use sqlx::{Pool, Sqlite, Row, FromRow};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -38,7 +38,25 @@ pub async fn init_db(app: &AppHandle) -> Result<DbPool, String> {
         .busy_timeout(Duration::from_secs(30))
         .foreign_keys(true);
 
-    let pool = SqlitePool::connect_with(opts).await.map_err(|e| e.to_string())?;
+    // 統計関数（corr / stddev 等）は**接続ごと**の登録なので、プールが張る全接続に
+    // after_connect で仕込む（#573）。一部の接続にだけ入っていると、同じ SQL が
+    // 「たまたま当たった接続」次第で成功/失敗する事故になる。
+    let pool = SqlitePoolOptions::new()
+        .after_connect(|conn, _meta| {
+            Box::pin(async move {
+                let mut handle = conn.lock_handle().await?;
+                // SAFETY: lock_handle を保持している間だけ生ポインタを使う。
+                let failed = unsafe { crate::sql_functions::register_all(handle.as_raw_handle().as_ptr()) };
+                if !failed.is_empty() {
+                    // 登録できなくても本体機能は動くので、致命扱いにはしない。
+                    log::warn!("[db] SQL 統計関数の登録に失敗: {}", failed.join(", "));
+                }
+                Ok(())
+            })
+        })
+        .connect_with(opts)
+        .await
+        .map_err(|e| e.to_string())?;
     sqlx::query(SCHEMA).execute(&pool).await.map_err(|e| e.to_string())?;
     // 既存 DB への追加カラム（失敗は無視 = 既存カラムなら OK）
     for sql in [
