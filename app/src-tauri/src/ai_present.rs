@@ -31,14 +31,27 @@ use serde_json::Value;
 /// ブラウザを固まらせるより、はっきり断って書き直させる。
 const MAX_PIVOT_COLUMNS: usize = 40;
 
-/// 表の形。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+/// 見せ方。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Shape {
     /// SQL の結果をそのまま出す（列の選択と表示名の付け替えだけ）。
+    #[default]
     Table,
     /// 1 列を行見出し、1 列を列見出しにして組み替える。
     Pivot,
+    /// 棒グラフ。項目ごとの大小を比べる。
+    Bar,
+    /// 折れ線。順序のある軸（日付・帯）に沿った動きを見る。
+    Line,
+    /// 散布図。2 つの数値の関係を見る。
+    Scatter,
+}
+
+impl Shape {
+    fn is_chart(self) -> bool {
+        matches!(self, Shape::Bar | Shape::Line | Shape::Scatter)
+    }
 }
 
 /// 出す列と、その見出し。
@@ -52,7 +65,10 @@ pub struct ColumnSpec {
 }
 
 /// AI② が返す「見せ方」の指定。**数値は含まない。**
-#[derive(Debug, Clone, Deserialize, Serialize)]
+///
+/// 欄はほとんどが省略可（AI が全部埋めてくる前提を置かない）。`Default` があるのは
+/// テストで必要な欄だけ書けるようにするため。
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct PresentationSpec {
     pub shape: Shape,
 
@@ -84,6 +100,55 @@ pub struct PresentationSpec {
     /// セルの中身。`{列名}` が値に置き換わる。例: `{ブキ} {勝率}%`
     #[serde(default)]
     pub cell_template: Option<String>,
+
+    // --- shape = bar / line / scatter ---
+    /// 横軸にする列。
+    #[serde(default)]
+    pub x: Option<String>,
+    /// 縦軸（値）にする列。**数値でなければならない。**
+    #[serde(default)]
+    pub y: Option<String>,
+    /// 系列に分ける列（省略可）。この列の値ごとに別の線・別の色になる。
+    #[serde(default)]
+    pub series: Option<String>,
+}
+
+/// グラフ 1 点。
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Point {
+    /// 横軸の値。数値軸なら `Number`、項目軸なら `String`。
+    pub x: Value,
+    pub y: f64,
+}
+
+/// 系列 1 本。
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Series {
+    pub name: String,
+    pub points: Vec<Point>,
+}
+
+/// 適用した結果（グラフ）。フロントはこれをそのまま描く。
+#[derive(Debug, Clone, Serialize)]
+pub struct ShapedChart {
+    /// `bar` / `line` / `scatter`。
+    pub kind: Shape,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub x_label: String,
+    pub y_label: String,
+    /// 横軸が数値かどうか。フロントの軸の型を決める。
+    pub x_numeric: bool,
+    pub series: Vec<Series>,
+    pub warnings: Vec<String>,
+}
+
+/// 見せ方を適用した結果。表かグラフのどちらか。
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "form", rename_all = "lowercase")]
+pub enum Presentation {
+    Table(ShapedTable),
+    Chart(ShapedChart),
 }
 
 /// 適用した結果。フロントはこれをそのまま描く。
@@ -104,10 +169,132 @@ pub fn apply(
     columns: &[String],
     rows: &[Vec<Value>],
     spec: &PresentationSpec,
-) -> Result<ShapedTable, String> {
+) -> Result<Presentation, String> {
     match spec.shape {
-        Shape::Table => apply_table(columns, rows, spec),
-        Shape::Pivot => apply_pivot(columns, rows, spec),
+        Shape::Table => apply_table(columns, rows, spec).map(Presentation::Table),
+        Shape::Pivot => apply_pivot(columns, rows, spec).map(Presentation::Table),
+        _ => apply_chart(columns, rows, spec).map(Presentation::Chart),
+    }
+}
+
+/// 系列の上限。これを超えると色が足りず、凡例も読めない。
+const MAX_SERIES: usize = 12;
+/// 1 系列あたりの点の上限。散布図で 5000 点を描くと重い。
+const MAX_POINTS: usize = 1_000;
+
+fn apply_chart(
+    columns: &[String],
+    rows: &[Vec<Value>],
+    spec: &PresentationSpec,
+) -> Result<ShapedChart, String> {
+    debug_assert!(spec.shape.is_chart());
+
+    let x_field = spec
+        .x
+        .as_deref()
+        .ok_or_else(|| missing("グラフにするときは x（横軸の列）が必要です", columns))?;
+    let y_field = spec
+        .y
+        .as_deref()
+        .ok_or_else(|| missing("グラフにするときは y（値の列）が必要です", columns))?;
+    let x_i = index_of(columns, x_field)?;
+    let y_i = index_of(columns, y_field)?;
+    let series_i = match spec.series.as_deref() {
+        Some(f) => Some(index_of(columns, f)?),
+        None => None,
+    };
+
+    let mut warnings = Vec::new();
+
+    // 横軸が全部数値なら数値軸。散布図は数値でなければ意味がないので必須。
+    let x_numeric = rows
+        .iter()
+        .filter_map(|r| r.get(x_i))
+        .all(|v| as_number(v).is_some());
+    if spec.shape == Shape::Scatter && !x_numeric {
+        return Err(format!(
+            "散布図の x には数値の列が必要ですが、`{x_field}` は数値ではありません。\
+             項目ごとに比べるなら shape を bar にしてください"
+        ));
+    }
+
+    // 系列ごとに点を積む。出てきた順を保つ（AI① の ORDER BY を尊重）。
+    let mut names: Vec<String> = Vec::new();
+    let mut buckets: Vec<Vec<Point>> = Vec::new();
+    let mut skipped_y = 0usize;
+
+    for r in rows {
+        // y が数値でない行は描けない。0 として描くと嘘になるので落として数える。
+        let Some(y) = r.get(y_i).and_then(as_number) else {
+            skipped_y += 1;
+            continue;
+        };
+        let name = match series_i {
+            Some(i) => to_label(r.get(i).unwrap_or(&Value::Null)),
+            None => y_field.to_string(),
+        };
+        let idx = match names.iter().position(|n| *n == name) {
+            Some(i) => i,
+            None => {
+                names.push(name);
+                buckets.push(Vec::new());
+                names.len() - 1
+            }
+        };
+        let x = match r.get(x_i) {
+            Some(v) if x_numeric => as_number(v).map(Value::from).unwrap_or(Value::Null),
+            Some(v) => Value::String(to_label(v)),
+            None => Value::Null,
+        };
+        buckets[idx].push(Point { x, y });
+    }
+
+    if names.is_empty() {
+        return Err(format!(
+            "`{y_field}` に数値が 1 つもありません。値の列を選び直すか、shape を table にしてください"
+        ));
+    }
+    if skipped_y > 0 {
+        warnings.push(format!(
+            "`{y_field}` が数値でない {skipped_y} 行はグラフに含めていません"
+        ));
+    }
+    if names.len() > MAX_SERIES {
+        warnings.push(format!(
+            "系列が {} 種類あるので、先頭 {MAX_SERIES} 件だけ描いています（`{}` の種類が多すぎます）",
+            names.len(),
+            spec.series.as_deref().unwrap_or("")
+        ));
+        names.truncate(MAX_SERIES);
+        buckets.truncate(MAX_SERIES);
+    }
+    for (name, points) in names.iter().zip(buckets.iter_mut()) {
+        if points.len() > MAX_POINTS {
+            warnings.push(format!("{name} は {} 点あるので先頭 {MAX_POINTS} 点だけ描いています", points.len()));
+            points.truncate(MAX_POINTS);
+        }
+    }
+
+    Ok(ShapedChart {
+        kind: spec.shape,
+        title: spec.title.clone(),
+        x_label: x_field.to_string(),
+        y_label: y_field.to_string(),
+        x_numeric,
+        series: names
+            .into_iter()
+            .zip(buckets)
+            .map(|(name, points)| Series { name, points })
+            .collect(),
+        warnings,
+    })
+}
+
+/// 数値として読めるなら f64。SQLite の値は数値か文字列か NULL。
+fn as_number(v: &Value) -> Option<f64> {
+    match v {
+        Value::Number(n) => n.as_f64(),
+        _ => None,
     }
 }
 
@@ -389,7 +576,7 @@ pub fn presentation_prompt() -> String {
          \n\
          ```json\n\
          {{\n\
-         \x20 \"shape\": \"table\" | \"pivot\",\n\
+         \x20 \"shape\": \"table\" | \"pivot\" | \"bar\" | \"line\" | \"scatter\",\n\
          \x20 \"title\": \"表の見出し（省略可）\",\n\
          \n\
          \x20 // shape = \"table\" のとき（結果をそのまま縦に出す）\n\
@@ -401,7 +588,12 @@ pub fn presentation_prompt() -> String {
          \x20 \"column_key\": \"列見出しにする列名\",\n\
          \x20 \"column_suffix\": \"列見出しに付ける接尾辞（省略可。順位なら \\\"位\\\"）\",\n\
          \x20 \"column_order\": [\"列の並び（省略可。省略時は数値順・文字列順）\"],\n\
-         \x20 \"cell_template\": \"{{列名}} を値に置き換える文字列。例: {{ブキ}} {{勝率}}%\"\n\
+         \x20 \"cell_template\": \"{{列名}} を値に置き換える文字列。例: {{ブキ}} {{勝率}}%\",\n\
+         \n\
+         \x20 // shape = \"bar\" / \"line\" / \"scatter\" のとき\n\
+         \x20 \"x\": \"横軸にする列名\",\n\
+         \x20 \"y\": \"縦軸（値）にする列名。**数値の列**\",\n\
+         \x20 \"series\": \"系列に分ける列名（省略可）。値ごとに別の線・別の色になる\"\n\
          }}\n\
          ```\n\
          \n\
@@ -411,6 +603,13 @@ pub fn presentation_prompt() -> String {
          - 「〇〇ごとの上位 N を表で」のように**同じ群の中で順位が付いている**なら `pivot` にし、\n\
          \x20 `column_key` に順位の列、`cell_template` に**中身と数値の両方**を入れる\n\
          \x20 （`{{ブキ}}` だけにすると勝率が消えて比較できない）\n\
+         - **グラフの方が分かるならグラフにする。** 表とグラフのどちらか一方だけを返す\n\
+         \x20 - `bar` — 項目ごとの大小を比べる（ステージ別の勝率、ブキ別の使用率）\n\
+         \x20 - `line` — 順序のある軸に沿った動き（日付・ウデマエ帯・パワー帯）\n\
+         \x20 - `scatter` — 2 つの**数値**の関係（使用率と勝率）。x が数値でないときは使えません\n\
+         \x20 - 系列が 1 本でよければ `series` は省く。付けると値ごとに線が分かれます\n\
+         - **数値でない値を y にしない。** 勝率・件数・相関係数のような数値の列を選ぶ\n\
+         - 順位や名前を並べて見せたいだけなら、グラフにせず `table` / `pivot` にする\n\
          - それ以外は `table`。列が多すぎるときだけ `columns` で絞る\n\
          - `column_key` には**値の種類が少ない列**を選ぶ（{MAX_PIVOT_COLUMNS} 種類まで）。\n\
          \x20 `battle_id` のような一意の列は選べません\n\
@@ -479,16 +678,15 @@ mod tests {
         let spec = PresentationSpec {
             shape: Shape::Pivot,
             title: Some("パワー帯ごとの勝率上位ブキ".into()),
-            columns: None,
             row_key: Some("帯".into()),
             row_label: Some("Xパワー帯".into()),
             column_key: Some("順位".into()),
-            column_order: None,
             column_suffix: Some("位".into()),
             cell_template: Some("{ブキ} {勝率}%".into()),
+            ..Default::default()
         };
 
-        let t = apply(&columns, &rows, &spec).unwrap();
+        let t = shaped(&columns, &rows, &spec);
 
         assert_eq!(t.columns, cols(&["Xパワー帯", "1位", "2位"]));
         assert_eq!(t.rows.len(), 2);
@@ -510,7 +708,7 @@ mod tests {
             vec![json!(2500), json!(1), json!("C")],
         ];
         let spec = pivot("帯", "順位", "{ブキ}");
-        let t = apply(&columns, &rows, &spec).unwrap();
+        let t = shaped(&columns, &rows, &spec);
 
         assert_eq!(t.rows[1][1], json!("C"));
         assert_eq!(t.rows[1][2], Value::Null, "2 位が空になっていない");
@@ -523,7 +721,7 @@ mod tests {
         let rows = (1..=10)
             .map(|i| vec![json!("A"), json!(i), json!(format!("v{i}"))])
             .collect::<Vec<_>>();
-        let t = apply(&columns, &rows, &pivot("群", "順位", "{値}")).unwrap();
+        let t = shaped(&columns, &rows, &pivot("群", "順位", "{値}"));
 
         assert_eq!(t.columns[1], "1");
         assert_eq!(t.columns[2], "2");
@@ -539,7 +737,7 @@ mod tests {
             vec![json!(1000), json!(1), json!("y")],
             vec![json!(2000), json!(1), json!("z")],
         ];
-        let t = apply(&columns, &rows, &pivot("帯", "順位", "{値}")).unwrap();
+        let t = shaped(&columns, &rows, &pivot("帯", "順位", "{値}"));
         assert_eq!(
             t.rows.iter().map(|r| r[0].clone()).collect::<Vec<_>>(),
             vec![json!("3000"), json!("1000"), json!("2000")]
@@ -554,7 +752,7 @@ mod tests {
             vec![json!(2000), json!(1), json!("先")],
             vec![json!(2000), json!(1), json!("後")],
         ];
-        let t = apply(&columns, &rows, &pivot("帯", "順位", "{値}")).unwrap();
+        let t = shaped(&columns, &rows, &pivot("帯", "順位", "{値}"));
 
         assert_eq!(t.rows[0][1], json!("後"));
         assert_eq!(t.warnings.len(), 1, "警告が出ていない");
@@ -613,20 +811,14 @@ mod tests {
         let rows = vec![vec![json!("ユノハナ"), json!(55.5), json!(120)]];
         let spec = PresentationSpec {
             shape: Shape::Table,
-            title: None,
             columns: Some(vec![
                 ColumnSpec { field: "stage".into(), label: Some("ステージ".into()) },
                 ColumnSpec { field: "勝率".into(), label: None },
             ]),
-            row_key: None,
-            row_label: None,
-            column_key: None,
-            column_order: None,
-            column_suffix: None,
-            cell_template: None,
+            ..Default::default()
         };
 
-        let t = apply(&columns, &rows, &spec).unwrap();
+        let t = shaped(&columns, &rows, &spec);
         assert_eq!(t.columns, cols(&["ステージ", "勝率"]));
         assert_eq!(t.rows[0], vec![json!("ユノハナ"), json!(55.5)]);
     }
@@ -636,18 +828,8 @@ mod tests {
     fn 列指定の無い_table_は素通し() {
         let columns = cols(&["a", "b"]);
         let rows = vec![vec![json!(1), json!(2)]];
-        let spec = PresentationSpec {
-            shape: Shape::Table,
-            title: None,
-            columns: None,
-            row_key: None,
-            row_label: None,
-            column_key: None,
-            column_order: None,
-            column_suffix: None,
-            cell_template: None,
-        };
-        let t = apply(&columns, &rows, &spec).unwrap();
+        let spec = PresentationSpec { shape: Shape::Table, ..Default::default() };
+        let t = shaped(&columns, &rows, &spec);
         assert_eq!(t.columns, columns);
         assert_eq!(t.rows, rows);
     }
@@ -664,7 +846,7 @@ mod tests {
         let mut spec = pivot("群", "区分", "{値}");
         spec.column_order = Some(vec!["上位".into(), "中位".into()]);
 
-        let t = apply(&columns, &rows, &spec).unwrap();
+        let t = shaped(&columns, &rows, &spec);
         assert_eq!(t.columns, cols(&["群", "上位", "中位", "下位"]));
     }
 
@@ -707,14 +889,158 @@ mod tests {
     fn pivot(row: &str, col: &str, template: &str) -> PresentationSpec {
         PresentationSpec {
             shape: Shape::Pivot,
-            title: None,
-            columns: None,
             row_key: Some(row.into()),
-            row_label: None,
             column_key: Some(col.into()),
-            column_order: None,
-            column_suffix: None,
             cell_template: Some(template.into()),
+            ..Default::default()
         }
+    }
+
+    /// 表が返る前提のとき用。グラフが返ったら**テストを落とす**（取り違えを見逃さない）。
+    fn shaped(columns: &[String], rows: &[Vec<Value>], spec: &PresentationSpec) -> ShapedTable {
+        match apply(columns, rows, spec).unwrap() {
+            Presentation::Table(t) => t,
+            Presentation::Chart(_) => panic!("表を期待したのにグラフが返った"),
+        }
+    }
+
+    fn charted(columns: &[String], rows: &[Vec<Value>], spec: &PresentationSpec) -> ShapedChart {
+        match apply(columns, rows, spec).unwrap() {
+            Presentation::Chart(c) => c,
+            Presentation::Table(_) => panic!("グラフを期待したのに表が返った"),
+        }
+    }
+
+    fn chart(shape: Shape, x: &str, y: &str, series: Option<&str>) -> PresentationSpec {
+        PresentationSpec {
+            shape,
+            x: Some(x.into()),
+            y: Some(y.into()),
+            series: series.map(|s| s.into()),
+            ..Default::default()
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // グラフ（#587）
+    // -----------------------------------------------------------------------
+
+    /// 縦長の結果を系列ごとの点列にする。**数値は ResultSet のまま**。
+    #[test]
+    fn 縦長の結果を系列ごとの点列にする() {
+        let columns = cols(&["帯", "順位", "勝率"]);
+        let rows = vec![
+            vec![json!(2000), json!(1), json!(56.3)],
+            vec![json!(2000), json!(2), json!(55.1)],
+            vec![json!(2500), json!(1), json!(54.8)],
+            vec![json!(2500), json!(2), json!(53.2)],
+        ];
+        let c = charted(&columns, &rows, &chart(Shape::Line, "帯", "勝率", Some("順位")));
+
+        assert_eq!(c.kind, Shape::Line);
+        assert_eq!(c.series.len(), 2, "順位ごとに分かれていない");
+        assert_eq!(c.series[0].name, "1");
+        assert_eq!(c.series[0].points, vec![
+            Point { x: json!(2000.0), y: 56.3 },
+            Point { x: json!(2500.0), y: 54.8 },
+        ]);
+        assert!(c.x_numeric, "数値の横軸として扱われていない");
+        assert_eq!(c.x_label, "帯");
+        assert_eq!(c.y_label, "勝率");
+        assert!(c.warnings.is_empty());
+    }
+
+    /// 系列を指定しなければ 1 本にまとまる。
+    #[test]
+    fn 系列を指定しなければ一本になる() {
+        let columns = cols(&["ステージ", "勝率"]);
+        let rows = vec![
+            vec![json!("ユノハナ"), json!(55.5)],
+            vec![json!("ゴンズイ"), json!(48.2)],
+        ];
+        let c = charted(&columns, &rows, &chart(Shape::Bar, "ステージ", "勝率", None));
+
+        assert_eq!(c.series.len(), 1);
+        assert_eq!(c.series[0].name, "勝率");
+        assert!(!c.x_numeric, "項目軸なのに数値軸になっている");
+        assert_eq!(c.series[0].points[0].x, json!("ユノハナ"));
+    }
+
+    /// y が数値でない行は**落として数える**。0 として描くと嘘になる。
+    #[test]
+    fn 値が数値でない行は捨てて知らせる() {
+        let columns = cols(&["ステージ", "勝率"]);
+        let rows = vec![
+            vec![json!("A"), json!(55.5)],
+            vec![json!("B"), Value::Null],
+            vec![json!("C"), json!("-")],
+        ];
+        let c = charted(&columns, &rows, &chart(Shape::Bar, "ステージ", "勝率", None));
+
+        assert_eq!(c.series[0].points.len(), 1);
+        assert_eq!(c.warnings.len(), 1, "{:?}", c.warnings);
+        assert!(c.warnings[0].contains("2 行"), "{:?}", c.warnings);
+    }
+
+    /// 散布図の x が数値でなければ、描かずに bar を勧める。
+    #[test]
+    fn 散布図の横軸が数値でなければ断る() {
+        let columns = cols(&["ステージ", "勝率"]);
+        let rows = vec![vec![json!("A"), json!(55.5)]];
+        let e = apply(&columns, &rows, &chart(Shape::Scatter, "ステージ", "勝率", None)).unwrap_err();
+        assert!(e.contains("数値"), "{e}");
+        assert!(e.contains("bar"), "代わりの手が示されていない: {e}");
+    }
+
+    /// 値の列に数値が 1 つも無ければ、表にするよう促す。
+    #[test]
+    fn 値が全部数値でなければ表を勧める() {
+        let columns = cols(&["ステージ", "ブキ"]);
+        let rows = vec![vec![json!("A"), json!("わかば")]];
+        let e = apply(&columns, &rows, &chart(Shape::Bar, "ステージ", "ブキ", None)).unwrap_err();
+        assert!(e.contains("table"), "{e}");
+    }
+
+    /// 系列が多すぎるときは切って知らせる（色が足りず凡例も読めない）。
+    #[test]
+    fn 系列が多すぎたら切って知らせる() {
+        let columns = cols(&["x", "y", "s"]);
+        let rows: Vec<Vec<Value>> = (0..MAX_SERIES + 3)
+            .map(|i| vec![json!(i), json!(i as f64), json!(format!("s{i}"))])
+            .collect();
+        let c = charted(&columns, &rows, &chart(Shape::Line, "x", "y", Some("s")));
+
+        assert_eq!(c.series.len(), MAX_SERIES);
+        assert!(c.warnings.iter().any(|w| w.contains("系列")), "{:?}", c.warnings);
+    }
+
+    /// グラフに必要な指定が欠けていたら、実際の列名を添えて断る。
+    #[test]
+    fn グラフの指定が欠けていたら列名を添えて断る() {
+        let columns = cols(&["ステージ", "勝率"]);
+        let rows = vec![vec![json!("A"), json!(1.0)]];
+
+        let mut spec = chart(Shape::Bar, "ステージ", "勝率", None);
+        spec.x = None;
+        let e = apply(&columns, &rows, &spec).unwrap_err();
+        assert!(e.contains("x"), "{e}");
+        assert!(e.contains("`ステージ`"), "実際の列名が無い: {e}");
+
+        let mut spec = chart(Shape::Bar, "ステージ", "無い列", None);
+        spec.series = Some("これも無い".into());
+        let e = apply(&columns, &rows, &spec).unwrap_err();
+        assert!(e.contains("無い列"), "{e}");
+    }
+
+    /// AI② の返答 JSON がグラフ指定として読めるか。
+    #[test]
+    fn グラフの返答_json_を読める() {
+        let spec: PresentationSpec = serde_json::from_str(
+            r#"{"shape":"scatter","x":"使用率","y":"勝率","series":"カテゴリ"}"#,
+        )
+        .unwrap();
+        assert_eq!(spec.shape, Shape::Scatter);
+        assert_eq!(spec.x.as_deref(), Some("使用率"));
+        assert!(spec.cell_template.is_none());
     }
 }
