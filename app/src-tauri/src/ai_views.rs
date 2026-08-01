@@ -397,8 +397,10 @@ const COMMON_MISTAKES: &[&str] = &[
      シーズン名と日付の対応は「データの規模」に載っている。\
      ただし**シーズンごとに集計する（GROUP BY）なら `season` 列を使ってよい**。\
      `strftime('%Y-%m', source_date)` で月に丸めるのは**シーズンではない**（シーズンは 3 か月）",
-    "🔴 シーズンごとの集計は重い。**期間を直近数シーズンに絞ってから** `GROUP BY season` する。\
-     実測で全期間 44 秒 / 直近 4 シーズン 6.4 秒",
+    "シーズンごとの集計は重い（実測: 全期間 30 秒 / 直近 2 年 9.6 秒 / 直近 4 シーズン 4.7 秒）。\
+     ただし**「シーズンごと」と言われたら期間を絞らない**。\
+     勝手に絞ると出るシーズンが減って質問に答えたことにならない。\
+     「最近の」「直近の」と限定されたときだけ `source_date` で絞る",
     "🔴 **シーズン名は時系列順に並ばない。** `Chill` < `Drizzle` < `Fresh` < `Sizzle` の\
      辞書順になるので、`ORDER BY season` では新しい順にならない\
      （Sizzle 2026 → Sizzle 2025 → Fresh 2026 のように混ざる）。\
@@ -523,9 +525,9 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
          \x20        weapon AS ブキ, COUNT(*) AS 出現数,\n\
          \x20        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY season), 2) AS ピック率\n\
          \x20 FROM ai_env_slots\n\
+         \x20 -- 「シーズンごと」と言われたら**期間を絞らない**（全シーズンを出す）。\n\
+         \x20 -- 直近だけでよいと言われたときだけ source_date >= '...' を足す。\n\
          \x20 WHERE lobby = 'xmatch' AND season IS NOT NULL\n\
-         \x20   -- 直近 4 シーズン。開始日は「データの規模」のシーズン一覧から選ぶ。\n\
-         \x20   AND source_date >= '2025-09-01'\n\
          \x20 GROUP BY season, weapon\n\
          ), 順位付き AS (\n\
          \x20 SELECT *, MIN(開始日) OVER (PARTITION BY シーズン) AS シーズン開始,\n\

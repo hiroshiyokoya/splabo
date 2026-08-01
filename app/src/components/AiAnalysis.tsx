@@ -10,7 +10,7 @@
  * この版はまず「生成された SQL と結果の表」を出すところまで（#566 の第 1 段）。
  * 結果を既存のグラフ部品で描く導線と、画面ごとの入力欄は次の段で入れる。
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { AppSettings, ShapedChart } from '../types'
 import { AiResultChart } from './charts/AiResultChart'
@@ -110,6 +110,23 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
   const [shaped, setShaped] = useState<Presentation | null>(null)
   /** 見せ方を決められなかった理由。表は出るので、エラーではなく注記として出す。 */
   const [shapeNote, setShapeNote] = useState<string | null>(null)
+  /**
+   * 集計を始めてからの経過秒数。
+   *
+   * 環境データは 3900 万行あり、全シーズンの集計は 30 秒以上かかる。
+   * 何も動かないと固まったように見えるので、進んでいることを見せる。
+   */
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    if (phase?.kind !== 'sql') {
+      setElapsed(0)
+      return
+    }
+    const started = Date.now()
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [phase?.kind, phase?.attempt])
 
   // 分析ごとに取り直す。**データの規模（件数と期間）が入る**ので、
   // 取り込みの前後で内容が変わる。件数の集計は 50ms 程度なので毎回引いて問題ない。
@@ -261,7 +278,7 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
             : (phase.kind === 'ai'
                 ? 'AI に問い合わせ中'
                 : phase.kind === 'sql'
-                  ? '集計中'
+                  ? `集計中${elapsed >= 3 ? `（${elapsed} 秒）` : ''}`
                   : '見せ方を決めています') +
               // 2 回目以降は書き直していることが分かるように出す。
               (phase.attempt > 1 ? `（書き直し ${phase.attempt - 1} 回目）` : '') +
