@@ -976,6 +976,25 @@ mod tests {
             println!("警告: {:?}\n", t.warnings);
         }
 
+        // 🔴 シーズンの実例が**新しい順に並ぶ**かを実データで見る。
+        // 実行できるだけのテストでは並び順の誤りに気付けない（実機で 2 度踏んだ）。
+        {
+            let (_, sql) = crate::ai_views::SQL_EXAMPLES
+                .iter()
+                .find(|(q, _)| q.contains("シーズンごと"))
+                .expect("シーズンごとの実例が無い");
+            let rows = sqlx::query(sql).fetch_all(&pool).await.unwrap();
+            println!("=== 通し確認: シーズンの並び ===");
+            let mut seen: Vec<String> = Vec::new();
+            for r in &rows {
+                let s: String = r.get("シーズン");
+                if !seen.contains(&s) {
+                    seen.push(s);
+                }
+            }
+            println!("  {}", seen.join(" → "));
+        }
+
         // グラフ（#587）も同じ縦長の結果から作れるかを実データで通す。
         {
             let (_, sql) = crate::ai_views::SQL_EXAMPLES

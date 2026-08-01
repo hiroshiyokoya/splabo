@@ -399,6 +399,10 @@ const COMMON_MISTAKES: &[&str] = &[
      `strftime('%Y-%m', source_date)` で月に丸めるのは**シーズンではない**（シーズンは 3 か月）",
     "🔴 シーズンごとの集計は重い。**期間を直近数シーズンに絞ってから** `GROUP BY season` する。\
      実測で全期間 44 秒 / 直近 4 シーズン 6.4 秒",
+    "🔴 **シーズン名は時系列順に並ばない。** `Chill` < `Drizzle` < `Fresh` < `Sizzle` の\
+     辞書順になるので、`ORDER BY season` では新しい順にならない\
+     （Sizzle 2026 → Sizzle 2025 → Fresh 2026 のように混ざる）。\
+     並べ替えは**日付で**行う。集計時に `MIN(source_date)` を残しておき、それで並べる",
     "🔴 **上位 N を出す前に、群 × 対象で 1 行にまとめる。**\
      `GROUP BY season, weapon` を先にやらずに順位を振ると、\
      **同じブキが 1 位と 3 位に並ぶ**（1 行 = 1 スロットのまま数えている）",
@@ -511,9 +515,12 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
         // ② 上位 N の前に GROUP BY season, weapon で 1 行にまとめる（重複を出さない）
         // ③ ピック率の分母はそのシーズンの全スロット
         // ④ 全期間は 44 秒かかるので、直近数シーズンに絞る（4 シーズンで 6.4 秒）
-        "シーズンごとのXマッチのピック率上位 5 ブキ",
+        "シーズンごとのXマッチのピック率上位 5 ブキ（新しい順）",
+        // 🔴 ⑤ 並べ替えは**シーズン名ではなく開始日**で行う。
+        // 名前は辞書順で Chill < Drizzle < Fresh < Sizzle になり、時系列にならない。
         "WITH 集計 AS (\n\
-         \x20 SELECT season AS シーズン, weapon AS ブキ, COUNT(*) AS 出現数,\n\
+         \x20 SELECT season AS シーズン, MIN(source_date) AS 開始日,\n\
+         \x20        weapon AS ブキ, COUNT(*) AS 出現数,\n\
          \x20        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY season), 2) AS ピック率\n\
          \x20 FROM ai_env_slots\n\
          \x20 WHERE lobby = 'xmatch' AND season IS NOT NULL\n\
@@ -521,11 +528,12 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
          \x20   AND source_date >= '2025-09-01'\n\
          \x20 GROUP BY season, weapon\n\
          ), 順位付き AS (\n\
-         \x20 SELECT *, ROW_NUMBER() OVER (PARTITION BY シーズン ORDER BY ピック率 DESC) AS 順位\n\
+         \x20 SELECT *, MIN(開始日) OVER (PARTITION BY シーズン) AS シーズン開始,\n\
+         \x20        ROW_NUMBER() OVER (PARTITION BY シーズン ORDER BY ピック率 DESC) AS 順位\n\
          \x20 FROM 集計\n\
          )\n\
          SELECT シーズン, 順位, ブキ, ピック率, 出現数 FROM 順位付き\n\
-         WHERE 順位 <= 5 ORDER BY シーズン DESC, 順位",
+         WHERE 順位 <= 5 ORDER BY シーズン開始 DESC, 順位",
     ),
     (
         "ステージ別の勝率を 20 戦以上で",
@@ -1192,6 +1200,27 @@ mod tests {
                 "実例「{q}」が順位を結果に出していない: {select}"
             );
         }
+    }
+
+    /// 実例が**シーズン名で並べ替えていない**か。
+    ///
+    /// 🔴 実機で 2 度目の「実例が壊れていた」事故。`ORDER BY シーズン DESC` と書いていたので
+    /// AI が忠実に真似し、Sizzle 2026 → Sizzle 2025 → Fresh 2026 の順に並んだ。
+    /// シーズン名は辞書順（Chill < Drizzle < Fresh < Sizzle）で時系列にならない。
+    ///
+    /// 実行できることを見るテストでは通ってしまう（**並び順は意味の問題**）ので別に見る。
+    #[test]
+    fn 実例はシーズン名で並べ替えない() {
+        for (q, sql) in SQL_EXAMPLES {
+            for bad in ["ORDER BY シーズン ", "ORDER BY シーズン,", "ORDER BY season"] {
+                assert!(
+                    !sql.contains(bad),
+                    "実例「{q}」がシーズン名で並べ替えている（辞書順になる）: {sql}"
+                );
+            }
+        }
+        let p = analysis_prompt(None);
+        assert!(p.contains("時系列順に並ばない"), "並び順の注意がプロンプトに無い");
     }
 
     /// 環境データを使う実例が、**必ず期間で絞っている**か。
