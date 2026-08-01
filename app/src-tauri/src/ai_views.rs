@@ -392,9 +392,20 @@ const COMMON_MISTAKES: &[&str] = &[
     "SQLite の日付修飾子は `start of day` / `start of month` / `start of year` だけ。\
      **`start of season` は存在しない**（式全体が NULL になり 1 行も一致しなくなる）。\
      シーズンで絞るときは「データの規模」に載っている**シーズンの開始日**を使う",
-    "🔴 **シーズンは `season` 列で絞らない。`source_date` の範囲で絞る。**\
+    "🔴 **シーズンで絞る（WHERE）ときは `season` 列を使わず `source_date` の範囲で絞る。**\
      `season` にはインデックスが無く、実測で 15 倍遅い（8.7 秒 → 0.59 秒）。\
-     シーズン名と日付の対応は「データの規模」に載っている",
+     シーズン名と日付の対応は「データの規模」に載っている。\
+     ただし**シーズンごとに集計する（GROUP BY）なら `season` 列を使ってよい**。\
+     `strftime('%Y-%m', source_date)` で月に丸めるのは**シーズンではない**（シーズンは 3 か月）",
+    "🔴 シーズンごとの集計は重い。**期間を直近数シーズンに絞ってから** `GROUP BY season` する。\
+     実測で全期間 44 秒 / 直近 4 シーズン 6.4 秒",
+    "🔴 **上位 N を出す前に、群 × 対象で 1 行にまとめる。**\
+     `GROUP BY season, weapon` を先にやらずに順位を振ると、\
+     **同じブキが 1 位と 3 位に並ぶ**（1 行 = 1 スロットのまま数えている）",
+    "**ピック率の分母はその群の全スロット数**。\
+     `COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY season)` のように、\
+     群ごとの合計で割る。分母を取り違えると 100% や 50% ばかりが並ぶ\
+     （ブキは 100 種類以上あるので、上位でも数 % にしかならない）",
     "UNION ALL で並べた結果を並べ替えるときは、**全体を副問い合わせで包む**。\
      複合 SELECT の ORDER BY には式を書けず、列名か位置しか使えない",
     "🔴 **表の形は考えなくてよい。縦長（long format）で返す。**\
@@ -493,6 +504,28 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
          \x20 UNION ALL SELECT '平均アシスト', アシスト, 件数 FROM 相関\n\
          \x20 UNION ALL SELECT '平均塗り',     塗り,     件数 FROM 相関\n\
          ) WHERE 相関係数 IS NOT NULL ORDER BY ABS(相関係数) DESC",
+    ),
+    (
+        // 実機で踏んだ。月に丸められ、同じブキが 1 位と 3 位に並び、ピック率が 100% になった。
+        // ① シーズンは season 列で GROUP BY（月ではない）
+        // ② 上位 N の前に GROUP BY season, weapon で 1 行にまとめる（重複を出さない）
+        // ③ ピック率の分母はそのシーズンの全スロット
+        // ④ 全期間は 44 秒かかるので、直近数シーズンに絞る（4 シーズンで 6.4 秒）
+        "シーズンごとのXマッチのピック率上位 5 ブキ",
+        "WITH 集計 AS (\n\
+         \x20 SELECT season AS シーズン, weapon AS ブキ, COUNT(*) AS 出現数,\n\
+         \x20        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY season), 2) AS ピック率\n\
+         \x20 FROM ai_env_slots\n\
+         \x20 WHERE lobby = 'xmatch' AND season IS NOT NULL\n\
+         \x20   -- 直近 4 シーズン。開始日は「データの規模」のシーズン一覧から選ぶ。\n\
+         \x20   AND source_date >= '2025-09-01'\n\
+         \x20 GROUP BY season, weapon\n\
+         ), 順位付き AS (\n\
+         \x20 SELECT *, ROW_NUMBER() OVER (PARTITION BY シーズン ORDER BY ピック率 DESC) AS 順位\n\
+         \x20 FROM 集計\n\
+         )\n\
+         SELECT シーズン, 順位, ブキ, ピック率, 出現数 FROM 順位付き\n\
+         WHERE 順位 <= 5 ORDER BY シーズン DESC, 順位",
     ),
     (
         "ステージ別の勝率を 20 戦以上で",
@@ -603,8 +636,11 @@ impl DataScale {
             if !seasons.is_empty() {
                 s.push_str(
                     "\n### シーズン\n\n\
-                     **`season` 列では絞らないでください**（インデックスが無く 15 倍遅い）。\
-                     下の開始日・終了日を `source_date` の条件に使ってください。\n\n",
+                     **絞り込み（WHERE）に `season` 列を使わないでください**（インデックスが無く 15 倍遅い）。\
+                     下の開始日・終了日を `source_date` の条件に使ってください。\n\n\
+                     **シーズンごとに集計する（GROUP BY）ときは `season` 列を使ってください。**\
+                     月に丸めるとシーズンになりません（シーズンは 3 か月）。\
+                     全期間だと重いので、期間を直近数シーズンに絞ってから集計してください。\n\n",
                 );
                 for (i, sea) in seasons.iter().enumerate() {
                     // 最新シーズンの終端はまだ未来なので、データの最終日で止める。
@@ -1235,8 +1271,12 @@ mod tests {
         assert!(p.contains("Fresh Season 2026"), "過去のシーズンが無い");
         // 最新シーズンの終端は未来なので、データの最終日で止める。
         assert!(p.contains("2026-07-29（データの最終日）"), "終端が未来のままになっている");
-        // season 列で絞らせない（インデックスが無く 15 倍遅い）。
-        assert!(p.contains("`season` 列では絞らないでください"), "season 列の注意が無い");
+        // 絞り込みには season 列を使わせない（インデックスが無く 15 倍遅い）。
+        assert!(p.contains("`season` 列を使わないでください"), "season 列の注意が無い");
+        // 🔴 一方で**集計の軸としては使わせる**。実機で「絞るな」だけ読んで月に丸められ、
+        // シーズンごとのはずの表が 2026-03 のような月別になった。
+        assert!(p.contains("GROUP BY"), "集計軸として使ってよいことが書かれていない");
+        assert!(p.contains("月に丸める"), "月に丸めるなという注意が無い");
     }
 
     /// 環境データが無いときに、環境の質問へ空振りの SQL を書かせないか。
