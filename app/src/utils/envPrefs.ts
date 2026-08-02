@@ -107,7 +107,11 @@ export function loadEnvPrefs(): EnvPrefs {
       rowDim:      str(p.rowDim, d.rowDim),
       colDim:      str(p.colDim, d.colDim),
       cellMetric:  str(p.cellMetric, d.cellMetric),
-      period:      str(p.period, d.period),
+      // 🔴 過去のビルドが書いた `'season'` をここで畳む。
+      // この値は v0.9.10 以前が知らず、switch がどれにも当たらずに落ちる。
+      // 新しいビルドは seasonName の有無でシーズン指定を復元するので、
+      // ここで custom に均しても表示は変わらない。
+      period:      p.period === 'season' ? 'custom' : str(p.period, d.period),
       customSince: str(p.customSince, d.customSince),
       customUntil: str(p.customUntil, d.customUntil),
       seasonName:  str(p.seasonName, d.seasonName),

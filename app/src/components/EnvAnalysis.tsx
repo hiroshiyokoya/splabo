@@ -295,7 +295,16 @@ export function EnvAnalysis() {
   // 共通フィルタ(#190: ロビー/ルールは複数選択)
   const [lobbyKeys, setLobbyKeys] = useState<string[]>(prefs.lobbyKeys)
   const [ruleKeys, setRuleKeys]   = useState<string[]>(prefs.ruleKeys)
-  const [period, setPeriod]     = useState<Period>(prefs.period as Period)   // 既定は直近30日
+  // 🔴 保存された period は**古いビルドでも読める値**しか入っていない（下の save を参照）。
+  // シーズン指定は `seasonName` の有無で判別して復元する。
+  // 知らない値が入っていたら既定に落とす（将来値を増やしたときに落ちないように）。
+  const [period, setPeriod] = useState<Period>(() => {
+    if (prefs.seasonName) return 'season'
+    const known: Period[] = ['all', 'current_season', 'season', '1y', '180d', '30d', 'custom']
+    return known.includes(prefs.period as Period)
+      ? (prefs.period as Period)
+      : (DEFAULT_ENV_PREFS.period as Period)
+  })
   const [customSince, setCustomSince] = useState(prefs.customSince)
   const [customUntil, setCustomUntil] = useState(prefs.customUntil)
   /** 選べるシーズン（新しい順）。計算は Rust の `season.rs`（#585）。 */
@@ -386,14 +395,26 @@ export function EnvAnalysis() {
   const firstSaveRun = useRef(true)
   useEffect(() => {
     if (firstSaveRun.current) { firstSaveRun.current = false; return }
+    // 🔴 **古いビルドが知らない値を保存しない。**
+    // `period: 'season'` を書いたら v0.9.10 が switch でどれにも当たらず、
+    // range が undefined になって起動時に落ちた（設定は新旧のビルドで共有される）。
+    // シーズン指定は「日付範囲を指定したカスタム期間」として保存する。
+    // 古いビルドはカスタム期間として正しく動き、新しいビルドは seasonName で復元する。
+    // 範囲は保存のためにここで引き直す（`range` はこの下で定義されるので使えない）。
+    const picked = period === 'season' ? seasons.find(s => s.name === seasonName) : undefined
+    const isSeason = period === 'season' && !!picked
     saveEnvPrefs({
       vizMode, groupBy, xKey, yKey, sizeKey, colorKey, xLog, yLog,
       rowDim, colDim, cellMetric,
-      period, customSince, customUntil, seasonName: seasonName ?? '',
+      period:      isSeason ? 'custom' : period === 'season' ? 'current_season' : period,
+      customSince: isSeason ? picked!.since : customSince,
+      customUntil: isSeason ? picked!.until : customUntil,
+      // シーズン以外を選んでいる間は消す（残すと次回シーズンとして復元してしまう）。
+      seasonName:  isSeason ? (seasonName ?? '') : '',
       lobbyKeys, ruleKeys, weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax,
     })
   }, [vizMode, groupBy, xKey, yKey, sizeKey, colorKey, xLog, yLog, rowDim, colDim, cellMetric,
-      period, customSince, customUntil, seasonName,
+      period, customSince, customUntil, seasonName, seasons,
       lobbyKeys, ruleKeys, weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax])
 
   // 集計軸を切り替えたら X/Y・サイズ・色 指標を既定へ戻す。
@@ -512,6 +533,9 @@ export function EnvAnalysis() {
       case '180d':   return maxd ? { since: addDays(maxd, -179), until: maxd } : { since: null, until: null }
       case '30d':    return maxd ? { since: addDays(maxd, -29),  until: maxd } : { since: null, until: null }
       case 'custom': return { since: customSince || null, until: customUntil || null }
+      // 🔴 網羅していない値でも undefined を返さない。
+      // ここが undefined を返すと呼び出し側が range.since で落ちる（実際に起きた）。
+      default:       return { since: null, until: null }
     }
   }, [period, status, customSince, customUntil, seasons, seasonName])
 
