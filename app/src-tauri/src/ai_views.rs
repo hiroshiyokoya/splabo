@@ -404,7 +404,10 @@ const COMMON_MISTAKES: &[&str] = &[
     "🔴 **シーズン名は時系列順に並ばない。** `Chill` < `Drizzle` < `Fresh` < `Sizzle` の\
      辞書順になるので、`ORDER BY season` では新しい順にならない\
      （Sizzle 2026 → Sizzle 2025 → Fresh 2026 のように混ざる）。\
-     並べ替えは**日付で**行う。集計時に `MIN(source_date)` を残しておき、それで並べる",
+     並べ替えは**日付で**行う。集計時に `MIN(source_date)` を残しておき、それで並べる。\
+     `CASE WHEN シーズン = 'Sizzle Season 2026' THEN 1 ...` のように**順序を手で書かない**\
+     （シーズンは 3 か月ごとに増えるので、書いた瞬間から古くなる）。\
+     また `ORDER BY` に集計関数は書けない（`misuse of aggregate` になる）",
     "🔴 **上位 N を出す前に、群 × 対象で 1 行にまとめる。**\
      `GROUP BY season, weapon` を先にやらずに順位を振ると、\
      **同じブキが 1 位と 3 位に並ぶ**（1 行 = 1 スロットのまま数えている）",

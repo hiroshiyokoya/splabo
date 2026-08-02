@@ -292,6 +292,24 @@ fn classify_error(msg: &str, sql: &str) -> String {
     if lower.contains("readonly") || lower.contains("attempt to write") {
         return format!("書き込みはできません: {msg}");
     }
+    // ORDER BY に集計関数を書いた。実機ではシーズンの順序を
+    // `ORDER BY MIN(CASE WHEN シーズン = ... END)` と書いて踏んだ。
+    if lower.contains("misuse of aggregate") {
+        return format!(
+            "{msg}\n\n\
+             `ORDER BY` に集計関数（MIN / MAX / COUNT 等）は書けません。\
+             **並べ替えに使う値は SELECT 側で作ってください。**\n\n\
+             シーズンを新しい順に並べるなら、集計のときに開始日を残して\
+             それで並べ替えます。**シーズン名で並べると辞書順**になり\
+             （Chill < Drizzle < Fresh < Sizzle）、時系列になりません。\n\n\
+             ```sql\n\
+             ), 順位付き AS (\n\
+             \x20 SELECT *, MIN(開始日) OVER (PARTITION BY シーズン) AS シーズン開始, ...\n\
+             )\n\
+             SELECT ... ORDER BY シーズン開始 DESC\n\
+             ```"
+        );
+    }
     if lower.contains("no such column") || lower.contains("no such table") {
         if let Some(hint) = view_columns_hint(msg, sql) {
             return format!("{msg}\n\n{hint}");
@@ -672,6 +690,20 @@ mod tests {
         assert!(out.contains("中断"), "中断だと分からない: {out}");
         assert!(out.contains("OVER (PARTITION BY"), "ウィンドウ関数へ誘導していない: {out}");
         assert!(out.contains("相関副問い合わせ"), "原因が示されていない: {out}");
+        println!("--- AI に返る文面 ---\n{out}\n---");
+    }
+
+    /// `ORDER BY` に集計関数を書いたときに、直し方が返るか。
+    ///
+    /// 実機で `ORDER BY MIN(CASE WHEN シーズン = ... END)` と書かれて
+    /// `misuse of aggregate: MIN()` になった。元のエラー文だけでは直せない。
+    #[test]
+    fn 集計関数を並べ替えに使ったら直し方を返す() {
+        let out = classify_error("misuse of aggregate: MIN()", "SELECT 1 ORDER BY MIN(x)");
+        assert!(out.contains("ORDER BY"), "どこが悪いか示していない: {out}");
+        assert!(out.contains("SELECT 側で作って"), "直し方が無い: {out}");
+        // シーズンの並べ替えで踏むので、そこまで案内する。
+        assert!(out.contains("辞書順"), "シーズン名の落とし穴に触れていない: {out}");
         println!("--- AI に返る文面 ---\n{out}\n---");
     }
 
