@@ -1207,6 +1207,40 @@ mod tests {
         }
     }
 
+    /// プロンプトの内訳を見る（普段は走らせない）。
+    ///
+    /// 項目を足し続けると**後ろのものが埋もれる**（実例が埋もれて無視された前科がある）。
+    /// 何がどれだけ場所を取っているかを、増やす前に確かめられるようにしておく。
+    #[test]
+    #[ignore]
+    fn プロンプト計測() {
+        let scale = DataScale {
+            env_battles: 5_541_963,
+            env_min_date: Some("2022-09-26".into()),
+            env_max_date: Some("2026-07-29".into()),
+            my_battles: 1_382,
+            lobbies: vec!["xmatch".into()],
+            rules: vec!["area".into()],
+        };
+        let full = analysis_prompt(Some(&scale));
+        println!("--- プロンプトの内訳（文字数）---");
+        println!("  全体              : {}", full.chars().count());
+        println!("  ビュー定義        : {}", schema_prompt().chars().count());
+        println!("  ドメイン知識      : {}", DOMAIN_KNOWLEDGE.chars().count());
+        println!("  よくある間違い    : {} 項目 / {} 文字",
+                 COMMON_MISTAKES.len(),
+                 COMMON_MISTAKES.iter().map(|m| m.chars().count()).sum::<usize>());
+        println!("  実例              : {} 件 / {} 文字",
+                 SQL_EXAMPLES.len(),
+                 SQL_EXAMPLES.iter().map(|(q, s)| q.chars().count() + s.chars().count()).sum::<usize>());
+        println!("  データの規模      : {}", scale.to_prompt().chars().count());
+        println!("--- よくある間違いの一覧 ---");
+        for (i, m) in COMMON_MISTAKES.iter().enumerate() {
+            let head: String = m.chars().take(40).collect();
+            println!("  {:2}. {head}…", i + 1);
+        }
+    }
+
     /// 実例が**シーズン名で並べ替えていない**か。
     ///
     /// 🔴 実機で 2 度目の「実例が壊れていた」事故。`ORDER BY シーズン DESC` と書いていたので
