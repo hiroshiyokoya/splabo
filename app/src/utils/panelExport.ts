@@ -133,6 +133,64 @@ function hexToRgba(hex: string, alpha: number): string | null {
  * `getBoundingClientRect()` は変形後の矩形を返すので、回転した見出しのように
  * 親の箱からはみ出すものもここで拾える。親の矩形は子孫のはみ出しを含まない。
  */
+/**
+ * 画像に写さない要素を、レイアウトからも外す(#592)。
+ *
+ * PNG は `html-to-image` の `filter` で除外しているが、**キャプチャの寸法は
+ * 元のノードのまま**なので、除外した要素が占めていた分が**空白として残る**。
+ * 環境分析のヒートマップでは、注釈や操作ボタンの高さがそのまま画像下部の余白になっていた。
+ *
+ * `display: none` にすればレイアウトが詰まり、ノードの高さ自体が縮む。
+ * 戻り値は元へ戻す関数。
+ */
+function collapseExportHidden(node: HTMLElement): () => void {
+  const changed: { el: HTMLElement; display: string }[] = []
+  node.querySelectorAll<HTMLElement>(`.${EXPORT_HIDE_CLASS}`).forEach(el => {
+    changed.push({ el, display: el.style.display })
+    el.style.display = 'none'
+  })
+  return () => {
+    for (const c of changed) c.el.style.display = c.display
+  }
+}
+
+/**
+ * 書き出し中だけスクロール枠を解いて、中身を丸ごと写せるようにする(#592)。
+ *
+ * 環境分析のヒートマップは `.env-heatmap-wrap { overflow: auto; max-height: 70vh }` の
+ * 中にある。画面では正しい（大きい表でも画面内に収まる）が、そのまま書き出すと
+ *
+ * - **スクロールバーが画像に写り込む**
+ * - 枠からはみ出した行が**途中で切れる**（全部は写らない）
+ * - 枠の高さが残るので、幅を詰めたあと**下に余白が空く**
+ *
+ * 画像は紙と同じでスクロールできない。中身を全部見せるのが正しい。
+ *
+ * 幅を測る前に呼ぶこと（切られたままの幅を測らないため）。
+ * 戻り値は元へ戻す関数。
+ */
+function expandScrollAreas(node: HTMLElement): () => void {
+  const changed: { el: HTMLElement; overflow: string; maxH: string; maxW: string }[] = []
+  node.querySelectorAll<HTMLElement>('*').forEach(el => {
+    const cs = getComputedStyle(el)
+    const scrolls = /auto|scroll/.test(cs.overflowX) || /auto|scroll/.test(cs.overflowY)
+    const capped = cs.maxHeight !== 'none'
+    if (!scrolls && !capped) return
+    changed.push({ el, overflow: el.style.overflow, maxH: el.style.maxHeight, maxW: el.style.maxWidth })
+    el.style.overflow = 'visible'
+    el.style.maxHeight = 'none'
+    // 枠が親幅に縛られていると、パネルを中身幅へ寄せるときに追随できない。
+    el.style.maxWidth = 'none'
+  })
+  return () => {
+    for (const c of changed) {
+      c.el.style.overflow = c.overflow
+      c.el.style.maxHeight = c.maxH
+      c.el.style.maxWidth = c.maxW
+    }
+  }
+}
+
 function contentRight(el: Element): number {
   let right = el.getBoundingClientRect().right
   el.querySelectorAll('*').forEach(child => {
@@ -236,10 +294,16 @@ function fillExportCredit(node: HTMLElement, credit: string): void {
 export async function savePanelAsPng(node: HTMLElement, screen: string, panel: string): Promise<string | null> {
   node.classList.add(EXPORTING_CLASS)
   const tooltipBgs: { el: HTMLElement; prev: string }[] = []
+  let uncollapse: (() => void) | null = null
+  let unexpand: (() => void) | null = null
   let unfit: (() => void) | null = null
   try {
     // 保存した瞬間の版・日付を焼き込む(画面に出しっぱなしの古い日付にしない)。
     fillExportCredit(node, buildExportCredit(await appVersion()))
+    // 写さない要素をレイアウトからも外す(#592)。残すと下に空白が出る。
+    uncollapse = collapseExportHidden(node)
+    // スクロール枠を解いて中身を全部出す(#592)。**幅を測る前に**やる。
+    unexpand = expandScrollAreas(node)
     // 固定幅 SVG のパネルで右に余白が出る / はみ出しが欠けるのを防ぐ(#546)。
     // ツールチップの載せ替えより先に効かせる(位置計算が新しい幅を見るように)。
     unfit = fitExportWidth(node)
@@ -268,6 +332,8 @@ export async function savePanelAsPng(node: HTMLElement, screen: string, panel: s
   } finally {
     tooltipBgs.forEach(({ el, prev }) => { el.style.background = prev })
     unfit?.()
+    unexpand?.()
+    uncollapse?.()
     node.classList.remove(EXPORTING_CLASS)
   }
 }
@@ -607,9 +673,12 @@ function freezeChartGeometry(root: HTMLElement): () => void {
 export async function savePanelAsHtml(node: HTMLElement, screen: string, panel: string): Promise<string | null> {
   node.classList.add(EXPORTING_CLASS)
   let unfreeze: (() => void) | null = null
+  let unexpand: (() => void) | null = null
   let unfit: (() => void) | null = null
   try {
     fillExportCredit(node, buildExportCredit(await appVersion()))
+    // スクロール枠を解いて中身を全部出す(#592)。**幅を測る前に**やる。
+    unexpand = expandScrollAreas(node)
     // 実寸を固める前に幅を中身へ寄せる(#546)。順序を逆にすると広いままの幅が固定される。
     unfit = fitExportWidth(node)
     node.dispatchEvent(new CustomEvent(PANEL_EXPORT_HTML_PREPARE_EVENT, { bubbles: false }))
@@ -641,6 +710,7 @@ export async function savePanelAsHtml(node: HTMLElement, screen: string, panel: 
   } finally {
     unfreeze?.()
     unfit?.()
+    unexpand?.()
     node.classList.remove(EXPORTING_CLASS)
   }
 }
