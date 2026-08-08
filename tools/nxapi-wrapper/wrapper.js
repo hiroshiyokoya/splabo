@@ -188,8 +188,27 @@ async function cmdGetBulletToken([dataDir]) {
   process.stderr.write('bulletToken を取得中...\n');
   // splatnet3.js は coral の top-level await を含むため、ここで動的インポート
   const { getBulletToken } = await import('./node_modules/nxapi/dist/common/auth/splatnet3.js');
-  const { data } = await withRetry(() =>
-    withTimeout(getBulletToken(storage, sessionToken, undefined, true), NETWORK_TIMEOUT_MS, 'get_bullet_token'));
+
+  // 🔴 **ここはリトライしない**（#596）。
+  // nxapi は認証を 1 時間に 4 回までに制限している（LIMIT_REQUESTS / LIMIT_PERIOD）。
+  // サイドカーは端末から起動されないので制限は有効側に倒れる。
+  // 一方 bulletToken は約 2 時間もち、nxapi がキャッシュするので、
+  // 正常なら 1 時間に 1 回も取り直さない。
+  // それでも枠を使い切っていたのは、**失敗のたびに認証をやり直していた**ため。
+  // 再試行しても失効していなければキャッシュが返るだけで、状況は改善せず枠だけ減る。
+  // 一時エラーへの再試行が要るなら、認証の外側（GraphQL 呼び出し側）で行う。
+  let data;
+  try {
+    ({ data } = await withTimeout(
+      getBulletToken(storage, sessionToken, undefined, true),
+      NETWORK_TIMEOUT_MS,
+      'get_bullet_token',
+    ));
+  } catch (e) {
+    const hint = await rateLimitHint(storage, nsid);
+    if (hint) e.message = `${e.message}\n${hint}`;
+    throw e;
+  }
 
   respond({
     ok: true,
@@ -240,10 +259,25 @@ async function cmdWeaponRecords([dataDir]) {
   process.stderr.write('WeaponRecordQuery を実行中...\n');
   const { getBulletToken } = await import('./node_modules/nxapi/dist/common/auth/splatnet3.js');
   // 第 4 引数 allow_fetch_token=true により bullet_token が無ければ自動取得する。
-  const { splatnet } = await withRetry(() =>
-    withTimeout(getBulletToken(storage, sessionToken, undefined, true), NETWORK_TIMEOUT_MS, 'get_bullet_token'));
+  // 🔴 認証はリトライしない（#596）。理由は cmdGetBulletToken のコメントを参照。
+  let splatnet;
+  try {
+    ({ splatnet } = await withTimeout(
+      getBulletToken(storage, sessionToken, undefined, true),
+      NETWORK_TIMEOUT_MS,
+      'get_bullet_token',
+    ));
+  } catch (e) {
+    const hint = await rateLimitHint(storage, nsid);
+    if (hint) e.message = `${e.message}\n${hint}`;
+    throw e;
+  }
 
-  const result = await withTimeout(splatnet.getWeaponRecords(), NETWORK_TIMEOUT_MS, 'weapon_records');
+  // GraphQL の呼び出し側は一時エラーで再試行してよい（認証枠を消費しない）。
+  const result = await withRetry(
+    () => withTimeout(splatnet.getWeaponRecords(), NETWORK_TIMEOUT_MS, 'weapon_records'),
+    { label: 'weapon_records' },
+  );
   // result は { data, ... }。data.weaponRecords.nodes が本体。
   respond({ ok: true, data: result.data });
 }
@@ -252,6 +286,34 @@ async function cmdWeaponRecords([dataDir]) {
 
 function respond(obj) {
   process.stdout.write(JSON.stringify(obj) + '\n');
+}
+
+/** nxapi の認証レート制限（`common/auth/util.js`）。1 時間に 4 回まで。 */
+const AUTH_LIMIT_REQUESTS = 4;
+const AUTH_LIMIT_PERIOD_MS = 60 * 60 * 1000;
+
+/**
+ * 認証の残り枠と回復時刻の説明を作る（#596）。
+ *
+ * `Too many attempts to authenticate` だけでは、いつ再試行できるのか分からない。
+ * nxapi は試行時刻を `RateLimitAttempts-<key>.<user>` に残しているので、そこから出す。
+ * 取れなければ null（説明が付かないだけで、元のエラーは失われない）。
+ */
+async function rateLimitHint(storage, nsid) {
+  try {
+    const raw = (await storage.getItem('RateLimitAttempts-splatnet3.' + nsid)) ?? [];
+    const times = raw
+      .map((a) => (typeof a === 'number' ? a : a && a.time))
+      .filter((t) => typeof t === 'number');
+    const recent = times.filter((t) => t >= Date.now() - AUTH_LIMIT_PERIOD_MS).sort((a, b) => a - b);
+    if (recent.length === 0) return null;
+
+    const freeAt = new Date(recent[0] + AUTH_LIMIT_PERIOD_MS);
+    const hhmm = `${String(freeAt.getHours()).padStart(2, '0')}:${String(freeAt.getMinutes()).padStart(2, '0')}`;
+    return `直近 1 時間の認証は ${recent.length} 回です（上限 ${AUTH_LIMIT_REQUESTS} 回・任天堂側の負荷を避けるための nxapi の制限）。${hhmm} 以降に再試行できます。`;
+  } catch {
+    return null;
+  }
 }
 
 /**
