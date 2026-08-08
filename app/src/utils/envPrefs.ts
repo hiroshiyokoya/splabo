@@ -33,6 +33,12 @@ export interface EnvPrefs {
   customUntil: string
   /** 名指しで選んだシーズン名（`period === 'season'` のときだけ意味を持つ・#585）。 */
   seasonName:  string
+  /**
+   * 表示するブキ（#593）。空なら全部出す。
+   *
+   * `weaponKeys`（共通フィルタ）とは別物。あちらは母集団を絞り、こちらは表示だけを絞る。
+   */
+  displayWeapons: string[]
   lobbyKeys:   string[]
   ruleKeys:    string[]
   /** 武器キー（weapon.key）複数。空 = 絞り込まない（#477）。 */
@@ -61,6 +67,7 @@ export const DEFAULT_ENV_PREFS: EnvPrefs = {
   customSince: '',
   customUntil: '',
   seasonName:  '',
+  displayWeapons: [],
   lobbyKeys:   [],
   ruleKeys:    [],
   weaponKeys:  [],
@@ -115,6 +122,7 @@ export function loadEnvPrefs(): EnvPrefs {
       customSince: str(p.customSince, d.customSince),
       customUntil: str(p.customUntil, d.customUntil),
       seasonName:  str(p.seasonName, d.seasonName),
+      displayWeapons: strArray(p.displayWeapons, d.displayWeapons),
       lobbyKeys:   strArray(p.lobbyKeys, d.lobbyKeys),
       ruleKeys:    strArray(p.ruleKeys, d.ruleKeys),
       weaponKeys:  strArray(p.weaponKeys, d.weaponKeys),
