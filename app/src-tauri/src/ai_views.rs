@@ -392,9 +392,29 @@ const COMMON_MISTAKES: &[&str] = &[
     "SQLite の日付修飾子は `start of day` / `start of month` / `start of year` だけ。\
      **`start of season` は存在しない**（式全体が NULL になり 1 行も一致しなくなる）。\
      シーズンで絞るときは「データの規模」に載っている**シーズンの開始日**を使う",
-    "🔴 **シーズンは `season` 列で絞らない。`source_date` の範囲で絞る。**\
+    "🔴 **シーズンで絞る（WHERE）ときは `season` 列を使わず `source_date` の範囲で絞る。**\
      `season` にはインデックスが無く、実測で 15 倍遅い（8.7 秒 → 0.59 秒）。\
-     シーズン名と日付の対応は「データの規模」に載っている",
+     シーズン名と日付の対応は「データの規模」に載っている。\
+     ただし**シーズンごとに集計する（GROUP BY）なら `season` 列を使ってよい**。\
+     `strftime('%Y-%m', source_date)` で月に丸めるのは**シーズンではない**（シーズンは 3 か月）",
+    "シーズンごとの集計は重い（実測: 全期間 30 秒 / 直近 2 年 9.6 秒 / 直近 4 シーズン 4.7 秒）。\
+     ただし**「シーズンごと」と言われたら期間を絞らない**。\
+     勝手に絞ると出るシーズンが減って質問に答えたことにならない。\
+     「最近の」「直近の」と限定されたときだけ `source_date` で絞る",
+    "🔴 **シーズン名は時系列順に並ばない。** `Chill` < `Drizzle` < `Fresh` < `Sizzle` の\
+     辞書順になるので、`ORDER BY season` では新しい順にならない\
+     （Sizzle 2026 → Sizzle 2025 → Fresh 2026 のように混ざる）。\
+     並べ替えは**日付で**行う。集計時に `MIN(source_date)` を残しておき、それで並べる。\
+     `CASE WHEN シーズン = 'Sizzle Season 2026' THEN 1 ...` のように**順序を手で書かない**\
+     （シーズンは 3 か月ごとに増えるので、書いた瞬間から古くなる）。\
+     また `ORDER BY` に集計関数は書けない（`misuse of aggregate` になる）",
+    "🔴 **上位 N を出す前に、群 × 対象で 1 行にまとめる。**\
+     `GROUP BY season, weapon` を先にやらずに順位を振ると、\
+     **同じブキが 1 位と 3 位に並ぶ**（1 行 = 1 スロットのまま数えている）",
+    "**ピック率の分母はその群の全スロット数**。\
+     `COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY season)` のように、\
+     群ごとの合計で割る。分母を取り違えると 100% や 50% ばかりが並ぶ\
+     （ブキは 100 種類以上あるので、上位でも数 % にしかならない）",
     "UNION ALL で並べた結果を並べ替えるときは、**全体を副問い合わせで包む**。\
      複合 SELECT の ORDER BY には式を書けず、列名か位置しか使えない",
     "🔴 **表の形は考えなくてよい。縦長（long format）で返す。**\
@@ -493,6 +513,32 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
          \x20 UNION ALL SELECT '平均アシスト', アシスト, 件数 FROM 相関\n\
          \x20 UNION ALL SELECT '平均塗り',     塗り,     件数 FROM 相関\n\
          ) WHERE 相関係数 IS NOT NULL ORDER BY ABS(相関係数) DESC",
+    ),
+    (
+        // 実機で踏んだ。月に丸められ、同じブキが 1 位と 3 位に並び、ピック率が 100% になった。
+        // ① シーズンは season 列で GROUP BY（月ではない）
+        // ② 上位 N の前に GROUP BY season, weapon で 1 行にまとめる（重複を出さない）
+        // ③ ピック率の分母はそのシーズンの全スロット
+        // ④ 全期間は 44 秒かかるので、直近数シーズンに絞る（4 シーズンで 6.4 秒）
+        "シーズンごとのXマッチのピック率上位 5 ブキ（新しい順）",
+        // 🔴 ⑤ 並べ替えは**シーズン名ではなく開始日**で行う。
+        // 名前は辞書順で Chill < Drizzle < Fresh < Sizzle になり、時系列にならない。
+        "WITH 集計 AS (\n\
+         \x20 SELECT season AS シーズン, MIN(source_date) AS 開始日,\n\
+         \x20        weapon AS ブキ, COUNT(*) AS 出現数,\n\
+         \x20        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY season), 2) AS ピック率\n\
+         \x20 FROM ai_env_slots\n\
+         \x20 -- 「シーズンごと」と言われたら**期間を絞らない**（全シーズンを出す）。\n\
+         \x20 -- 直近だけでよいと言われたときだけ source_date >= '...' を足す。\n\
+         \x20 WHERE lobby = 'xmatch' AND season IS NOT NULL\n\
+         \x20 GROUP BY season, weapon\n\
+         ), 順位付き AS (\n\
+         \x20 SELECT *, MIN(開始日) OVER (PARTITION BY シーズン) AS シーズン開始,\n\
+         \x20        ROW_NUMBER() OVER (PARTITION BY シーズン ORDER BY ピック率 DESC) AS 順位\n\
+         \x20 FROM 集計\n\
+         )\n\
+         SELECT シーズン, 順位, ブキ, ピック率, 出現数 FROM 順位付き\n\
+         WHERE 順位 <= 5 ORDER BY シーズン開始 DESC, 順位",
     ),
     (
         "ステージ別の勝率を 20 戦以上で",
@@ -603,8 +649,11 @@ impl DataScale {
             if !seasons.is_empty() {
                 s.push_str(
                     "\n### シーズン\n\n\
-                     **`season` 列では絞らないでください**（インデックスが無く 15 倍遅い）。\
-                     下の開始日・終了日を `source_date` の条件に使ってください。\n\n",
+                     **絞り込み（WHERE）に `season` 列を使わないでください**（インデックスが無く 15 倍遅い）。\
+                     下の開始日・終了日を `source_date` の条件に使ってください。\n\n\
+                     **シーズンごとに集計する（GROUP BY）ときは `season` 列を使ってください。**\
+                     月に丸めるとシーズンになりません（シーズンは 3 か月）。\
+                     全期間だと重いので、期間を直近数シーズンに絞ってから集計してください。\n\n",
                 );
                 for (i, sea) in seasons.iter().enumerate() {
                     // 最新シーズンの終端はまだ未来なので、データの最終日で止める。
@@ -1158,6 +1207,61 @@ mod tests {
         }
     }
 
+    /// プロンプトの内訳を見る（普段は走らせない）。
+    ///
+    /// 項目を足し続けると**後ろのものが埋もれる**（実例が埋もれて無視された前科がある）。
+    /// 何がどれだけ場所を取っているかを、増やす前に確かめられるようにしておく。
+    #[test]
+    #[ignore]
+    fn プロンプト計測() {
+        let scale = DataScale {
+            env_battles: 5_541_963,
+            env_min_date: Some("2022-09-26".into()),
+            env_max_date: Some("2026-07-29".into()),
+            my_battles: 1_382,
+            lobbies: vec!["xmatch".into()],
+            rules: vec!["area".into()],
+        };
+        let full = analysis_prompt(Some(&scale));
+        println!("--- プロンプトの内訳（文字数）---");
+        println!("  全体              : {}", full.chars().count());
+        println!("  ビュー定義        : {}", schema_prompt().chars().count());
+        println!("  ドメイン知識      : {}", DOMAIN_KNOWLEDGE.chars().count());
+        println!("  よくある間違い    : {} 項目 / {} 文字",
+                 COMMON_MISTAKES.len(),
+                 COMMON_MISTAKES.iter().map(|m| m.chars().count()).sum::<usize>());
+        println!("  実例              : {} 件 / {} 文字",
+                 SQL_EXAMPLES.len(),
+                 SQL_EXAMPLES.iter().map(|(q, s)| q.chars().count() + s.chars().count()).sum::<usize>());
+        println!("  データの規模      : {}", scale.to_prompt().chars().count());
+        println!("--- よくある間違いの一覧 ---");
+        for (i, m) in COMMON_MISTAKES.iter().enumerate() {
+            let head: String = m.chars().take(40).collect();
+            println!("  {:2}. {head}…", i + 1);
+        }
+    }
+
+    /// 実例が**シーズン名で並べ替えていない**か。
+    ///
+    /// 🔴 実機で 2 度目の「実例が壊れていた」事故。`ORDER BY シーズン DESC` と書いていたので
+    /// AI が忠実に真似し、Sizzle 2026 → Sizzle 2025 → Fresh 2026 の順に並んだ。
+    /// シーズン名は辞書順（Chill < Drizzle < Fresh < Sizzle）で時系列にならない。
+    ///
+    /// 実行できることを見るテストでは通ってしまう（**並び順は意味の問題**）ので別に見る。
+    #[test]
+    fn 実例はシーズン名で並べ替えない() {
+        for (q, sql) in SQL_EXAMPLES {
+            for bad in ["ORDER BY シーズン ", "ORDER BY シーズン,", "ORDER BY season"] {
+                assert!(
+                    !sql.contains(bad),
+                    "実例「{q}」がシーズン名で並べ替えている（辞書順になる）: {sql}"
+                );
+            }
+        }
+        let p = analysis_prompt(None);
+        assert!(p.contains("時系列順に並ばない"), "並び順の注意がプロンプトに無い");
+    }
+
     /// 環境データを使う実例が、**必ず期間で絞っている**か。
     ///
     /// 🔴 実データで計測した結果、全期間の集計は **77 秒**（10 秒で中断される）、
@@ -1235,8 +1339,12 @@ mod tests {
         assert!(p.contains("Fresh Season 2026"), "過去のシーズンが無い");
         // 最新シーズンの終端は未来なので、データの最終日で止める。
         assert!(p.contains("2026-07-29（データの最終日）"), "終端が未来のままになっている");
-        // season 列で絞らせない（インデックスが無く 15 倍遅い）。
-        assert!(p.contains("`season` 列では絞らないでください"), "season 列の注意が無い");
+        // 絞り込みには season 列を使わせない（インデックスが無く 15 倍遅い）。
+        assert!(p.contains("`season` 列を使わないでください"), "season 列の注意が無い");
+        // 🔴 一方で**集計の軸としては使わせる**。実機で「絞るな」だけ読んで月に丸められ、
+        // シーズンごとのはずの表が 2026-03 のような月別になった。
+        assert!(p.contains("GROUP BY"), "集計軸として使ってよいことが書かれていない");
+        assert!(p.contains("月に丸める"), "月に丸めるなという注意が無い");
     }
 
     /// 環境データが無いときに、環境の質問へ空振りの SQL を書かせないか。

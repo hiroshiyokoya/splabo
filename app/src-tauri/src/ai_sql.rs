@@ -42,7 +42,20 @@ use tauri::AppHandle;
 pub const MAX_ROWS: usize = 5_000;
 
 /// クエリの時間上限。書き間違えた `CROSS JOIN` で固まらせない。
-pub const QUERY_TIMEOUT: Duration = Duration::from_secs(10);
+///
+/// 🔴 10 秒では**正しく書いたクエリまで落ちる**と実データで分かったので広げた。
+/// 環境データは 3900 万行ある。実測（`env_battles` 554 万件）:
+///
+/// | クエリ | 時間 |
+/// |---|---|
+/// | 全シーズンのピック率上位（15 シーズン） | 30〜44 秒 |
+/// | 直近 2 年（9 シーズン） | 9.6 秒 |
+/// | 直近 4 シーズン | 4.7 秒 |
+///
+/// 「シーズンごと」と聞かれて期間を絞らないのが正しい答えなので、そこに届く必要がある。
+/// 上限が近すぎると、AI は正しい SQL を書いているのに書き直しを繰り返す。
+/// 無限に待たせないための歯止めなので、体感の許す範囲で余裕を取る。
+pub const QUERY_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// 読み取りを拒否する列。**生 JSON と他プレイヤーの識別情報**。
 ///
@@ -278,6 +291,24 @@ fn classify_error(msg: &str, sql: &str) -> String {
     }
     if lower.contains("readonly") || lower.contains("attempt to write") {
         return format!("書き込みはできません: {msg}");
+    }
+    // ORDER BY に集計関数を書いた。実機ではシーズンの順序を
+    // `ORDER BY MIN(CASE WHEN シーズン = ... END)` と書いて踏んだ。
+    if lower.contains("misuse of aggregate") {
+        return format!(
+            "{msg}\n\n\
+             `ORDER BY` に集計関数（MIN / MAX / COUNT 等）は書けません。\
+             **並べ替えに使う値は SELECT 側で作ってください。**\n\n\
+             シーズンを新しい順に並べるなら、集計のときに開始日を残して\
+             それで並べ替えます。**シーズン名で並べると辞書順**になり\
+             （Chill < Drizzle < Fresh < Sizzle）、時系列になりません。\n\n\
+             ```sql\n\
+             ), 順位付き AS (\n\
+             \x20 SELECT *, MIN(開始日) OVER (PARTITION BY シーズン) AS シーズン開始, ...\n\
+             )\n\
+             SELECT ... ORDER BY シーズン開始 DESC\n\
+             ```"
+        );
     }
     if lower.contains("no such column") || lower.contains("no such table") {
         if let Some(hint) = view_columns_hint(msg, sql) {
@@ -662,6 +693,20 @@ mod tests {
         println!("--- AI に返る文面 ---\n{out}\n---");
     }
 
+    /// `ORDER BY` に集計関数を書いたときに、直し方が返るか。
+    ///
+    /// 実機で `ORDER BY MIN(CASE WHEN シーズン = ... END)` と書かれて
+    /// `misuse of aggregate: MIN()` になった。元のエラー文だけでは直せない。
+    #[test]
+    fn 集計関数を並べ替えに使ったら直し方を返す() {
+        let out = classify_error("misuse of aggregate: MIN()", "SELECT 1 ORDER BY MIN(x)");
+        assert!(out.contains("ORDER BY"), "どこが悪いか示していない: {out}");
+        assert!(out.contains("SELECT 側で作って"), "直し方が無い: {out}");
+        // シーズンの並べ替えで踏むので、そこまで案内する。
+        assert!(out.contains("辞書順"), "シーズン名の落とし穴に触れていない: {out}");
+        println!("--- AI に返る文面 ---\n{out}\n---");
+    }
+
     /// すでにウィンドウ関数で書いているなら、書き換えを勧めても意味がない。
     #[test]
     fn ウィンドウ関数を使った遅いクエリには副問い合わせの話をしない() {
@@ -751,6 +796,48 @@ mod tests {
             let r = sqlx::query(&sql).fetch_all(&pool).await;
             println!("{label}: {:?} / {:?}", t.elapsed(), r.map(|v| v.len()));
         }
+        // 「シーズンごとのXマッチのピック率上位5」を正しく書いたときのコスト。
+        // 実機で月ごとに解釈され、同じブキが何度も出る壊れた結果になった。
+        let by_season = |where_clause: &str| {
+            format!(
+                "WITH 集計 AS (
+                   SELECT season AS シーズン, weapon AS ブキ, COUNT(*) AS 出現数,
+                          ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY season), 2) AS ピック率
+                   FROM ai_env_slots
+                   WHERE lobby = 'xmatch' AND season IS NOT NULL {where_clause}
+                   GROUP BY season, weapon
+                 ), 順位付き AS (
+                   SELECT *, ROW_NUMBER() OVER (PARTITION BY シーズン ORDER BY ピック率 DESC) AS 順位
+                   FROM 集計
+                 )
+                 SELECT シーズン, 順位, ブキ, ピック率 FROM 順位付き
+                 WHERE 順位 <= 5 ORDER BY シーズン DESC, 順位"
+            )
+        };
+        for (label, w) in [
+            ("シーズン別ピック率 全期間", ""),
+            ("シーズン別ピック率 直近2年", "AND source_date >= '2024-09-01'"),
+            ("シーズン別ピック率 直近4シーズン", "AND source_date >= '2025-09-01'"),
+        ] {
+            let t = Instant::now();
+            let r = sqlx::query(&by_season(w)).fetch_all(&pool).await;
+            match r {
+                Ok(rows) => {
+                    println!("{label}: {:?} / {} 行", t.elapsed(), rows.len());
+                    for row in rows.iter().take(6) {
+                        println!(
+                            "    {} {}位 {} {}%",
+                            row.get::<String, _>("シーズン"),
+                            row.get::<i64, _>("順位"),
+                            row.get::<String, _>("ブキ"),
+                            row.get::<f64, _>("ピック率"),
+                        );
+                    }
+                }
+                Err(e) => println!("{label}: {:?} / エラー {e}", t.elapsed()),
+            }
+        }
+
         // 環境分析の起動時に直列で待つ選択肢の取得コスト。
         // シーズンのプルダウンがこれらの後ろにあると、その間ずっと出てこない。
         for (label, sql) in [
@@ -928,6 +1015,25 @@ mod tests {
                 );
             }
             println!("警告: {:?}\n", t.warnings);
+        }
+
+        // 🔴 シーズンの実例が**新しい順に並ぶ**かを実データで見る。
+        // 実行できるだけのテストでは並び順の誤りに気付けない（実機で 2 度踏んだ）。
+        {
+            let (_, sql) = crate::ai_views::SQL_EXAMPLES
+                .iter()
+                .find(|(q, _)| q.contains("シーズンごと"))
+                .expect("シーズンごとの実例が無い");
+            let rows = sqlx::query(sql).fetch_all(&pool).await.unwrap();
+            println!("=== 通し確認: シーズンの並び ===");
+            let mut seen: Vec<String> = Vec::new();
+            for r in &rows {
+                let s: String = r.get("シーズン");
+                if !seen.contains(&s) {
+                    seen.push(s);
+                }
+            }
+            println!("  {}", seen.join(" → "));
         }
 
         // グラフ（#587）も同じ縦長の結果から作れるかを実データで通す。
