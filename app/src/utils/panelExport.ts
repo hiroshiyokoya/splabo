@@ -115,13 +115,92 @@ function hexToRgba(hex: string, alpha: number): string | null {
  *
  * どちらもキャプチャ中だけカード幅を中身に合わせれば直る。
  *
- * 幅を数えるのは**固定幅を持つ SVG だけ**。キャプション・注釈は折り返す前提の文章なので
- * 数えない(1 行に伸ばすと極端に横長になる)。凡例は `flex-wrap` なので狭くても折り返す。
+ * 幅を数えるのは**中身なりの幅を持つ要素**、すなわち固定幅の SVG と表(#592)。
+ * 環境分析のヒートマップは SVG ではなく `<table>` で描いていて、SVG だけを見ていた頃は
+ * 幅を測れずに諦め、**画面上のパネル幅(＝ウィンドウ幅いっぱい)のまま**書き出していた。
+ * 列が少ない軸(スペシャル × ルール等)では画像の 7 割が空白になっていた。
+ *
+ * キャプション・注釈は折り返す前提の文章なので数えない(1 行に伸ばすと極端に横長になる)。
+ * 凡例は `flex-wrap` なので狭くても折り返す。
  *
  * Recharts のパネルは SVG 幅 = コンテナ幅なので目標幅が現在の幅と一致し、何も起きない。
  *
  * 戻り値は元のスタイルへ戻す関数(画面を汚さないため)。
  */
+/**
+ * 要素とその子孫の**右端**(ビューポート座標)。
+ *
+ * `getBoundingClientRect()` は変形後の矩形を返すので、回転した見出しのように
+ * 親の箱からはみ出すものもここで拾える。親の矩形は子孫のはみ出しを含まない。
+ */
+/**
+ * 画像に写さない要素を、レイアウトからも外す(#592)。
+ *
+ * PNG は `html-to-image` の `filter` で除外しているが、**キャプチャの寸法は
+ * 元のノードのまま**なので、除外した要素が占めていた分が**空白として残る**。
+ * 環境分析のヒートマップでは、注釈や操作ボタンの高さがそのまま画像下部の余白になっていた。
+ *
+ * `display: none` にすればレイアウトが詰まり、ノードの高さ自体が縮む。
+ * 戻り値は元へ戻す関数。
+ */
+function collapseExportHidden(node: HTMLElement): () => void {
+  const changed: { el: HTMLElement; display: string }[] = []
+  node.querySelectorAll<HTMLElement>(`.${EXPORT_HIDE_CLASS}`).forEach(el => {
+    changed.push({ el, display: el.style.display })
+    el.style.display = 'none'
+  })
+  return () => {
+    for (const c of changed) c.el.style.display = c.display
+  }
+}
+
+/**
+ * 書き出し中だけスクロール枠を解いて、中身を丸ごと写せるようにする(#592)。
+ *
+ * 環境分析のヒートマップは `.env-heatmap-wrap { overflow: auto; max-height: 70vh }` の
+ * 中にある。画面では正しい（大きい表でも画面内に収まる）が、そのまま書き出すと
+ *
+ * - **スクロールバーが画像に写り込む**
+ * - 枠からはみ出した行が**途中で切れる**（全部は写らない）
+ * - 枠の高さが残るので、幅を詰めたあと**下に余白が空く**
+ *
+ * 画像は紙と同じでスクロールできない。中身を全部見せるのが正しい。
+ *
+ * 幅を測る前に呼ぶこと（切られたままの幅を測らないため）。
+ * 戻り値は元へ戻す関数。
+ */
+function expandScrollAreas(node: HTMLElement): () => void {
+  const changed: { el: HTMLElement; overflow: string; maxH: string; maxW: string }[] = []
+  node.querySelectorAll<HTMLElement>('*').forEach(el => {
+    const cs = getComputedStyle(el)
+    const scrolls = /auto|scroll/.test(cs.overflowX) || /auto|scroll/.test(cs.overflowY)
+    const capped = cs.maxHeight !== 'none'
+    if (!scrolls && !capped) return
+    changed.push({ el, overflow: el.style.overflow, maxH: el.style.maxHeight, maxW: el.style.maxWidth })
+    el.style.overflow = 'visible'
+    el.style.maxHeight = 'none'
+    // 枠が親幅に縛られていると、パネルを中身幅へ寄せるときに追随できない。
+    el.style.maxWidth = 'none'
+  })
+  return () => {
+    for (const c of changed) {
+      c.el.style.overflow = c.overflow
+      c.el.style.maxHeight = c.maxH
+      c.el.style.maxWidth = c.maxW
+    }
+  }
+}
+
+function contentRight(el: Element): number {
+  let right = el.getBoundingClientRect().right
+  el.querySelectorAll('*').forEach(child => {
+    const r = child.getBoundingClientRect()
+    // 非表示要素は 0 幅 0 位置で返るので数えない。
+    if (r.width > 0 && r.right > right) right = r.right
+  })
+  return right
+}
+
 function fitExportWidth(node: HTMLElement): () => void {
   const noop = () => {}
   const cs = getComputedStyle(node)
@@ -131,19 +210,28 @@ function fitExportWidth(node: HTMLElement): () => void {
   if (!Number.isFinite(frameX)) return noop
 
   let contentW = 0
-  node.querySelectorAll('svg').forEach(svg => {
+  node.querySelectorAll('svg, table').forEach(el => {
     // 画像に写らない操作 UI のアイコンは数えない。
-    if (svg.closest(`.${EXPORT_HIDE_CLASS}`)) return
-    let w = svg.getBoundingClientRect().width
+    if (el.closest(`.${EXPORT_HIDE_CLASS}`)) return
+    let w = el.getBoundingClientRect().width
     // ヒートマップの斜め列ラベルのように、**宣言サイズの外へ描かれる**要素がある
     // (`.chart-card svg { overflow: visible }` なので画面では見えている)。
     // 宣言幅だけで詰めると、はみ出していた分が画像の端で切れる(#552)。
     // getBBox() は子要素の実際の描画範囲を返すので、そちらも見て広い方を採る。
-    try {
-      const bb = (svg as SVGGraphicsElement).getBBox()
-      if (bb.width > 0) w = Math.max(w, bb.x + bb.width)
-    } catch {
-      // 未レンダリング(display:none 等)の SVG では getBBox が投げる。宣言幅で足りる。
+    // 表には getBBox が無いので SVG のときだけ見る。
+    if (el instanceof SVGGraphicsElement) {
+      try {
+        const bb = el.getBBox()
+        if (bb.width > 0) w = Math.max(w, bb.x + bb.width)
+      } catch {
+        // 未レンダリング(display:none 等)の SVG では getBBox が投げる。宣言幅で足りる。
+      }
+    } else {
+      // 表も同じ問題を持つ。環境分析ヒートマップの斜め列見出しは
+      // `transform: rotate(-45deg)` で**表の箱の外へ**出るが、
+      // 表の矩形にはその分が入らない。詰めると右端のラベルが切れる(#552 と同じ壊れ方)。
+      // 変形後の矩形は getBoundingClientRect が返すので、子孫の右端まで見て広い方を採る。
+      w = Math.max(w, contentRight(el) - el.getBoundingClientRect().left)
     }
     if (w > contentW) contentW = w
   })
@@ -206,10 +294,16 @@ function fillExportCredit(node: HTMLElement, credit: string): void {
 export async function savePanelAsPng(node: HTMLElement, screen: string, panel: string): Promise<string | null> {
   node.classList.add(EXPORTING_CLASS)
   const tooltipBgs: { el: HTMLElement; prev: string }[] = []
+  let uncollapse: (() => void) | null = null
+  let unexpand: (() => void) | null = null
   let unfit: (() => void) | null = null
   try {
     // 保存した瞬間の版・日付を焼き込む(画面に出しっぱなしの古い日付にしない)。
     fillExportCredit(node, buildExportCredit(await appVersion()))
+    // 写さない要素をレイアウトからも外す(#592)。残すと下に空白が出る。
+    uncollapse = collapseExportHidden(node)
+    // スクロール枠を解いて中身を全部出す(#592)。**幅を測る前に**やる。
+    unexpand = expandScrollAreas(node)
     // 固定幅 SVG のパネルで右に余白が出る / はみ出しが欠けるのを防ぐ(#546)。
     // ツールチップの載せ替えより先に効かせる(位置計算が新しい幅を見るように)。
     unfit = fitExportWidth(node)
@@ -238,6 +332,8 @@ export async function savePanelAsPng(node: HTMLElement, screen: string, panel: s
   } finally {
     tooltipBgs.forEach(({ el, prev }) => { el.style.background = prev })
     unfit?.()
+    unexpand?.()
+    uncollapse?.()
     node.classList.remove(EXPORTING_CLASS)
   }
 }
@@ -577,9 +673,12 @@ function freezeChartGeometry(root: HTMLElement): () => void {
 export async function savePanelAsHtml(node: HTMLElement, screen: string, panel: string): Promise<string | null> {
   node.classList.add(EXPORTING_CLASS)
   let unfreeze: (() => void) | null = null
+  let unexpand: (() => void) | null = null
   let unfit: (() => void) | null = null
   try {
     fillExportCredit(node, buildExportCredit(await appVersion()))
+    // スクロール枠を解いて中身を全部出す(#592)。**幅を測る前に**やる。
+    unexpand = expandScrollAreas(node)
     // 実寸を固める前に幅を中身へ寄せる(#546)。順序を逆にすると広いままの幅が固定される。
     unfit = fitExportWidth(node)
     node.dispatchEvent(new CustomEvent(PANEL_EXPORT_HTML_PREPARE_EVENT, { bubbles: false }))
@@ -611,6 +710,7 @@ export async function savePanelAsHtml(node: HTMLElement, screen: string, panel: 
   } finally {
     unfreeze?.()
     unfit?.()
+    unexpand?.()
     node.classList.remove(EXPORTING_CLASS)
   }
 }

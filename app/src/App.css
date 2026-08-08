@@ -523,6 +523,9 @@ body {
   display: block;
   overflow: visible;
   margin: -8px 0 12px;
+  /* ロゴ（top:12px から高さ 44px）はタイトルの下まで届くので、キャプションも避ける(#592)。
+     タイトル行だけ避けていた頃は、幅を詰めたときにキャプションがロゴに潜り込んでいた。 */
+  padding-right: 140px;
 }
 .is-exporting .panel-export-note {
   display: -webkit-box;
