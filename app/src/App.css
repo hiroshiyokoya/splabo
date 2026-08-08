@@ -2989,24 +2989,42 @@ body {
 }
 .env-multiselect-item:hover { background: var(--bg); }
 .env-multiselect-item input { margin: 0; }
-.env-multiselect-item--indent { padding-left: 18px; }
+/* カテゴリに属する項目(#594)。
+   以前は padding-left: 18px だけで、チェックボックスの幅とほぼ同じだったため
+   見出しとの段差に見えなかった。左に罫線を引いて、どこからどこまでが
+   そのカテゴリの中身かを線でも示す。 */
+.env-multiselect-item--indent {
+  padding-left: 20px;
+  margin-left: 8px;
+  border-left: 1px solid var(--border);
+  border-radius: 0 4px 4px 0;
+}
+/* カテゴリの区切り。2 つ目以降の上に線を入れて、塊の切れ目を見せる。 */
 .env-multiselect-group { margin: 2px 0; }
+.env-multiselect-group + .env-multiselect-group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+/* カテゴリ見出し(#594)。
+   以前は文字色が薄いだけで背景も罫線も無く、項目の 1 つに埋もれていた。
+   背景を敷き、字を項目より大きくして「見出し」だと分かるようにする。 */
 .env-multiselect-group-header {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 4px 6px;
+  padding: 5px 6px;
   border: none;
   border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
   text-align: left;
 }
-.env-multiselect-group-header:hover { background: var(--bg); color: var(--text); }
+.env-multiselect-group-header:hover { background: var(--bg); }
 .env-multiselect-check {
   display: inline-block;
   width: 1em;
