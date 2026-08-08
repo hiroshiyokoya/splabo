@@ -115,13 +115,34 @@ function hexToRgba(hex: string, alpha: number): string | null {
  *
  * どちらもキャプチャ中だけカード幅を中身に合わせれば直る。
  *
- * 幅を数えるのは**固定幅を持つ SVG だけ**。キャプション・注釈は折り返す前提の文章なので
- * 数えない(1 行に伸ばすと極端に横長になる)。凡例は `flex-wrap` なので狭くても折り返す。
+ * 幅を数えるのは**中身なりの幅を持つ要素**、すなわち固定幅の SVG と表(#592)。
+ * 環境分析のヒートマップは SVG ではなく `<table>` で描いていて、SVG だけを見ていた頃は
+ * 幅を測れずに諦め、**画面上のパネル幅(＝ウィンドウ幅いっぱい)のまま**書き出していた。
+ * 列が少ない軸(スペシャル × ルール等)では画像の 7 割が空白になっていた。
+ *
+ * キャプション・注釈は折り返す前提の文章なので数えない(1 行に伸ばすと極端に横長になる)。
+ * 凡例は `flex-wrap` なので狭くても折り返す。
  *
  * Recharts のパネルは SVG 幅 = コンテナ幅なので目標幅が現在の幅と一致し、何も起きない。
  *
  * 戻り値は元のスタイルへ戻す関数(画面を汚さないため)。
  */
+/**
+ * 要素とその子孫の**右端**(ビューポート座標)。
+ *
+ * `getBoundingClientRect()` は変形後の矩形を返すので、回転した見出しのように
+ * 親の箱からはみ出すものもここで拾える。親の矩形は子孫のはみ出しを含まない。
+ */
+function contentRight(el: Element): number {
+  let right = el.getBoundingClientRect().right
+  el.querySelectorAll('*').forEach(child => {
+    const r = child.getBoundingClientRect()
+    // 非表示要素は 0 幅 0 位置で返るので数えない。
+    if (r.width > 0 && r.right > right) right = r.right
+  })
+  return right
+}
+
 function fitExportWidth(node: HTMLElement): () => void {
   const noop = () => {}
   const cs = getComputedStyle(node)
@@ -131,19 +152,28 @@ function fitExportWidth(node: HTMLElement): () => void {
   if (!Number.isFinite(frameX)) return noop
 
   let contentW = 0
-  node.querySelectorAll('svg').forEach(svg => {
+  node.querySelectorAll('svg, table').forEach(el => {
     // 画像に写らない操作 UI のアイコンは数えない。
-    if (svg.closest(`.${EXPORT_HIDE_CLASS}`)) return
-    let w = svg.getBoundingClientRect().width
+    if (el.closest(`.${EXPORT_HIDE_CLASS}`)) return
+    let w = el.getBoundingClientRect().width
     // ヒートマップの斜め列ラベルのように、**宣言サイズの外へ描かれる**要素がある
     // (`.chart-card svg { overflow: visible }` なので画面では見えている)。
     // 宣言幅だけで詰めると、はみ出していた分が画像の端で切れる(#552)。
     // getBBox() は子要素の実際の描画範囲を返すので、そちらも見て広い方を採る。
-    try {
-      const bb = (svg as SVGGraphicsElement).getBBox()
-      if (bb.width > 0) w = Math.max(w, bb.x + bb.width)
-    } catch {
-      // 未レンダリング(display:none 等)の SVG では getBBox が投げる。宣言幅で足りる。
+    // 表には getBBox が無いので SVG のときだけ見る。
+    if (el instanceof SVGGraphicsElement) {
+      try {
+        const bb = el.getBBox()
+        if (bb.width > 0) w = Math.max(w, bb.x + bb.width)
+      } catch {
+        // 未レンダリング(display:none 等)の SVG では getBBox が投げる。宣言幅で足りる。
+      }
+    } else {
+      // 表も同じ問題を持つ。環境分析ヒートマップの斜め列見出しは
+      // `transform: rotate(-45deg)` で**表の箱の外へ**出るが、
+      // 表の矩形にはその分が入らない。詰めると右端のラベルが切れる(#552 と同じ壊れ方)。
+      // 変形後の矩形は getBoundingClientRect が返すので、子孫の右端まで見て広い方を採る。
+      w = Math.max(w, contentRight(el) - el.getBoundingClientRect().left)
     }
     if (w > contentW) contentW = w
   })
