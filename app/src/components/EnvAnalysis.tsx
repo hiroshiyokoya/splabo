@@ -2,11 +2,11 @@
  * 環境分析タブ(#184 / 拡張 #187)。
  *
  * stat.ink の公開バトルデータ(全世界のプレイヤー投稿)を取り込み、
- * 散布図(武器/ステージ別)とマトリクスヒートマップ(カテゴリ×カテゴリ)で
- * 「ステージや武器によってバトル統計がどう変わるか」を見る。
+ * 散布図(ブキ/ステージ別)とマトリクスヒートマップ(カテゴリ×カテゴリ)で
+ * 「ステージやブキによってバトル統計がどう変わるか」を見る。
  *
  * 散布図はピック率のようなロングテール指標を読むため、X/Y 軸ごとにログスケールへ
- * 切り替えられる(#473)。ピック率の表示は 2 桁固定(マイナー武器が 0.0% に潰れるため)。
+ * 切り替えられる(#473)。ピック率の表示は 2 桁固定(マイナーブキが 0.0% に潰れるため)。
  *
  * 注意: stat.ink ユーザーは一般プレイヤーより熱心な層に偏るため、
  *       データには投稿バイアスがあります。
@@ -64,7 +64,7 @@ const RULE_LABEL:  Record<string, string> = Object.fromEntries(RULE_OPTIONS.filt
 // ---------------------------------------------------------------------------
 
 const pct    = (v: number) => `${(v * 100).toFixed(1)}%`
-// ピック率専用(#473)。マイナー武器は 0.1% 未満に集まっていて 1 桁だと全部 0.0% になり
+// ピック率専用(#473)。マイナーブキは 0.1% 未満に集まっていて 1 桁だと全部 0.0% になり
 // 差が読めないため、2 桁にする。
 const pct2   = (v: number) => `${(v * 100).toFixed(2)}%`
 const pct100 = (v: number) => `${v.toFixed(1)}%`
@@ -105,7 +105,7 @@ const WEAPON_METRICS: ScatterMetric[] = [
 ]
 
 const STAGE_METRICS: ScatterMetric[] = [
-  // 勝率・KDA は武器絞り込み時だけ BE が埋める(#478)。未選択時は点が null で落ちる。
+  // 勝率・KDA はブキ絞り込み時だけ BE が埋める(#478)。未選択時は点が null で落ちる。
   { key: 'win_rate',   label: '勝率',       rate01: true,  fmt: pct,  get: field('win_rate') },
   { key: 'avg_kill',   label: '平均キル',   rate01: false, fmt: num2, get: field('avg_kill'),   kda: true },
   { key: 'avg_assist', label: '平均アシスト', rate01: false, fmt: num2, get: field('avg_assist'), kda: true },
@@ -122,7 +122,7 @@ const STAGE_METRICS: ScatterMetric[] = [
   { key: 'avg_ink_opp',  label: '相手側 塗り%', rate01: false, fmt: pct100, get: field('avg_ink_opp') },
 ]
 
-/** ステージ散布図で武器未選択だと無意味な指標(#478)。 */
+/** ステージ散布図でブキ未選択だと無意味な指標(#478)。 */
 const STAGE_WEAPON_ONLY = new Set([
   'win_rate', 'avg_kill', 'avg_assist', 'contrib_kill', 'avg_death', 'kill_ratio', 'contrib_ratio',
 ])
@@ -313,7 +313,7 @@ export function EnvAnalysis() {
   const [seasonName, setSeasonName] = useState<string | null>(prefs.seasonName ?? null)
 
   // フィルタ拡充(#189): バージョン / ウデマエ帯 / Xパワー帯
-  // 武器・ステージ(#477)
+  // ブキ・ステージ(#477)
   const [versionOptions, setVersionOptions] = useState<EnvVersion[]>([])
   const [rankOptions, setRankOptions]       = useState<EnvRank[]>([])
   const [weaponOptions, setWeaponOptions]   = useState<EnvFilterOption[]>([])
@@ -387,7 +387,7 @@ export function EnvAnalysis() {
   const [scatterData, setScatterData] = useState<EnvScatterStat[]>([])
   // scatterData がどちらの集計軸のものか(#412)。groupBy は選択した瞬間に変わるが
   // scatterData は再取得が終わるまで前の軸のまま。アイコンの kind をこの遅れた軸で決めないと、
-  // 切り替え直後に「武器名を kind:'stage' で読みに行く」空振りの invoke が飛ぶ。
+  // 切り替え直後に「ブキ名を kind:'stage' で読みに行く」空振りの invoke が飛ぶ。
   const [scatterAxis, setScatterAxis] = useState<'weapon' | 'stage'>(groupBy)
 
   /**
@@ -475,8 +475,8 @@ export function EnvAnalysis() {
     setSizeKey(''); setColorKey('')   // 指標セットが変わるのでサイズ/色はリセット(#406)
   }, [groupBy])
 
-  // ステージ軸で武器フィルタが空のとき、勝率・KDA が選ばれていたらステージ固有指標へ戻す(#478)。
-  // 武器を選んだ直後は勝率 vs キルレを既定にする。
+  // ステージ軸でブキフィルタが空のとき、勝率・KDA が選ばれていたらステージ固有指標へ戻す(#478)。
+  // ブキを選んだ直後は勝率 vs キルレを既定にする。
   const prevWeaponFilter = useRef(weaponKeys.length > 0)
   useEffect(() => {
     if (groupBy !== 'stage') { prevWeaponFilter.current = weaponKeys.length > 0; return }
@@ -496,8 +496,8 @@ export function EnvAnalysis() {
   const weaponSlotInvolved = isWeaponSlotDim(rowDim) || isWeaponSlotDim(colDim)
   const bothWeaponSlot     = isWeaponSlotDim(rowDim) && isWeaponSlotDim(colDim)
   const hasWeaponFilter    = weaponKeys.length > 0
-  // 武器系軸あり → 勝率/ピック率/KDA。非武器×非武器はバトル数。
-  // ただし武器フィルタありなら散布図(#478)と同様に勝率・KDA も出す（ピック率は武器軸必須・#520）。
+  // ブキ系軸あり → 勝率/ピック率/KDA。非ブキ×非ブキはバトル数。
+  // ただしブキフィルタありなら散布図(#478)と同様に勝率・KDA も出す（ピック率はブキ軸必須・#520）。
   // KO率はヒートマップから外した(#522)。
   const allowedCellMetrics = useMemo(() => {
     if (bothWeaponSlot) return []
@@ -607,7 +607,7 @@ export function EnvAnalysis() {
       ['ロビー',     lobbyKeys.length ? joinValues(lobbyKeys.map(k => LOBBY_LABEL[k] ?? k)) : null],
       ['期間',       periodCaption],
       ['ルール',     ruleKeys.length ? joinValues(ruleKeys.map(k => RULE_LABEL[k] ?? k)) : null],
-      ['武器',       weaponKeys.length ? joinValues(weaponKeys.map(k => optLabel(weaponOptions, k))) : null],
+      ['ブキ',       weaponKeys.length ? joinValues(weaponKeys.map(k => optLabel(weaponOptions, k))) : null],
       ['ステージ',   stageKeys.length ? joinValues(stageKeys.map(k => optLabel(stageOptions, k))) : null],
       ['バージョン', gameVers.length ? joinValues(gameVers.map(formatGameVer)) : null],
       ['ウデマエ',   posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
@@ -703,9 +703,9 @@ export function EnvAnalysis() {
   // 他画面(BattleLog / Dashboard / FilterBar)と同じく **まとめて事前ロード** して
   // Map に持つ。ツールチップ側は同期的に引くだけで、ホバーのたびに invoke は飛ばさない。
   //
-  // キーは `${kind}:${正式名}`。武器とステージで同名が衝突しないよう kind を前置する。
+  // キーは `${kind}:${正式名}`。ブキとステージで同名が衝突しないよう kind を前置する。
   // 取りに行った名前は `iconTried` に積み、画像が無かったものを毎回引き直さない
-  // (stat.ink 由来でローカルマスターに無い武器は永久に見つからないため)。
+  // (stat.ink 由来でローカルマスターに無いブキは永久に見つからないため)。
   const [iconUrls, setIconUrls] = useState<Map<string, string>>(new Map())
   const iconTried = useRef<Set<string>>(new Set())
   const iconKind = scatterAxis === 'weapon' ? 'weapon' : 'stage'
@@ -788,7 +788,7 @@ export function EnvAnalysis() {
   const stageWeaponReady = groupBy === 'stage' && weaponKeys.length > 0
   const metrics = useMemo(() => {
     if (groupBy === 'weapon') return WEAPON_METRICS
-    // 武器未選択時は勝率・KDA を選択肢から外す(#478)
+    // ブキ未選択時は勝率・KDA を選択肢から外す(#478)
     if (!stageWeaponReady) return STAGE_METRICS.filter(m => !STAGE_WEAPON_ONLY.has(m.key))
     return STAGE_METRICS
   }, [groupBy, stageWeaponReady])
@@ -852,10 +852,10 @@ export function EnvAnalysis() {
       color: catStyle ? catStyle.color : pointColor(cv),
       markerShape: catStyle?.shape,
       // アイコンは **表示名ではなく BE が返した正式名(icon_name)** で引く(#412)。
-      // 表示名(= key)はローカルマスターに無い武器だとスラッグのままで、当たらないパスを
+      // 表示名(= key)はローカルマスターに無いブキだとスラッグのままで、当たらないパスを
       // 取りに行ってしまう。未ロード / 画像なしは undefined でアイコンなしになる。
       iconUrl: s.icon_name ? iconUrls.get(`${iconKind}:${s.icon_name}`) ?? null : null,
-      // 見出しにアイコン + 名前が出るので、武器/ステージ行は重複になる (#433)
+      // 見出しにアイコン + 名前が出るので、ブキ/ステージ行は重複になる (#433)
       tooltipRows: [
         ...metricRows,
         { label: 'サンプル', value: s.n.toLocaleString() },
@@ -893,7 +893,7 @@ export function EnvAnalysis() {
   //
   // 返ってきたセルから計算してはいけない: env_matrix_stats はサンプル不足のセルを
   // 落として返すため、クライアントには全データが無い。落ち方は交差する軸で変わるので、
-  // セルから加重平均すると「ガチエリアの勝率が 武器×ルール と ステージ×ルール で違う」
+  // セルから加重平均すると「ガチエリアの勝率が ブキ×ルール と ステージ×ルール で違う」
   // ことになる(#411)。BE がセルの足切りとは無関係に全バトルから算出した
   // 周辺集計(marginals)をそのまま使う。
   const rowProj = useMemo(() => marginalProjection(rowMarginals), [rowMarginals])
@@ -956,9 +956,9 @@ export function EnvAnalysis() {
                     onClick={() => setVizMode('heatmap')}>ヒートマップ</button>
           </div>
 
-          {/* 共通フィルタ(並びは FilterBar＝期間→ロビー→ルール→武器→ステージ に合わせる) */}
+          {/* 共通フィルタ(並びは FilterBar＝期間→ロビー→ルール→ブキ→ステージ に合わせる) */}
           <div className="env-filters">
-            {/* 期間はバトル・武器・ステージと同じくボタンを並べる（#585）。
+            {/* 期間はバトル・ブキ・ステージと同じくボタンを並べる（#585）。
                 「今シーズン」はボタンではなくシーズンのプルダウンの先頭にある。 */}
             <label>期間
               <span className="env-period-btns">
@@ -1010,11 +1010,11 @@ export function EnvAnalysis() {
               options={RULE_OPTIONS.filter(o => o.key).map(o => ({ key: o.key, label: o.label }))}
             />
           </div>
-          {/* 武器から行を変える（#585）。期間・シーズン・ロビー・ルールで 1 行目。 */}
+          {/* ブキから行を変える（#585）。期間・シーズン・ロビー・ルールで 1 行目。 */}
           <div className="env-filters">
             <MultiSelect
-              label="武器"
-              allLabel="すべての武器"
+              label="ブキ"
+              allLabel="すべてのブキ"
               selected={weaponKeys}
               onChange={setWeaponKeys}
               options={weaponOptions.map(w => ({
@@ -1097,7 +1097,7 @@ export function EnvAnalysis() {
               <div className="env-filters">
                 <label>集計軸
                   <select value={groupBy} onChange={e => setGroupBy(e.target.value as 'weapon' | 'stage')}>
-                    <option value="weapon">武器別</option>
+                    <option value="weapon">ブキ別</option>
                     <option value="stage">ステージ別</option>
                   </select>
                 </label>
@@ -1149,11 +1149,11 @@ export function EnvAnalysis() {
                 )}
                 <PanelExportLogo />
                 <div className="env-chart-title-row">
-                  <h3 className="env-chart-title">{xM.label} vs {yM.label}({groupBy === 'weapon' ? '武器別' : 'ステージ別'})</h3>
+                  <h3 className="env-chart-title">{xM.label} vs {yM.label}({groupBy === 'weapon' ? 'ブキ別' : 'ステージ別'})</h3>
                   <PanelExportButton
                     targetRef={scatterPanelRef}
                     screen="環境分析"
-                    panel={`${groupBy === 'weapon' ? '武器' : 'ステージ'}散布図 ${xM.label}×${yM.label}`}
+                    panel={`${groupBy === 'weapon' ? 'ブキ' : 'ステージ'}散布図 ${xM.label}×${yM.label}`}
                   />
                 </div>
                 <PanelExportCaption conditions={envExportCaption(envFilterSummary, filteredCount)} />
@@ -1179,7 +1179,7 @@ export function EnvAnalysis() {
                 <p className={`env-chart-note ${EXPORT_HIDE_CLASS}`}>
                   50 サンプル未満は非表示。各点にマウスオーバーで詳細表示。
                   {groupBy === 'stage' && weaponKeys.length === 0 &&
-                    ' ※勝率・キル系は武器を絞り込むと選べます。'}
+                    ' ※勝率・キル系はブキを絞り込むと選べます。'}
                   {' '}{POSTER_EXCLUDED_NOTE}
                 </p>
                 <PanelExportNote note={SCATTER_EXPORT_NOTE} />
@@ -1209,7 +1209,7 @@ export function EnvAnalysis() {
               </div>
               {!weaponSlotInvolved && !bothWeaponSlot && !hasWeaponFilter && (
                 <p className={`env-filter-note ${EXPORT_HIDE_CLASS}`}>
-                  ※ 勝率・キル系を見るときは、上の武器フィルタで武器を選ぶか、行/列の一方を武器系にしてください。
+                  ※ 勝率・キル系を見るときは、上のブキフィルタでブキを選ぶか、行/列の一方をブキ系にしてください。
                 </p>
               )}
 
@@ -1239,7 +1239,7 @@ export function EnvAnalysis() {
                 </div>
                 <PanelExportCaption conditions={envExportCaption(envFilterSummary, filteredCount)} />
                 {bothWeaponSlot ? (
-                  <p className="env-no-data">武器 × 武器は非対応です。一方をステージ/ルール/ロビーにしてください。</p>
+                  <p className="env-no-data">ブキ × ブキは非対応です。一方をステージ/ルール/ロビーにしてください。</p>
                 ) : (
                   <Heatmap
                     cells={shownMatrix}
@@ -1315,7 +1315,7 @@ function computeDomain(vals: number[], rate01: boolean): [number, number] {
 /**
  * 散布図の軸ログスケール切替(#473)。
  *
- * ピック率のようにロングテールな指標は、リニアだとマイナー武器が原点付近に潰れる。
+ * ピック率のようにロングテールな指標は、リニアだとマイナーブキが原点付近に潰れる。
  * `allowed` が false(勝率など)のときは押せなくし、理由を title で出す。
  */
 /**

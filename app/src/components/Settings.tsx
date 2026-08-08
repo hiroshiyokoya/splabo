@@ -197,7 +197,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
     setWeaponUpdateResult(null)
     try {
       const count = await invoke<number>('fetch_weapons')
-      setWeaponUpdateResult(`武器マスター ${count} 件取得しました`)
+      setWeaponUpdateResult(`ブキマスター ${count} 件取得しました`)
     } catch (e) {
       setWeaponUpdateResult(`エラー: ${String(e)}`)
     } finally {
@@ -525,7 +525,7 @@ async function handleUploadStatink() {
       <section className="settings-section">
         <h3>マスターデータ</h3>
         <div className="settings-help" style={{ marginBottom: 12 }}>
-          武器・サブ・SP・カテゴリ等のマスターデータを SplatNet 3 から取得します。
+          ブキ・サブ・SP・カテゴリ等のマスターデータを SplatNet 3 から取得します。
           起動時に 24 時間ごとに自動取得しますが、手動でも実行できます。
         </div>
         <button
@@ -533,7 +533,7 @@ async function handleUploadStatink() {
           onClick={handleUpdateWeapons}
           disabled={weaponUpdating || !loggedIn}
         >
-          {weaponUpdating ? '取得中...' : '武器データを更新'}
+          {weaponUpdating ? '取得中...' : 'ブキデータを更新'}
         </button>
         {weaponUpdateResult && (
           <div

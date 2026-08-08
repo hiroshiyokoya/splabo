@@ -235,7 +235,7 @@ async fn sync_weapon_masters(pool: &DbPool, client: &Client) -> Result<usize, St
             .or_else(|| item.pointer("/name/ja-JP"))
             .and_then(|v| v.as_str())
             .unwrap_or(key);
-        // 武器種 / サブ / スペシャルの日本語名（#492: 未分類をなくす）
+        // ブキ種 / サブ / スペシャルの日本語名（#492: 未分類をなくす）
         // カテゴリは公式準拠へ正規化（stat.ink の「リールガン」→「シューター」・#523）
         let ja = |ptr: &str| item.pointer(ptr).and_then(|v| v.as_str()).map(str::to_string);
         let category = ja("/type/name/ja_JP").map(|c| {
@@ -406,7 +406,7 @@ async fn import_csv_bytes(
     conn: &mut SqliteConnection,
     bytes: &[u8],
     source_date: &str,
-    // ロビー・ルール・ステージ・武器の id キャッシュ（呼び出し元で使い回す）
+    // ロビー・ルール・ステージ・ブキの id キャッシュ（呼び出し元で使い回す）
     lobby_cache:  &mut std::collections::HashMap<String, Option<i64>>,
     rule_cache:   &mut std::collections::HashMap<String, Option<i64>>,
     map_cache:    &mut std::collections::HashMap<String, Option<i64>>,
@@ -495,7 +495,7 @@ async fn import_csv_bytes(
             id
         };
 
-        // 武器スラッグ → weapon_id（キャッシュ付き）
+        // ブキスラッグ → weapon_id（キャッシュ付き）
         // キャッシュにないスラッグを先に非同期解決してからキャッシュを参照する。
         for cols in &SLOTS {
             let slug = fields.get(cols.weapon).copied().unwrap_or("").trim();
@@ -964,7 +964,7 @@ medal1-grade,medal1-name,medal2-grade,medal2-name,medal3-grade,medal3-name,event
         assert!(validate_env_csv_header(&header_record(&shifted)).is_err());
     }
 
-    /// INSERT 文のプレースホルダ数が、バインドする値の数（固定 17 + 武器 8 + KDA 32）と一致する。
+    /// INSERT 文のプレースホルダ数が、バインドする値の数（固定 17 + ブキ 8 + KDA 32）と一致する。
     #[test]
     fn insert_placeholder_count_matches_binds() {
         let sql = env_insert_sql();

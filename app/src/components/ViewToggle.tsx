@@ -9,7 +9,7 @@ export interface ViewToggleOption<T extends string> {
   icon?: string
 }
 
-/** 図鑑（武器・ステージ）共通のビュー切替（#297）。 */
+/** 図鑑（ブキ・ステージ）共通のビュー切替（#297）。 */
 export const BOOK_VIEWS: readonly ViewToggleOption<BookView>[] = [
   { key: 'panel', label: 'パネル', icon: '🖼' },
   { key: 'list',  label: '一覧',   icon: '📋' },

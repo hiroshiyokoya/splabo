@@ -9,6 +9,7 @@ pub mod ai_present;
 pub mod ai_sql;
 pub mod ai_views;
 pub mod season;
+pub mod wording;
 pub mod auth;
 pub mod battle_export;
 pub mod companion;
@@ -292,7 +293,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-/// バトル取得 → 詳細取得 → 武器補完 → 画像キャッシュ → battle_db エクスポート を一括実行し、
+/// バトル取得 → 詳細取得 → ブキ補完 → 画像キャッシュ → battle_db エクスポート を一括実行し、
 /// その**後**に stat.ink 自動アップロードを best-effort で行う。
 /// 開始時に "fetch_start"、終了時に "fetch_finish" イベントを emit する（成功・失敗共通）。
 /// 成功時はさらに "fetch_complete" を emit する（既存の lastFetchedAt 更新リスナー用）。
@@ -411,7 +412,7 @@ fn absorb_export_error<T>(result: Result<T, String>, elapsed: std::time::Duratio
     }
 }
 
-/// バトル取得・詳細取得・武器補完・画像キャッシュを行う（stat.ink アップロードは含まない）。
+/// バトル取得・詳細取得・ブキ補完・画像キャッシュを行う（stat.ink アップロードは含まない）。
 /// アップロードは `run_fetch_full` がフラグ解放後に best-effort で行う（#402）。
 /// 戻り値の 3 要素目 `uploaded` はここでは常に 0（実際の件数は `run_fetch_full` が後段で埋める）。
 async fn run_fetch_full_inner(app: &AppHandle, db: &db::DbPool) -> Result<(usize, usize, usize), String> {
@@ -434,7 +435,7 @@ async fn run_fetch_full_inner(app: &AppHandle, db: &db::DbPool) -> Result<(usize
     splatnet3::cache_ability_images(db, app, &client).await?;
     // 全ギアパワーを登場依存なしで先回りキャッシュ（viewer の全スキル表示のアイコン欠け対策・#360）
     splatnet3::cache_all_ability_images(app, &client).await?;
-    // 全プレイヤー（味方・相手）のメイン武器画像もキャッシュ（#136）
+    // 全プレイヤー（味方・相手）のメインブキ画像もキャッシュ（#136）
     splatnet3::cache_all_weapon_images(db, app, &client).await?;
 
     // 「取得完了」はアップロードを待たずここで通知する（lastFetchedAt 更新用）。
@@ -538,7 +539,7 @@ async fn import_from_statink(
     statink_import::import_all_battles(&db, &client, &api_key).await
 }
 
-/// HistoryRecordQuery で武器マスター（名前・カテゴリ・画像）を取得して DB に保存し、
+/// HistoryRecordQuery でブキマスター（名前・カテゴリ・画像）を取得して DB に保存し、
 /// さらに battles テーブルから sub/special を補完する。合計保存件数を返す。
 #[tauri::command]
 async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usize, String> {
@@ -563,9 +564,9 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
     splatnet3::cache_all_ability_images(&app, &client).await?;
     splatnet3::cache_all_weapon_images(&db, &app, &client).await?;
 
-    // WeaponRecordQuery (#49) も同じ「武器データを更新」フローで取得する。
+    // WeaponRecordQuery (#49) も同じ「ブキデータを更新」フローで取得する。
     // ここではユーザー固有統計（熟練度・勝利数・塗りポイント）の upsert と、
-    // 全武器分の主・サブ・SP 画像キャッシュを行う（バトル未登場武器のアイコン欠け解消も兼ねる）。
+    // 全ブキ分の主・サブ・SP 画像キャッシュを行う（バトル未登場ブキのアイコン欠け解消も兼ねる）。
     // 失敗してもメインフローは止めない（戻り値の count はそのまま）。
     if let Err(e) = splatnet3::fetch_and_store_weapon_records(&db, &client, &app).await {
         // nxapi 同梱の WeaponRecordQuery 持続クエリハッシュが Nintendo 側で廃止された場合は、

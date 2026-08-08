@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react'
 /**
  * Recharts XAxis 用のカスタム tick レンダラ。
  *
- * - `images.has(value)` のときは武器アイコン等の画像を描く
+ * - `images.has(value)` のときはブキアイコン等の画像を描く
  *   - デフォルト 32px、ホバー時（activeIndex===index）は hoverSize（既定 64px）に拡大
  *   - 画像底辺の y は固定（y+36）。サイズ変化で「上に伸びる」アニメーションになるよう offset を計算
  * - 無いときはテキストラベル（`tickAngle` 指定で 30° などの斜め配置に対応）

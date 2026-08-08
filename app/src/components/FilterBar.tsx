@@ -19,7 +19,7 @@ const PERIODS = PERIOD_OPTIONS
 interface Props {
   filters: Filters
   onChange: (f: Filters) => void
-  /** 武器・ステージの絞り込みを隠す（#298）。武器図鑑を武器で、ステージ図鑑を
+  /** ブキ・ステージの絞り込みを隠す（#298）。ブキ図鑑をブキで、ステージ図鑑を
    *  ステージで絞るのは自己言及的で不自然なため、図鑑タブでは出さない。 */
   hideTargetFilters?: boolean
 }
@@ -128,7 +128,7 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
       </div>
       <div className="filter-row">
         {!hideTargetFilters && (
-        <FilterGroup label="武器">
+        <FilterGroup label="ブキ">
           <WeaponPicker
             weaponList={weaponList}
             weaponImages={weaponImages}
@@ -228,7 +228,7 @@ function WeaponPicker({
   const categories = [...new Set(weaponList.map(w => w.category).filter(Boolean))]
   const uncategorized = weaponList.filter(w => !w.category)
 
-  const label = selected.length === 0 ? '全武器 ▼' : `${selected.length}件選択 ▼`
+  const label = selected.length === 0 ? '全ブキ ▼' : `${selected.length}件選択 ▼`
 
   return (
     <div className="weapon-picker-wrap" ref={wrapRef}>
@@ -238,7 +238,7 @@ function WeaponPicker({
       {open && (
         <div className="weapon-picker-dropdown">
           <button className={`weapon-picker-item${selected.length === 0 ? ' active' : ''}`} onClick={onClear}>
-            全武器
+            全ブキ
           </button>
           <div className="weapon-picker-divider" />
           {categories.map(cat => {

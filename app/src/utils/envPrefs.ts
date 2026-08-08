@@ -41,7 +41,7 @@ export interface EnvPrefs {
   displayWeapons: string[]
   lobbyKeys:   string[]
   ruleKeys:    string[]
-  /** 武器キー（weapon.key）複数。空 = 絞り込まない（#477）。 */
+  /** ブキキー（weapon.key）複数。空 = 絞り込まない（#477）。 */
   weaponKeys:  string[]
   /** ステージキー（map.key）複数。空 = 絞り込まない（#477）。 */
   stageKeys:   string[]

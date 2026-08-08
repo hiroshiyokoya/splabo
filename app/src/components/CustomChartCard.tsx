@@ -59,7 +59,7 @@ function colorOfValue(value: number | null, isRate: boolean, min: number, max: n
   return sequentialCellColor((value - min) / (max - min), metric)
 }
 
-/** カテゴリ集計単位(武器 / ステージ / サブ / スペシャル / 武器カテゴリ)の散布図ポイントを作る。 */
+/** カテゴリ集計単位(ブキ / ステージ / サブ / スペシャル / ブキカテゴリ)の散布図ポイントを作る。 */
 /** ツールチップ 1 行分。 */
 type TooltipRow = { label: string; value: string; muted?: boolean }
 
@@ -216,7 +216,7 @@ function buildBattleScatterPoints(
       markerShape,
       // 重なり判定: 元の (x, y) が同じ点を 1 グループに
       groupKey: `${x ?? 'null'}|${y ?? 'null'}`,
-      // 複数件表示時の 1 行: 日付・武器・勝敗
+      // 複数件表示時の 1 行: 日付・ブキ・勝敗
       rowText: `${b.played_at.slice(5, 10)} ${b.weapon}${colorKey === 'win_lose' ? '' : ` (${b.result})`}`,
       // ツールチップには元の値 (ジッタ前) を表示。同じメトリクスを複数の役割に
       // 割り当てたときの重複は dedupeRows が落とす(#388)。
@@ -382,9 +382,9 @@ export function CustomChartCard({
   battleData?: BattleRow[]
   onEdit:   () => void
   onDelete: () => void
-  /** 武器名 → 画像 URL の対応。X 軸が `weapon` のときラベルをアイコンに置換する。 */
+  /** ブキ名 → 画像 URL の対応。X 軸が `weapon` のときラベルをアイコンに置換する。 */
   weaponImages?: Map<string, string>
-  /** 武器名 → カテゴリ/サブ/スペシャル。散布図のカテゴリ色分け(#480)用。 */
+  /** ブキ名 → カテゴリ/サブ/スペシャル。散布図のカテゴリ色分け(#480)用。 */
   weaponMeta?: Map<string, WeaponMeta>
   /** カレンダー用。FilterBar の期間(#461)。 */
   since?:   string | null
@@ -619,7 +619,7 @@ function renderChartBody(
       </div>
     )
   }
-  // X 軸が武器系(自分・味方・相手)のときだけ画像 tick を有効化。他の groupBy では undefined。
+  // X 軸がブキ系(自分・味方・相手)のときだけ画像 tick を有効化。他の groupBy では undefined。
   const isWeaponAxis =
     chart.groupBy === 'weapon' ||
     chart.groupBy === 'ally_weapon' ||

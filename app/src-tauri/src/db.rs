@@ -409,7 +409,7 @@ pub struct WeaponRecord {
     pub total: i64,
     pub wins: i64,
     pub draws: i64,
-    // weapon_records からの LEFT JOIN 列 (#49)。未取得武器は NULL。
+    // weapon_records からの LEFT JOIN 列 (#49)。未取得ブキは NULL。
     pub weapon_level: Option<i64>,
     pub win_count_total: Option<i64>,
     pub paint_point_total: Option<i64>,
@@ -1307,7 +1307,7 @@ pub async fn db_stages_used(db: tauri::State<'_, DbPool>) -> Result<Vec<serde_js
     }).collect())
 }
 
-/// 使用済み武器の一覧を試合数の多い順で返す。
+/// 使用済みブキの一覧を試合数の多い順で返す。
 #[tauri::command]
 pub async fn db_weapons_used(db: tauri::State<'_, DbPool>) -> Result<Vec<String>, String> {
     let rows = sqlx::query(
@@ -1476,7 +1476,7 @@ pub async fn db_grouped_stats(
     let mode = translate_mode_filter(mode);
     let rule = translate_rule_filter(rule);
 
-    // 味方武器 / 相手武器の集計は battle_player 経由なので別 SQL に分岐する。
+    // 味方ブキ / 相手ブキの集計は battle_player 経由なので別 SQL に分岐する。
     if group_by == "ally_weapon" || group_by == "enemy_weapon" {
         return db_grouped_stats_by_player_weapon(
             &db, &group_by, &since, &until, &mode, &rule,
@@ -1607,19 +1607,19 @@ pub async fn db_grouped_stats(
 
 /// `ally_weapon` / `enemy_weapon` 専用の集計。
 ///
-/// 通常の `db_grouped_stats` は `battle.weapon_id`（自分の武器）でグループ化するが、
-/// こちらは `battle_player` を経由してチームメイト / 対戦相手の武器でグループ化する。
+/// 通常の `db_grouped_stats` は `battle.weapon_id`（自分のブキ）でグループ化するが、
+/// こちらは `battle_player` を経由してチームメイト / 対戦相手のブキでグループ化する。
 ///
 /// セマンティクス（#118）：
-/// - **同一バトル内で同一武器が複数いた場合は 1 として数える**
+/// - **同一バトル内で同一ブキが複数いた場合は 1 として数える**
 ///   → 内側のサブクエリで `DISTINCT (battle_id, weapon_key)` を取り、外側で COUNT
 /// - **ally_weapon は自分を除く**（`is_me=0`）
 /// - **1 バトルが複数バケットに寄与する**：味方 3 人が A/B/C なら A・B・C の 3 バケット
-///   それぞれに +1 する（=「武器ごとのバトル数合計」は実バトル数の最大 3 〜 4 倍）
+///   それぞれに +1 する（=「ブキごとのバトル数合計」は実バトル数の最大 3 〜 4 倍）
 ///
 /// 平均系メトリクス（K/D/A/SP/塗り/時間）はバトルテーブルの自分のスタッツを
-/// (battle, weapon) ペア単位で平均する：同じバトルに複数の対象武器がいると
-/// その武器バケットごとに重複カウントされるが、これは「その武器がいた時の自分の戦績」を
+/// (battle, weapon) ペア単位で平均する：同じバトルに複数の対象ブキがいると
+/// そのブキバケットごとに重複カウントされるが、これは「そのブキがいた時の自分の戦績」を
 /// 表す意味で正しい（バケット内では各バトル 1 回ずつなので DISTINCT 不要）。
 async fn db_grouped_stats_by_player_weapon(
     db: &tauri::State<'_, DbPool>,
@@ -1654,7 +1654,7 @@ async fn db_grouped_stats_by_player_weapon(
            AND (? IS NULL OR instr('|' || ? || '|', '|' || m.key || '|') > 0)";
 
     // 内側サブクエリ d：(battle_id, weapon_key, weapon_display) を DISTINCT で取得。
-    // これで「同一バトル内で同一武器が複数」は 1 にまとめられる。
+    // これで「同一バトル内で同一ブキが複数」は 1 にまとめられる。
     let sql = format!(
         "SELECT
             d.bp_w_key                                                as key,
@@ -1751,7 +1751,7 @@ async fn db_grouped_stats_by_player_weapon(
 /// `avg_duration` は集計結果に含めるが、フロントのメトリクス選択肢（MetricKey）からは
 /// #436 で削除済み。UI は表示しない（保存済みグラフは読み込み時に勝率へ退避）。
 ///
-/// X / Y どちらかが `weapon` のときは武器のバトル数 Top N で絞り込む。
+/// X / Y どちらかが `weapon` のときはブキのバトル数 Top N で絞り込む。
 /// それ以外のカテゴリはそのまま全件返す。
 #[tauri::command]
 pub async fn db_grouped_stats_2d(
@@ -1765,7 +1765,7 @@ pub async fn db_grouped_stats_2d(
     result_filter: Option<String>,  // JS: resultFilter
     weapon: Option<String>,
     stage: Option<String>,
-    top_n: Option<i64>,             // 武器軸の Top N。指定なければ 20。
+    top_n: Option<i64>,             // ブキ軸の Top N。指定なければ 20。
     // 数値メトリクス軸（"numeric:kill" 等）のとき、X 軸の bin 幅。
     x_bin_width: Option<f64>,
     // 数値メトリクス軸のとき、Y 軸の bin 幅。
@@ -1775,7 +1775,7 @@ pub async fn db_grouped_stats_2d(
         return Err(format!("X 軸と Y 軸に同じカテゴリを指定できません: {group_by_x}"));
     }
 
-    // 味方武器 / 相手武器が片方でも軸に指定されたら専用パスへ分岐（#118）。
+    // 味方ブキ / 相手ブキが片方でも軸に指定されたら専用パスへ分岐（#118）。
     if matches!(group_by_x.as_str(), "ally_weapon" | "enemy_weapon")
        || matches!(group_by_y.as_str(), "ally_weapon" | "enemy_weapon") {
         return db_grouped_stats_2d_with_bp(
@@ -1896,7 +1896,7 @@ pub async fn db_grouped_stats_2d(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 武器軸の Top N 絞り込み（バトル数の合計で上位 N の武器のみ残す）。
+    // ブキ軸の Top N 絞り込み（バトル数の合計で上位 N のブキのみ残す）。
     let top_n_value = top_n.unwrap_or(20).max(1) as usize;
     let weapon_axis: Option<bool> =
         if      group_by_x == "weapon" { Some(true) }   // x 軸が weapon
@@ -1957,12 +1957,12 @@ pub async fn db_grouped_stats_2d(
 /// `db_grouped_stats_2d` の ally_weapon / enemy_weapon 対応版（#118）。
 ///
 /// X 軸 / Y 軸のどちらか or 両方が `ally_weapon` または `enemy_weapon` のとき呼ばれる。
-/// `battle_player` テーブルを軸ごとに JOIN して、(味方武器, X) や (ally_weapon, enemy_weapon) の
+/// `battle_player` テーブルを軸ごとに JOIN して、(味方ブキ, X) や (ally_weapon, enemy_weapon) の
 /// クロス集計を行う。
 ///
 /// セマンティクス：
-/// - 各軸とも、同一バトル × 同一武器の重複は内側 DISTINCT サブクエリで 1 にまとめる
-/// - 両軸が bp の場合は (味方武器 × 相手武器) 全ペアが寄与（ally 3 × enemy 4 = 12 ペア/バトル）
+/// - 各軸とも、同一バトル × 同一ブキの重複は内側 DISTINCT サブクエリで 1 にまとめる
+/// - 両軸が bp の場合は (味方ブキ × 相手ブキ) 全ペアが寄与（ally 3 × enemy 4 = 12 ペア/バトル）
 async fn db_grouped_stats_2d_with_bp(
     db: &tauri::State<'_, DbPool>,
     group_by_x: &str,
@@ -2122,8 +2122,8 @@ async fn db_grouped_stats_2d_with_bp(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 武器軸（自分/味方/相手）の Top N 絞り込み。X 軸・Y 軸それぞれ独立に判定。
-    // 両軸が武器系（ally × enemy など）のときも両方に Top N が効くようにする。
+    // ブキ軸（自分/味方/相手）の Top N 絞り込み。X 軸・Y 軸それぞれ独立に判定。
+    // 両軸がブキ系（ally × enemy など）のときも両方に Top N が効くようにする。
     let top_n_value = top_n.unwrap_or(20).max(1) as usize;
     let is_weapon_x = x_is_bp || group_by_x == "weapon";
     let is_weapon_y = y_is_bp || group_by_y == "weapon";
@@ -2180,7 +2180,7 @@ async fn db_grouped_stats_2d_with_bp(
 }
 
 // ---------------------------------------------------------------------------
-// 武器マスター
+// ブキマスター
 // ---------------------------------------------------------------------------
 
 pub async fn upsert_weapon(
@@ -2208,8 +2208,8 @@ pub async fn upsert_weapon(
     Ok(())
 }
 
-/// WeaponRecordQuery で取得したユーザー固有の武器統計を upsert する (#49)。
-/// weapon_id は weapons.name と一致するキー（武器の日本語名）。
+/// WeaponRecordQuery で取得したユーザー固有のブキ統計を upsert する (#49)。
+/// weapon_id は weapons.name と一致するキー（ブキの日本語名）。
 pub async fn upsert_weapon_record(
     pool: &DbPool,
     weapon_id: &str,
@@ -2293,7 +2293,7 @@ pub async fn get_battles_team_json(pool: &DbPool) -> Result<Vec<(Option<String>,
 /// 旧 weapons テーブルに sub/special を補完する。db_list_weapons が sub/special
 /// 画像 URL を保持する旧 weapons テーブルを読んでいる間に必要。
 pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, String> {
-    // 新 weapon マスター + battle_player から、武器ごとの最新 sub/special を集約
+    // 新 weapon マスター + battle_player から、ブキごとの最新 sub/special を集約
     sqlx::query(
         "INSERT INTO weapons (name, category, sub_weapon, special_weapon)
          SELECT w.key, COALESCE(w.category_key, ''), w.sub_key, w.special_key
@@ -2338,7 +2338,7 @@ const LATEST_MIGRATION_VERSION: i64 = 22;
 /// version 9: 新 battle テーブルに表示用カラム (knockout/sub_weapon/special_weapon/awards/my_team/other_teams) を追加し、旧 battles から backfill
 /// version 10: 既存バトルの gear_configuration を my_team/other_teams JSON から backfill
 /// version 11: battle.rule_id を nullable に変更し、旧 battles / battle_players テーブルを drop
-/// version 12: WeaponRecordQuery 用 weapon_records テーブル追加 (#49) — 武器熟練度・勝利数・塗りポイント
+/// version 12: WeaponRecordQuery 用 weapon_records テーブル追加 (#49) — ブキ熟練度・勝利数・塗りポイント
 /// version 13: stat.ink import (#174) の重複排除用に battle.uuid を backfill
 /// version 14: フェスマッチ(ナワバリ)の lobby_id を raw_json から救済 (#180)
 /// version 15: weapon / map に statink_key カラム追加 (#184)
@@ -2348,7 +2348,7 @@ const LATEST_MIGRATION_VERSION: i64 = 22;
 /// version 19: is_knockout を三値に修復（KO負けから時間切れ決着を除外）(#315)
 /// version 20: weapon の category/sub/special 空欄を同梱の静的マスターで backfill (#492)
 /// version 21: env_battles に A2–A4 / B2–B4 の kill/death/assist/inked 列を追加 (#501)
-/// version 22: 武器カテゴリ「リールガン」を公式どおり「シューター」へ統合 (#523)
+/// version 22: ブキカテゴリ「リールガン」を公式どおり「シューター」へ統合 (#523)
 ///
 /// ⚠ **マイグレーションを追加したら `LATEST_MIGRATION_VERSION` も必ず上げること。**
 ///    ここが古いままだと早期 return に阻まれて新しい版が一度も走らない（#206 / #306 で 2 度踏んだ）。
@@ -3470,8 +3470,8 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
     }
 
     if current_version < 20 {
-        // 武器のカテゴリ / サブ / スペシャルが空欄の行を、同梱の静的マスターで埋める（#492）。
-        // stat.ink 由来（環境分析 CSV）でしか登場しない武器は属性が空のまま
+        // ブキのカテゴリ / サブ / スペシャルが空欄の行を、同梱の静的マスターで埋める（#492）。
+        // stat.ink 由来（環境分析 CSV）でしか登場しないブキは属性が空のまま
         // 「(未分類)」「(不明)」に落ちていた。statink_key または key（slug）で照合し、
         // SplatNet 由来の既存値は温存する（空欄のみ埋める）。
         let mut filled = 0u64;
@@ -3501,7 +3501,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             .execute(pool.as_ref())
             .await
             .map_err(|e| e.to_string())?;
-        log::info!("migrate v20: 武器属性の空欄を静的マスターで backfill（{filled} 件）");
+        log::info!("migrate v20: ブキ属性の空欄を静的マスターで backfill（{filled} 件）");
     }
 
     // version 21: env_battles に A2–A4 / B2–B4 の kill/death/assist/inked 列を追加（#501）。
@@ -3537,7 +3537,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
     }
 
     // version 22: stat.ink 由来の「リールガン」を公式カテゴリ「シューター」へ統合（#523）。
-    // SplatNet 同期済みの武器はもともとシューター。静的マスター・env 同期も合わせて正規化する。
+    // SplatNet 同期済みのブキはもともとシューター。静的マスター・env 同期も合わせて正規化する。
     if current_version < 22 {
         let w = sqlx::query("UPDATE weapon SET category_key = 'シューター' WHERE category_key = 'リールガン'")
             .execute(pool.as_ref())
@@ -3644,9 +3644,9 @@ pub async fn env_filtered_count(
 // 環境分析 拡張（#187）: 散布図 / ヒートマップ
 // ---------------------------------------------------------------------------
 
-/// env_battles の共通フィルタ条件をひとまとめにした構造体（#189 で拡張・#477 で武器/ステージ複数）。
+/// env_battles の共通フィルタ条件をひとまとめにした構造体（#189 で拡張・#477 でブキ/ステージ複数）。
 ///
-/// 期間・ロビー・ルール・ステージ・武器に加え、ゲームバージョン（複数）・
+/// 期間・ロビー・ルール・ステージ・ブキに加え、ゲームバージョン（複数）・
 /// ウデマエ帯（複数）・Xパワー範囲を AND で絞り込む。
 /// `game_vers` / `poster_ranks` / `weapon_keys` / `stage_keys` は空なら絞り込まない。
 #[derive(Default)]
@@ -3682,7 +3682,7 @@ fn build_env_where(f: &EnvFilters) -> String {
         wp.push(format!("EXISTS (SELECT 1 FROM map mk WHERE mk.id = eb.map_id AND mk.key IN ({ph}))"));
     }
     if !f.weapon_keys.is_empty() {
-        // いずれかのスロットに選んだ武器が乗っているバトルに絞る（#477）。
+        // いずれかのスロットに選んだブキが乗っているバトルに絞る（#477）。
         // 投稿者（a1）は集計対象外なので絞り込みからも外す。含めてしまうと
         // 「投稿者しか使っていないバトル」がバトル数には乗るのに勝率・KDA には
         // 寄与せず、母数が食い違う（#501）。
@@ -3732,21 +3732,21 @@ fn bind_env_filters<'q>(
     q
 }
 
-/// 散布図 1 点分。集計単位（武器 or ステージ）ごとに各指標を一括で返す。
+/// 散布図 1 点分。集計単位（ブキ or ステージ）ごとに各指標を一括で返す。
 /// 指標は集計軸によって埋まるものが異なり、該当しないものは null。
 #[derive(Debug, Serialize)]
 pub struct EnvScatterStat {
-    pub key:        String,      // 武器キー or ステージキー
+    pub key:        String,      // ブキキー or ステージキー
     /// アイコン画像を引くための正式名（= ローカルマスターの `name_ja`・#412）。
     ///
     /// 画像キャッシュは SplatNet3 の**表示名**をキーにして保存されている（`images::read_image`）ため、
-    /// `key`（武器は `weapon.key`・stat.ink 由来だと英字スラッグのことがある）では当たらない。
+    /// `key`（ブキは `weapon.key`・stat.ink 由来だと英字スラッグのことがある）では当たらない。
     /// env_battles は `statink_key` 経由でローカルマスター行に解決済みなので、その行の
-    /// `name_ja` をそのまま返す。ローカルマスターに無い武器は `name_ja` もスラッグのままで、
+    /// `name_ja` をそのまま返す。ローカルマスターに無いブキは `name_ja` もスラッグのままで、
     /// 画像が見つからない（FE 側でアイコンなし・名前だけにフォールバックする）。
     pub icon_name:  Option<String>,
-    pub n:          i64,         // サンプルサイズ（武器=ピック数 / ステージ=バトル数）
-    // 武器集計の指標
+    pub n:          i64,         // サンプルサイズ（ブキ=ピック数 / ステージ=バトル数）
+    // ブキ集計の指標
     pub pick_rate:  Option<f64>,
     pub win_rate:   Option<f64>,
     pub avg_kill:   Option<f64>, // 記録のあるスロットのみ母数
@@ -3758,13 +3758,13 @@ pub struct EnvScatterStat {
     pub avg_ink_self: Option<f64>,
     pub avg_ink_opp:  Option<f64>,
     pub avg_count:    Option<f64>,
-    // 武器集計のみ（#480）。カテゴリ色分け用。
+    // ブキ集計のみ（#480）。カテゴリ色分け用。
     pub category_key: Option<String>,
     pub sub_key:      Option<String>,
     pub special_key:  Option<String>,
 }
 
-/// 武器スロット 1 個の集計用定義。
+/// ブキスロット 1 個の集計用定義。
 struct ScatterSlot {
     wid:  &'static str, // weapon_id カラム
     k:    &'static str, // kill カラム or "NULL"
@@ -3777,7 +3777,7 @@ struct ScatterSlot {
 /// 投稿者（A1）を除いた投稿者チーム側の 3 スロット。
 ///
 /// stat.ink の全体統計は投稿者を母数から外している（自分のバトルだけを上げる人が多く、
-/// 投稿者の武器と勝敗に偏りが出るため）。splabo もそれに倣う（#501）。
+/// 投稿者のブキと勝敗に偏りが出るため）。splabo もそれに倣う（#501）。
 const SELF_SLOTS: &[ScatterSlot] = &[
     ScatterSlot { wid: "a2_weapon_id", k: "a2_kill", d: "a2_death", a: "a2_assist", ink: "a2_inked", team: "alpha" },
     ScatterSlot { wid: "a3_weapon_id", k: "a3_kill", d: "a3_death", a: "a3_assist", ink: "a3_inked", team: "alpha" },
@@ -3791,10 +3791,10 @@ const OPP_SLOTS: &[ScatterSlot] = &[
 ];
 /// 環境データの散布図用集計。
 ///
-/// - `group_by` = "weapon": 武器ごとに pick_rate / win_rate / KDA を集計
+/// - `group_by` = "weapon": ブキごとに pick_rate / win_rate / KDA を集計
 ///   （投稿者を除く 7 スロットの UNION ALL）
 /// - `group_by` = "stage" : ステージごとに ko_rate / 平均塗り割合 / 平均人数 を集計
-/// - `side` = "all" | "self"(alpha) | "opp"(bravo) … 武器集計でのスロット選択。
+/// - `side` = "all" | "self"(alpha) | "opp"(bravo) … ブキ集計でのスロット選択。
 ///   "self" は投稿者を除いた味方 3 人。
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -3827,7 +3827,7 @@ pub async fn env_scatter_stats(
 
     if group_by == "stage" {
         // ステージ固有指標（バトル単位）。KO率は出さない（#478）。
-        // 勝率・KDA は武器絞り込み時だけスロット展開で算出（未選択だと両チーム平均で約50%になり無意味）。
+        // 勝率・KDA はブキ絞り込み時だけスロット展開で算出（未選択だと両チーム平均で約50%になり無意味）。
         let battle_sql = format!(
             r#"
             SELECT eb.map_id AS mid,
@@ -3849,11 +3849,11 @@ pub async fn env_scatter_stats(
         let q = bind_env_filters(sqlx::query(&battle_sql), &f);
         let rows = q.fetch_all(db.as_ref()).await.map_err(|e| e.to_string())?;
 
-        // map_id → 勝率/KDA（武器フィルタがあるときだけ埋める）
+        // map_id → 勝率/KDA（ブキフィルタがあるときだけ埋める）
         let mut weapon_stats: std::collections::HashMap<i64, (Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<f64>)> =
             std::collections::HashMap::new();
         if !f.weapon_keys.is_empty() {
-            // 選んだ武器が乗っているスロットだけ展開（投稿者 A1 は除外・#501）。
+            // 選んだブキが乗っているスロットだけ展開（投稿者 A1 は除外・#501）。
             let wph = vec!["?"; f.weapon_keys.len()].join(",");
             let slots: Vec<&ScatterSlot> = SELF_SLOTS.iter().chain(OPP_SLOTS.iter()).collect();
             let slot_sqls: Vec<String> = slots
@@ -4031,7 +4031,7 @@ pub struct EnvMatrixCell {
 ///
 /// **セルの足切り（サンプル不足のセルを返さない）とは無関係に、全バトルから算出する。**
 /// 軸ラベルの色付けはこの値を使う。セルを落としてから束ねると、交差する軸によって
-/// 残るセルが変わり「武器×ルールとステージ×ルールで同じルールの値が違う」ことになる。
+/// 残るセルが変わり「ブキ×ルールとステージ×ルールで同じルールの値が違う」ことになる。
 ///
 /// - `value` … そのキーの集計値（率・平均は全バトルからの比、バトル数は合計）。算出不能は None。
 /// - `n`     … そのキーの合計サンプル数。FE が「標本が少なすぎる軸には色を付けない」判定に使う。
@@ -4198,10 +4198,10 @@ fn matrix_dim(dim: &str) -> Option<(&'static str, &'static str, &'static str)> {
     }
 }
 
-/// 武器フィルタ前提の非武器×非武器マトリクス（#520）。
+/// ブキフィルタ前提の非ブキ×非ブキマトリクス（#520）。
 ///
-/// ステージ×ルール等で、選んだ武器が乗っているスロット視点の勝率・KDA を出す。
-/// 散布図のステージ集計（#478）と同じく、武器キーで JOIN したスロットだけを展開する。
+/// ステージ×ルール等で、選んだブキが乗っているスロット視点の勝率・KDA を出す。
+/// 散布図のステージ集計（#478）と同じく、ブキキーで JOIN したスロットだけを展開する。
 async fn env_matrix_stats_weapon_filtered(
     db:           &Pool<Sqlite>,
     row_dim:      &str,
@@ -4341,8 +4341,8 @@ async fn env_matrix_stats_weapon_filtered(
 ///
 /// - `cell_metric` = "win_rate" | "pick_rate" | "avg_kill" | "avg_death" | "avg_assist"
 ///   | "avg_inked" | "kill_ratio" | "contrib_kill" | "contrib_ratio" … 行/列の **一方が
-///   weapon / weapon_category / sub_weapon / special_weapon**、または **武器フィルタ指定の
-///   非武器×非武器**（#520。ピック率は武器系軸必須）。いずれも投稿者を除く 7 人が母数（#501）。
+///   weapon / weapon_category / sub_weapon / special_weapon**、または **ブキフィルタ指定の
+///   非ブキ×非ブキ**（#520。ピック率はブキ系軸必須）。いずれも投稿者を除く 7 人が母数（#501）。
 /// - `cell_metric` = "battles"   … 行/列とも **weapon 系以外**（バトルレベル指標）
 ///
 /// セルはサンプル不足を落として返すが、行・列の周辺集計（marginals）は
@@ -4388,8 +4388,8 @@ pub async fn env_matrix_stats(
 
     if weapon_centric {
         // 行・列のうち厳密に一方が weapon 系（スロット単位集計）であること。
-        // 例外: 武器フィルタありなら非武器×非武器でも、選んだ武器が乗ったスロット視点で集計できる（#520）。
-        // ピック率は「軸上の武器シェア」なので武器系軸が無いと出さない。
+        // 例外: ブキフィルタありなら非ブキ×非ブキでも、選んだブキが乗ったスロット視点で集計できる（#520）。
+        // ピック率は「軸上のブキシェア」なのでブキ系軸が無いと出さない。
         let slot_is_row = is_weapon_slot_dim(&row_dim);
         let slot_is_col = is_weapon_slot_dim(&col_dim);
         if slot_is_row && slot_is_col {
@@ -4401,7 +4401,7 @@ pub async fn env_matrix_stats(
         if !slot_is_row && !slot_is_col {
             if f.weapon_keys.is_empty() {
                 return Err(
-                    "この指標は行・列の一方を weapon 系にするか、武器フィルタを指定してください"
+                    "この指標は行・列の一方を weapon 系にするか、ブキフィルタを指定してください"
                         .to_string(),
                 );
             }
@@ -4528,7 +4528,7 @@ pub async fn env_matrix_stats(
 
         let mut row_marginals = fold_marginals(&inputs, Axis::Row);
         let mut col_marginals = fold_marginals(&inputs, Axis::Col);
-        // ピック率は「武器のシェア」なので、weapon 系以外の軸へ射影するとどのキーでも
+        // ピック率は「ブキのシェア」なので、weapon 系以外の軸へ射影するとどのキーでも
         // Σシェア＝一定（スロットで割り切った合計）になり、軸間の差が出ない。
         // 情報の無い値に色を付けても誤読させるだけなので値なし（＝既定色）にする。
         if cell_metric == "pick_rate" {
@@ -4740,18 +4740,18 @@ pub async fn env_ranks(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvRank>, Str
     Ok(result)
 }
 
-/// 環境分析の武器/ステージ絞り込み用の 1 選択肢（#477）。
+/// 環境分析のブキ/ステージ絞り込み用の 1 選択肢（#477）。
 #[derive(Debug, Serialize)]
 pub struct EnvFilterOption {
     pub key:   String,
     pub label: String,
     pub n:     i64,
-    /// 武器カテゴリ（公式準拠）。ステージでは空文字（#523）。
+    /// ブキカテゴリ（公式準拠）。ステージでは空文字（#523）。
     #[serde(default)]
     pub category: String,
 }
 
-/// env_battles に登場する武器をカテゴリ → ピック数降順で返す（絞り込み UI 用・#477 / #523）。
+/// env_battles に登場するブキをカテゴリ → ピック数降順で返す（絞り込み UI 用・#477 / #523）。
 /// 件数は集計と同じく投稿者（a1）を除いたスロットで数える（#501）。
 #[tauri::command]
 pub async fn env_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOption>, String> {
@@ -4911,7 +4911,7 @@ pub async fn db_list_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<WeaponR
     // 集計は新スキーマの battle / weapon / result を経由する:
     //   旧 weapons.name は populate_weapons_from_battles で新 weapon.key と一致させてあるので、
     //   weapons.name = weapon.key で JOIN し、weapon.id で battle.weapon_id とつなぐ。
-    // weapon_records (#49) は LEFT JOIN で未取得武器は NULL を返す。
+    // weapon_records (#49) は LEFT JOIN で未取得ブキは NULL を返す。
     let rows = sqlx::query_as::<_, WeaponRecord>(
         "SELECT w.name, w.category, w.sub_weapon, w.special_weapon,
                 w.sub_weapon_image, w.special_weapon_image,
@@ -4956,7 +4956,7 @@ pub struct ImportedBattleRow {
     /// rule が取れない場合は空文字。空なら rule_id = NULL で挿入する。
     pub rule_key: String,
     pub result_key: String,
-    /// 武器マスター key（= 表示名）。chartoon の weapon.key は SplatNet 表示名なので
+    /// ブキマスター key（= 表示名）。chartoon の weapon.key は SplatNet 表示名なので
     /// stat.ink の weapon.name.ja_JP を使う。
     pub weapon_key: String,
     /// ステージ識別用の stat.ink stage key（フォールバックの map.key 用）。
@@ -5193,7 +5193,7 @@ mod tests {
     }
 
     /// **交差する軸を変えても同じ値になる**（#411 の受け入れ条件）。
-    /// 同じ 200 バトル・120 勝を、武器 2 種で割った場合とステージ 4 種で割った場合で比較する。
+    /// 同じ 200 バトル・120 勝を、ブキ 2 種で割った場合とステージ 4 種で割った場合で比較する。
     #[test]
     fn marginals_are_independent_of_cross_axis() {
         let by_weapon = vec![
@@ -5210,7 +5210,7 @@ mod tests {
         let w = value_of(&fold_marginals(&by_weapon, Axis::Row), "area").unwrap();
         let s = value_of(&fold_marginals(&by_stage,  Axis::Row), "area").unwrap();
         assert!((w - 0.6).abs() < 1e-12, "{w}");
-        assert!((w - s).abs() < 1e-12, "武器割り {w} とステージ割り {s} が一致しない");
+        assert!((w - s).abs() < 1e-12, "ブキ割り {w} とステージ割り {s} が一致しない");
     }
 
     /// キル系は記録のあるスロット（n_kda）が母数。スロット合算（n）で割ってはいけない。

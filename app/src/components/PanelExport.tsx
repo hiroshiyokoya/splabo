@@ -15,7 +15,7 @@ interface ButtonProps {
   targetRef: RefObject<HTMLElement | null>
   /** ファイル名に入る画面名。例: 'ダッシュボード' */
   screen: string
-  /** ファイル名に入るパネル名。例: '武器別 バトル数 & 勝率' */
+  /** ファイル名に入るパネル名。例: 'ブキ別 バトル数 & 勝率' */
   panel: string
 }
 

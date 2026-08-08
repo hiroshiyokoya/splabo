@@ -29,7 +29,7 @@ export interface ScatterPoint {
   /** 重なり判定用キー。同じ groupKey の点はツールチップで一緒に並べて表示する。
    *  バトル単位なら整数化された (x, y) 等、カテゴリ単位なら省略 (グループ化しない)。 */
   groupKey?:   string
-  /** ツールチップ内で 1 行に詰める「個別ラベル」 (例: 日付 / 武器 / 勝敗)。
+  /** ツールチップ内で 1 行に詰める「個別ラベル」 (例: 日付 / ブキ / 勝敗)。
    *  groupKey で複数点まとまったとき、各点の name 部分として並ぶ。 */
   rowText?:    string
 }
@@ -870,7 +870,7 @@ export function ScatterChart({
   hasSize?:     boolean
   /** ドットの塗り透過度。未指定時は環境分析・ダッシュボードと同じ 0.55(#435)。 */
   fillOpacity?: number
-  /** サイズメトリクス未指定時の一定サイズ。武器/ステージは大きめ (280)、バトルは小さめ (120) を想定。
+  /** サイズメトリクス未指定時の一定サイズ。ブキ/ステージは大きめ (280)、バトルは小さめ (120) を想定。
    *  ZAxis range のピクセル面積。 */
   constSize?:   number
   height?:      number

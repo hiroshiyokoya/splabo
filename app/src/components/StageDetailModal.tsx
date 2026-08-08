@@ -17,9 +17,9 @@ function fmtRecord(total: number, wins: number, draws: number): string {
   return `${total}戦 ${wins}勝${losses}敗${draws > 0 ? `${draws}分` : ''}`
 }
 
-/** 武器 TOP セクションの下限バトル数(勝率 TOP のブレを避ける)。 */
+/** ブキ TOP セクションの下限バトル数(勝率 TOP のブレを避ける)。 */
 const WEAPON_MIN_BATTLES = 5
-/** 武器 TOP セクションで表示する件数。 */
+/** ブキ TOP セクションで表示する件数。 */
 const WEAPON_TOP_N = 5
 
 /**
@@ -27,7 +27,7 @@ const WEAPON_TOP_N = 5
  *
  * - ルール別統計は `db_grouped_stats(group_by='rule', stage=<key>)` で取得。
  *   WHERE 句は `m.key` で絞られる(db.rs の filter_where 参照)ので row.key をそのまま渡せる。
- * - 武器 TOP は `db_grouped_stats(group_by='weapon', stage=<key>)` で取得し、
+ * - ブキ TOP は `db_grouped_stats(group_by='weapon', stage=<key>)` で取得し、
  *   FE 側で「勝利数 TOP」「勝率 TOP(≥ WEAPON_MIN_BATTLES)」の 2 リストに絞る。
  * - Rust 側の追加コマンドは不要。既存の `db_grouped_stats` の `stage` フィルタを利用。
  */
@@ -53,7 +53,7 @@ export function StageDetailModal({
     return () => window.removeEventListener('keydown', handleKey)
   }, [handleKey])
 
-  // ルール別 / 武器別を並列で取得。stage フィルタは row.key(m.key)。
+  // ルール別 / ブキ別を並列で取得。stage フィルタは row.key(m.key)。
   useEffect(() => {
     setLoading(true)
     setError(null)
@@ -65,7 +65,7 @@ export function StageDetailModal({
         setRuleRows(rules)
         setWeaponRows(weapons)
 
-        // 武器アイコン。key は武器スラッグ(stat.ink キー)で read_image と一致する。
+        // ブキアイコン。key はブキスラッグ(stat.ink キー)で read_image と一致する。
         // TOP に出そうな候補(勝利数 or 勝率)だけ先に集めて重複排除。
         const wins = [...weapons].sort((a, b) => b.wins - a.wins).slice(0, WEAPON_TOP_N)
         const rate = weapons
@@ -99,7 +99,7 @@ export function StageDetailModal({
   const ruleOrder = Object.keys(RULE_LABELS)
   const ruleMap   = new Map((ruleRows ?? []).map(r => [r.key, r]))
 
-  // 武器 TOP：勝利数と勝率。
+  // ブキ TOP：勝利数と勝率。
   const topByWins = (weaponRows ?? [])
     .filter(w => w.wins > 0)
     .sort((a, b) => b.wins - a.wins)
@@ -180,12 +180,12 @@ export function StageDetailModal({
             )}
           </section>
 
-          {/* 武器 TOP：勝利数 / 勝率 */}
+          {/* ブキ TOP：勝利数 / 勝率 */}
           <section className="modal-section">
-            <h3 className="modal-section-title">このステージでの武器 TOP</h3>
+            <h3 className="modal-section-title">このステージでのブキ TOP</h3>
             {loading && <div className="loading">読み込み中...</div>}
             {!loading && !error && (weaponRows ?? []).length === 0 && (
-              <div className="empty">このステージでの武器記録がありません。</div>
+              <div className="empty">このステージでのブキ記録がありません。</div>
             )}
             {!loading && !error && (weaponRows ?? []).length > 0 && (
               <div className="stage-modal-weapon-cols">
@@ -208,7 +208,7 @@ export function StageDetailModal({
                     <span className="stage-modal-weapon-col-note"> ({WEAPON_MIN_BATTLES} 戦以上)</span>
                   </div>
                   {topByWinRate.length === 0
-                    ? <div className="empty">{WEAPON_MIN_BATTLES} 戦以上の武器なし</div>
+                    ? <div className="empty">{WEAPON_MIN_BATTLES} 戦以上のブキなし</div>
                     : (
                       <div className="stage-modal-weapon-list">
                         {topByWinRate.map(w => (

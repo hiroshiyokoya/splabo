@@ -3,7 +3,7 @@ export type Tab = 'battles' | 'weapons' | 'stages' | 'ai' | 'env' | 'gear' | 'se
 /** 「バトル」タブ内のビュー(#296: 旧ダッシュボードタブ + 旧バトルログタブの統合)。 */
 export type BattlesView = 'dashboard' | 'list'
 
-/** 図鑑(武器・ステージ)タブ内のビュー(#297)。 */
+/** 図鑑(ブキ・ステージ)タブ内のビュー(#297)。 */
 export type BookView = 'panel' | 'list'
 
 /** 設定タブ内のサブタブ(#428 / #434)。連携・データ・表示・AI。 */
@@ -125,9 +125,9 @@ export function filtersToRange(filters: Filters): { since: string | null; until:
   return { since: periodToSince(filters.period), until: null }
 }
 
-/** 図鑑(武器・ステージ)用の集計フィルタ引数(#298)。
+/** 図鑑(ブキ・ステージ)用の集計フィルタ引数(#298)。
  *
- *  武器図鑑を武器で、ステージ図鑑をステージで絞るのは自己言及的で不自然なため、
+ *  ブキ図鑑をブキで、ステージ図鑑をステージで絞るのは自己言及的で不自然なため、
  *  `weapon` / `stage` は常に null にする(FilterBar 側でも図鑑タブでは非表示)。
  *  フィルタ state 自体は「バトル」タブと共有なので、ここで明示的に落とす必要がある。 */
 export function filtersToBookArgs(filters: Filters): {
@@ -305,7 +305,7 @@ export interface WeaponRecord {
   total: number
   wins: number
   draws: number
-  // WeaponRecordQuery 由来 (#49)。未取得武器は null。
+  // WeaponRecordQuery 由来 (#49)。未取得ブキは null。
   // FE 側は null を 0 にフォールバックするか「未取得」表示にするか選ぶ。
   weapon_level: number | null
   win_count_total: number | null
@@ -410,15 +410,15 @@ export interface EnvStatus {
 }
 
 /** env_scatter_stats コマンドの返却 1 行分(#187)。
- *  集計軸(武器/ステージ)によって埋まる指標が異なり、該当しないものは null。 */
+ *  集計軸(ブキ/ステージ)によって埋まる指標が異なり、該当しないものは null。 */
 export interface EnvScatterStat {
   key:          string
   /** アイコン画像を引くための正式名(ローカルマスターの name_ja・#412)。
    *  `read_image` は表示名でキャッシュされているため `key` では当たらないことがある。
-   *  ローカルマスターに無い武器はスラッグのままで、画像は見つからない(アイコンなしで名前だけ)。 */
+   *  ローカルマスターに無いブキはスラッグのままで、画像は見つからない(アイコンなしで名前だけ)。 */
   icon_name:    string | null
   n:            number
-  // 武器集計
+  // ブキ集計
   pick_rate:    number | null
   win_rate:     number | null
   avg_kill:     number | null
@@ -430,7 +430,7 @@ export interface EnvScatterStat {
   avg_ink_self: number | null
   avg_ink_opp:  number | null
   avg_count:    number | null
-  /** 武器集計のみ。カテゴリ色分け(#480)用。 */
+  /** ブキ集計のみ。カテゴリ色分け(#480)用。 */
   category_key?: string | null
   sub_key?:      string | null
   special_key?:  string | null
@@ -486,7 +486,7 @@ export interface EnvFilterOption {
   key:   string
   label: string
   n:     number
-  /** 武器カテゴリ（公式準拠）。ステージでは空(#523)。 */
+  /** ブキカテゴリ（公式準拠）。ステージでは空(#523)。 */
   category?: string
 }
 
@@ -642,7 +642,7 @@ export interface CustomChart {
   metrics?:     MetricKey[]
   /** shape='heatmap' のときの Y 軸。groupBy が X 軸となる。 */
   groupBy2?:    GroupByKey
-  /** shape='heatmap' で武器軸を選んだときに表示する上位 N。デフォルト 20。 */
+  /** shape='heatmap' でブキ軸を選んだときに表示する上位 N。デフォルト 20。 */
   topN?:        number
   /** shape='heatmap' で X 軸を「数値メトリクス bin」にする場合のメトリクス。
    *  指定があれば groupBy を無視して battle 単位の数値ヒストグラム軸を使う (#134)。 */
@@ -753,7 +753,7 @@ export const SCATTER_DOT_UNITS: ScatterDotUnit[] = [
   'battle', 'weapon', 'stage', 'weapon_category', 'sub_weapon', 'special_weapon',
 ]
 
-/** カテゴリ集計単位の散布図で使えるメトリクス(武器 / ステージ / サブ / スペシャル / 武器カテゴリ共通)。 */
+/** カテゴリ集計単位の散布図で使えるメトリクス(ブキ / ステージ / サブ / スペシャル / ブキカテゴリ共通)。 */
 export const SCATTER_AGG_METRIC_KEYS: MetricKey[] = [
   'total', 'wins', 'win_rate',
   'avg_kill', 'avg_assist', 'avg_contrib_kill', 'avg_death', 'avg_kd', 'avg_contrib_kd',
@@ -981,16 +981,16 @@ export interface GroupedStatsRow {
 
 /** UI 表示用のラベル。 */
 export const GROUP_BY_LABELS: Record<GroupByKey, string> = {
-  weapon:          '武器',
+  weapon:          'ブキ',
   stage:           'ステージ',
   rule:            'ルール',
   mode:            'ロビー',
   sub_weapon:      'サブ',
   special_weapon:  'スペシャル',
-  weapon_category: '武器カテゴリ',
+  weapon_category: 'ブキカテゴリ',
   result:          '結果',
-  ally_weapon:     '味方武器',
-  enemy_weapon:    '相手武器',
+  ally_weapon:     '味方ブキ',
+  enemy_weapon:    '相手ブキ',
   day:             '日',
   three_day:       '3 日',
   week:            '週',

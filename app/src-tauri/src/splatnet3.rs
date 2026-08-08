@@ -17,7 +17,7 @@ const HASH_XMATCH: &str = "eb5996a12705c2e94813a62e05c0dc419aad2811b8d49d53e5732
 // splatoon3.ink 等で有効な最新 EventBattleHistoriesQuery ハッシュに差し替えること。
 const HASH_EVENT: &str = "e47f9aac5599f75c842335ef0ab8f4c640e8bf2afe588a3b1d4b480ee79198ac";
 const HASH_DETAIL:   &str = "94faa2ff992222d11ced55e0f349920a82ac50f414ae33c83d1d1c9d8161c5dd";
-// WeaponRecordQuery は v10 で廃止。HistoryRecordQuery の weaponHistory に武器+カテゴリが含まれる。
+// WeaponRecordQuery は v10 で廃止。HistoryRecordQuery の weaponHistory にブキ+カテゴリが含まれる。
 const HASH_WEAPONS:  &str = "a654ecc80161a7ca5c38761c1d9e502d405eae764e2d343618b9c74b1dc0a80f";
 // MyOutfitCommonDataEquipmentsQuery（所持ギア一覧）。splabo v0.8 ギア取得 Rust 化（Phase A2）。
 // s3s utils.py の translate_rid より。Phase 0 スパイクで実機取得を実証済みの canonical hash。
@@ -335,7 +335,7 @@ fn parse_event_node(node: &serde_json::Value, fetched_at: &str, parent: Option<&
     }
 }
 
-/// VsHistoryListQuery のノードから武器名・inked を抽出する。
+/// VsHistoryListQuery のノードからブキ名・inked を抽出する。
 /// kill/death/assist/special はリストクエリに含まれないため 0。（#21 詳細クエリで対応予定）
 fn parse_my_result(node: &serde_json::Value) -> (String, i64, i64, i64, i64, i64) {
     let weapon = node
@@ -724,7 +724,7 @@ pub async fn fetch_and_update_details(
             continue;
         }
 
-        // 全プレイヤーの武器データを battle_players に保存
+        // 全プレイヤーのブキデータを battle_players に保存
         let players = crate::db::parse_players_from_json(id, my_team.as_deref(), other_teams.as_deref());
         if let Err(e) = crate::db::insert_battle_players(pool, &players).await {
             log::warn!("battle_players 保存失敗 ({id}): {e}");
@@ -736,7 +736,7 @@ pub async fn fetch_and_update_details(
     Ok(updated)
 }
 
-/// HistoryRecordQuery から全武器マスター（名前・カテゴリ・画像）を取得し DB に保存する。
+/// HistoryRecordQuery から全ブキマスター（名前・カテゴリ・画像）を取得し DB に保存する。
 /// レスポンス構造: data.playHistory.weaponHistories[] (シーズンごと配列)
 ///   各要素: weaponCategories[].{ weaponCategory.name, weapons[].weapon.{ name, image.url } }
 pub async fn fetch_and_store_weapons(
@@ -794,7 +794,7 @@ pub async fn fetch_and_store_weapons(
 
                 if let Some(url) = w_node.pointer("/weapon/image/url").and_then(|v| v.as_str()) {
                     if let Err(e) = crate::images::download_and_cache(app, client, "weapon", name, url).await {
-                        log::warn!("武器画像キャッシュ失敗 ({name}): {e}");
+                        log::warn!("ブキ画像キャッシュ失敗 ({name}): {e}");
                     }
                 }
 
@@ -817,7 +817,7 @@ pub async fn fetch_and_store_weapons(
                 crate::db::upsert_weapon(pool, name, &category, sub_name, sp_name).await?;
                 if sub_name.is_some() || sp_name.is_some() {
                     if let Err(e) = crate::db::update_weapon_sub_special_images(pool, name, sub_name, sp_name).await {
-                        log::warn!("武器画像URL更新失敗 ({name}): {e}");
+                        log::warn!("ブキ画像URL更新失敗 ({name}): {e}");
                     }
                 }
                 count += 1;
@@ -829,7 +829,7 @@ pub async fn fetch_and_store_weapons(
 }
 
 /// WeaponRecordQuery (#49) を nxapi-sidecar 経由で実行し、weapon_records テーブルに upsert する。
-/// 同時に全武器の主・サブ・SP 画像をキャッシュする（バトルに登場しない武器のアイコン欠け対策）。
+/// 同時に全ブキの主・サブ・SP 画像をキャッシュする（バトルに登場しないブキのアイコン欠け対策）。
 ///
 /// レスポンス構造 (data.weaponRecords.nodes[]):
 ///   name, image2d.url, weaponId, stats.{level, paint, win, vibes, ...},
@@ -882,7 +882,7 @@ pub async fn fetch_and_store_weapon_records(
         }
         count += 1;
 
-        // 主武器画像（image2d を優先、なければ image / image3d でフォールバック）。
+        // 主ブキ画像（image2d を優先、なければ image / image3d でフォールバック）。
         let weapon_url = node
             .pointer("/image2d/url")
             .and_then(|v| v.as_str())
@@ -891,7 +891,7 @@ pub async fn fetch_and_store_weapon_records(
             .or_else(|| node.pointer("/image3d/url").and_then(|v| v.as_str()));
         if let Some(url) = weapon_url {
             if let Err(e) = crate::images::download_and_cache(app, client, "weapon", name, url).await {
-                log::warn!("主武器画像キャッシュ失敗 ({name}): {e}");
+                log::warn!("主ブキ画像キャッシュ失敗 ({name}): {e}");
             }
         }
 
@@ -919,7 +919,7 @@ pub async fn fetch_and_store_weapon_records(
             if let Err(e) = crate::db::update_weapon_sub_special_images(
                 pool, name, sub_url, sp_url,
             ).await {
-                log::warn!("武器画像URL更新失敗 ({name}): {e}");
+                log::warn!("ブキ画像URL更新失敗 ({name}): {e}");
             }
         }
     }
@@ -928,10 +928,10 @@ pub async fn fetch_and_store_weapon_records(
     Ok(count)
 }
 
-/// 保存済みバトルの my_team / other_teams JSON から **全プレイヤーのメイン武器画像** をキャッシュする (#136)。
+/// 保存済みバトルの my_team / other_teams JSON から **全プレイヤーのメインブキ画像** をキャッシュする (#136)。
 ///
-/// `fetch_and_store_weapons`（HistoryRecordQuery）は自分が使ったことのある武器しか返さない。
-/// それだけだと味方武器 / 相手武器を集計軸に取った時に「自分が使ったことのない武器」が
+/// `fetch_and_store_weapons`（HistoryRecordQuery）は自分が使ったことのあるブキしか返さない。
+/// それだけだと味方ブキ / 相手ブキを集計軸に取った時に「自分が使ったことのないブキ」が
 /// アイコン無しになり、テキストフォールバックが混ざる（#118 で発覚）。
 ///
 /// このため、全バトル詳細の my_team + other_teams の `weapon.{name, image.url}` を走査して
@@ -943,7 +943,7 @@ pub async fn cache_all_weapon_images(
 ) -> Result<(), String> {
     let team_data = crate::db::get_battles_team_json(pool).await?;
 
-    // 同じ武器（name）はバトル間で重複するので HashMap で 1 URL に集約する。
+    // 同じブキ（name）はバトル間で重複するので HashMap で 1 URL に集約する。
     let mut seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
 
     for (my_team_json, other_teams_json) in &team_data {
@@ -981,7 +981,7 @@ pub async fn cache_all_weapon_images(
     for (name, url) in &seen {
         match crate::images::download_and_cache(app, client, "weapon", name, url).await {
             Ok(()) => downloaded += 1,
-            Err(e) => log::warn!("武器画像キャッシュ失敗 ({name}): {e}"),
+            Err(e) => log::warn!("ブキ画像キャッシュ失敗 ({name}): {e}"),
         }
     }
     log::info!("[weapon-image] all-team キャッシュ完了 {}/{}", downloaded, seen.len());
@@ -1054,7 +1054,7 @@ pub async fn cache_sub_special_images(
         )
         .await
         {
-            log::warn!("武器画像URL更新失敗 ({weapon_name}): {e}");
+            log::warn!("ブキ画像URL更新失敗 ({weapon_name}): {e}");
         }
     }
 
@@ -1178,7 +1178,7 @@ pub async fn cache_all_ability_images(
     Ok(())
 }
 
-/// バトルノード一覧から武器・ステージの画像 URL を収集する（重複なし）。
+/// バトルノード一覧からブキ・ステージの画像 URL を収集する（重複なし）。
 fn collect_image_targets<'a>(
     nodes: impl Iterator<Item = &'a serde_json::Value>,
 ) -> Vec<(String, String, String)> {

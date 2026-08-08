@@ -2,7 +2,7 @@
 //!
 //! s3s (https://github.com/frozenpandaman/s3s) の prepare_battle_result / set_scoreboard を参考に、
 //! vsHistoryDetail の raw_json から直接ペイロードを構築する。
-//! 武器・ステージは stat.ink API への逆引きを行わず、Nintendo の base64 ID を
+//! ブキ・ステージは stat.ink API への逆引きを行わず、Nintendo の base64 ID を
 //! デコードした数値 ID（stat.ink のエイリアスとして受理される）をそのまま送る。
 
 use reqwest::Client;
