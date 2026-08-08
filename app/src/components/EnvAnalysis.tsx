@@ -353,6 +353,9 @@ export function EnvAnalysis() {
     setCustomSince('')
     setCustomUntil('')
     setSeasonName(null)
+    // 🔴 表示するブキ（#593）はここで消さない。これは共通フィルタではなく
+    // グラフ設定（見せ方）で、軸や指標の選択と同じ扱いにする。
+    // 解除はプルダウン内の「選択をクリア」から。
   }
 
   // 画像保存(#500)。共通フィルタはパネルの外にあるので、画像には条件を焼き込む。
@@ -370,11 +373,37 @@ export function EnvAnalysis() {
   const [colorKey, setColorKey] = useState<string>(prefs.colorKey) // 散布図色指標(''=なし・#406)
   const [xLog, setXLog]       = useState<boolean>(prefs.xLog)     // 散布図 X 軸ログスケール(#473)
   const [yLog, setYLog]       = useState<boolean>(prefs.yLog)
+  /**
+   * 表示するブキ（#593）。空なら全部出す。
+   *
+   * 🔴 **共通フィルタのブキとは意味が違う。** 上のフィルタは「そのブキがいるバトルに
+   * 母集団を絞る」（#477）。こちらは**集計を一切動かさず、出す点・行だけを選ぶ**。
+   * ピック率の分母も母数も変わらないので、選んだ数個の合計は 100% にならない。
+   *
+   * 画面の領域で意味を分けている: 上の共通フィルタ = どのバトルを集計するか /
+   * パネル内のグラフ設定 = どう見せるか。
+   */
+  const [displayWeapons, setDisplayWeapons] = useState<string[]>(prefs.displayWeapons)
   const [scatterData, setScatterData] = useState<EnvScatterStat[]>([])
   // scatterData がどちらの集計軸のものか(#412)。groupBy は選択した瞬間に変わるが
   // scatterData は再取得が終わるまで前の軸のまま。アイコンの kind をこの遅れた軸で決めないと、
   // 切り替え直後に「武器名を kind:'stage' で読みに行く」空振りの invoke が飛ぶ。
   const [scatterAxis, setScatterAxis] = useState<'weapon' | 'stage'>(groupBy)
+
+  /**
+   * 表示するブキで絞ったあとの散布図データ（#593）。
+   *
+   * **取得も集計もそのまま。**ここで落とすのは描く点だけなので、
+   * 軸の範囲・色の割り当ても「表示する点」に対して決まる（見えない点に引きずられない）。
+   * `scatterAxis` を見るのは、切り替え直後に前の軸のデータが残っているため。
+   */
+  const shownScatter = useMemo(
+    () =>
+      displayWeapons.length === 0 || scatterAxis !== 'weapon'
+        ? scatterData
+        : scatterData.filter(s => displayWeapons.includes(s.key)),
+    [scatterData, displayWeapons, scatterAxis],
+  )
 
   // ヒートマップ
   const [rowDim, setRowDim]         = useState(prefs.rowDim)
@@ -384,6 +413,21 @@ export function EnvAnalysis() {
   // 行・列の周辺集計(#411)。セルの足切りに影響されない値なので BE から受け取る。
   const [rowMarginals, setRowMarginals] = useState<EnvMatrixMarginal[]>([])
   const [colMarginals, setColMarginals] = useState<EnvMatrixMarginal[]>([])
+
+  /**
+   * 表示するブキで絞ったあとのヒートマップのセル（#593）。
+   *
+   * 行か列がブキのときだけ効く。**周辺集計（`rowMarginals` / `colMarginals`）は絞らない。**
+   * あれは全バトルから出した値で、表示を減らしても母数は変わらないため。
+   */
+  const shownMatrix = useMemo(() => {
+    if (displayWeapons.length === 0) return matrixData
+    const keep = new Set(displayWeapons)
+    return matrixData.filter(c =>
+      (rowDim !== 'weapon' || keep.has(c.row_key)) &&
+      (colDim !== 'weapon' || keep.has(c.col_key)),
+    )
+  }, [matrixData, displayWeapons, rowDim, colDim])
   // ヒートマップ列見出しクリックによる行ソート(#479)。永続化しない。
   const [heatmapSortCol, setHeatmapSortCol] = useState<string | null>(null)
   const [heatmapSortDir, setHeatmapSortDir] = useState<'asc' | 'desc'>('desc')
@@ -411,10 +455,11 @@ export function EnvAnalysis() {
       customUntil: isSeason ? picked!.until : customUntil,
       // シーズン以外を選んでいる間は消す（残すと次回シーズンとして復元してしまう）。
       seasonName:  isSeason ? (seasonName ?? '') : '',
+      displayWeapons,
       lobbyKeys, ruleKeys, weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax,
     })
   }, [vizMode, groupBy, xKey, yKey, sizeKey, colorKey, xLog, yLog, rowDim, colDim, cellMetric,
-      period, customSince, customUntil, seasonName, seasons,
+      period, customSince, customUntil, seasonName, seasons, displayWeapons,
       lobbyKeys, ruleKeys, weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax])
 
   // 集計軸を切り替えたら X/Y・サイズ・色 指標を既定へ戻す。
@@ -567,9 +612,11 @@ export function EnvAnalysis() {
       ['バージョン', gameVers.length ? joinValues(gameVers.map(formatGameVer)) : null],
       ['ウデマエ',   posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
       ['Xパワー',    (powerMin || powerMax) ? `${powerMin || '-'}~${powerMax || '-'}` : null],
+      // 表示を絞ったなら画像にも書く(#593)。集計は全体のままだと分かるよう「表示」と付ける。
+      ['表示ブキ',   displayWeapons.length ? joinValues(displayWeapons.map(k => optLabel(weaponOptions, k))) : null],
     ])
   }, [period, seasonName, range, lobbyKeys, ruleKeys, weaponKeys, stageKeys,
-      weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax])
+      weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax, displayWeapons])
 
   // 拡充フィルタ(#189 / #477)を invoke 引数へ。空配列 / 空文字は null(無指定)に正規化。
   const extFilters = useMemo(() => ({
@@ -760,14 +807,14 @@ export function EnvAnalysis() {
   const colorRange = useMemo(() => {
     if (!colorM || colorM.key === 'win_rate') return null
     let mn = Infinity, mx = -Infinity
-    for (const s of scatterData) {
+    for (const s of shownScatter) {
       const v = colorM.get(s)
       if (v == null) continue
       if (v < mn) mn = v
       if (v > mx) mx = v
     }
     return isFinite(mn) ? { min: mn, max: mx } : null
-  }, [scatterData, colorM])
+  }, [shownScatter, colorM])
 
   // 色指標の値 → セル色。勝率は divergent(rateCellColor)、それ以外は sequential 濃淡。
   // heatmapColors の共通スケールを流用(CustomChartCard と同じ)。
@@ -780,11 +827,11 @@ export function EnvAnalysis() {
 
   // カテゴリ色は出現中セットに対して色相をばらけさせて割り当てる。
   const presentCategories = useMemo(
-    () => isCatColor ? scatterData.map(s => categoryValueForEnvStat(s, colorKey)) : [],
-    [isCatColor, scatterData, colorKey],
+    () => isCatColor ? shownScatter.map(s => categoryValueForEnvStat(s, colorKey)) : [],
+    [isCatColor, shownScatter, colorKey],
   )
 
-  const points: ScatterPoint[] = useMemo(() => scatterData.map(s => {
+  const points: ScatterPoint[] = useMemo(() => shownScatter.map(s => {
     const x = xM.get(s)
     const y = yM.get(s)
     const sv = sizeM ? sizeM.get(s) : null
@@ -814,7 +861,7 @@ export function EnvAnalysis() {
         { label: 'サンプル', value: s.n.toLocaleString() },
       ],
     }
-  }).filter(p => p.x !== null && p.y !== null), [scatterData, xM, yM, sizeM, colorM, isCatColor, colorKey, pointColor, iconUrls, iconKind, presentCategories])
+  }).filter(p => p.x !== null && p.y !== null), [shownScatter, xM, yM, sizeM, colorM, isCatColor, colorKey, pointColor, iconUrls, iconKind, presentCategories])
 
   // サイズ・色の凡例(#420)。
   // サイズは **描画された点** の値から作る(Recharts の ZAxis も描画データから
@@ -823,19 +870,19 @@ export function EnvAnalysis() {
     () => (sizeM ? buildSizeLegend(sizeM.label, points.map(p => p.size), sizeM.fmt) : null),
     [sizeM, points],
   )
-  // 色は **colorRange と同じ scatterData** から作り、色も本体と同じ pointColor で引く。
+  // 色は **colorRange と同じ shownScatter** から作り、色も本体と同じ pointColor で引く。
   // 別のレンジ・別の関数で作ると凡例が本体とズレる。
   const colorLegend = useMemo(() => {
     if (isCatColor) {
       return buildCategoryColorLegend(
         GROUP_BY_LABELS[colorKey as GroupByKey],
-        scatterData.map(s => categoryValueForEnvStat(s, colorKey)),
+        shownScatter.map(s => categoryValueForEnvStat(s, colorKey)),
       )
     }
     return colorM
-      ? buildColorLegend(colorM.label, scatterData.map(s => colorM.get(s)), colorM.fmt, pointColor)
+      ? buildColorLegend(colorM.label, shownScatter.map(s => colorM.get(s)), colorM.fmt, pointColor)
       : null
-  }, [isCatColor, colorKey, colorM, scatterData, pointColor])
+  }, [isCatColor, colorKey, colorM, shownScatter, pointColor])
 
   const xDomain = useMemo(() => computeDomain(points.map(p => p.x as number), xM.rate01), [points, xM])
   const yDomain = useMemo(() => computeDomain(points.map(p => p.y as number), yM.rate01), [points, yM])
@@ -1054,6 +1101,10 @@ export function EnvAnalysis() {
                     <option value="stage">ステージ別</option>
                   </select>
                 </label>
+                {/* 表示するブキ（#593）。集計は動かさず、描く点だけを選ぶ。
+                    上の共通フィルタ（そのブキがいるバトルに限定）とは意味が違う。 */}
+                {groupBy === 'weapon' && <DisplayWeaponSelect
+                  options={weaponOptions} selected={displayWeapons} onChange={setDisplayWeapons} />}
                 <label>X軸
                   <select value={xKey} onChange={e => setXKey(e.target.value)}>
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
@@ -1147,6 +1198,9 @@ export function EnvAnalysis() {
                     {DIM_OPTIONS.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
                   </select>
                 </label>
+                {/* 行か列がブキのときだけ、表示するブキを選べる（#593）。 */}
+                {(rowDim === 'weapon' || colDim === 'weapon') && <DisplayWeaponSelect
+                  options={weaponOptions} selected={displayWeapons} onChange={setDisplayWeapons} />}
                 <label>セル指標
                   <select value={cellMetric} onChange={e => setCellMetric(e.target.value as CellMetricKey)}>
                     {allowedCellMetrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
@@ -1188,7 +1242,7 @@ export function EnvAnalysis() {
                   <p className="env-no-data">武器 × 武器は非対応です。一方をステージ/ルール/ロビーにしてください。</p>
                 ) : (
                   <Heatmap
-                    cells={matrixData}
+                    cells={shownMatrix}
                     valueLabel={cm.fmt}
                     scale={cm.scale}
                     mid={cm.mid ?? 0.5}
@@ -1264,6 +1318,34 @@ function computeDomain(vals: number[], rate01: boolean): [number, number] {
  * ピック率のようにロングテールな指標は、リニアだとマイナー武器が原点付近に潰れる。
  * `allowed` が false(勝率など)のときは押せなくし、理由を title で出す。
  */
+/**
+ * 「表示するブキ」の選択（#593）。
+ *
+ * 🔴 **共通フィルタのブキとは別物。** あちらは母集団を絞る（そのブキがいるバトルに限定）。
+ * こちらは集計を動かさず、描く点・行だけを選ぶ。
+ * 取り違えないよう、置き場所（グラフ設定の中）とラベルの両方で区別している。
+ */
+function DisplayWeaponSelect({ options, selected, onChange }: {
+  options:  EnvFilterOption[]
+  selected: string[]
+  onChange: (v: string[]) => void
+}) {
+  return (
+    <MultiSelect
+      label="表示するブキ"
+      allLabel="すべて表示"
+      selected={selected}
+      onChange={onChange}
+      options={options.map(w => ({
+        key:   w.key,
+        label: `${w.label}(${w.n.toLocaleString()})`,
+        short: w.label,
+        group: w.category || undefined,
+      }))}
+    />
+  )
+}
+
 function LogToggle({ label, checked, allowed, metricLabel, onChange }: {
   label:       string
   checked:     boolean
