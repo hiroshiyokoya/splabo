@@ -715,6 +715,10 @@ pub async fn import_env_full(
     for idx in [
         "idx_env_date_rule", "idx_env_date_map", "idx_env_date_lobby",
         "idx_env_a1_weapon", "idx_env_b1_weapon",
+        // 集計に使うスロット（#602）。ここに足し忘れると、再取得のたびに索引が消えて
+        // ブキの選択肢の取得が 50 秒に戻る。
+        "idx_env_a2_weapon", "idx_env_a3_weapon", "idx_env_a4_weapon",
+        "idx_env_b2_weapon", "idx_env_b3_weapon", "idx_env_b4_weapon",
     ] {
         let _ = sqlx::query(&format!("DROP INDEX IF EXISTS {idx}"))
             .execute(&mut *conn).await;
@@ -788,6 +792,13 @@ pub async fn import_env_full(
         "CREATE INDEX IF NOT EXISTS idx_env_date_lobby ON env_battles(source_date, lobby_id)",
         "CREATE INDEX IF NOT EXISTS idx_env_a1_weapon  ON env_battles(a1_weapon_id)",
         "CREATE INDEX IF NOT EXISTS idx_env_b1_weapon  ON env_battles(b1_weapon_id)",
+        // 投稿者 a1 は集計対象外なので、実際に数えるのはこちら（#602 / #501）。
+        "CREATE INDEX IF NOT EXISTS idx_env_a2_weapon  ON env_battles(a2_weapon_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_a3_weapon  ON env_battles(a3_weapon_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_a4_weapon  ON env_battles(a4_weapon_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_b2_weapon  ON env_battles(b2_weapon_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_b3_weapon  ON env_battles(b3_weapon_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_b4_weapon  ON env_battles(b4_weapon_id)",
     ] {
         sqlx::query(sql).execute(&mut *conn).await
             .map_err(|e| format!("インデックス再作成失敗: {e}"))?;

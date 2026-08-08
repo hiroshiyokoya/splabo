@@ -729,6 +729,82 @@ mod tests {
         println!("--- AI に返る文面 ---\n{out}\n---");
     }
 
+    /// 索引を張った効果を実測する（#602）。**書き込むので DB のコピーに対して走らせること。**
+    ///
+    /// ```text
+    /// SPLABO_DB=<コピーした db> cargo test --lib 索引効果 -- --ignored --nocapture
+    /// ```
+    #[tokio::test]
+    #[ignore]
+    async fn 索引効果() {
+        use std::time::Instant;
+        let path = std::env::var("SPLABO_DB").unwrap();
+        let opts = sqlx::sqlite::SqliteConnectOptions::new().filename(&path);
+        let pool = SqlitePoolOptions::new().connect_with(opts).await.unwrap();
+
+        // 現行の env_weapons と同じ形（縦持ち + 小さい表と結合）。
+        let sql = "WITH slots AS (
+                     SELECT a2_weapon_id AS wid FROM env_battles
+                     UNION ALL SELECT a3_weapon_id FROM env_battles
+                     UNION ALL SELECT a4_weapon_id FROM env_battles
+                     UNION ALL SELECT b1_weapon_id FROM env_battles
+                     UNION ALL SELECT b2_weapon_id FROM env_battles
+                     UNION ALL SELECT b3_weapon_id FROM env_battles
+                     UNION ALL SELECT b4_weapon_id FROM env_battles
+                   ), counts AS (
+                     SELECT wid, COUNT(*) AS n FROM slots WHERE wid IS NOT NULL GROUP BY wid
+                   )
+                   SELECT w.key, c.n FROM counts c JOIN weapon w ON w.id = c.wid";
+
+        let t = Instant::now();
+        let r = sqlx::query(sql).fetch_all(&pool).await.unwrap();
+        println!("索引なし: {:?} / {} 件", t.elapsed(), r.len());
+
+        let t = Instant::now();
+        for col in ["a2", "a3", "a4", "b2", "b3", "b4"] {
+            sqlx::query(&format!(
+                "CREATE INDEX IF NOT EXISTS idx_env_{col}_weapon ON env_battles({col}_weapon_id)"
+            ))
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        println!("索引作成（6 列・一度きり）: {:?}", t.elapsed());
+
+        let t = Instant::now();
+        let r = sqlx::query(sql).fetch_all(&pool).await.unwrap();
+        println!("索引あり（縦持ち→集計）: {:?} / {} 件", t.elapsed(), r.len());
+
+        // **列ごとに数えてから足す**。1 列ずつなら索引だけで数えられ、
+        // 中間結果も 173 行 × 7 で済む（縦持ちだと 3900 万行を作ってしまう）。
+        let per_col = ["a2", "a3", "a4", "b1", "b2", "b3", "b4"]
+            .map(|s| format!(
+                "SELECT {s}_weapon_id AS wid, COUNT(*) AS n FROM env_battles \
+                 WHERE {s}_weapon_id IS NOT NULL GROUP BY {s}_weapon_id"
+            ))
+            .join(" UNION ALL ");
+        let fast = format!(
+            "WITH counts AS ({per_col})
+             SELECT w.key, SUM(c.n) AS n FROM counts c JOIN weapon w ON w.id = c.wid GROUP BY w.id"
+        );
+        let t = Instant::now();
+        let r = sqlx::query(&fast).fetch_all(&pool).await.unwrap();
+        println!("索引あり（列ごとに集計→合算）: {:?} / {} 件", t.elapsed(), r.len());
+
+        // 本番の env_weapons をそのまま流して、件数と時間を確かめる。
+        let t = Instant::now();
+        let rows = sqlx::query(crate::db::ENV_WEAPONS_SQL).fetch_all(&pool).await.unwrap();
+        println!("本番 env_weapons: {:?} / {} 件", t.elapsed(), rows.len());
+        for r in rows.iter().take(3) {
+            println!(
+                "  {} {} {}",
+                r.get::<String, _>("category"),
+                r.get::<String, _>("label"),
+                r.get::<i64, _>("n")
+            );
+        }
+    }
+
     /// 実データの値を覗く用（普段は走らせない）。プロンプトに載せる値を確かめる。
     #[tokio::test]
     #[ignore]
