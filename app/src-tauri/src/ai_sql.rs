@@ -977,9 +977,10 @@ mod tests {
     async fn 実データ計測() {
         use std::time::Instant;
         let path = std::env::var("SPLABO_DB").unwrap();
-        let opts = sqlx::sqlite::SqliteConnectOptions::new()
-            .filename(&path)
-            .read_only(true);
+        // 🔴 ビューを今のコードの定義に作り直すので**書き込み可**で開く。
+        // 本番の DB を直接指すとビュー定義を書き換えてしまうため、**コピーに対して走らせること**。
+        // 実データ相手でないと意味が無い計測なので、DB は用意してもらう前提にしている。
+        let opts = sqlx::sqlite::SqliteConnectOptions::new().filename(&path);
         // 本番と同じく統計関数を登録する（corr を使う実例が測れない）。
         let pool = SqlitePoolOptions::new()
             .after_connect(|conn, _meta| {
@@ -1092,6 +1093,11 @@ mod tests {
             }
             println!("警告: {:?}\n", t.warnings);
         }
+
+        // 今のコードのビュー定義に揃える（DB 側は古い定義のことがある）。
+        crate::ai_views::create_views(&std::sync::Arc::new(pool.clone()))
+            .await
+            .expect("ビューを作り直せない");
 
         // 🔴 シーズンの実例が**新しい順に並ぶ**かを実データで見る。
         // 実行できるだけのテストでは並び順の誤りに気付けない（実機で 2 度踏んだ）。
