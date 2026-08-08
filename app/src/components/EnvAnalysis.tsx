@@ -317,6 +317,13 @@ export function EnvAnalysis() {
   const [versionOptions, setVersionOptions] = useState<EnvVersion[]>([])
   const [rankOptions, setRankOptions]       = useState<EnvRank[]>([])
   const [weaponOptions, setWeaponOptions]   = useState<EnvFilterOption[]>([])
+  /**
+   * 選択肢を取りに行っている最中か（#602）。
+   *
+   * 武器の選択肢は 554 万件を数えるので時間がかかる。空のまま「選択肢がありません」と
+   * 出していたので、**まだ来ていない**のか**本当に無い**のか分からなかった。
+   */
+  const [optionsLoading, setOptionsLoading] = useState(false)
   const [stageOptions, setStageOptions]     = useState<EnvFilterOption[]>([])
   const [gameVers, setGameVers]       = useState<string[]>(prefs.gameVers)      // 選択中バージョン(複数)
   const [posterRanks, setPosterRanks] = useState<string[]>(prefs.posterRanks)   // 選択中ウデマエ帯(複数)
@@ -353,7 +360,7 @@ export function EnvAnalysis() {
     setCustomSince('')
     setCustomUntil('')
     setSeasonName(null)
-    // 🔴 表示するブキ（#593）はここで消さない。これは共通フィルタではなく
+    // 🔴 表示する武器（#593）はここで消さない。これは共通フィルタではなく
     // グラフ設定（見せ方）で、軸や指標の選択と同じ扱いにする。
     // 解除はプルダウン内の「選択をクリア」から。
   }
@@ -374,9 +381,9 @@ export function EnvAnalysis() {
   const [xLog, setXLog]       = useState<boolean>(prefs.xLog)     // 散布図 X 軸ログスケール(#473)
   const [yLog, setYLog]       = useState<boolean>(prefs.yLog)
   /**
-   * 表示するブキ（#593）。空なら全部出す。
+   * 表示する武器（#593）。空なら全部出す。
    *
-   * 🔴 **共通フィルタのブキとは意味が違う。** 上のフィルタは「そのブキがいるバトルに
+   * 🔴 **共通フィルタの武器とは意味が違う。** 上のフィルタは「その武器がいるバトルに
    * 母集団を絞る」（#477）。こちらは**集計を一切動かさず、出す点・行だけを選ぶ**。
    * ピック率の分母も母数も変わらないので、選んだ数個の合計は 100% にならない。
    *
@@ -391,7 +398,7 @@ export function EnvAnalysis() {
   const [scatterAxis, setScatterAxis] = useState<'weapon' | 'stage'>(groupBy)
 
   /**
-   * 表示するブキで絞ったあとの散布図データ（#593）。
+   * 表示する武器で絞ったあとの散布図データ（#593）。
    *
    * **取得も集計もそのまま。**ここで落とすのは描く点だけなので、
    * 軸の範囲・色の割り当ても「表示する点」に対して決まる（見えない点に引きずられない）。
@@ -415,9 +422,9 @@ export function EnvAnalysis() {
   const [colMarginals, setColMarginals] = useState<EnvMatrixMarginal[]>([])
 
   /**
-   * 表示するブキで絞ったあとのヒートマップのセル（#593）。
+   * 表示する武器で絞ったあとのヒートマップのセル（#593）。
    *
-   * 行か列がブキのときだけ効く。**周辺集計（`rowMarginals` / `colMarginals`）は絞らない。**
+   * 行か列が武器のときだけ効く。**周辺集計（`rowMarginals` / `colMarginals`）は絞らない。**
    * あれは全バトルから出した値で、表示を減らしても母数は変わらないため。
    */
   const shownMatrix = useMemo(() => {
@@ -545,12 +552,19 @@ export function EnvAnalysis() {
         // 🔴 直列に await しない。どれも 550 万行の集計で数秒かかるため
         // （実測: バージョン 2.6 秒 / ウデマエ帯 3.9 秒）、順に待つと**後ろのものほど
         // 遅れて出てくる**。互いに依存しないので同時に投げ、取れたものから反映する。
+        setOptionsLoading(true)
         void Promise.allSettled([
           invoke<EnvVersion[]>('env_versions').then(setVersionOptions),
           invoke<EnvRank[]>('env_ranks').then(setRankOptions),
           invoke<EnvFilterOption[]>('env_weapons').then(setWeaponOptions),
           invoke<EnvFilterOption[]>('env_stages').then(setStageOptions),
-        ])
+        ]).then(results => {
+          setOptionsLoading(false)
+          // 失敗しても選択肢が空になるだけで画面は動く。原因が追えるようログには出す。
+          for (const r of results) {
+            if (r.status === 'rejected') console.error('[EnvAnalysis] 選択肢の取得に失敗:', r.reason)
+          }
+        })
       }
     } catch (e) {
       console.error('[EnvAnalysis] env_status 失敗:', e)
@@ -613,7 +627,7 @@ export function EnvAnalysis() {
       ['ウデマエ',   posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
       ['Xパワー',    (powerMin || powerMax) ? `${powerMin || '-'}~${powerMax || '-'}` : null],
       // 表示を絞ったなら画像にも書く(#593)。集計は全体のままだと分かるよう「表示」と付ける。
-      ['表示ブキ',   displayWeapons.length ? joinValues(displayWeapons.map(k => optLabel(weaponOptions, k))) : null],
+      ['表示武器',   displayWeapons.length ? joinValues(displayWeapons.map(k => optLabel(weaponOptions, k))) : null],
     ])
   }, [period, seasonName, range, lobbyKeys, ruleKeys, weaponKeys, stageKeys,
       weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax, displayWeapons])
@@ -1015,6 +1029,7 @@ export function EnvAnalysis() {
             <MultiSelect
               label="武器"
               allLabel="すべての武器"
+              loading={optionsLoading}
               selected={weaponKeys}
               onChange={setWeaponKeys}
               options={weaponOptions.map(w => ({
@@ -1027,6 +1042,7 @@ export function EnvAnalysis() {
             <MultiSelect
               label="ステージ"
               allLabel="すべてのステージ"
+              loading={optionsLoading}
               selected={stageKeys}
               onChange={setStageKeys}
               options={stageOptions.map(s => ({
@@ -1038,6 +1054,7 @@ export function EnvAnalysis() {
             <MultiSelect
               label="バージョン"
               allLabel="すべてのバージョン"
+              loading={optionsLoading}
               selected={gameVers}
               onChange={setGameVers}
               options={versionOptions.map(v => ({
@@ -1049,6 +1066,7 @@ export function EnvAnalysis() {
             <MultiSelect
               label="ウデマエ帯"
               allLabel="すべてのウデマエ"
+              loading={optionsLoading}
               selected={posterRanks}
               onChange={setPosterRanks}
               options={rankOptions.map(r => ({
@@ -1101,10 +1119,11 @@ export function EnvAnalysis() {
                     <option value="stage">ステージ別</option>
                   </select>
                 </label>
-                {/* 表示するブキ（#593）。集計は動かさず、描く点だけを選ぶ。
-                    上の共通フィルタ（そのブキがいるバトルに限定）とは意味が違う。 */}
+                {/* 表示する武器（#593）。集計は動かさず、描く点だけを選ぶ。
+                    上の共通フィルタ（その武器がいるバトルに限定）とは意味が違う。 */}
                 {groupBy === 'weapon' && <DisplayWeaponSelect
-                  options={weaponOptions} selected={displayWeapons} onChange={setDisplayWeapons} />}
+                  options={weaponOptions} selected={displayWeapons} onChange={setDisplayWeapons}
+                  loading={optionsLoading} />}
                 <label>X軸
                   <select value={xKey} onChange={e => setXKey(e.target.value)}>
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
@@ -1198,9 +1217,10 @@ export function EnvAnalysis() {
                     {DIM_OPTIONS.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
                   </select>
                 </label>
-                {/* 行か列がブキのときだけ、表示するブキを選べる（#593）。 */}
+                {/* 行か列が武器のときだけ、表示する武器を選べる（#593）。 */}
                 {(rowDim === 'weapon' || colDim === 'weapon') && <DisplayWeaponSelect
-                  options={weaponOptions} selected={displayWeapons} onChange={setDisplayWeapons} />}
+                  options={weaponOptions} selected={displayWeapons} onChange={setDisplayWeapons}
+                  loading={optionsLoading} />}
                 <label>セル指標
                   <select value={cellMetric} onChange={e => setCellMetric(e.target.value as CellMetricKey)}>
                     {allowedCellMetrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
@@ -1319,23 +1339,25 @@ function computeDomain(vals: number[], rate01: boolean): [number, number] {
  * `allowed` が false(勝率など)のときは押せなくし、理由を title で出す。
  */
 /**
- * 「表示するブキ」の選択（#593）。
+ * 「表示する武器」の選択（#593）。
  *
- * 🔴 **共通フィルタのブキとは別物。** あちらは母集団を絞る（そのブキがいるバトルに限定）。
+ * 🔴 **共通フィルタの武器とは別物。** あちらは母集団を絞る（その武器がいるバトルに限定）。
  * こちらは集計を動かさず、描く点・行だけを選ぶ。
  * 取り違えないよう、置き場所（グラフ設定の中）とラベルの両方で区別している。
  */
-function DisplayWeaponSelect({ options, selected, onChange }: {
+function DisplayWeaponSelect({ options, selected, onChange, loading }: {
   options:  EnvFilterOption[]
   selected: string[]
   onChange: (v: string[]) => void
+  loading:  boolean
 }) {
   return (
     <MultiSelect
-      label="表示するブキ"
+      label="表示する武器"
       allLabel="すべて表示"
       selected={selected}
       onChange={onChange}
+      loading={loading}
       options={options.map(w => ({
         key:   w.key,
         label: `${w.label}(${w.n.toLocaleString()})`,
