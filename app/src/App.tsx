@@ -36,7 +36,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoFetchIntervalMin: 1440, // 24h
   statink: { apiKey: '', autoUpload: false, screenName: null },
 }
-/** 武器マスターを再取得するインターバル(ミリ秒)。24 時間。 */
+/** ブキマスターを再取得するインターバル(ミリ秒)。24 時間。 */
 const WEAPONS_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000
 
 /** 「バトル」タブ内のビュー切替(#296)。 */
@@ -80,8 +80,8 @@ export default function App() {
     () => lsGet(LAST_FETCHED_KEY)
   )
   const { notify } = useNotify()
-  // バトル/武器/ステージ上部の絞り込み＋見出しを sticky にするとき、
-  // 武器・ステージの見出し行が FilterBar の下に来るよう高さを測る(#450)。
+  // バトル/ブキ/ステージ上部の絞り込み＋見出しを sticky にするとき、
+  // ブキ・ステージの見出し行が FilterBar の下に来るよう高さを測る(#450)。
   const stickyChromeRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -252,7 +252,7 @@ export default function App() {
     }).catch(console.error)
   }, [settings.statink.apiKey])
 
-  // 起動時に武器マスターの自動チェック。前回取得から 24h 経過していれば裏で再取得。
+  // 起動時にブキマスターの自動チェック。前回取得から 24h 経過していれば裏で再取得。
   // 失敗してもサイレント(UI ブロックしない)。
   useEffect(() => {
     const last = Number(localStorage.getItem(LAST_WEAPONS_FETCH_K) ?? 0)
@@ -260,9 +260,9 @@ export default function App() {
     invoke<number>('fetch_weapons')
       .then(count => {
         localStorage.setItem(LAST_WEAPONS_FETCH_K, String(Date.now()))
-        console.log(`[startup] 武器マスター ${count} 件取得`)
+        console.log(`[startup] ブキマスター ${count} 件取得`)
       })
-      .catch(err => console.warn('[startup] 武器マスター取得失敗:', err))
+      .catch(err => console.warn('[startup] ブキマスター取得失敗:', err))
   }, [loginVersion])
 
   useEffect(() => {
@@ -336,11 +336,11 @@ export default function App() {
         <button className="logo" onClick={() => setShowAbout(true)} aria-label="splabo について">
           <img src="/splabo-logo.png" alt="splabo" />
         </button>
-        {/* 並び順: バトル → 武器 → ステージ → ギア → 環境分析 → AI分析 → 設定
+        {/* 並び順: バトル → ブキ → ステージ → ギア → 環境分析 → AI分析 → 設定
             扱う対象をそのまま名前にする。旧アプリ由来の 2 つ(バトル / ギア)は
             メニューでだけ旧名を併記する(#419)。 */}
         <NavItem id="battles"   icon="⚔️" label="バトル" legacyName="chartoon" active={tab} onClick={setTab} />
-        <NavItem id="weapons"   icon="🔫" label="武器"           active={tab} onClick={setTab} />
+        <NavItem id="weapons"   icon="🔫" label="ブキ"           active={tab} onClick={setTab} />
         <NavItem id="stages"    icon="🗺️" label="ステージ"       active={tab} onClick={setTab} />
         <NavItem id="gear"      icon="👕" label="ギア" legacyName="geartoon" active={tab} onClick={setTab} />
         <NavItem id="env"       icon="🌍" label="環境分析"       active={tab} onClick={setTab} />
@@ -362,7 +362,7 @@ export default function App() {
       <main className="content">
         {tab === 'battles' && (
           <>
-            {/* 武器・ステージ(FilterBar → 見出し行内の ViewToggle)と並びを揃えるため、
+            {/* ブキ・ステージ(FilterBar → 見出し行内の ViewToggle)と並びを揃えるため、
                 切替は絞り込みの下に置く。見出しはダッシュボード / 一覧の両方に共通なので、
                 各ビューの中ではなくここに 1 つだけ置く。
                 絞り込み＋見出しはスクロール中も常時表示する(#450)。 */}
@@ -391,7 +391,7 @@ export default function App() {
           </>
         )}
         {/* 図鑑タブ(#298): 期間・モード・ルール・結果を集計に反映する。
-            武器/ステージ絞り込みは自己言及的なので hideTargetFilters で隠す。
+            ブキ/ステージ絞り込みは自己言及的なので hideTargetFilters で隠す。
             FilterBar は sticky。見出し行は各 Book 内で chrome 高さ分ずらして sticky(#450)。 */}
         {(tab === 'weapons' || tab === 'stages') && (
           <div className="content-sticky-chrome" ref={stickyChromeRef}>

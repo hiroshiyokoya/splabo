@@ -139,7 +139,7 @@ export function describeFilters(f: Filters, stageNames?: Map<string, string>): s
     ['ロビー',   f.mode.length ? joinValues(f.mode.map(k => LOBBY_LABEL.get(k) ?? k)) : null],
     ['期間',     periodText(f)],
     ['ルール',   f.rule.length ? joinValues(f.rule.map(k => RULE_LABEL.get(k) ?? k)) : null],
-    ['武器',     f.weapon.length ? joinValues(f.weapon) : null],
+    ['ブキ',     f.weapon.length ? joinValues(f.weapon) : null],
     ['ステージ', f.stage.length ? joinValues(f.stage.map(id => stageNames?.get(id) ?? id)) : null],
     ['結果',     f.result ? resultLabel(f.result) : null],
   ])

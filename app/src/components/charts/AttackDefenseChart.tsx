@@ -44,7 +44,7 @@ export function AttackDefenseChart({
   nameTransform?: (name: string) => string
   /** X 軸ラベルを斜めに表示する角度。長いラベル（ステージ名など）向け。 */
   tickAngle?:     number
-  /** カテゴリ → 画像 URL の対応。武器アイコン等を X 軸ラベルとして描く。 */
+  /** カテゴリ → 画像 URL の対応。ブキアイコン等を X 軸ラベルとして描く。 */
   images?:        Map<string, string>
 }) {
   const hasImages = !!images && data.some(d => images.has(d.name))

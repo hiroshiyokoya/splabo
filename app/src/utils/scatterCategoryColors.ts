@@ -9,7 +9,7 @@ export function isScatterCategoryColorKey(k: string | undefined | null): k is Sc
   return !!k && (SCATTER_CATEGORY_COLOR_KEYS as readonly string[]).includes(k)
 }
 
-/** 武器名 → カテゴリ / サブ / スペシャル（ダッシュボード武器集計ドット用）。 */
+/** ブキ名 → カテゴリ / サブ / スペシャル（ダッシュボードブキ集計ドット用）。 */
 export type WeaponMeta = {
   category:       string
   sub_weapon:     string | null

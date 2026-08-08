@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>スプラボ (splabo) — Splatoon 3 戦績＆ギア表示アプリ</title>
-  <meta name="description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。武器・ステージ・ルール別の勝率や、自由にカスタマイズできる線・散布図・ヒートマップで自分のプレイを分析できます。stat.ink 公開データを使ったコミュニティ全体の環境分析にも対応。Windows / macOS / Linux 対応。stat.ink への自動アップロードにも対応。">
+  <meta name="description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。ブキ・ステージ・ルール別の勝率や、自由にカスタマイズできる線・散布図・ヒートマップで自分のプレイを分析できます。stat.ink 公開データを使ったコミュニティ全体の環境分析にも対応。Windows / macOS / Linux 対応。stat.ink への自動アップロードにも対応。">
   <meta name="keywords" content="Splatoon 3, スプラトゥーン3, バトル可視化, 勝率, ダッシュボード, stat.ink, nxapi, OSS, デスクトップアプリ, Tauri">
   <link rel="canonical" href="https://chartoon.pages.dev/">
   <link rel="icon" href="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-favicon.png">
@@ -13,14 +13,14 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="splabo">
   <meta property="og:title" content="スプラボ (splabo) — Splatoon 3 戦績＆ギア表示アプリ">
-  <meta property="og:description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。武器・ステージ・ルール別の勝率や、自由にカスタマイズできるチャートで自分のプレイを分析。">
+  <meta property="og:description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。ブキ・ステージ・ルール別の勝率や、自由にカスタマイズできるチャートで自分のプレイを分析。">
   <meta property="og:url" content="https://chartoon.pages.dev/">
   <meta property="og:image" content="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-logo.png">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="スプラボ (splabo) — Splatoon 3 戦績＆ギア表示アプリ">
-  <meta name="twitter:description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。武器・ステージ・ルール別の勝率や、自由にカスタマイズできるチャートで自分のプレイを分析。">
+  <meta name="twitter:description" content="Splatoon 3 のバトル履歴を取得して可視化する OSS の PC アプリ。ブキ・ステージ・ルール別の勝率や、自由にカスタマイズできるチャートで自分のプレイを分析。">
   <meta name="twitter:image" content="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-logo.png">
 
   <style>
@@ -335,7 +335,7 @@
     <p class="hero-tagline">Splatoon 3 戦績＆ギア表示アプリ</p>
     <p class="hero-desc">
       Nintendo アカウントから非公式 API 経由で Splatoon 3 のバトル履歴を取得し、グラフで可視化する OSS の PC アプリです。<br>
-      武器・ステージ・ルール別の勝率や、カスタマイズ可能な線・散布図・ヒートマップで自分のプレイを多角的に分析できます。<br>
+      ブキ・ステージ・ルール別の勝率や、カスタマイズ可能な線・散布図・ヒートマップで自分のプレイを多角的に分析できます。<br>
       所持ギアの取得・一覧表示や、ギアパワーを組み合わせたコーデ作成にも対応しています。<br>
       戦績アプリ <strong>chartoon</strong> とギア管理アプリ <strong>geartoon</strong> を統合して誕生した後継アプリです。
     </p>
@@ -380,16 +380,16 @@
         <div class="feature-card">
           <h3>ダッシュボード</h3>
           <ul>
-            <li>勝率・キル/デス・キルレシオなど主要指標を、武器・ステージ・ルール・モード別に集計</li>
+            <li>勝率・キル/デス・キルレシオなど主要指標を、ブキ・ステージ・ルール・モード別に集計</li>
             <li>カスタムグラフ: 線・棒・散布図・ヒートマップ・カレンダーを、集計軸×メトリクスで自由に作成・並び替え</li>
             <li>AI 分析: 自然言語で聞くと SQL を書かせ、集計はこの PC の中だけで実行して表で表示（OpenAI / Gemini / Claude / Grok 対応）</li>
           </ul>
         </div>
         <div class="feature-card">
-          <h3>バトルログ・武器図鑑・ステージ図鑑</h3>
+          <h3>バトルログ・ブキ図鑑・ステージ図鑑</h3>
           <ul>
             <li>バトル履歴を一覧（検索・フィルター・ソート）、詳細モーダルで編成・ギア・ランク変動を確認</li>
-            <li>武器図鑑: 所持武器の勝率・サブ / SP 一覧</li>
+            <li>ブキ図鑑: 所持ブキの勝率・サブ / SP 一覧</li>
             <li>ステージ図鑑: ステージ別の勝率・戦績</li>
           </ul>
         </div>
@@ -397,7 +397,7 @@
           <h3>環境分析</h3>
           <ul>
             <li>stat.ink の公開バトルデータ（全世界）からコミュニティ全体の環境を分析</li>
-            <li>武器・ステージ別の散布図、武器×ステージなどのマトリクスヒートマップ</li>
+            <li>ブキ・ステージ別の散布図、ブキ×ステージなどのマトリクスヒートマップ</li>
             <li>ロビー・ルール・バージョン・ウデマエ帯・期間で絞り込み</li>
           </ul>
         </div>
@@ -434,7 +434,7 @@
       <ul>
         <li>本アプリは任天堂株式会社とは無関係の非公式 OSS アプリです。</li>
         <li>SplatNet 3 は任天堂が公式に公開している API ではありません。任天堂側の仕様変更により、予告なく動作しなくなる可能性があります。</li>
-        <li>武器・ステージ画像の著作権は任天堂株式会社に帰属します。個人利用の範囲内でのみ使用してください。</li>
+        <li>ブキ・ステージ画像の著作権は任天堂株式会社に帰属します。個人利用の範囲内でのみ使用してください。</li>
         <li>認証情報・バトルデータはお使いの PC 内にのみ保存されます。stat.ink へのアップロードは設定で有効化したときのみ行われます。</li>
       </ul>
     </div>

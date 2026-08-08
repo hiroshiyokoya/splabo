@@ -75,7 +75,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
     return () => { unlistenPromise.then(fn => fn()) }
   }, [])
 
-  // 武器・アビリティ・ステージ画像をロード
+  // ブキ・アビリティ・ステージ画像をロード
   useEffect(() => {
     invoke<string[]>('db_weapons_used').then(weapons => {
       Promise.all(
@@ -167,7 +167,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
                 <th>ロビー</th>
                 <th>ルール</th>
                 <th>ステージ</th>
-                <th>武器</th>
+                <th>ブキ</th>
                 <th>結果</th>
                 <SortTh col="kill"       label="K"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
                 <SortTh col="assist"     label="A"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
@@ -594,7 +594,7 @@ function TeamPanel({ team, label, highlight, showSignal, weaponImages, abilityIm
           <tr>
             <th></th>
             <th>ネームプレート</th>
-            <th>武器</th>
+            <th>ブキ</th>
             <th>ギア</th>
             <th>K</th>
             <th>A</th>

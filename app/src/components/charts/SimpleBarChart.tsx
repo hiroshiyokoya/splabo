@@ -10,7 +10,7 @@ import { HoverTooltip } from './HoverTooltip'
 /**
  * 単一メトリクスを棒で見せるシンプルなチャート。
  *
- * - X 軸: カテゴリ名（武器・ステージ・ルール等）
+ * - X 軸: カテゴリ名（ブキ・ステージ・ルール等）
  * - Y 軸: 選んだ 1 メトリクスの値
  * - 勝率系はバーごとに段階色（hi/mid/lo）
  * - それ以外はバーの値の大きさに応じてアクセント色を濃淡で変化させる
@@ -27,7 +27,7 @@ export function SimpleBarChart({
   nameTransform?: (name: string) => string
   /** X 軸ラベルを斜めに表示する角度（度）。ステージ名のように長いラベルで活用。 */
   tickAngle?:     number
-  /** カテゴリ → 画像 URL の対応。武器アイコン等を X 軸ラベルとして描く。 */
+  /** カテゴリ → 画像 URL の対応。ブキアイコン等を X 軸ラベルとして描く。 */
   images?:        Map<string, string>
 }) {
   const hasImages = !!images && data.some(d => images.has(d.name))

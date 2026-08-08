@@ -10,7 +10,7 @@ import { VIEWS_KEY, lsGet, mirrorToStore } from './settingsStore'
 export interface ViewPrefs {
   /** 「バトル」タブ: ダッシュボード / 一覧 */
   battles: BattlesView
-  /** 武器図鑑: パネル / 一覧 */
+  /** ブキ図鑑: パネル / 一覧 */
   weapons: BookView
   /** ステージ図鑑: パネル / 一覧 */
   stages: BookView

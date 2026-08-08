@@ -11,7 +11,7 @@ function winRateColor(rate: number): string {
 }
 
 /** 「勝率の良いステージ」の下限バトル数(少数サンプルによる勝率のブレを避ける)。
- *  StageDetailModal の「勝率 TOP 武器」と同じ流儀・同じ値に揃えている。 */
+ *  StageDetailModal の「勝率 TOP ブキ」と同じ流儀・同じ値に揃えている。 */
 const STAGE_MIN_BATTLES = 5
 /** 「勝率の良いステージ」で表示する件数。 */
 const STAGE_TOP_N = 5
@@ -34,12 +34,12 @@ function fmtRecord(total: number, wins: number, draws: number): string {
 }
 
 /**
- * 武器図鑑カードをクリックして開く詳細モーダル。
+ * ブキ図鑑カードをクリックして開く詳細モーダル。
  *
  * - バトル統計(バトル数 / W/L/D / 勝率 / 平均キル・デス・塗り / キルレ)は DB 集計。
  *   親 (WeaponBook) が statsByWeapon から該当行を `stats` prop として渡す。
- * - ステージ Top 5 とルール別勝率は `db_grouped_stats(group_by, weapon=武器スラッグ)` を 2 回呼んで取得。
- *   武器スラッグは `weapons.name`(旧テーブル)= `weapon.key`(新テーブル)= stat.ink キー。
+ * - ステージ Top 5 とルール別勝率は `db_grouped_stats(group_by, weapon=ブキスラッグ)` を 2 回呼んで取得。
+ *   ブキスラッグは `weapons.name`(旧テーブル)= `weapon.key`(新テーブル)= stat.ink キー。
  *   FE 側で持っている `WeaponRecord.name` をそのまま `weapon` フィルタとして渡せる。
  * - 直近 30 バトルの線グラフは仕様により非実装(#149)。
  * - WeaponRecordQuery 由来の公式アプリ統計(熟練度・通算勝利数・総塗)は #162 廃止中のため
@@ -69,7 +69,7 @@ export function WeaponDetailModal({
     return () => window.removeEventListener('keydown', handleKey)
   }, [handleKey])
 
-  // ステージ別 / ルール別の集計を並列で取得。weapon フィルタは武器スラッグ単独でパイプ区切り不要。
+  // ステージ別 / ルール別の集計を並列で取得。weapon フィルタはブキスラッグ単独でパイプ区切り不要。
   useEffect(() => {
     setLoading(true)
     setError(null)
@@ -119,7 +119,7 @@ export function WeaponDetailModal({
         </div>
 
         <div className="modal-body">
-          {/* ヘッダー：武器画像(大)+ サブ/SP */}
+          {/* ヘッダー：ブキ画像(大)+ サブ/SP */}
           <section className="modal-section weapon-modal-hero">
             <div className="weapon-modal-hero-icon">
               {image
@@ -201,7 +201,7 @@ export function WeaponDetailModal({
             <h3 className="modal-section-title">よく戦うステージ Top 5</h3>
             {loading && <div className="loading">読み込み中...</div>}
             {!loading && error && <div className="empty">読み込み失敗: {error}</div>}
-            {!loading && !error && topStages.length === 0 && <div className="empty">この武器のバトル記録がありません。</div>}
+            {!loading && !error && topStages.length === 0 && <div className="empty">このブキのバトル記録がありません。</div>}
             {!loading && !error && topStages.length > 0 && (
               <div className="weapon-modal-stage-list">
                 {topStages.map(r => {

@@ -340,7 +340,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             groupBy === 'enemy_weapon' || groupBy2 === 'enemy_weapon'
           ) && (
             <div className="form-field">
-              <label className="form-label">武器軸の上位 N</label>
+              <label className="form-label">ブキ軸の上位 N</label>
               <input
                 type="number"
                 className="form-input"
@@ -349,7 +349,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 value={topN}
                 onChange={e => setTopN(Math.max(1, Math.min(200, Number(e.target.value) || 20)))}
               />
-              <p className="form-hint">バトル数の多い武器を上位 N 種に絞ります(デフォルト 20)。</p>
+              <p className="form-hint">バトル数の多いブキを上位 N 種に絞ります(デフォルト 20)。</p>
             </div>
           )}
 
@@ -514,9 +514,9 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 </select>
                 <p className="form-hint">
                   {dotUnit === 'battle'
-                    ? '勝敗、または武器カテゴリ・サブ・スペシャルを色×形で区別できます。'
+                    ? '勝敗、またはブキカテゴリ・サブ・スペシャルを色×形で区別できます。'
                     : dotUnit === 'weapon'
-                      ? '数値指標のほか、武器カテゴリ・サブ・スペシャルを色×形で区別できます。'
+                      ? '数値指標のほか、ブキカテゴリ・サブ・スペシャルを色×形で区別できます。'
                       : '勝率は divergent (赤↔青)、それ以外は accent の濃淡。'}
                 </p>
               </div>

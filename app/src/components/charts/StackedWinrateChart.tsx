@@ -43,7 +43,7 @@ function stackTopRoundedShape(props: any) {
  * カスタムグラフ用の「勝/負/分積み上げ + 勝率線」チャート。
  *
  * Dashboard 内蔵 WinRateChart から hoverImage 機能を除いた汎用版。
- * `images` を渡すと X 軸ラベルにアイコンを描く（X 軸が武器のときに使用）。
+ * `images` を渡すと X 軸ラベルにアイコンを描く（X 軸がブキのときに使用）。
  */
 export function StackedWinrateChart({
   data, height = 260, nameTransform, tickAngle, images,
@@ -52,7 +52,7 @@ export function StackedWinrateChart({
   height?:        number
   nameTransform?: (name: string) => string
   tickAngle?:     number
-  /** カテゴリ → 画像 URL の対応。武器アイコン等を X 軸ラベルとして描く。 */
+  /** カテゴリ → 画像 URL の対応。ブキアイコン等を X 軸ラベルとして描く。 */
   images?:        Map<string, string>
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)

@@ -79,7 +79,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
   const [specialWeapon,  setSpecialWeapon]  = useState<string | null>(null)
   const [sortKey,        setSortKey]        = useState<SortKey>('total')
   const [selected,       setSelected]       = useState<WeaponRecord | null>(null)
-  // 武器ごとの平均統計(K/D/A/SP/inked/duration)。db_grouped_stats(group_by='weapon') を 1 回呼んでマップ化。
+  // ブキごとの平均統計(K/D/A/SP/inked/duration)。db_grouped_stats(group_by='weapon') を 1 回呼んでマップ化。
   const [statsByWeapon,  setStatsByWeapon]  = useState<Map<string, GroupedStatsRow>>(new Map())
   // パネル / 一覧の切替(#297)。前回選択を localStorage から復元する。
   const [view,           setViewState]      = useState<BookView>(() => loadViewPrefs().weapons)
@@ -102,7 +102,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
       .then(rows => {
         setWeapons(rows)
 
-        // 主武器画像
+        // 主ブキ画像
         Promise.all(
           rows.map(w =>
             invoke<string | null>('read_image', { kind: 'weapon', name: w.name })
@@ -144,7 +144,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
       .catch(console.error)
       .finally(() => setLoading(false))
 
-    // 武器ごとの平均統計を 1 回まとめて取得。フィルタ無しで全期間。
+    // ブキごとの平均統計を 1 回まとめて取得。フィルタ無しで全期間。
     // 共通 FilterBar(期間・モード・ルール・結果)をローカル集計に反映する(#298)。
     // ※ 任天堂由来の WeaponRecord(熟練度・通算勝利数・総塗)は全期間固定でフィルタ不可。
     //    そちらは db_list_weapons 由来なので、この呼び出しには追従しない(「全期間」バッジで区別)。
@@ -231,7 +231,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
 
   // 公式統計(熟練度・勝利数・塗りポイント)が 1 件でも取得できているか。
   // WeaponRecordQuery が nxapi 同梱ハッシュ廃止(#162)で取れていない場合、
-  // 全武器 0/null になるためソート項目から外す。
+  // 全ブキ 0/null になるためソート項目から外す。
   const hasOfficialStats = useMemo(
     () => weapons.some(w =>
       (w.weapon_level     !== null && w.weapon_level     > 0) ||
@@ -258,7 +258,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
   return (
     <div className={`weapon-book${view === 'list' ? ' book--fill' : ''}`}>
       <div className="weapon-book-header">
-        <h2>武器</h2>
+        <h2>ブキ</h2>
         <span className="total-count">{filtered.length} 種</span>
         {hasFilter && (
           <button className="filter-reset-btn" onClick={reset} style={{ marginLeft: 8 }}>✕ リセット</button>
@@ -267,7 +267,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
           options={BOOK_VIEWS}
           value={view}
           onChange={setView}
-          ariaLabel="武器の表示切替"
+          ariaLabel="ブキの表示切替"
         />
         {view === 'panel' && (
           <div className="weapon-book-sort">
@@ -350,11 +350,11 @@ export function WeaponBook({ filters }: { filters: Filters }) {
         <div className="loading">読み込み中...</div>
       ) : weapons.length === 0 ? (
         <div className="empty">
-          武器データがありません。<br />
-          設定 › マスターデータ › 「武器データを更新」を実行してください。
+          ブキデータがありません。<br />
+          設定 › マスターデータ › 「ブキデータを更新」を実行してください。
         </div>
       ) : filtered.length === 0 ? (
-        <div className="empty">条件に一致する武器がありません。</div>
+        <div className="empty">条件に一致するブキがありません。</div>
       ) : view === 'list' ? (
         <WeaponTable
           rows={filtered}
@@ -420,7 +420,7 @@ function WeaponTable({ rows, statsByWeapon, subImages, spImages, sortKey, ascend
       <table className="book-table">
         <thead>
           <tr>
-            <SortHeader label="武器"     sortKey="name"          activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
+            <SortHeader label="ブキ"     sortKey="name"          activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
             <SortHeader label="カテゴリ"                         activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
             <SortHeader label="サブ"                             activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
             <SortHeader label="スペシャル"                       activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
@@ -505,7 +505,7 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
         ? '∞'
         : (avgStats.avg_kill / avgStats.avg_death).toFixed(2)
 
-  // 2 列のサマリ：左に戦績サマリー、右に平均統計。バトル 0 戦の武器は最小カードのままにする。
+  // 2 列のサマリ：左に戦績サマリー、右に平均統計。バトル 0 戦のブキは最小カードのままにする。
   const officialRows = total > 0 ? [
     // Lv(熟練度)は任天堂由来で常に全期間の値。フィルタには追従しない(#298)。
     statLine('Lv*',   weapon.weapon_level !== null ? String(weapon.weapon_level) : '-'),

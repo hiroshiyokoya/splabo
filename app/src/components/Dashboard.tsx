@@ -236,7 +236,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
     return [...data].sort((a, b) => b[by] - a[by])
   }
 
-  /** 固定の武器別: 指標で全件ソートしてから上位 14(#509)。逆順なし。 */
+  /** 固定のブキ別: 指標で全件ソートしてから上位 14(#509)。逆順なし。 */
   function rankedWeapons(data: SummaryEntry[], by: SortBy): SummaryEntry[] {
     return rankRowsForBarChart(data, {
       getSortValue: row => row[by],
@@ -307,12 +307,12 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
           </div>
 
           <div className="chart-grid">
-            <ChartCard title="武器別 バトル数 & 勝率" sortBy={weaponSort} onSortChange={setWeaponSort} filterSummary={filterSummary}>
+            <ChartCard title="ブキ別 バトル数 & 勝率" sortBy={weaponSort} onSortChange={setWeaponSort} filterSummary={filterSummary}>
               <WinRateChart data={rankedWeapons(summary.by_weapon, weaponSort)} height={260} images={weaponImages} hoverImageSize={64} />
             </ChartCard>
 
             <ChartCard title="ステージ別 バトル数 & 勝率" sortBy={stageSort} onSortChange={setStageSort} filterSummary={filterSummary}>
-              {/* ステージは現状 25 種程度で全件表示が望ましい(武器のような大量マスターと違い slice 不要)。 */}
+              {/* ステージは現状 25 種程度で全件表示が望ましい(ブキのような大量マスターと違い slice 不要)。 */}
               <WinRateChart data={sorted(summary.by_stage, stageSort)} height={260} images={new Map()} nameTransform={stageAbbr} tickAngle={30} />
             </ChartCard>
 
@@ -395,7 +395,7 @@ function DashboardEmptyState({ onFetchRequest, onOpenSettings, fetching }: {
       <div className="dashboard-empty-icon" aria-hidden="true">📊</div>
       <h3 className="dashboard-empty-title">まだバトルデータがありません</h3>
       <p className="dashboard-empty-desc">
-        SplatNet 3 から最新のバトル・ギアデータを取得すると、ここに勝率グラフ・武器/ステージ別の集計が表示されます。
+        SplatNet 3 から最新のバトル・ギアデータを取得すると、ここに勝率グラフ・ブキ/ステージ別の集計が表示されます。
       </p>
       <ol className="dashboard-empty-steps">
         <li>初回は <strong>設定</strong> から Nintendo アカウントでログイン</li>

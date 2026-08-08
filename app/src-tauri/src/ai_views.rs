@@ -546,7 +546,7 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
          FROM ai_battles GROUP BY stage HAVING COUNT(won) >= 20 ORDER BY 勝率 DESC",
     ),
     (
-        "ウデマエ帯ごとの武器使用率を上位 10 件",
+        "ウデマエ帯ごとのブキ使用率を上位 10 件",
         // 🔴 source_date の絞り込みは**必須**。実データ（550 万バトル = 3900 万行）では
         // 全期間の集計に 77 秒かかり、必ずタイムアウトする。直近 30 日なら 0.7 秒。
         "SELECT poster_rank AS ウデマエ, weapon AS ブキ, COUNT(*) AS 出現数,\n\
@@ -705,7 +705,7 @@ pub fn analysis_prompt(scale: Option<&DataScale>) -> String {
     s.push_str("---\n\n");
     s.push_str(DOMAIN_KNOWLEDGE);
 
-    // 🔴 実例は**最後**に置く。実機で「ウデマエ帯ごとの武器使用率」（実例とほぼ同じ質問）に
+    // 🔴 実例は**最後**に置く。実機で「ウデマエ帯ごとのブキ使用率」（実例とほぼ同じ質問）に
     // 別のビューを選ばれた。長いドメイン知識を後ろに積むと実例が埋もれるので、末尾に移した。
     s.push_str("\n---\n\n## 書き方の例\n\n\
                 質問が下のどれかに近いときは、**その SQL をそのまま土台にしてください。**\n\n");
@@ -983,7 +983,7 @@ mod tests {
         assert!(row.get::<Option<String>, _>("clothing_primary").is_none(), "未設定の部位は NULL");
     }
 
-    /// 環境バトル 1 件を入れる。8 スロット全員に武器を置き、KDA は `kda_slots` のみ埋める。
+    /// 環境バトル 1 件を入れる。8 スロット全員にブキを置き、KDA は `kda_slots` のみ埋める。
     async fn insert_env_battle(pool: &DbPool, id: i64, win_team: &str, kda_slots: &[&str]) {
         sqlx::query("INSERT OR IGNORE INTO lobby (id, key) VALUES (1, 'bankara_open')")
             .execute(pool.as_ref()).await.unwrap();

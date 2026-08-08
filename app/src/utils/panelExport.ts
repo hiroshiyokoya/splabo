@@ -70,7 +70,7 @@ function sanitizeFilenamePart(s: string): string {
     .trim()
 }
 
-/** `splabo-環境分析-武器散布図-2026-07-26.png` 形式のファイル名。 */
+/** `splabo-環境分析-ブキ散布図-2026-07-26.png` 形式のファイル名。 */
 export function buildPanelExportFilename(
   screen: string,
   panel: string,
