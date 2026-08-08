@@ -33,7 +33,10 @@ mod tests {
     const TARGET_FILES: &[&str] = &["README.md"];
 
     /// 中身を見るファイルの拡張子。
-    const EXTS: &[&str] = &["ts", "tsx", "rs", "html", "css", "md"];
+    ///
+    /// `txt` を含むのは `docs/llms.txt`（AI 向けのサイト説明）が漏れていたため。
+    /// 拡張子で絞る以上、**新しい種類のファイルは自分で気付けない**。
+    const EXTS: &[&str] = &["ts", "tsx", "rs", "html", "css", "md", "txt", "json"];
 
     /// 例外。**理由を書けないものは例外にしない。**
     fn is_exempt(rel: &str) -> bool {

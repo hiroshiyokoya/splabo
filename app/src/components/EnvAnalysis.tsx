@@ -317,6 +317,13 @@ export function EnvAnalysis() {
   const [versionOptions, setVersionOptions] = useState<EnvVersion[]>([])
   const [rankOptions, setRankOptions]       = useState<EnvRank[]>([])
   const [weaponOptions, setWeaponOptions]   = useState<EnvFilterOption[]>([])
+  /**
+   * 選択肢を取りに行っている最中か（#602）。
+   *
+   * ブキの選択肢は 554 万件を数えるので時間がかかる。空のまま「選択肢がありません」と
+   * 出していたので、**まだ来ていない**のか**本当に無い**のか分からなかった。
+   */
+  const [optionsLoading, setOptionsLoading] = useState(false)
   const [stageOptions, setStageOptions]     = useState<EnvFilterOption[]>([])
   const [gameVers, setGameVers]       = useState<string[]>(prefs.gameVers)      // 選択中バージョン(複数)
   const [posterRanks, setPosterRanks] = useState<string[]>(prefs.posterRanks)   // 選択中ウデマエ帯(複数)
@@ -545,12 +552,19 @@ export function EnvAnalysis() {
         // 🔴 直列に await しない。どれも 550 万行の集計で数秒かかるため
         // （実測: バージョン 2.6 秒 / ウデマエ帯 3.9 秒）、順に待つと**後ろのものほど
         // 遅れて出てくる**。互いに依存しないので同時に投げ、取れたものから反映する。
+        setOptionsLoading(true)
         void Promise.allSettled([
           invoke<EnvVersion[]>('env_versions').then(setVersionOptions),
           invoke<EnvRank[]>('env_ranks').then(setRankOptions),
           invoke<EnvFilterOption[]>('env_weapons').then(setWeaponOptions),
           invoke<EnvFilterOption[]>('env_stages').then(setStageOptions),
-        ])
+        ]).then(results => {
+          setOptionsLoading(false)
+          // 失敗しても選択肢が空になるだけで画面は動く。原因が追えるようログには出す。
+          for (const r of results) {
+            if (r.status === 'rejected') console.error('[EnvAnalysis] 選択肢の取得に失敗:', r.reason)
+          }
+        })
       }
     } catch (e) {
       console.error('[EnvAnalysis] env_status 失敗:', e)
@@ -1015,6 +1029,7 @@ export function EnvAnalysis() {
             <MultiSelect
               label="ブキ"
               allLabel="すべてのブキ"
+              loading={optionsLoading}
               selected={weaponKeys}
               onChange={setWeaponKeys}
               options={weaponOptions.map(w => ({
@@ -1027,6 +1042,7 @@ export function EnvAnalysis() {
             <MultiSelect
               label="ステージ"
               allLabel="すべてのステージ"
+              loading={optionsLoading}
               selected={stageKeys}
               onChange={setStageKeys}
               options={stageOptions.map(s => ({
@@ -1038,6 +1054,7 @@ export function EnvAnalysis() {
             <MultiSelect
               label="バージョン"
               allLabel="すべてのバージョン"
+              loading={optionsLoading}
               selected={gameVers}
               onChange={setGameVers}
               options={versionOptions.map(v => ({
@@ -1049,6 +1066,7 @@ export function EnvAnalysis() {
             <MultiSelect
               label="ウデマエ帯"
               allLabel="すべてのウデマエ"
+              loading={optionsLoading}
               selected={posterRanks}
               onChange={setPosterRanks}
               options={rankOptions.map(r => ({
@@ -1104,7 +1122,8 @@ export function EnvAnalysis() {
                 {/* 表示するブキ（#593）。集計は動かさず、描く点だけを選ぶ。
                     上の共通フィルタ（そのブキがいるバトルに限定）とは意味が違う。 */}
                 {groupBy === 'weapon' && <DisplayWeaponSelect
-                  options={weaponOptions} selected={displayWeapons} onChange={setDisplayWeapons} />}
+                  options={weaponOptions} selected={displayWeapons} onChange={setDisplayWeapons}
+                  loading={optionsLoading} />}
                 <label>X軸
                   <select value={xKey} onChange={e => setXKey(e.target.value)}>
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
@@ -1200,7 +1219,8 @@ export function EnvAnalysis() {
                 </label>
                 {/* 行か列がブキのときだけ、表示するブキを選べる（#593）。 */}
                 {(rowDim === 'weapon' || colDim === 'weapon') && <DisplayWeaponSelect
-                  options={weaponOptions} selected={displayWeapons} onChange={setDisplayWeapons} />}
+                  options={weaponOptions} selected={displayWeapons} onChange={setDisplayWeapons}
+                  loading={optionsLoading} />}
                 <label>セル指標
                   <select value={cellMetric} onChange={e => setCellMetric(e.target.value as CellMetricKey)}>
                     {allowedCellMetrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
@@ -1325,10 +1345,11 @@ function computeDomain(vals: number[], rate01: boolean): [number, number] {
  * こちらは集計を動かさず、描く点・行だけを選ぶ。
  * 取り違えないよう、置き場所（グラフ設定の中）とラベルの両方で区別している。
  */
-function DisplayWeaponSelect({ options, selected, onChange }: {
+function DisplayWeaponSelect({ options, selected, onChange, loading }: {
   options:  EnvFilterOption[]
   selected: string[]
   onChange: (v: string[]) => void
+  loading:  boolean
 }) {
   return (
     <MultiSelect
@@ -1336,6 +1357,7 @@ function DisplayWeaponSelect({ options, selected, onChange }: {
       allLabel="すべて表示"
       selected={selected}
       onChange={onChange}
+      loading={loading}
       options={options.map(w => ({
         key:   w.key,
         label: `${w.label}(${w.n.toLocaleString()})`,

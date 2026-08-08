@@ -30,12 +30,20 @@ function groupOptions(options: MultiSelectOption[]): GroupBlock[] {
   return blocks
 }
 
-export function MultiSelect({ label, allLabel, options, selected, onChange }: {
+export function MultiSelect({ label, allLabel, options, selected, onChange, loading = false }: {
   label:    string
   allLabel: string
   options:  MultiSelectOption[]
   selected: string[]
   onChange: (next: string[]) => void
+  /**
+   * 選択肢を取りに行っている最中か（#602）。
+   *
+   * 空のときに一律「選択肢がありません」と出していたので、**まだ来ていない**のと
+   * **本当に無い**のが見分けられなかった。環境分析のブキは取得に時間がかかるため、
+   * データはあるのに「ありません」と表示されていた。
+   */
+  loading?: boolean
 }) {
   const detailsRef = useRef<HTMLDetailsElement>(null)
 
@@ -78,7 +86,9 @@ export function MultiSelect({ label, allLabel, options, selected, onChange }: {
         <summary>{summary}</summary>
         <div className="env-multiselect-menu">
           {options.length === 0 ? (
-            <span className="env-multiselect-empty">選択肢がありません</span>
+            <span className="env-multiselect-empty">
+              {loading ? '読み込み中...' : '選択肢がありません'}
+            </span>
           ) : (
             <>
               {selected.length > 0 && (

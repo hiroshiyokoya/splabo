@@ -3557,6 +3557,29 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         log::info!("migrate v22: リールガン → シューター（weapon {w} / weapons {old} 件）");
     }
 
+    // version 23: 集計に使うスロットのブキ ID に索引を張る（#602）。
+    //
+    // 索引は a1 / b1 にしかなかったが、**投稿者 a1 は集計対象外**（#501）なので、
+    // 実際に数える a2–a4 / b2–b4 のうち索引があるのは b1 だけだった。
+    // 索引の有無で 1 列あたり 0.31 秒 対 3.1 秒（実測・554 万件）。
+    // ブキの選択肢を出すのに 50 秒かかり、画面では「選択肢がありません」に見えていた。
+    if current_version < 23 {
+        // 環境データが無い環境では一瞬で終わる。あるときは数十秒かかるが一度きり。
+        for col in ["a2", "a3", "a4", "b2", "b3", "b4"] {
+            sqlx::query(&format!(
+                "CREATE INDEX IF NOT EXISTS idx_env_{col}_weapon ON env_battles({col}_weapon_id)"
+            ))
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+        sqlx::query("PRAGMA user_version = 23")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!("migrate v23: env_battles のスロットブキ ID に索引を追加");
+    }
+
     Ok(updated)
 }
 
@@ -4755,30 +4778,10 @@ pub struct EnvFilterOption {
 /// 件数は集計と同じく投稿者（a1）を除いたスロットで数える（#501）。
 #[tauri::command]
 pub async fn env_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOption>, String> {
-    let rows = sqlx::query(
-        r#"
-        SELECT w.key AS key,
-               COALESCE(NULLIF(w.name_ja, ''), w.key) AS label,
-               CASE
-                 WHEN w.category_key = 'リールガン' THEN 'シューター'
-                 ELSE COALESCE(w.category_key, '')
-               END AS category,
-               COUNT(*) AS n
-        FROM env_battles eb
-        JOIN weapon w ON w.id IN (
-            eb.a2_weapon_id, eb.a3_weapon_id, eb.a4_weapon_id,
-            eb.b1_weapon_id, eb.b2_weapon_id, eb.b3_weapon_id, eb.b4_weapon_id
-        )
-        GROUP BY w.id
-        ORDER BY CASE WHEN category = '' OR category IS NULL THEN 1 ELSE 0 END,
-                 category,
-                 n DESC,
-                 label
-        "#,
-    )
-    .fetch_all(db.as_ref())
-    .await
-    .map_err(|e| e.to_string())?;
+    let rows = sqlx::query(ENV_WEAPONS_SQL)
+        .fetch_all(db.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(rows
         .into_iter()
@@ -4790,6 +4793,50 @@ pub async fn env_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOp
         })
         .collect())
 }
+
+/// `env_weapons` の SQL。実データでの速度を測れるよう定数にしてある（#602）。
+pub(crate) const ENV_WEAPONS_SQL: &str = r#"
+        -- 🔴 **列ごとに数えてから足す**（#602）。実測 554 万件で 50 秒 → 2.1 秒。
+        --
+        -- 以前は `JOIN weapon w ON w.id IN (列, 列, …)` と書いていた。これは索引で解けず、
+        -- weapon 173 行 × env_battles 554 万行の総当たりになる。
+        --
+        -- 7 列を縦に並べてから数える形も試したが 13 秒どまりだった。
+        -- **3900 万行の中間結果を作ってしまい、列の索引が効かない**ため。
+        -- 1 列ずつ GROUP BY すれば索引だけで数え終わり、中間結果も 173 行 × 7 で済む。
+        --
+        -- 投稿者 a1 は集計対象外なので含めない（#501）。
+        WITH counts AS (
+            SELECT a2_weapon_id AS wid, COUNT(*) AS n FROM env_battles
+              WHERE a2_weapon_id IS NOT NULL GROUP BY a2_weapon_id
+            UNION ALL SELECT a3_weapon_id, COUNT(*) FROM env_battles
+              WHERE a3_weapon_id IS NOT NULL GROUP BY a3_weapon_id
+            UNION ALL SELECT a4_weapon_id, COUNT(*) FROM env_battles
+              WHERE a4_weapon_id IS NOT NULL GROUP BY a4_weapon_id
+            UNION ALL SELECT b1_weapon_id, COUNT(*) FROM env_battles
+              WHERE b1_weapon_id IS NOT NULL GROUP BY b1_weapon_id
+            UNION ALL SELECT b2_weapon_id, COUNT(*) FROM env_battles
+              WHERE b2_weapon_id IS NOT NULL GROUP BY b2_weapon_id
+            UNION ALL SELECT b3_weapon_id, COUNT(*) FROM env_battles
+              WHERE b3_weapon_id IS NOT NULL GROUP BY b3_weapon_id
+            UNION ALL SELECT b4_weapon_id, COUNT(*) FROM env_battles
+              WHERE b4_weapon_id IS NOT NULL GROUP BY b4_weapon_id
+        )
+        SELECT w.key AS key,
+               COALESCE(NULLIF(w.name_ja, ''), w.key) AS label,
+               CASE
+                 WHEN w.category_key = 'リールガン' THEN 'シューター'
+                 ELSE COALESCE(w.category_key, '')
+               END AS category,
+               SUM(c.n) AS n
+        FROM counts c
+        JOIN weapon w ON w.id = c.wid
+        GROUP BY w.id
+        ORDER BY CASE WHEN category = '' OR category IS NULL THEN 1 ELSE 0 END,
+                 category,
+                 n DESC,
+                 label
+        "#;
 
 /// env_battles に登場するステージをバトル数降順で返す（絞り込み UI 用・#477）。
 #[tauri::command]
