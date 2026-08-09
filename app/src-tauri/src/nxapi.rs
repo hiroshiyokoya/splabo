@@ -171,6 +171,20 @@ fn sidecar_failure(prefix: &str, result: &serde_json::Value) -> NxapiError {
     NxapiError { kind, detail, status, upstream_error }
 }
 
+/// サイドカーの stderr をアプリのログへ流す（#611）。
+///
+/// 🔴 **stderr は今まで誰も読んでいなかった。** サイドカーは進捗や診断を stderr に
+/// 書いているのに、`.output()` で捨てていたので**どこにも出ていなかった**。
+/// 「bulletToken がキャッシュに当たったのか、認証をやり直したのか」も同じく消えていた。
+///
+/// 認証まわりの不具合はこの一行が見えるかどうかで追跡の手間が変わる。
+fn log_sidecar_stderr(stderr: &[u8], prefix: &str) {
+    let text = String::from_utf8_lossy(stderr);
+    for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        log::info!("[{prefix}] {line}");
+    }
+}
+
 /// サイドカーの stdout を JSON として読み、`ok:true` でなければ `NxapiError` にする。
 fn parse_sidecar_output(stdout: &[u8], prefix: &str) -> Result<serde_json::Value, NxapiError> {
     let text = String::from_utf8_lossy(stdout);
@@ -197,6 +211,7 @@ pub async fn nxapi_setup(app: &AppHandle, session_token: &str) -> Result<(), Nxa
         .await
         .map_err(|e| NxapiError::opaque(format!("サイドカー実行失敗: {e}")))?;
 
+    log_sidecar_stderr(&output.stderr, "nxapi setup");
     parse_sidecar_output(&output.stdout, "nxapi setup").map(|_| ())
 }
 
@@ -215,6 +230,7 @@ pub async fn nxapi_get_bullet_token(app: &AppHandle) -> Result<BulletTokenResult
         .await
         .map_err(|e| NxapiError::opaque(format!("サイドカー実行失敗: {e}")))?;
 
+    log_sidecar_stderr(&output.stderr, "bullet token");
     let result = parse_sidecar_output(&output.stdout, "bullet token 取得失敗")?;
 
     let field = |name: &str| -> Result<String, NxapiError> {
@@ -245,6 +261,7 @@ pub async fn nxapi_fetch_weapon_records(app: &AppHandle) -> Result<serde_json::V
         .await
         .map_err(|e| NxapiError::opaque(format!("サイドカー実行失敗: {e}")))?;
 
+    log_sidecar_stderr(&output.stderr, "weapon records");
     let result = parse_sidecar_output(&output.stdout, "WeaponRecordQuery 失敗")?;
     Ok(result["data"].clone())
 }
