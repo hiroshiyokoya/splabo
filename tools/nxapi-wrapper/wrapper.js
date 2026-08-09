@@ -208,7 +208,23 @@ async function cmdGetBulletToken([dataDir]) {
   // キャッシュに当たるのか、認証をやり直すのかを**先に**出す（#611）。
   // 区別が付かないと「なぜ枠が減るのか」がストレージを掘るまで分からない。
   // 実際、3 分間に 4 回も再認証していたのに気付けなかった。
-  process.stderr.write(`bulletToken を取得中... (${await tokenState(storage, sessionToken)})\n`);
+  const state = await tokenState(storage, sessionToken);
+  process.stderr.write(`bulletToken を取得中... (${state})\n`);
+
+  // 🔴 認証しに行くと分かっているなら、**枠を先に見る**（#615）。
+  // 尽きているのに試すと「認証します」→「失敗」と見せるだけで、
+  // 何が起きたかも、いつ再開できるかも伝わらない。呼ぶ前なら両方言える。
+  if (state.includes('認証します')) {
+    const budget = await tightestBudget(storage, nsid);
+    if (budget.remaining === 0) {
+      const when = budget.freeAt ? `${hhmm(budget.freeAt)} 以降に` : 'しばらくしてから';
+      throw new Error(
+        `認証の回数制限に達しています（${budget.key}・1 時間に ${AUTH_LIMIT_REQUESTS} 回まで）。` +
+          `${when}再試行できます。\n` +
+          '失敗した認証も回数に数えられます。上流が不安定な時間帯が続くと枠を使い切ります。',
+      );
+    }
+  }
   // splatnet3.js は coral の top-level await を含むため、ここで動的インポート
   const { getBulletToken } = await import('./node_modules/nxapi/dist/common/auth/splatnet3.js');
 
@@ -362,10 +378,7 @@ async function authWithBudget(run, storage, nsid) {
       throw e;
     }
     // 枠を使い切ると 1 時間締め出される。余裕が無いなら再試行しない。
-    const room = await Math.min(
-      await remainingBudget(storage, nsid, 'coral'),
-      await remainingBudget(storage, nsid, 'na'),
-    );
+    const room = (await tightestBudget(storage, nsid)).remaining;
     if (room < 2) {
       process.stderr.write(
         `上流の一時障害（${elapsed} 秒）。残り枠が ${room} なので再試行しません\n`,
@@ -381,17 +394,48 @@ async function authWithBudget(run, storage, nsid) {
   }
 }
 
-/** 指定した種類の認証の残り枠。読めなければ 0（＝再試行しない側に倒す）。 */
-async function remainingBudget(storage, nsid, key) {
+/**
+ * nxapi が枠を分けている認証の種類（#615）。
+ *
+ * **それぞれ独立に 1 時間 4 回。** どれか 1 つでも尽きれば認証は通らない。
+ * `splatnet3` だけを見ていたため、`coral` が尽きたときに
+ * 「空きがある」と誤判定して案内が出ていなかった。
+ */
+const AUTH_LIMIT_KEYS = ['na', 'coral', 'splatnet3'];
+
+/** 種類ごとの残り枠と回復時刻。読めない種類は「残り 0」に倒す（安全側）。 */
+async function authBudget(storage, nsid, key) {
   try {
     const raw = (await storage.getItem(`RateLimitAttempts-${key}.${nsid}`)) ?? [];
     const recent = raw
       .map((a) => (typeof a === 'number' ? a : a && a.time))
-      .filter((t) => typeof t === 'number' && t >= Date.now() - AUTH_LIMIT_PERIOD_MS);
-    return Math.max(0, AUTH_LIMIT_REQUESTS - recent.length);
+      .filter((t) => typeof t === 'number' && t >= Date.now() - AUTH_LIMIT_PERIOD_MS)
+      .sort((a, b) => a - b);
+    return {
+      key,
+      used: recent.length,
+      remaining: Math.max(0, AUTH_LIMIT_REQUESTS - recent.length),
+      // 尽きているときだけ意味を持つ。いちばん古い試行が 1 時間で流れた時刻。
+      freeAt: recent.length ? new Date(recent[0] + AUTH_LIMIT_PERIOD_MS) : null,
+    };
   } catch {
-    return 0;
+    return { key, used: AUTH_LIMIT_REQUESTS, remaining: 0, freeAt: null };
   }
+}
+
+/** すべての種類の枠。 */
+async function authBudgets(storage, nsid) {
+  return await Promise.all(AUTH_LIMIT_KEYS.map((k) => authBudget(storage, nsid, k)));
+}
+
+/** いちばん逼迫している枠（残りが最小のもの）。 */
+async function tightestBudget(storage, nsid) {
+  const all = await authBudgets(storage, nsid);
+  return all.reduce((a, b) => (b.remaining < a.remaining ? b : a));
+}
+
+function hhmm(d) {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 /**
@@ -431,30 +475,29 @@ async function withAuthContext(storage, nsid, message) {
         'こちらの設定や回数制限の問題ではないので、少し待ってからもう一度お試しください。',
     );
   }
-  const hint = await rateLimitHint(storage, nsid);
+  const hint = await rateLimitHint(storage, nsid, message);
   if (hint) parts.push(hint);
   return parts.join('\n');
 }
 
-async function rateLimitHint(storage, nsid) {
+async function rateLimitHint(storage, nsid, message = '') {
   try {
-    const raw = (await storage.getItem('RateLimitAttempts-splatnet3.' + nsid)) ?? [];
-    const times = raw
-      .map((a) => (typeof a === 'number' ? a : a && a.time))
-      .filter((t) => typeof t === 'number');
-    const recent = times.filter((t) => t >= Date.now() - AUTH_LIMIT_PERIOD_MS).sort((a, b) => a - b);
-    if (recent.length === 0) return null;
+    // 🔴 **エラーが名指ししている種類を優先する**（#615）。
+    // `Too many attempts to authenticate (coral)` のように括弧で入っている。
+    // splatnet3 決め打ちだったので、coral が尽きたとき「空きあり」と誤判定し、
+    // 案内が 1 行も出なかった。
+    const named = message.match(/Too many attempts to authenticate \(([a-z0-9_]+)\)/i);
+    const budget = named && AUTH_LIMIT_KEYS.includes(named[1])
+      ? await authBudget(storage, nsid, named[1])
+      : await tightestBudget(storage, nsid);
 
-    const remaining = AUTH_LIMIT_REQUESTS - recent.length;
-    // 🔴 **枠が残っているのに「◯時以降に再試行できます」と言わない。**
-    // 以前は常にこの文を出していたので、2/4 回でも「待たないと試せない」と読めた。
-    // 待つ必要があるのは上限に達したときだけ。
-    if (remaining > 0) {
-      return `直近 1 時間の認証は ${recent.length} 回です（上限 ${AUTH_LIMIT_REQUESTS} 回）。あと ${remaining} 回試せます。`;
+    if (budget.remaining > 0) {
+      // 枠が残っているなら「◯時以降」とは言わない。待つ必要が無いのに待たせてしまう。
+      if (budget.used === 0) return null;
+      return `直近 1 時間の認証は ${budget.used} 回です（上限 ${AUTH_LIMIT_REQUESTS} 回）。あと ${budget.remaining} 回試せます。`;
     }
-    const freeAt = new Date(recent[0] + AUTH_LIMIT_PERIOD_MS);
-    const hhmm = `${String(freeAt.getHours()).padStart(2, '0')}:${String(freeAt.getMinutes()).padStart(2, '0')}`;
-    return `直近 1 時間の認証が上限（${AUTH_LIMIT_REQUESTS} 回・任天堂側の負荷を避けるための nxapi の制限）に達しました。${hhmm} 以降に再試行できます。`;
+    const when = budget.freeAt ? `${hhmm(budget.freeAt)} 以降に` : 'しばらくしてから';
+    return `直近 1 時間の認証が上限（${AUTH_LIMIT_REQUESTS} 回・任天堂側の負荷を避けるための nxapi の制限）に達しました。${when}再試行できます。`;
   } catch {
     return null;
   }
