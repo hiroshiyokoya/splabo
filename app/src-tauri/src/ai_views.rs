@@ -181,6 +181,18 @@ fn env_view_sql() -> String {
     eb.id                                           AS battle_id,
     eb.source_date                                  AS source_date,
     eb.season                                       AS season,
+    -- 🔴 シーズンの並べ替え用（#607）。**名前は時系列順に並ばない**
+    -- （Chill < Drizzle < Fresh < Sizzle の辞書順になる）。
+    -- 実機で 2 度、`ORDER BY season` で新しい順にならない結果が出た。
+    -- 注意書きだけでは守られなかったので、**並べ替えられる列そのもの**を用意する。
+    -- シーズンは 3 / 6 / 9 / 12 月の 1 日始まりなので、日付から求まる。
+    CASE
+      WHEN CAST(strftime('%m', eb.source_date) AS INTEGER) IN (1, 2)
+        THEN printf('%04d-12-01', CAST(strftime('%Y', eb.source_date) AS INTEGER) - 1)
+      ELSE printf('%04d-%02d-01',
+                  CAST(strftime('%Y', eb.source_date) AS INTEGER),
+                  (CAST(strftime('%m', eb.source_date) AS INTEGER) - 3) / 3 * 3 + 3)
+    END                                             AS season_start,
     eb.game_ver                                     AS game_ver,
     l.key                                           AS lobby,
     r.key                                           AS rule,
@@ -306,7 +318,11 @@ pub const AI_VIEWS: &[ViewDoc] = &[
         columns: &[
             ("battle_id", "環境バトルの ID"),
             ("source_date", "stat.ink 上の日付"),
-            ("season", "シーズン"),
+            ("season", "シーズン名（例: `Sizzle Season 2026`）。**並べ替えには使えない**\
+                        — 辞書順になり時系列にならない"),
+            ("season_start", "そのシーズンの開始日（`YYYY-MM-DD`）。\
+                              **シーズンを新しい順に並べるときはこの列を使う。**\
+                              例: `ORDER BY season_start DESC`"),
             ("game_ver", "ゲームのバージョン。バランス調整で環境が変わるので、期間を跨ぐ比較では絞ること"),
             ("lobby", "regular / bankara_open / bankara_challenge / xmatch など。解決できなければ NULL"),
             ("rule", "nawabari / area / yagura / hoko / asari。解決できなければ NULL"),
@@ -401,11 +417,11 @@ const COMMON_MISTAKES: &[&str] = &[
      ただし**「シーズンごと」と言われたら期間を絞らない**。\
      勝手に絞ると出るシーズンが減って質問に答えたことにならない。\
      「最近の」「直近の」と限定されたときだけ `source_date` で絞る",
-    "🔴 **シーズン名は時系列順に並ばない。** `Chill` < `Drizzle` < `Fresh` < `Sizzle` の\
-     辞書順になるので、`ORDER BY season` では新しい順にならない\
-     （Sizzle 2026 → Sizzle 2025 → Fresh 2026 のように混ざる）。\
-     並べ替えは**日付で**行う。集計時に `MIN(source_date)` を残しておき、それで並べる。\
-     `CASE WHEN シーズン = 'Sizzle Season 2026' THEN 1 ...` のように**順序を手で書かない**\
+    "🔴 **シーズンを並べるときは `season_start` を使う。** `ORDER BY season_start DESC` で新しい順。\
+     集計するなら `season_start` も一緒に `GROUP BY` して残しておく。\
+     `season`（シーズン名）で並べると `Chill` < `Drizzle` < `Fresh` < `Sizzle` の辞書順になり、\
+     Sizzle 2026 → Sizzle 2025 → Fresh 2026 のように混ざる。\
+     `CASE WHEN シーズン = 'Sizzle Season 2026' THEN 1 ...` と**順序を手で書かない**\
      （シーズンは 3 か月ごとに増えるので、書いた瞬間から古くなる）。\
      また `ORDER BY` に集計関数は書けない（`misuse of aggregate` になる）",
     "🔴 **上位 N を出す前に、群 × 対象で 1 行にまとめる。**\
@@ -524,7 +540,7 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
         // 🔴 ⑤ 並べ替えは**シーズン名ではなく開始日**で行う。
         // 名前は辞書順で Chill < Drizzle < Fresh < Sizzle になり、時系列にならない。
         "WITH 集計 AS (\n\
-         \x20 SELECT season AS シーズン, MIN(source_date) AS 開始日,\n\
+         \x20 SELECT season AS シーズン, season_start AS 開始日,\n\
          \x20        weapon AS ブキ, COUNT(*) AS 出現数,\n\
          \x20        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY season), 2) AS ピック率\n\
          \x20 FROM ai_env_slots\n\
@@ -533,12 +549,12 @@ pub const SQL_EXAMPLES: &[(&str, &str)] = &[
          \x20 WHERE lobby = 'xmatch' AND season IS NOT NULL\n\
          \x20 GROUP BY season, weapon\n\
          ), 順位付き AS (\n\
-         \x20 SELECT *, MIN(開始日) OVER (PARTITION BY シーズン) AS シーズン開始,\n\
-         \x20        ROW_NUMBER() OVER (PARTITION BY シーズン ORDER BY ピック率 DESC) AS 順位\n\
+         \x20 SELECT *, ROW_NUMBER() OVER (PARTITION BY シーズン ORDER BY ピック率 DESC) AS 順位\n\
          \x20 FROM 集計\n\
          )\n\
          SELECT シーズン, 順位, ブキ, ピック率, 出現数 FROM 順位付き\n\
-         WHERE 順位 <= 5 ORDER BY シーズン開始 DESC, 順位",
+         -- 🔴 並べ替えは season_start。シーズン名は辞書順になって時系列にならない。\n\
+         WHERE 順位 <= 5 ORDER BY 開始日 DESC, 順位",
     ),
     (
         "ステージ別の勝率を 20 戦以上で",
@@ -1241,6 +1257,45 @@ mod tests {
         }
     }
 
+    /// `season_start` がシーズンの開始日を正しく返すか（#607）。
+    ///
+    /// ビューの中で日付から計算しているので、`season.rs` の計算と食い違ってはいけない。
+    /// 12 月開始のシーズンは翌年 2 月まで続き、開始日は前年 12 月になる。
+    #[tokio::test]
+    async fn シーズン開始日をビューが正しく出す() {
+        let pool = setup().await;
+        for (date, expected) in [
+            ("2026-07-29", "2026-06-01"), // Sizzle
+            ("2026-06-01", "2026-06-01"), // 境界（開始日そのもの）
+            ("2026-05-31", "2026-03-01"), // Fresh
+            ("2026-03-01", "2026-03-01"),
+            ("2026-02-28", "2025-12-01"), // Chill（前年 12 月開始）
+            ("2026-01-01", "2025-12-01"),
+            ("2025-12-01", "2025-12-01"),
+            ("2025-11-30", "2025-09-01"), // Drizzle
+        ] {
+            let got: String = sqlx::query_scalar(
+                "SELECT CASE
+                   WHEN CAST(strftime('%m', ?1) AS INTEGER) IN (1, 2)
+                     THEN printf('%04d-12-01', CAST(strftime('%Y', ?1) AS INTEGER) - 1)
+                   ELSE printf('%04d-%02d-01',
+                               CAST(strftime('%Y', ?1) AS INTEGER),
+                               (CAST(strftime('%m', ?1) AS INTEGER) - 3) / 3 * 3 + 3)
+                 END",
+            )
+            .bind(date)
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+            assert_eq!(got, expected, "{date} のシーズン開始日");
+
+            // 🔴 `season.rs`（画面のシーズン選択が使う）とずれていないこと。
+            // 片方だけ直すと、画面と AI 分析で違うシーズンを指すようになる。
+            let from_rust = crate::season::season_of(date).unwrap();
+            assert_eq!(from_rust.since, expected, "{date} は season.rs と食い違っている");
+        }
+    }
+
     /// 実例が**シーズン名で並べ替えていない**か。
     ///
     /// 🔴 実機で 2 度目の「実例が壊れていた」事故。`ORDER BY シーズン DESC` と書いていたので
@@ -1251,7 +1306,7 @@ mod tests {
     #[test]
     fn 実例はシーズン名で並べ替えない() {
         for (q, sql) in SQL_EXAMPLES {
-            for bad in ["ORDER BY シーズン ", "ORDER BY シーズン,", "ORDER BY season"] {
+            for bad in ["ORDER BY シーズン ", "ORDER BY シーズン,", "ORDER BY season "] {
                 assert!(
                     !sql.contains(bad),
                     "実例「{q}」がシーズン名で並べ替えている（辞書順になる）: {sql}"
@@ -1259,7 +1314,27 @@ mod tests {
             }
         }
         let p = analysis_prompt(None);
-        assert!(p.contains("時系列順に並ばない"), "並び順の注意がプロンプトに無い");
+        // 🔴 「使うな」ではなく「**代わりにこれを使う**」を先に言う（#589 の反省）。
+        // 禁止だけ書くと過剰に一般化され、集計軸でも避けられた前例がある。
+        assert!(p.contains("`season_start` を使う"), "代わりに使う列が示されていない");
+        assert!(p.contains("`season_start`"), "並べ替え用の列がプロンプトに無い");
+        assert!(p.contains("辞書順"), "名前で並べると何が起きるかが書かれていない");
+    }
+
+    /// シーズンを扱う実例が、**並べ替え用の列で並べている**か（#607）。
+    #[test]
+    fn シーズンの実例は開始日で並べる() {
+        for (q, sql) in SQL_EXAMPLES {
+            // シーズンを**軸にして**いる実例だけが対象。
+            // 「今シーズンの〜」は期間で絞るだけで、並べ替えの話ではない。
+            if !sql.contains("GROUP BY season") {
+                continue;
+            }
+            assert!(
+                sql.contains("season_start"),
+                "実例「{q}」がシーズンごとに集計しているのに season_start を持っていない: {sql}"
+            );
+        }
     }
 
     /// 環境データを使う実例が、**必ず期間で絞っている**か。
