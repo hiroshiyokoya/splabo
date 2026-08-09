@@ -219,13 +219,17 @@ async function cmdGetBulletToken([dataDir]) {
   // 正常なら 1 時間に 1 回も取り直さない。
   // それでも枠を使い切っていたのは、**失敗のたびに認証をやり直していた**ため。
   // 再試行しても失効していなければキャッシュが返るだけで、状況は改善せず枠だけ減る。
-  // 一時エラーへの再試行が要るなら、認証の外側（GraphQL 呼び出し側）で行う。
+  // 一時エラーには**枠を見ながら 1 回だけ**再試行する（下の authWithBudget を参照）。
   let data;
   try {
-    ({ data } = await withTimeout(
-      getBulletToken(storage, sessionToken, undefined, true),
-      AUTH_TIMEOUT_MS,
-      'get_bullet_token',
+    ({ data } = await authWithBudget(
+      () => withTimeout(
+        getBulletToken(storage, sessionToken, undefined, true),
+        AUTH_TIMEOUT_MS,
+        'get_bullet_token',
+      ),
+      storage,
+      nsid,
     ));
   } catch (e) {
     e.message = await withAuthContext(storage, nsid, e.message);
@@ -322,6 +326,74 @@ const AUTH_LIMIT_PERIOD_MS = 60 * 60 * 1000;
  * nxapi は試行時刻を `RateLimitAttempts-<key>.<user>` に残しているので、そこから出す。
  * 取れなければ null（説明が付かないだけで、元のエラーは失われない）。
  */
+/** 認証の再試行までの待ち時間（ミリ秒）。znca-api が落ち着く猶予を取る。 */
+const AUTH_RETRY_DELAY_MS = 5000;
+
+/**
+ * 認証を実行し、**上流の一時障害のときだけ枠を見て 1 回だけ**やり直す（#613）。
+ *
+ * # なぜ「1 回だけ」で「枠を見て」なのか
+ *
+ * znca-api は断続的に `500 {"error":"timeout"}` を返す（#272）。上流の一時障害なので
+ * やり直せば通ることが多い。
+ *
+ * 一方、#596 では**失敗のたびに 3 回やり直して枠を使い切っていた**。
+ * nxapi は認証を種類ごとに 1 時間 4 回までに制限している。
+ * 実データでは、この失敗で `coral` と `na` の枠が 1 つずつ減っていた。
+ *
+ * どちらの失敗も「再試行が多すぎる / 少なすぎる」の両極だった。
+ * **残り枠が 2 つ以上あるときに限り 1 回だけ**やり直す、が両方を避ける線。
+ */
+async function authWithBudget(run, storage, nsid) {
+  const started = Date.now();
+  try {
+    return await run();
+  } catch (e) {
+    const msg = String((e && e.message) || e);
+    const status = extractStatus(e, msg);
+    const upstream = extractUpstreamError(e, msg);
+    const transient =
+      (typeof status === 'number' && status >= 500 && status < 600) ||
+      (typeof upstream === 'string' && /timeout|unavailable/i.test(upstream));
+    const elapsed = Math.round((Date.now() - started) / 1000);
+
+    if (!transient) {
+      process.stderr.write(`認証に失敗（${elapsed} 秒）: やり直しても直らない種類のエラーです\n`);
+      throw e;
+    }
+    // 枠を使い切ると 1 時間締め出される。余裕が無いなら再試行しない。
+    const room = await Math.min(
+      await remainingBudget(storage, nsid, 'coral'),
+      await remainingBudget(storage, nsid, 'na'),
+    );
+    if (room < 2) {
+      process.stderr.write(
+        `上流の一時障害（${elapsed} 秒）。残り枠が ${room} なので再試行しません\n`,
+      );
+      throw e;
+    }
+    process.stderr.write(
+      `上流の一時障害（${elapsed} 秒）: ${msg}\n` +
+        `${AUTH_RETRY_DELAY_MS / 1000} 秒後に 1 回だけやり直します（残り枠 ${room}）\n`,
+    );
+    await new Promise((r) => setTimeout(r, AUTH_RETRY_DELAY_MS));
+    return await run();
+  }
+}
+
+/** 指定した種類の認証の残り枠。読めなければ 0（＝再試行しない側に倒す）。 */
+async function remainingBudget(storage, nsid, key) {
+  try {
+    const raw = (await storage.getItem(`RateLimitAttempts-${key}.${nsid}`)) ?? [];
+    const recent = raw
+      .map((a) => (typeof a === 'number' ? a : a && a.time))
+      .filter((t) => typeof t === 'number' && t >= Date.now() - AUTH_LIMIT_PERIOD_MS);
+    return Math.max(0, AUTH_LIMIT_REQUESTS - recent.length);
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * キャッシュされた bulletToken の状態を一言で返す（#611）。
  *
