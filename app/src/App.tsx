@@ -33,7 +33,24 @@ initAppSettings()
 const DEFAULT_SETTINGS: AppSettings = {
   ai: { provider: 'openai', apiKey: '', model: '' },
   autoFetchEnabled: false,
-  autoFetchIntervalMin: 1440, // 24h
+  /**
+   * 自動取得の間隔（分）。既定は 1 時間（#616）。
+   *
+   * 🔴 **長くするほど不利になる。** SplatNet の bulletToken は約 2 時間で失効し、
+   * 失効していると取得のたびに認証をやり直す。認証は znca-api 経由で 12 往復ほどあり、
+   * ここが最も失敗しやすい（`tools/nxapi-wrapper/wrapper.js` の AUTH_TIMEOUT_MS を参照）。
+   *
+   * | 間隔 | トークン | 認証 |
+   * |---|---|---|
+   * | 120 分 | 取りに行くたびちょうど失効 | 毎回やり直し |
+   * | 60 分 | 2 回に 1 回は生きている | 半分で済む |
+   *
+   * さらに nxapi は認証を種類ごとに 1 時間 4 回までに制限しており、
+   * **失敗した認証も回数に数える**。上流が不安定な時間帯に長い間隔で当たると、
+   * 数回の失敗で 1 時間締め出される。トークンの寿命より短い間隔にしておくと、
+   * キャッシュに当たる回数が増えて認証そのものが減る。
+   */
+  autoFetchIntervalMin: 60,
   statink: { apiKey: '', autoUpload: false, screenName: null },
 }
 /** ブキマスターを再取得するインターバル(ミリ秒)。24 時間。 */

@@ -224,7 +224,7 @@ pub fn run() {
                                         // サイドバー手動取得と同じく、バトル成功後にギアも best-effort（#440）。
                                         fetch_gear_best_effort(&handle, "起動時取得").await;
                                     }
-                                    Err(e)        => log::error!("[起動時取得] 失敗: {e}"),
+                                    Err(e)        => log_fetch_failure("起動時取得", &e),
                                 }
                             } else {
                                 log::info!("[起動時取得] 未ログインのためスキップ");
@@ -275,8 +275,13 @@ pub fn run() {
                                     send_notification(&handle, b);
                                 }
                                 Err(e) => {
-                                    log::error!("[自動取得] 失敗: {e}");
-                                    send_notification_error(&handle);
+                                    log_fetch_failure("自動取得", &e);
+                                    // 🔴 回数制限は**待つ以外にできることが無い**（#616）。
+                                    // 通知しても不安にさせるだけなので出さない。
+                                    // 枠は次の発火までに回復していることが多い。
+                                    if !is_rate_limited(&e) {
+                                        send_notification_error(&handle);
+                                    }
                                 }
                             }
                         }
@@ -655,6 +660,25 @@ fn send_notification(app: &AppHandle, battles: usize) {
         .title("splabo")
         .body(&body)
         .show();
+}
+
+/// 取得失敗が「認証の回数制限」によるものか（#616）。
+///
+/// `NxapiError` は文字列化のときに `RATE_LIMITED:` を先頭へ付ける（`FailureKind::code`）。
+/// 途中の経路が `Result<_, String>` なので、ここでは前置きで判定する。
+fn is_rate_limited(err: &str) -> bool {
+    err.starts_with("RATE_LIMITED:")
+}
+
+/// 取得失敗をログに出す。**回数制限だけは error にしない**（#616）。
+///
+/// 待てば直るものを ERROR で出すと、本当に困っている失敗が埋もれる。
+fn log_fetch_failure(what: &str, err: &str) {
+    if is_rate_limited(err) {
+        log::warn!("[{what}] 見送り: {err}");
+    } else {
+        log::error!("[{what}] 失敗: {err}");
+    }
 }
 
 fn send_notification_error(app: &AppHandle) {

@@ -23,6 +23,11 @@ pub enum FailureKind {
     AuthExpired,
     /// ローカル側のネットワーク断・接続タイムアウト。
     Network,
+    /// 認証の回数制限に達した（nxapi の 1 時間 4 回・種類ごと）。
+    ///
+    /// **待つ以外にできることが無い。** 再ログインを促しても、再試行しても意味がないので、
+    /// 失敗として騒ぎ立てずに回復時刻を伝える（#616）。
+    RateLimited,
     /// 上のいずれとも判定できないもの。憶測で認証エラー扱いしない。
     Unknown,
 }
@@ -37,6 +42,7 @@ impl FailureKind {
             FailureKind::UpstreamUnavailable => Some("UPSTREAM_UNAVAILABLE"),
             FailureKind::AuthExpired => Some("AUTH_EXPIRED"),
             FailureKind::Network => Some("NETWORK"),
+            FailureKind::RateLimited => Some("RATE_LIMITED"),
             FailureKind::Unknown => None,
         }
     }
@@ -115,6 +121,13 @@ pub fn classify_failure(
     let upstream = upstream_error.map(|s| s.to_ascii_lowercase());
     let upstream = upstream.as_deref();
     let lower = message.to_ascii_lowercase();
+
+    // 0. 認証の回数制限（#616）。
+    // 待つ以外にできることが無いので、他のどれよりも先に判定する。
+    // 5xx に混ざると「一時障害だから再試行」と読まれ、無駄に叩いて枠の回復を遅らせる。
+    if lower.contains("too many attempts to authenticate") || message.contains("認証の回数制限") {
+        return FailureKind::RateLimited;
+    }
 
     // 1. 外部サービスの一時障害
     if matches!(status, Some(s) if (500..600).contains(&s)) {
@@ -279,6 +292,39 @@ mod tests {
 
     fn failure(json: serde_json::Value) -> NxapiError {
         sidecar_failure("bullet token 取得失敗", &json)
+    }
+
+    // --- 認証の回数制限（#616）---
+
+    /// 回数制限は**待つ以外にできることが無い**ので、他と区別できること。
+    ///
+    /// 一時障害（5xx）に混ざると「再試行すれば直る」と読まれ、無駄に叩いて
+    /// 枠の回復を遅らせる。認証失効に混ざると再ログインを促してしまう。
+    #[test]
+    fn 回数制限は待つしかない失敗として分類される() {
+        for msg in [
+            "Too many attempts to authenticate (coral)",
+            "Too many attempts to authenticate (splatnet3)",
+            "認証の回数制限に達しています（coral・1 時間に 4 回まで）。01:51 以降に再試行できます。",
+        ] {
+            assert_eq!(
+                classify_failure(None, None, msg),
+                FailureKind::RateLimited,
+                "{msg}"
+            );
+        }
+        // 文字列化したときに前置きが付き、上位が見分けられること。
+        let e = NxapiError::new(FailureKind::RateLimited, "bullet token 取得失敗: Too many attempts");
+        assert!(e.to_string().starts_with("RATE_LIMITED:"), "{e}");
+    }
+
+    /// 500 と一緒に来ても回数制限を優先すること（判定順を守る）。
+    #[test]
+    fn 回数制限は一時障害より先に判定される() {
+        assert_eq!(
+            classify_failure(Some(500), Some("timeout"), "Too many attempts to authenticate (coral)"),
+            FailureKind::RateLimited,
+        );
     }
 
     // --- 本 Issue の再現ケース: znca-api の 500 + {"error":"timeout"} ---
