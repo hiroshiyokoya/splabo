@@ -114,6 +114,26 @@ main().catch((e) => {
 const NETWORK_TIMEOUT_MS = 30000;
 
 /**
+ * 認証（bulletToken 取得）だけの上限時間（ミリ秒・#611）。
+ *
+ * 🔴 **認証は 1 回で 12 本前後の往復がある。** 30 秒では足りずに落ちていた。
+ *
+ * ```
+ * id_token → f-token(znca-api) → Coral login → getWebServiceToken → bullet_token
+ * ```
+ *
+ * に加えて nxapi の `splatnet3.js` が毎回 7 本の追加 API を並列で叩く
+ * （friendList / chats / webServices / activeEvent / media / announcements / currentUser）。
+ *
+ * ここで落ちると**枠だけ減ってキャッシュは空のまま**になり、次の試行も最初からやり直す。
+ * 1 時間 4 回の枠しかないので、4 回落ちれば締め出される。
+ * 「取れないことが多い」の実体はこれだった（実データで 3 分間に 4 回の再認証を確認）。
+ *
+ * ハングを防ぐという当初の目的（#402）は保ちつつ、往復の本数に見合う余裕を取る。
+ */
+const AUTH_TIMEOUT_MS = 90000;
+
+/**
  * `promise` に時間上限を設ける（#402）。
  *
  * global fetch へ AbortSignal を差し込む口が getBulletToken 等には無いため、
@@ -185,7 +205,10 @@ async function cmdGetBulletToken([dataDir]) {
   const sessionToken = await storage.getItem('NintendoAccountToken.' + nsid);
   if (!sessionToken) throw new Error('session_token が見つかりません');
 
-  process.stderr.write('bulletToken を取得中...\n');
+  // キャッシュに当たるのか、認証をやり直すのかを**先に**出す（#611）。
+  // 区別が付かないと「なぜ枠が減るのか」がストレージを掘るまで分からない。
+  // 実際、3 分間に 4 回も再認証していたのに気付けなかった。
+  process.stderr.write(`bulletToken を取得中... (${await tokenState(storage, sessionToken)})\n`);
   // splatnet3.js は coral の top-level await を含むため、ここで動的インポート
   const { getBulletToken } = await import('./node_modules/nxapi/dist/common/auth/splatnet3.js');
 
@@ -201,7 +224,7 @@ async function cmdGetBulletToken([dataDir]) {
   try {
     ({ data } = await withTimeout(
       getBulletToken(storage, sessionToken, undefined, true),
-      NETWORK_TIMEOUT_MS,
+      AUTH_TIMEOUT_MS,
       'get_bullet_token',
     ));
   } catch (e) {
@@ -255,7 +278,9 @@ async function cmdWeaponRecords([dataDir]) {
   const sessionToken = await storage.getItem('NintendoAccountToken.' + nsid);
   if (!sessionToken) throw new Error('session_token が見つかりません');
 
-  process.stderr.write('WeaponRecordQuery を実行中...\n');
+  process.stderr.write(
+    `WeaponRecordQuery を実行中... (${await tokenState(storage, sessionToken)})\n`,
+  );
   const { getBulletToken } = await import('./node_modules/nxapi/dist/common/auth/splatnet3.js');
   // 第 4 引数 allow_fetch_token=true により bullet_token が無ければ自動取得する。
   // 🔴 認証はリトライしない（#596）。理由は cmdGetBulletToken のコメントを参照。
@@ -263,7 +288,7 @@ async function cmdWeaponRecords([dataDir]) {
   try {
     ({ splatnet } = await withTimeout(
       getBulletToken(storage, sessionToken, undefined, true),
-      NETWORK_TIMEOUT_MS,
+      AUTH_TIMEOUT_MS,
       'get_bullet_token',
     ));
   } catch (e) {
@@ -297,6 +322,25 @@ const AUTH_LIMIT_PERIOD_MS = 60 * 60 * 1000;
  * nxapi は試行時刻を `RateLimitAttempts-<key>.<user>` に残しているので、そこから出す。
  * 取れなければ null（説明が付かないだけで、元のエラーは失われない）。
  */
+/**
+ * キャッシュされた bulletToken の状態を一言で返す（#611）。
+ *
+ * 「キャッシュに当たる」のか「認証をやり直す」のかが分からないと、
+ * 枠が減る理由を追えない。実際 3 分間に 4 回も再認証していたのに気付けなかった。
+ *
+ * nxapi はキー `BulletToken.<session_token>` に `expires_at`（ミリ秒）付きで持つ。
+ */
+async function tokenState(storage, sessionToken) {
+  try {
+    const t = await storage.getItem('BulletToken.' + sessionToken);
+    if (!t || !t.expires_at) return 'キャッシュなし → 認証します';
+    const left = Math.round((t.expires_at - Date.now()) / 60000);
+    return left > 0 ? `キャッシュ有効（残り ${left} 分）` : 'キャッシュ失効 → 認証します';
+  } catch {
+    return 'キャッシュ状態は不明';
+  }
+}
+
 /**
  * 認証の失敗メッセージに文脈を足す。
  *
