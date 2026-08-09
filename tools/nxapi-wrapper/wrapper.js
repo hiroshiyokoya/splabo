@@ -205,8 +205,7 @@ async function cmdGetBulletToken([dataDir]) {
       'get_bullet_token',
     ));
   } catch (e) {
-    const hint = await rateLimitHint(storage, nsid);
-    if (hint) e.message = `${e.message}\n${hint}`;
+    e.message = await withAuthContext(storage, nsid, e.message);
     throw e;
   }
 
@@ -268,8 +267,7 @@ async function cmdWeaponRecords([dataDir]) {
       'get_bullet_token',
     ));
   } catch (e) {
-    const hint = await rateLimitHint(storage, nsid);
-    if (hint) e.message = `${e.message}\n${hint}`;
+    e.message = await withAuthContext(storage, nsid, e.message);
     throw e;
   }
 
@@ -299,6 +297,29 @@ const AUTH_LIMIT_PERIOD_MS = 60 * 60 * 1000;
  * nxapi は試行時刻を `RateLimitAttempts-<key>.<user>` に残しているので、そこから出す。
  * 取れなければ null（説明が付かないだけで、元のエラーは失われない）。
  */
+/**
+ * 認証の失敗メッセージに文脈を足す。
+ *
+ * 足すのは 2 つ。
+ *
+ * 1. **どこで詰まったか。** タイムアウトは上流（nxapi-znca-api / 任天堂）が
+ *    応答を返さなかったということで、こちらの設定や回数制限とは関係がない。
+ *    区別しないと「自分の使いすぎだ」と誤解される。
+ * 2. **認証の残り枠。** 上限に達しているときだけ「◯時以降に」と言う。
+ */
+async function withAuthContext(storage, nsid, message) {
+  const parts = [message];
+  if (/timeout|ETIMEDOUT/i.test(message)) {
+    parts.push(
+      '任天堂側または nxapi-znca-api が応答しませんでした。' +
+        'こちらの設定や回数制限の問題ではないので、少し待ってからもう一度お試しください。',
+    );
+  }
+  const hint = await rateLimitHint(storage, nsid);
+  if (hint) parts.push(hint);
+  return parts.join('\n');
+}
+
 async function rateLimitHint(storage, nsid) {
   try {
     const raw = (await storage.getItem('RateLimitAttempts-splatnet3.' + nsid)) ?? [];
@@ -308,9 +329,16 @@ async function rateLimitHint(storage, nsid) {
     const recent = times.filter((t) => t >= Date.now() - AUTH_LIMIT_PERIOD_MS).sort((a, b) => a - b);
     if (recent.length === 0) return null;
 
+    const remaining = AUTH_LIMIT_REQUESTS - recent.length;
+    // 🔴 **枠が残っているのに「◯時以降に再試行できます」と言わない。**
+    // 以前は常にこの文を出していたので、2/4 回でも「待たないと試せない」と読めた。
+    // 待つ必要があるのは上限に達したときだけ。
+    if (remaining > 0) {
+      return `直近 1 時間の認証は ${recent.length} 回です（上限 ${AUTH_LIMIT_REQUESTS} 回）。あと ${remaining} 回試せます。`;
+    }
     const freeAt = new Date(recent[0] + AUTH_LIMIT_PERIOD_MS);
     const hhmm = `${String(freeAt.getHours()).padStart(2, '0')}:${String(freeAt.getMinutes()).padStart(2, '0')}`;
-    return `直近 1 時間の認証は ${recent.length} 回です（上限 ${AUTH_LIMIT_REQUESTS} 回・任天堂側の負荷を避けるための nxapi の制限）。${hhmm} 以降に再試行できます。`;
+    return `直近 1 時間の認証が上限（${AUTH_LIMIT_REQUESTS} 回・任天堂側の負荷を避けるための nxapi の制限）に達しました。${hhmm} 以降に再試行できます。`;
   } catch {
     return null;
   }
