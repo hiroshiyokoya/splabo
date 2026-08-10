@@ -24,12 +24,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // nxapi は本来これを実行時に読んで**新しい nxapi を出さずに追従**する仕組みだが、
 // 無効化しているぶんをビルド時取得で埋める。
 //
-// 実際、手で維持していたスナップショットが `znca_version: 3.4.0` のまま古くなり、
-// 認証が数時間 `500 unknown_error` で失敗し続けた。**手で維持する限り必ず古くなる。**
-//
 // 取得できないときは同梱値へフォールバックする（ネットワークが無い環境でも
-// ビルドは通す）。どちらを使ったかは必ずログに出す。黙って古い値を使うと、
-// 今回と同じ壊れ方を静かに再現する。
+// ビルドは通す）。どちらを使ったかは必ずログに出す。
+//
+// ── `coral: null` は「最新版に委ねる」ではない（#620）────────────────
+//
+// nxapi は `coral` が falsy だと **Coral 認証そのものを拒否**する:
+//
+//   if (!config) throw new Error('Remote configuration prevents Coral authentication');
+//     — nxapi/dist/api/coral.js
+//
+// つまり上流が配信を止めるための**停止スイッチ**であって、版の省略ではない。
+// 素直に取り込むと認証が 1 回も通らなくなる（実際に止めた）。
+//
+// 上流が null を返し、同梱値に版があるときは**同梱値を残す**。ただし黙って
+// 上書きせず、必ずログに出す。上流が止めた事実は運用者が知る必要がある。
 const CONFIG_URL = 'https://fancy.org.uk/api/nxapi/config';
 const remoteConfigSrc = path.join(__dirname, '..', 'nxapi-remote-config.json');
 const remoteConfigDst = path.join(__dirname, 'node_modules', 'nxapi', 'resources', 'common', 'remote-config.json');
@@ -51,18 +60,36 @@ async function fetchRemoteConfig() {
   }
 }
 
+const bundledConfig = JSON.parse(readFileSync(remoteConfigSrc, 'utf-8'));
+
 let remoteConfig;
 try {
   remoteConfig = await fetchRemoteConfig();
-  // 取得できたら同梱ファイルも更新する（差分が git に出るので、変化に気付ける）。
+
+  // `coral: null` は停止スイッチ。同梱値に版があるなら残す（上を参照）。
+  if (!remoteConfig.coral?.znca_version && bundledConfig.coral?.znca_version) {
+    console.warn('remote-config: 🔴 上流が coral を止めています（coral: null）');
+    console.warn(`  そのまま使うと Coral 認証が拒否されるので、同梱値 ${JSON.stringify(bundledConfig.coral)} を残します`);
+    console.warn('  認証が通らなくなったら、まずここを疑ってください');
+    remoteConfig = { ...remoteConfig, coral: bundledConfig.coral };
+  }
+
+  // 同梱ファイルには**実際に同梱する値**を書く（差分が git に出るので、変化に気付ける）。
   writeFileSync(remoteConfigSrc, JSON.stringify(remoteConfig, null, 2) + '\n', 'utf-8');
   console.log(`remote-config: 取得しました（${CONFIG_URL}）`);
   console.log(`  coral = ${JSON.stringify(remoteConfig.coral)}`);
   console.log(`  splatnet3 app_ver = ${remoteConfig.coral_gws_splatnet3?.app_ver}`);
 } catch (e) {
-  remoteConfig = JSON.parse(readFileSync(remoteConfigSrc, 'utf-8'));
+  remoteConfig = bundledConfig;
   console.warn(`remote-config: 取得に失敗したので同梱値を使います（${e.message}）`);
   console.warn('  🔴 NSO アプリの版が古いと認証が通らなくなります。ネットワークを確認してください。');
+}
+
+if (!remoteConfig.coral?.znca_version) {
+  throw new Error(
+    'remote-config: coral.znca_version が無いので中断します。' +
+    'この状態で同梱すると nxapi が Coral 認証を拒否します（#620）',
+  );
 }
 writeFileSync(remoteConfigDst, JSON.stringify(remoteConfig), 'utf-8');
 console.log('patched remote-config.json');

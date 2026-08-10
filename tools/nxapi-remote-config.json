@@ -10,7 +10,9 @@
   ],
   "status_update_url": "https://nxapi-auth.fancy.org.uk/api/status",
   "log_encryption_key": "E2Sii_7drCzK-68RsEoArmopiAIlZD_6TMA2F_UAAU0",
-  "coral": null,
+  "coral": {
+    "znca_version": "3.4.0"
+  },
   "coral_auth": {
     "default": [
       "nxapi",
