@@ -648,17 +648,23 @@ async fn fetch_gear_best_effort(app: &AppHandle, context: &str) {
     }
 }
 
+/// 取得できたバトルを通知する。**0 件のときは何も出さない**（#622）。
+///
+/// 自動取得は 1 時間おきに走るが、寝ているあいだはバトルが増えない。
+/// 0 件でも通知していたため、中身の無い通知が夜通し積み上がっていた。
+/// Windows はロック中や応答不可モードのトーストを通知センターに溜めるので、
+/// **朝にまとめて出る**形になっていた。
+///
+/// 変化があったときだけ知らせる。
 fn send_notification(app: &AppHandle, battles: usize) {
     use tauri_plugin_notification::NotificationExt;
-    let body = if battles > 0 {
-        format!("バトル +{}件取得しました", battles)
-    } else {
-        "新しいバトルはありませんでした".to_string()
-    };
+    if battles == 0 {
+        return;
+    }
     let _ = app.notification()
         .builder()
         .title("splabo")
-        .body(&body)
+        .body(format!("バトル +{}件取得しました", battles))
         .show();
 }
 
