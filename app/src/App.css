@@ -114,6 +114,22 @@
   overflow: visible !important;
 }
 
+/* クリックしたときのフォーカス枠を出さない。
+   Recharts はキーボード操作のためにチャートの <svg> へ tabIndex=0 を付けるので、
+   点をクリックしてツールチップを固定すると**黒い枠**が出る。グラフの種類ごとに
+   枠の大きさも違う。画像として保存すると、その枠まで写る。
+
+   🔴 outline を無条件に消さないこと。キーボードで辿っている人が、いま
+   どこにいるのか分からなくなる。:focus-visible が付くとき（＝キーボード操作）は
+   従来どおり出す。消すのはマウスで触ったときだけ。 */
+.recharts-wrapper:focus:not(:focus-visible),
+.recharts-surface:focus:not(:focus-visible),
+.chart-hover-area :focus:not(:focus-visible),
+.chart-card :focus:not(:focus-visible),
+.env-chart-section :focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* カレンダー/ヒートマップのセル共通スタイル。SVG rect に適用（カレンダー本体・凡例バー共有）。
    色は既に accent × surface のブレンドで整えているため、fill-opacity は付けない。 */
 .cal-cell {
