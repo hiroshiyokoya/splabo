@@ -421,46 +421,59 @@ export function buildSpread(
     y: names.reduce((s, n) => s + basePos.get(n)!.y, 0) / names.length,
   }
 
-  // 🔴 端に寄った塊は、**空いているほうへ寄せて散らす**。
+  // 🔴 端に寄った塊は、**空いているほうへ扇形に散らす**。
   //
-  // 重心をそのまま放射の中心にすると、外周を向いた点は端に阻まれて動けない。
-  // 均等に散らそうとして、行き場の無い向きにも配り続けることになる。
-  //
-  // 足りないぶんだけ中心を端側へずらすと、光線がまとめて内側を向く。
-  // 中心が塊の外に出ても構わない（向きを決めるためだけの点）。
-  const need = span * (0.5 + Math.sqrt(names.length) / 2)
-  const origin = {
-    x: centroid.x
-      - Math.max(0, need - (centroid.x - lo.x))
-      + Math.max(0, need - (hi.x - centroid.x)),
-    y: centroid.y
-      - Math.max(0, need - (centroid.y - lo.y))
-      + Math.max(0, need - (hi.y - centroid.y)),
+  // 中心を端の向こうへずらす手もあるが、それをやると光線がほぼ平行になり、
+  // **一列に並んで見栄えが悪い**。中心は重心のままにして、**向きの取れる範囲**を
+  // 狭めるほうがよい。狭い扇の中でも向きは散るので、並びが線にならない。
+  const n = names.length
+  const need = span * (0.5 + Math.sqrt(n) / 2)
+  const room = {
+    left:   centroid.x - lo.x,
+    right:  hi.x - centroid.x,
+    top:    centroid.y - lo.y,
+    bottom: hi.y - centroid.y,
   }
+  const tight = [room.left, room.right, room.top, room.bottom].filter(r => r < need).length
+  // 空いているほうを向くベクトル。塊が真ん中にあれば 0 に近くなる。
+  const freeX = room.right - room.left
+  const freeY = room.bottom - room.top
+  const facing = tight === 0 || Math.hypot(freeX, freeY) < 1e-6 ? 0 : Math.atan2(freeY, freeX)
+  // 詰まっている辺が多いほど扇を狭める。塞がれていなければ全方位。
+  const sector = tight === 0 ? Math.PI : tight === 1 ? Math.PI * 0.6 : Math.PI * 0.42
 
-  // 各点は「重心から自分へ向かう向き」に、どれだけ出るか(t)だけを持つ。
-  // 遅延はカーソルの点から近い順。そこから波紋のように動く。
-  const members = names
+  // 各点に**扇の中の向き**を 1 つ割り当てる。あとはその向きへどれだけ出るか(t)だけ。
+  //
+  // 割り当ては**元の方角の順**。並べ替えると引き出し線が交差して、どれがどれだか
+  // 読めなくなる。順を保ったまま扇に等間隔で配れば、狭い扇でも向きが散る。
+  //
+  // `facing` を基準にした相対角で並べるので、扇の切れ目をまたいでも順序が壊れない。
+  const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
+  const byAngle = names
     .map((name, i) => {
       const base = basePos.get(name)!
-      let ux = base.x - origin.x, uy = base.y - origin.y
-      const len = Math.hypot(ux, uy)
-      if (len < 1e-6) {
-        // 重心とぴったり同じ点。向きが決まらないので黄金角で決め打ちにする。
-        // 乱数だとホバーのたびに配置が変わって落ち着かない。
-        const a = i * GOLDEN_ANGLE
-        ux = Math.cos(a); uy = Math.sin(a)
-      } else {
-        ux /= len; uy /= len
-      }
+      const dx = base.x - centroid.x, dy = base.y - centroid.y
+      // 重心とぴったり同じ点は方角が無い。黄金角で決め打ちにする
+      // （乱数だとホバーのたびに配置が変わって落ち着かない）。
+      const raw = Math.hypot(dx, dy) < 1e-6 ? i * GOLDEN_ANGLE : Math.atan2(dy, dx)
+      return { name, base, rel: wrap(raw - facing) }
+    })
+    .sort((a, b) => a.rel - b.rel)
+
+  // 遅延はカーソルの点から近い順。そこから波紋のように動く。
+  const members = byAngle
+    .map((m, i) => {
+      // 扇の中に等間隔。中央寄せ((i + 0.5) / n)にして、端に張り付かせない。
+      const angle = facing - sector + ((i + 0.5) / n) * sector * 2
+      const ux = Math.cos(angle), uy = Math.sin(angle)
       // その向きへ出られる上限(プロット領域の内側まで)。
-      const tMaxX = ux > 0 ? (hi.x - base.x) / ux : ux < 0 ? (lo.x - base.x) / ux : Infinity
-      const tMaxY = uy > 0 ? (hi.y - base.y) / uy : uy < 0 ? (lo.y - base.y) / uy : Infinity
+      const tMaxX = ux > 0 ? (hi.x - m.base.x) / ux : ux < 0 ? (lo.x - m.base.x) / ux : Infinity
+      const tMaxY = uy > 0 ? (hi.y - m.base.y) / uy : uy < 0 ? (lo.y - m.base.y) / uy : Infinity
       return {
-        name, base, ux, uy, t: 0,
+        name: m.name, base: m.base, ux, uy, t: 0,
         tMax: Math.max(0, Math.min(tMaxX, tMaxY)),
-        x: base.x, y: base.y,
-        d: Math.hypot(base.x - seed.x, base.y - seed.y),
+        x: m.base.x, y: m.base.y,
+        d: Math.hypot(m.base.x - seed.x, m.base.y - seed.y),
       }
     })
     .sort((a, b) => a.d - b.d)
@@ -994,12 +1007,27 @@ export function withRefTick(
 export const SIZE_AREA_RANGE: [number, number] = [40, 600]
 
 /**
- * 軸端に確保する描画余白(px)。
+ * 軸端に確保する描画余白(px)。マーカーが軸線に載って半分切れるのを防ぐ。
  *
- * 最大ドットは area=600 → 半径約 13.8px。選択時はさらにハロー 4px＋線幅・角形の対角が付くため、
- * 28px 確保する。あわせてドメイン側も広げて、clipPath 内に収める。
+ * 🔴 これは**値の範囲ではなくピクセル**なので、勝率のように 0〜100% で頭打ちの軸でも
+ * 「0% の下」「100% の上」に空白として見える。**必要な分だけにする。**
+ * 一律 28px にしていたころは、小さい点のグラフでも上下に 28px ずつ空いていた。
+ *
+ * 実際に必要なのは「一番大きく描かれるマーカーの半径 + 強調ぶん」。
  */
-const SCATTER_EDGE_PADDING = 28
+function scatterEdgePadding(opts: {
+  imagePx?: number
+  hasSize?: boolean
+  constSize: number
+}): number {
+  if (opts.imagePx) {
+    // 画像は広げたとき 1.12 倍になり、選択中は外に輪が付く。
+    return Math.ceil(opts.imagePx * SPREAD_SCALE / 2 + IMAGE_RING_GAP + IMAGE_RING_WIDTH)
+  }
+  // ドットは面積指定。選択時のハロー・角形の対角ぶんを少し足す。
+  const area = opts.hasSize ? SIZE_AREA_RANGE[1] : opts.constSize
+  return Math.ceil(areaToRadius(area) + 6)
+}
 
 /**
  * 線形ドメインを値空間で広げ、上下限の点が軸線・clip に乗らないようにする。
@@ -1382,6 +1410,9 @@ export function ScatterChart({
   // 🔴 凡例と同じ定数を使う(SIZE_AREA_RANGE のコメント参照)。
   const zRange: [number, number] = hasSize ? SIZE_AREA_RANGE : [constSize, constSize]
 
+  // 軸端の余白は、実際に描かれるマーカーの大きさから出す(一律に取ると空白が目立つ)。
+  const edgePad = scatterEdgePadding({ imagePx, hasSize, constSize })
+
   // ばらけ表示用に、各点の**元の**描画座標を控える(#630)。
   //
   // `shape` コールバックに来る cx/cy は常に元の位置なので、広げている最中でも
@@ -1569,7 +1600,7 @@ export function ScatterChart({
           dataKey="x"
           name={xLabel}
           height={X_AXIS_HEIGHT}
-          padding={{ left: SCATTER_EDGE_PADDING, right: SCATTER_EDGE_PADDING }}
+          padding={{ left: edgePad, right: edgePad }}
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           tickFormatter={xIsRate ? fmtRateTick : fmtTick}
           scale={xLog ? 'log' : 'auto'}
@@ -1582,7 +1613,7 @@ export function ScatterChart({
           type="number"
           dataKey="y"
           name={yLabel}
-          padding={{ top: SCATTER_EDGE_PADDING, bottom: SCATTER_EDGE_PADDING }}
+          padding={{ top: edgePad, bottom: edgePad }}
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           width={Y_AXIS_WIDTH}
           tickFormatter={yIsRate ? fmtRateTick : fmtTick}
