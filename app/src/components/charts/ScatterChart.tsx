@@ -664,6 +664,10 @@ const EXPORT_DOT_AVOID_PAD = 12
 const ANCHOR_CLEARANCE = 10
 /** 候補を作るときの向きの刻み数。細かいほど「近くの空き」を見つけやすい。 */
 const TOOLTIP_ANGLE_STEPS = 16
+/** 1px 遠ざかることを、何 px² の重なりと同じ価値とみなすか。
+ *
+ *  大きいほど点の近くに留まり、小さいほど重なりを避けて遠くへ行く。 */
+const TOOLTIP_REACH_WEIGHT = 40
 
 /** 向きベクトルを 8 方位のラベルに落とす（`data-placement` 用）。 */
 function directionLabel(dx: number, dy: number): TooltipDirection {
@@ -758,15 +762,10 @@ export function chooseScatterTooltipPlacement({
       })
     }
   }
-  // 近傍がすべて埋まっているとき用に、プロット四隅へ退避する候補。
-  // 距離が大きいので、近くに空きがあれば選ばれない。
-  const farReach = 1e6
-  candidates.push(
-    { direction: 'top-right',    left: chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD, top: TOOLTIP_EDGE_PAD, dx:  1, dy: -1, reach: farReach },
-    { direction: 'top-left',     left: TOOLTIP_EDGE_PAD, top: TOOLTIP_EDGE_PAD, dx: -1, dy: -1, reach: farReach },
-    { direction: 'bottom-right', left: chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD, top: chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD, dx:  1, dy:  1, reach: farReach },
-    { direction: 'bottom-left',  left: TOOLTIP_EDGE_PAD, top: chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD, dx: -1, dy:  1, reach: farReach },
-  )
+  // 🔴 **四隅への退避はしない。** 環境分析のように点が密なグラフでは、近くに
+  // 「まったく重ならない場所」が存在しない。空いているのは隅だけなので、
+  // 「重なりが少ない順」で選ぶと隅まで飛ぶ。点から大きく外れたチップは読めない。
+  // 近くで多少重なるほうがまし、という前提で下の重み付けを使う。
 
   const maxLeft = Math.max(TOOLTIP_EDGE_PAD, chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD)
   const maxTop = Math.max(TOOLTIP_EDGE_PAD, chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD)
@@ -822,15 +821,20 @@ export function chooseScatterTooltipPlacement({
     }
   })
 
-  // 数値の重み付けではなく辞書順で比較し、上記の優先順位を厳密に守る。
-  // 🔴 被らない候補が複数あるときは**一番近いもの**を採る。ここに距離が無いと、
-  // 近くが空いていても遠くの候補が選ばれて、点から離れたところにチップが出る。
+  // 🔴 「自分の点を隠さない」だけは絶対。ここは辞書順で先に見る。
+  //
+  // そのうえで、**重なりと近さを天秤にかける**。辞書順で「重なりの少なさ」を先に
+  // 見ると、点が密なグラフでは近くに空きが無いので、空いている隅まで飛んでしまう。
+  // 逆に近さだけで決めると、すぐ隣のブキを隠す。
+  //
+  // `TOOLTIP_REACH_WEIGHT` は「1px 遠ざかることを、何 px² の重なりと同じ価値とみなすか」。
+  // 40 なら、ブキ 1 つ(30px 角 ≒ 900px²)を隠すのを避けるために 20px ほど動く。
+  // そこまでして避ける価値が無ければ、近い場所に留まる。
+  const cost = (s: typeof scored[number]) => s.overlapArea + s.reach * TOOLTIP_REACH_WEIGHT
   scored.sort((a, b) =>
     a.anchorCovered - b.anchorCovered ||
     a.anchorOverlapArea - b.anchorOverlapArea ||
-    a.overlapCount - b.overlapCount ||
-    a.overlapArea - b.overlapArea ||
-    a.reach - b.reach ||
+    cost(a) - cost(b) ||
     b.outwardAlignment - a.outwardAlignment,
   )
   const best = scored[0]
