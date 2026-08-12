@@ -214,13 +214,25 @@ const SPREAD_HULL_PAD = 12
 /** 広げた点と元の位置の間に引く線。 */
 const SPREAD_LINK_OPACITY = 0.55
 
+// 動きの手触り(#630)。**カクッと出ると無機的**なので、少し行き過ぎて戻る曲線で
+// ふわっと広げる。順に少しずつ遅らせると、まとめて瞬間移動する感じが消える。
+const SPREAD_MS          = 300
+const SPREAD_COLLAPSE_MS = 200
+/** 終点を少し行き過ぎて戻る。柔らかさはほぼこれで決まる。 */
+const SPREAD_EASE        = 'cubic-bezier(0.22, 1.28, 0.36, 1)'
+const SPREAD_STAGGER_MS  = 24
+/** 広げた画像は少し持ち上げる(手前に来た感じを出す)。 */
+const SPREAD_SCALE       = 1.12
+/** 塊以外を薄くする。広げた先が他の点と多少重なっても、どれが塊かは読める。 */
+const SPREAD_DIM_OPACITY = 0.22
+
 type SpreadState = {
   /** 塊の重心(チャート座標)。当たり判定の円の中心。 */
   center:  { x: number; y: number }
   /** ここから出たら畳む。 */
   hullR:   number
-  /** 点の名前 → 元の位置からのずらし量。 */
-  offsets: Map<string, { dx: number; dy: number }>
+  /** 点の名前 → 元の位置からのずらし量と、遅延をずらすための並び順。 */
+  offsets: Map<string, { dx: number; dy: number; order: number }>
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi <= lo ? lo : hi)
@@ -264,12 +276,11 @@ export function buildSpread(
     y: names.reduce((s, n) => s + basePos.get(n)!.y, 0) / names.length,
   }
 
-  // 円周に n 個並べて隣同士が重ならない最小半径。n=2 なら一辺の半分。
-  const n = names.length
-  const minR = imagePx / (2 * Math.sin(Math.PI / n))
-  const radius = Math.max(minR + 4, imagePx * 0.9)
+  // 広げた画像は少し拡大するので、間隔の計算はその分を見込む。
+  const span = imagePx * SPREAD_SCALE
 
   // 元の方角で並べ、その順に等間隔で置く。先頭の方角を起点にすると全体の向きも保てる。
+  const n = names.length
   const ordered = names
     .map(name => {
       const p = basePos.get(name)!
@@ -277,17 +288,42 @@ export function buildSpread(
     })
     .sort((a, b) => a.angle - b.angle)
 
-  const margin = imagePx / 2 + 2
-  const offsets = new Map<string, { dx: number; dy: number }>()
-  ordered.forEach((m, i) => {
-    const angle = ordered[0].angle + (i * 2 * Math.PI) / n
-    const tx = clamp(center.x + radius * Math.cos(angle), margin, bounds.width - margin)
-    const ty = clamp(center.y + radius * Math.sin(angle), margin, bounds.height - margin)
-    const base = basePos.get(m.name)!
-    offsets.set(m.name, { dx: tx - base.x, dy: ty - base.y })
+  // 塊の外にある点。ここを避けないと「広げた先で隣の点と重なる」。
+  const others: { x: number; y: number }[] = []
+  for (const [name, p] of basePos) if (!seen.has(name)) others.push(p)
+
+  const margin = span / 2 + 2
+  const place = (radius: number) =>
+    ordered.map((m, i) => {
+      const angle = ordered[0].angle + (i * 2 * Math.PI) / n
+      return {
+        name: m.name,
+        x: clamp(center.x + radius * Math.cos(angle), margin, bounds.width - margin),
+        y: clamp(center.y + radius * Math.sin(angle), margin, bounds.height - margin),
+      }
+    })
+
+  // 円周に n 個並べて**メンバー同士**が重ならない最小半径。n=2 なら一辺の半分。
+  const minR = span / (2 * Math.sin(Math.PI / n))
+  let radius = Math.max(minR + 4, span * 0.9)
+  // そのうえで**塊の外の点**とも重ならないところまで広げる。
+  // 密なグラフでは避けきれないこともあるので上限を切り、そのときは薄く塗るほうに任せる。
+  let placed = place(radius)
+  const maxRadius = Math.min(bounds.width, bounds.height) / 2
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const hit = placed.some(p => others.some(o => Math.hypot(p.x - o.x, p.y - o.y) < span * 0.95))
+    if (!hit || radius >= maxRadius) break
+    radius = Math.min(radius + span * 0.4, maxRadius)
+    placed = place(radius)
+  }
+
+  const offsets = new Map<string, { dx: number; dy: number; order: number }>()
+  placed.forEach((p, i) => {
+    const base = basePos.get(p.name)!
+    offsets.set(p.name, { dx: p.x - base.x, dy: p.y - base.y, order: i })
   })
 
-  return { center, hullR: radius + imagePx / 2 + SPREAD_HULL_PAD, offsets }
+  return { center, hullR: radius + span / 2 + SPREAD_HULL_PAD, offsets }
 }
 
 /** Recharts Scatter の shape コールバック。payload.markerShape を読む。 */
@@ -307,7 +343,11 @@ function scatterPointShape(props: {
   /** 画像モードの一辺(px)。指定があり `payload.iconUrl` もあるとき、図形の代わりに画像を描く(#627)。 */
   imagePx?: number
   /** ばらけ表示のずらし量(#630)。元の位置へは引き出し線を引く。 */
-  offset?: { dx: number; dy: number } | null
+  offset?: { dx: number; dy: number; order: number } | null
+  /** どこかの塊が広がっている(#630)。塊の外は薄くする。 */
+  spreadActive?: boolean
+  /** 遷移を付けるか(#630)。動きを減らす設定のときは false。 */
+  animate?: boolean
 }) {
   const cx = props.cx ?? 0
   const cy = props.cy ?? 0
@@ -320,22 +360,45 @@ function scatterPointShape(props: {
   const iconUrl = props.payload?.iconUrl
   if (props.imagePx && iconUrl) {
     const s = props.imagePx
-    // ばらけ表示(#630)。ずらした先に描き、元の位置へ線を引く。
-    const dx = props.offset?.dx ?? 0
-    const dy = props.offset?.dy ?? 0
-    const px = cx + dx
-    const py = cy + dy
+    // ばらけ表示(#630)。
+    //
+    // 位置は x/y ではなく **CSS の transform** で動かす。属性を書き換えると瞬間移動して
+    // 無機的になるが、transform なら遷移が効いてふわっと動く。
+    // 少し行き過ぎて戻る曲線＋順番に遅らせることで、まとめて飛ぶ感じを消している。
+    const off = props.offset
+    const px = cx + (off?.dx ?? 0)
+    const py = cy + (off?.dy ?? 0)
+    const animate = props.animate !== false
+    const moveStyle: CSSProperties = {
+      transformBox: 'fill-box',
+      transformOrigin: 'center',
+      transform: off
+        ? `translate(${off.dx}px, ${off.dy}px) scale(${SPREAD_SCALE})`
+        : 'translate(0px, 0px) scale(1)',
+      transition: !animate
+        ? undefined
+        : off
+          ? `transform ${SPREAD_MS}ms ${SPREAD_EASE} ${off.order * SPREAD_STAGGER_MS}ms`
+          : `transform ${SPREAD_COLLAPSE_MS}ms ease`,
+    }
+    // 塊の外は薄くする。広げた先が避けきれずに重なっても、どれが塊かは読める。
+    const dimmed = props.spreadActive && !off
     // 強調は輪だけ。色メトリクスは画像モードでは効かないので、輪の色は固定でよい。
     return (
       <g
         data-scatter-point="true"
         data-scatter-active={props.active ? 'true' : undefined}
         data-scatter-tip={props.tipJson}
+        style={{
+          opacity: dimmed ? SPREAD_DIM_OPACITY : 1,
+          transition: animate ? `opacity ${SPREAD_COLLAPSE_MS}ms ease` : undefined,
+        }}
       >
-        {props.offset && (
+        {off && (
           <>
             {/* 元の位置。線だけだと「値がそこにある」ことが読み取りにくい。 */}
             <circle cx={cx} cy={cy} r={2} fill="var(--text-muted)" opacity={SPREAD_LINK_OPACITY} />
+            {/* 線は画像より先に伸びきる。画像がその上を滑って着地する見え方になる。 */}
             <line
               x1={cx} y1={cy} x2={px} y2={py}
               stroke="var(--text-muted)"
@@ -344,25 +407,27 @@ function scatterPointShape(props: {
             />
           </>
         )}
-        {props.active && (
-          <circle
-            cx={px}
-            cy={py}
-            r={s / 2 + IMAGE_RING_WIDTH}
-            fill="none"
-            stroke="var(--text)"
-            strokeWidth={IMAGE_RING_WIDTH}
+        <g style={moveStyle}>
+          {props.active && (
+            <circle
+              cx={cx}
+              cy={cy}
+              r={s / 2 + IMAGE_RING_WIDTH}
+              fill="none"
+              stroke="var(--text)"
+              strokeWidth={IMAGE_RING_WIDTH}
+            />
+          )}
+          <image
+            href={iconUrl}
+            x={cx - s / 2}
+            y={cy - s / 2}
+            width={s}
+            height={s}
+            // ヒット領域を画像全体にする(透明部分でもツールチップを出す)。
+            style={{ pointerEvents: 'all' }}
           />
-        )}
-        <image
-          href={iconUrl}
-          x={px - s / 2}
-          y={py - s / 2}
-          width={s}
-          height={s}
-          // ヒット領域を画像全体にする(透明部分でもツールチップを出す)。
-          style={{ pointerEvents: 'all' }}
-        />
+        </g>
       </g>
     )
   }
@@ -1155,6 +1220,24 @@ export function ScatterChart({
     setSpreadPinned(false)
   }, [drawable, imagePx])
 
+  // 遷移が終わってからツールチップを置き直す(#630)。
+  // 配置は描画済みマーカーの実寸を読んで決めるが、広げている最中に読むと動いている
+  // 途中の位置になり、着地後にズレたままになる。
+  const [settleTick, setSettleTick] = useState(0)
+  useEffect(() => {
+    if (!spread) return
+    const total = SPREAD_MS + SPREAD_STAGGER_MS * spread.offsets.size + 40
+    const timer = setTimeout(() => setSettleTick(v => v + 1), total)
+    return () => clearTimeout(timer)
+  }, [spread])
+
+  // 動きを減らす設定を尊重する。ばらけること自体は情報なので残し、遷移だけ切る。
+  const reduceMotion = useMemo(
+    () => typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
+    [],
+  )
+
   // ツールチップを一度 hidden で描画して実寸を測り、上下左右の最適位置へ移す。
   // マーカーも DOM の実寸を読むため、形・サイズ指標の有無にかかわらず避けられる(#497)。
   // 自分の点(ハロー込み)は他点より優先して隠さない。
@@ -1219,7 +1302,7 @@ export function ScatterChart({
       dotAvoidPad: exportLayout ? EXPORT_DOT_AVOID_PAD : DOT_AVOID_PAD,
       richCandidates: exportLayout,
     }))
-  }, [active, hoverSiblings.length, height, exportLayout, spread])
+  }, [active, hoverSiblings.length, height, exportLayout, spread, settleTick])
 
   // チャート上から保存ボタンへ移ってもツールチップを残す。
   // 消すのは「パネル全体」から出たときだけ(.chart-card / .env-chart-section)。
@@ -1353,6 +1436,8 @@ export function ScatterChart({
               tipJson,
               imagePx,
               offset: payload ? spread?.offsets.get(payload.name) ?? null : null,
+              spreadActive: !!spread,
+              animate: !reduceMotion,
             })
           }}
           onMouseEnter={(p: any) => {
