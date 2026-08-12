@@ -266,6 +266,84 @@ type SpreadState = {
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi <= lo ? lo : hi)
 
+/** ばらけ表示の移動スタイル(#630)。画像・輪で**同じものを使う**。
+ *  別々に書くと、輪だけ遅れて動くようなズレが出る。 */
+function spreadMoveStyle(
+  off: { dx: number; dy: number; order: number } | null | undefined,
+  animate: boolean,
+): CSSProperties {
+  return {
+    transformBox: 'fill-box',
+    transformOrigin: 'center',
+    transform: off
+      ? `translate(${off.dx}px, ${off.dy}px) scale(${SPREAD_SCALE})`
+      : 'translate(0px, 0px) scale(1)',
+    transition: !animate
+      ? undefined
+      : off
+        ? `transform ${SPREAD_MS}ms ${SPREAD_EASE} ${off.order * SPREAD_STAGGER_MS}ms`
+        : `transform ${SPREAD_COLLAPSE_MS}ms ease`,
+  }
+}
+
+/**
+ * 引き出し線と選択中の輪を描く層(#630)。**画像より下に置く。**
+ *
+ * 🔴 点ごとに描いてはいけない。SVG は書いた順に重なるので、後から描かれた点の線や輪が
+ * **先の点の画像の上を通る**。まとめて下の層に置けば、必ず画像が上に来る。
+ *
+ * Recharts 3 は子要素をそのまま順に描くので、`<Scatter>` より前に置けば下に来る
+ * (2.x の `Customized` は `<g>` で包むだけのラッパーで、3.x では不要)。
+ */
+function ScatterUnderLayer({
+  spread, basePos, activeName, imagePx, animate,
+}: {
+  spread:     SpreadState | null
+  basePos:    Map<string, { x: number; y: number }>
+  activeName: string | null
+  imagePx:    number
+  animate:    boolean
+}) {
+  const activeBase = activeName ? basePos.get(activeName) : undefined
+  return (
+    <g pointerEvents="none">
+      {spread && (
+        <g opacity={SPREAD_LINK_OPACITY}>
+          {[...spread.offsets].map(([name, off]) => {
+            const base = basePos.get(name)
+            if (!base) return null
+            return (
+              <g key={name}>
+                {/* 元の位置。線だけだと「値がそこにある」ことが読み取りにくい。 */}
+                <circle cx={base.x} cy={base.y} r={2} fill="var(--text-muted)" />
+                <line
+                  x1={base.x} y1={base.y}
+                  x2={base.x + off.dx} y2={base.y + off.dy}
+                  stroke="var(--text-muted)"
+                  strokeWidth={1}
+                />
+              </g>
+            )
+          })}
+        </g>
+      )}
+      {activeBase && activeName && (
+        <g style={spreadMoveStyle(spread?.offsets.get(activeName), animate)}>
+          <circle
+            cx={activeBase.x}
+            cy={activeBase.y}
+            r={imagePx / 2 + IMAGE_RING_GAP}
+            fill="none"
+            stroke="var(--text)"
+            strokeWidth={IMAGE_RING_WIDTH}
+            strokeOpacity={IMAGE_RING_OPACITY}
+          />
+        </g>
+      )}
+    </g>
+  )
+}
+
 /** 押しのけの反復回数。12 点程度なので毎ホバー走らせても軽い。 */
 const SPREAD_ITERATIONS = 140
 /** 毎回どれだけ元の位置へ引き戻すか。大きいほど「動かない」寄りになる。 */
@@ -465,24 +543,11 @@ function scatterPointShape(props: {
     // 無機的になるが、transform なら遷移が効いてふわっと動く。
     // 少し行き過ぎて戻る曲線＋順番に遅らせることで、まとめて飛ぶ感じを消している。
     const off = props.offset
-    const px = cx + (off?.dx ?? 0)
-    const py = cy + (off?.dy ?? 0)
     const animate = props.animate !== false
-    const moveStyle: CSSProperties = {
-      transformBox: 'fill-box',
-      transformOrigin: 'center',
-      transform: off
-        ? `translate(${off.dx}px, ${off.dy}px) scale(${SPREAD_SCALE})`
-        : 'translate(0px, 0px) scale(1)',
-      transition: !animate
-        ? undefined
-        : off
-          ? `transform ${SPREAD_MS}ms ${SPREAD_EASE} ${off.order * SPREAD_STAGGER_MS}ms`
-          : `transform ${SPREAD_COLLAPSE_MS}ms ease`,
-    }
     // 塊の外は薄くする。広げた先が避けきれずに重なっても、どれが塊かは読める。
     const dimmed = props.spreadActive && !off
-    // 強調は輪だけ。色メトリクスは画像モードでは効かないので、輪の色は固定でよい。
+    // 🔴 引き出し線と選択中の輪は**ここでは描かない**(#630)。点ごとに描くと、後から
+    // 描かれた点のそれが先の点の画像の上を通る。まとめて下の層へ(ScatterUnderLayer)。
     return (
       <g
         data-scatter-point="true"
@@ -493,31 +558,7 @@ function scatterPointShape(props: {
           transition: animate ? `opacity ${SPREAD_COLLAPSE_MS}ms ease` : undefined,
         }}
       >
-        {off && (
-          <>
-            {/* 元の位置。線だけだと「値がそこにある」ことが読み取りにくい。 */}
-            <circle cx={cx} cy={cy} r={2} fill="var(--text-muted)" opacity={SPREAD_LINK_OPACITY} />
-            {/* 線は画像より先に伸びきる。画像がその上を滑って着地する見え方になる。 */}
-            <line
-              x1={cx} y1={cy} x2={px} y2={py}
-              stroke="var(--text-muted)"
-              strokeWidth={1}
-              opacity={SPREAD_LINK_OPACITY}
-            />
-          </>
-        )}
-        <g style={moveStyle}>
-          {props.active && (
-            <circle
-              cx={cx}
-              cy={cy}
-              r={s / 2 + IMAGE_RING_GAP}
-              fill="none"
-              stroke="var(--text)"
-              strokeWidth={IMAGE_RING_WIDTH}
-              strokeOpacity={IMAGE_RING_OPACITY}
-            />
-          )}
+        <g style={spreadMoveStyle(off, animate)}>
           <image
             href={iconUrl}
             x={cx - s / 2}
@@ -1516,6 +1557,17 @@ export function ScatterChart({
           label={{ value: yLabel, angle: -90, position: 'insideLeft', offset: 12, fill: 'var(--text)', fontSize: 11, fontWeight: 600, style: { textAnchor: 'middle' } } as object}
         />
         <ZAxis type="number" dataKey="size" range={zRange} />
+        {/* 🔴 <Scatter> より**前**に置く。SVG は書いた順に重なるので、ここに置いた
+            引き出し線・選択の輪は必ず画像の下に来る(#630)。 */}
+        {imagePx && (
+          <ScatterUnderLayer
+            spread={spread}
+            basePos={basePos}
+            activeName={active?.name ?? null}
+            imagePx={imagePx}
+            animate={!reduceMotion}
+          />
+        )}
         <Scatter
           data={drawable}
           shape={(props: any) => {
