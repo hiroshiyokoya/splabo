@@ -203,20 +203,29 @@ const IMAGE_RING_OPACITY = 0.32
 /** 画像の外縁と輪のあいだの隙間。 */
 const IMAGE_RING_GAP     = 2
 
-/** チャートの余白と Y 軸の幅。
+/** チャートの余白と軸の太さ。
  *
  *  🔴 ばらけ表示(#630)がプロット領域の内側へ丸めるのに同じ値を使う。
- *  片方だけ変えると、はみ出して clip で切れる。 */
-const CHART_MARGIN  = { top: 20, right: 18, left: 0, bottom: 28 }
-const Y_AXIS_WIDTH  = 56
+ *  片方だけ変えると、はみ出して切れる。軸のサイズは既定に頼らず**明示的に渡す**
+ *  （既定値が変わったら黙ってズレるため）。 */
+const CHART_MARGIN   = { top: 20, right: 18, left: 0, bottom: 28 }
+const Y_AXIS_WIDTH   = 56
+/** X 軸が縦に取る高さ。Recharts の既定と同じ値を明示して渡す。 */
+const X_AXIS_HEIGHT  = 30
 
-/** コンテナの実寸から、実際に点が描かれる矩形を出す。 */
+/**
+ * コンテナの実寸から、実際に点が描かれる矩形を出す。
+ *
+ * 🔴 **軸のぶんを引くのを忘れないこと。** 下端は `余白` だけでなく
+ * `余白 + X 軸の高さ` の内側。ここを間違えると、ばらけた点が軸の帯まで降りて
+ * 見切れる。
+ */
 function plotRect(width: number, height: number) {
   return {
     left:   CHART_MARGIN.left + Y_AXIS_WIDTH,
     top:    CHART_MARGIN.top,
     right:  width - CHART_MARGIN.right,
-    bottom: height - CHART_MARGIN.bottom,
+    bottom: height - CHART_MARGIN.bottom - X_AXIS_HEIGHT,
   }
 }
 
@@ -1539,6 +1548,7 @@ export function ScatterChart({
           type="number"
           dataKey="x"
           name={xLabel}
+          height={X_AXIS_HEIGHT}
           padding={{ left: SCATTER_EDGE_PADDING, right: SCATTER_EDGE_PADDING }}
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           tickFormatter={xIsRate ? fmtRateTick : fmtTick}
