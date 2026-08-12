@@ -274,13 +274,18 @@ const SPREAD_PULL = 0.06
 const GOLDEN_ANGLE = 2.399963
 
 /**
- * `seed` と重なっている点を、**空いているほうへ最小限ずらす**。
+ * `seed` と重なっている点を、**塊の重心から外向きに、最小限ずらす**。
  *
  * 円周へ飛ばすのではなく、重なりが解けるまで押しのけて、そのつど元の位置へ引き戻す。
  * こうすると
  *   - ずらし量が小さいので、どれがどれだか追える
  *   - 他の点を飛び越えない
  *   - 塊が大きくてもプロット領域からはみ出さない
+ *
+ * 🔴 動ける向きは**重心から自分へ向かう放射方向だけ**に縛る。
+ * 自由に押しのけると引き出し線が交差して、どれがどれだか読めなくなる。
+ * すべての線が重心から放射状に伸びるなら、**構造的に交差しない**。
+ * ずらし量は 1 点あたり「その向きにどれだけ出るか」の 1 変数だけになる。
  *
  * - 重なり = 画像の矩形が重なる ≒ 中心間の距離が一辺未満
  * - 塊は seed から連結成分をたどる(上限あり)
@@ -316,11 +321,41 @@ export function buildSpread(
   }
   if (names.length < 2) return null
 
+  // 放射の中心。**元の位置から一度だけ決めて動かさない**。
+  // 動かすと向きが揺れて、反復のたびに配置が変わる。
+  const origin = {
+    x: names.reduce((s, n) => s + basePos.get(n)!.x, 0) / names.length,
+    y: names.reduce((s, n) => s + basePos.get(n)!.y, 0) / names.length,
+  }
+
+  const half = span / 2
+  const lo = { x: plot.left + half, y: plot.top + half }
+  const hi = { x: plot.right - half, y: plot.bottom - half }
+
+  // 各点は「重心から自分へ向かう向き」に、どれだけ出るか(t)だけを持つ。
   // 遅延はカーソルの点から近い順。そこから波紋のように動く。
   const members = names
-    .map(name => {
+    .map((name, i) => {
       const base = basePos.get(name)!
-      return { name, base, x: base.x, y: base.y, d: Math.hypot(base.x - seed.x, base.y - seed.y) }
+      let ux = base.x - origin.x, uy = base.y - origin.y
+      const len = Math.hypot(ux, uy)
+      if (len < 1e-6) {
+        // 重心とぴったり同じ点。向きが決まらないので黄金角で決め打ちにする。
+        // 乱数だとホバーのたびに配置が変わって落ち着かない。
+        const a = i * GOLDEN_ANGLE
+        ux = Math.cos(a); uy = Math.sin(a)
+      } else {
+        ux /= len; uy /= len
+      }
+      // その向きへ出られる上限(プロット領域の内側まで)。
+      const tMaxX = ux > 0 ? (hi.x - base.x) / ux : ux < 0 ? (lo.x - base.x) / ux : Infinity
+      const tMaxY = uy > 0 ? (hi.y - base.y) / uy : uy < 0 ? (lo.y - base.y) / uy : Infinity
+      return {
+        name, base, ux, uy, t: 0,
+        tMax: Math.max(0, Math.min(tMaxX, tMaxY)),
+        x: base.x, y: base.y,
+        d: Math.hypot(base.x - seed.x, base.y - seed.y),
+      }
     })
     .sort((a, b) => a.d - b.d)
 
@@ -332,50 +367,46 @@ export function buildSpread(
     if (Math.hypot(p.x - seed.x, p.y - seed.y) < reach) fixed.push(p)
   }
 
-  const half = span / 2
-  const lo = { x: plot.left + half, y: plot.top + half }
-  const hi = { x: plot.right - half, y: plot.bottom - half }
+  /** 押しのけベクトルを自分の向きへ落とす。放射方向の成分だけを使う。 */
+  const applyPush = (m: typeof members[number], px: number, py: number) => {
+    m.t = clamp(m.t + (px * m.ux + py * m.uy), 0, m.tMax)
+  }
+  const sync = (m: typeof members[number]) => {
+    m.x = m.base.x + m.ux * m.t
+    m.y = m.base.y + m.uy * m.t
+  }
 
   for (let iter = 0; iter < SPREAD_ITERATIONS; iter++) {
-    // 1. 元の位置へ引き戻す。これがあるので「必要なぶんだけ」ずれる。
-    for (const m of members) {
-      m.x += (m.base.x - m.x) * SPREAD_PULL
-      m.y += (m.base.y - m.y) * SPREAD_PULL
-    }
-    // 2. メンバー同士を押しのける。
+    // 1. 元の位置へ引き戻す。これがあるので「必要なぶんだけ」出る。
+    for (const m of members) { m.t *= 1 - SPREAD_PULL; sync(m) }
+    // 2. メンバー同士を押しのける。向きが違うので、外へ出るほど離れる。
+    //    向きがほぼ同じ 2 点は、同じ線の上で前後にずれて離れる。
     for (let i = 0; i < members.length; i++) {
       for (let j = i + 1; j < members.length; j++) {
         const a = members[i], b = members[j]
-        let dx = b.x - a.x, dy = b.y - a.y
-        let dist = Math.hypot(dx, dy)
+        const dx = b.x - a.x, dy = b.y - a.y
+        const dist = Math.hypot(dx, dy)
         if (dist >= span) continue
-        if (dist < 1e-6) {
-          // 完全に重なっているときは決め打ちの向きへ。乱数だと毎回配置が変わる。
-          const angle = i * GOLDEN_ANGLE
-          dx = Math.cos(angle); dy = Math.sin(angle); dist = 1
-        }
-        const push = (span - dist) / 2
-        const ux = dx / dist, uy = dy / dist
-        a.x -= ux * push; a.y -= uy * push
-        b.x += ux * push; b.y += uy * push
+        // 完全に重なっていても、向きが違えば押し出す先は分かれる。
+        const ux = dist < 1e-6 ? b.ux : dx / dist
+        const uy = dist < 1e-6 ? b.uy : dy / dist
+        const push = (span - Math.min(dist, span)) / 2
+        applyPush(a, -ux * push, -uy * push)
+        applyPush(b,  ux * push,  uy * push)
+        sync(a); sync(b)
       }
     }
     // 3. 動かない点からは自分だけ退く。
     for (const m of members) {
       for (const o of fixed) {
-        let dx = m.x - o.x, dy = m.y - o.y
-        let dist = Math.hypot(dx, dy)
+        const dx = m.x - o.x, dy = m.y - o.y
+        const dist = Math.hypot(dx, dy)
         if (dist >= span) continue
-        if (dist < 1e-6) { dx = 1; dy = 0; dist = 1 }
-        const push = span - dist
-        m.x += (dx / dist) * push
-        m.y += (dy / dist) * push
+        const ux = dist < 1e-6 ? m.ux : dx / dist
+        const uy = dist < 1e-6 ? m.uy : dy / dist
+        applyPush(m, ux * (span - dist), uy * (span - dist))
+        sync(m)
       }
-    }
-    // 4. プロット領域の中へ。はみ出すと clip で切れる。
-    for (const m of members) {
-      m.x = clamp(m.x, lo.x, hi.x)
-      m.y = clamp(m.y, lo.y, hi.y)
     }
   }
 
@@ -385,17 +416,13 @@ export function buildSpread(
   })
 
   // 当たり判定は塊全体を覆う円。ずらす前・後の両方を含める。
-  const center = {
-    x: members.reduce((s, m) => s + m.x, 0) / members.length,
-    y: members.reduce((s, m) => s + m.y, 0) / members.length,
-  }
   let far = 0
   for (const m of members) {
-    far = Math.max(far, Math.hypot(m.x - center.x, m.y - center.y))
-    far = Math.max(far, Math.hypot(m.base.x - center.x, m.base.y - center.y))
+    far = Math.max(far, Math.hypot(m.x - origin.x, m.y - origin.y))
+    far = Math.max(far, Math.hypot(m.base.x - origin.x, m.base.y - origin.y))
   }
 
-  return { center, hullR: far + span / 2 + SPREAD_HULL_PAD, offsets }
+  return { center: origin, hullR: far + span / 2 + SPREAD_HULL_PAD, offsets }
 }
 
 /** Recharts Scatter の shape コールバック。payload.markerShape を読む。 */
