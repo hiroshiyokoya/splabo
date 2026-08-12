@@ -240,11 +240,8 @@ function plotRect(width: number, height: number) {
 const SPREAD_MAX_MEMBERS = 12
 /** 当たり判定の円に足す余白。輪の外側で即畳まれるとチカチカする。 */
 const SPREAD_HULL_PAD = 12
-/** 広げた点と元の位置の間に引く線。
- *
- *  塊の外のブキは薄く描くので、**線が透けて見える**。線を主張させると、
- *  薄いブキの上に線が乗っているように見えてしまう。控えめにする。 */
-const SPREAD_LINK_OPACITY = 0.38
+/** 広げた点と元の位置の間に引く線。 */
+const SPREAD_LINK_OPACITY = 0.55
 
 // 動きの手触り(#630)。**カクッと出ると無機的**なので、少し行き過ぎて戻る曲線で
 // ふわっと広げる。順に少しずつ遅らせると、まとめて瞬間移動する感じが消える。
@@ -255,11 +252,9 @@ const SPREAD_EASE        = 'cubic-bezier(0.22, 1.28, 0.36, 1)'
 const SPREAD_STAGGER_MS  = 24
 /** 広げた画像は少し持ち上げる(手前に来た感じを出す)。 */
 const SPREAD_SCALE       = 1.12
-/** 塊以外を薄くする。広げた先が他の点と多少重なっても、どれが塊かは読める。
- *
- *  薄くしすぎると**何のブキか読めなくなる**うえ、下の引き出し線が透けて
- *  「線のほうが上」に見える。区別が付く範囲でできるだけ濃くしておく。 */
-const SPREAD_DIM_OPACITY = 0.5
+// 🔴 塊の外を薄くするのはやめた。**1 つのブキをホバーしても他は薄くならない**のに、
+// 塊のときだけ薄くなると、同じ操作で違うことが起きているように見える。
+// 半透明にすると下の引き出し線が透けて「線のほうが上」に見える問題も付いてきた。
 
 type SpreadState = {
   /** 塊の重心(チャート座標)。当たり判定の円の中心。 */
@@ -527,8 +522,6 @@ function scatterPointShape(props: {
   imagePx?: number
   /** ばらけ表示のずらし量(#630)。元の位置へは引き出し線を引く。 */
   offset?: { dx: number; dy: number; order: number } | null
-  /** どこかの塊が広がっている(#630)。塊の外は薄くする。 */
-  spreadActive?: boolean
   /** 遷移を付けるか(#630)。動きを減らす設定のときは false。 */
   animate?: boolean
 }) {
@@ -550,8 +543,6 @@ function scatterPointShape(props: {
     // 少し行き過ぎて戻る曲線＋順番に遅らせることで、まとめて飛ぶ感じを消している。
     const off = props.offset
     const animate = props.animate !== false
-    // 塊の外は薄くする。広げた先が避けきれずに重なっても、どれが塊かは読める。
-    const dimmed = props.spreadActive && !off
     // 🔴 引き出し線と選択中の輪は**ここでは描かない**(#630)。点ごとに描くと、後から
     // 描かれた点のそれが先の点の画像の上を通る。まとめて下の層へ(ScatterUnderLayer)。
     return (
@@ -559,10 +550,6 @@ function scatterPointShape(props: {
         data-scatter-point="true"
         data-scatter-active={props.active ? 'true' : undefined}
         data-scatter-tip={props.tipJson}
-        style={{
-          opacity: dimmed ? SPREAD_DIM_OPACITY : 1,
-          transition: animate ? `opacity ${SPREAD_COLLAPSE_MS}ms ease` : undefined,
-        }}
       >
         <g style={spreadMoveStyle(off, animate)}>
           <image
@@ -1592,7 +1579,6 @@ export function ScatterChart({
               tipJson,
               imagePx,
               offset: payload ? spread?.offsets.get(payload.name) ?? null : null,
-              spreadActive: !!spread,
               animate: !reduceMotion,
             })
           }}
