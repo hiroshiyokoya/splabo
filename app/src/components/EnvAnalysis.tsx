@@ -1342,32 +1342,29 @@ export function EnvAnalysis() {
   )
 }
 
-/** 「キリのよい」目盛り幅(1 / 2 / 5 × 10^n)を返す。 */
-function niceStep(x: number): number {
-  if (x <= 0) return 1
-  const base = Math.pow(10, Math.floor(Math.log10(x)))
-  const f = x / base
-  const nf = f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10
-  return nf * base
-}
-
-/** データ配列から、目盛りがキリのよい値になる軸ドメインを算出する(オートスケール)。
- *  値はすべて非負なので下端は 0 未満に伸ばさない。 */
+/**
+ * データ配列から軸ドメインを算出する(オートスケール)。値はすべて非負。
+ *
+ * 🔴 **キリのいい値へ外側に丸めない。** 以前は (hi - lo) / 4 の刻みで外へ広げていたが、
+ * 勝率のように幅の狭い指標だと上下に空白ができて点が中央に寄る
+ * （37〜59% のデータが 35〜60% の軸になり、さらに軸側の余白が乗る）。
+ *
+ * 目盛りは `ScatterChart` が domain から改めてキリのいい値で作るので、ここで
+ * 揃えておく必要は無い。**データに寄せるほど点が散らばって読みやすい。**
+ */
 function computeDomain(vals: number[], rate01: boolean): [number, number] {
   if (vals.length === 0) return [0, 1]
   let lo = Math.min(...vals)
   let hi = Math.max(...vals)
   if (lo === hi) {
+    // 幅が無いと軸が潰れるので、ここだけは広げる。
     const pad = Math.abs(lo) * 0.1 || (rate01 ? 0.05 : 1)
     lo -= pad; hi += pad
   }
-  const step = niceStep((hi - lo) / 4)
-  let nlo = Math.floor(lo / step) * step
-  let nhi = Math.ceil(hi / step) * step
-  if (nlo < 0) nlo = 0                               // 値は非負
-  if (rate01) { nlo = Math.max(0, nlo); nhi = Math.min(1, nhi) }
+  if (lo < 0) lo = 0                                 // 値は非負
+  if (rate01) { lo = Math.max(0, lo); hi = Math.min(1, hi) }
   const round = (x: number) => Math.round(x * 1e6) / 1e6  // 浮動小数の誤差を除去
-  return [round(nlo), round(nhi)]
+  return [round(lo), round(hi)]
 }
 
 /**
