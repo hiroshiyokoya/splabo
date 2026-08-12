@@ -199,7 +199,7 @@ function buildScatterTipPayload(
  *  隣の画像と重なると輪が邪魔になるので、**細く・透かす**。
  *  どれを見ているか分かればよく、主張は要らない。 */
 const IMAGE_RING_WIDTH   = 1.4
-const IMAGE_RING_OPACITY = 0.55
+const IMAGE_RING_OPACITY = 0.32
 /** 画像の外縁と輪のあいだの隙間。 */
 const IMAGE_RING_GAP     = 2
 
