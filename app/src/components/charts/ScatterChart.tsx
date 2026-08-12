@@ -194,8 +194,14 @@ function buildScatterTipPayload(
   }
 }
 
-/** ホバー中の画像マーカーに描く輪の太さ。 */
-const IMAGE_RING_WIDTH = 2.5
+/** ホバー中の画像マーカーに描く輪。
+ *
+ *  隣の画像と重なると輪が邪魔になるので、**細く・透かす**。
+ *  どれを見ているか分かればよく、主張は要らない。 */
+const IMAGE_RING_WIDTH   = 1.4
+const IMAGE_RING_OPACITY = 0.55
+/** 画像の外縁と輪のあいだの隙間。 */
+const IMAGE_RING_GAP     = 2
 
 /** チャートの余白と Y 軸の幅。
  *
@@ -478,10 +484,11 @@ function scatterPointShape(props: {
             <circle
               cx={cx}
               cy={cy}
-              r={s / 2 + IMAGE_RING_WIDTH}
+              r={s / 2 + IMAGE_RING_GAP}
               fill="none"
               stroke="var(--text)"
               strokeWidth={IMAGE_RING_WIDTH}
+              strokeOpacity={IMAGE_RING_OPACITY}
             />
           )}
           <image
