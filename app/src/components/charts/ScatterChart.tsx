@@ -790,7 +790,18 @@ export const isLogPlottable = (v: number | null): v is number =>
  * ログ軸はログ空間がピクセルに線形対応するので、余白も加算ではなく**乗除**で作る。
  * span に対する割合で広げるので、データの桁数によらず見た目の余白が一定になる。
  */
-const LOG_PAD_RATIO = 0.12  // 選択ハロー込みでも端で切れないよう、少し広めに取る
+/**
+ * 軸の両端に取る余白（データ範囲に対する割合）。リニア軸・ログ軸で共有する。
+ *
+ * 🔴 **小さいほどよい。** ここを広く取ると点が中央に寄り、プロット領域の外周が
+ * 空白になる。散布図は点の散らばりを見るものなので、目盛りの少し外まで見えていれば足りる。
+ *
+ * マーカーが軸線に載って切れるのは、**ピクセル側の余白**（`SCATTER_EDGE_PADDING`）が
+ * 防いでいる。こちらは値の空間なので、切れ対策としては二重になっている。
+ * 以前は 0.10 / 0.12 も取っていて、そのぶん点が寄っていた。
+ */
+const AXIS_PAD_RATIO = 0.02
+const LOG_PAD_RATIO  = AXIS_PAD_RATIO
 
 /**
  * 🔴 範囲は**実データに寄せる**こと(#558)。
@@ -964,6 +975,8 @@ const SCATTER_EDGE_PADDING = 28
 /**
  * 線形ドメインを値空間で広げ、上下限の点が軸線・clip に乗らないようにする。
  * (Axis padding だけだとログ軸の clip や nice tick の都合で足りないことがある)
+ *
+ * 広げる量は `AXIS_PAD_RATIO`。**点をプロット全体へ散らすため小さく取る**。
  */
 function expandLinearDomain(
   domain: [number, number] | undefined,
@@ -972,7 +985,7 @@ function expandLinearDomain(
   if (!domain) return undefined
   const [lo, hi] = domain
   const span = Math.max(hi - lo, opts.rate01 ? 0.05 : 1e-6)
-  const pad = span * 0.1
+  const pad = span * AXIS_PAD_RATIO
   let nlo = lo - pad
   let nhi = hi + pad
   if (opts.rate01) {
