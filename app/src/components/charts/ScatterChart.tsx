@@ -197,15 +197,38 @@ function buildScatterTipPayload(
 /** ホバー中の画像マーカーに描く輪の太さ。 */
 const IMAGE_RING_WIDTH = 2.5
 
+/** チャートの余白と Y 軸の幅。
+ *
+ *  🔴 ばらけ表示(#630)がプロット領域の内側へ丸めるのに同じ値を使う。
+ *  片方だけ変えると、はみ出して clip で切れる。 */
+const CHART_MARGIN  = { top: 20, right: 18, left: 0, bottom: 28 }
+const Y_AXIS_WIDTH  = 56
+
+/** コンテナの実寸から、実際に点が描かれる矩形を出す。 */
+function plotRect(width: number, height: number) {
+  return {
+    left:   CHART_MARGIN.left + Y_AXIS_WIDTH,
+    top:    CHART_MARGIN.top,
+    right:  width - CHART_MARGIN.right,
+    bottom: height - CHART_MARGIN.bottom,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 重なった画像をばらけさせる(#630)
 // ---------------------------------------------------------------------------
 //
 // 画像モードは点が大きいので密集すると重なって読めない。ホバーした塊を一時的に
-// 円周へ広げ、元の位置へ引き出し線を引く。
+// ずらし、元の位置へ引き出し線を引く。
 //
-// 🔴 散布図は**位置が値**なので、広げた位置をそのまま読まれると嘘になる。
+// 🔴 散布図は**位置が値**なので、ずらした位置をそのまま読まれると嘘になる。
 // 引き出し線は飾りではなく、これが無いと成立しない。
+//
+// 🔴 **円周に飛ばしてはいけない。** 最初はそうしたが、
+//   - 元の場所から遠くへ飛ぶので、どれがどれだか追えない（他の点を飛び越える）
+//   - 塊が大きいと半径が伸びてプロット領域からはみ出す
+// ずらし量は**小さいほどよい**。重なりが解けるところまで、空いているほうへ
+// 押しのけるだけにする。
 
 /** 1 つの塊に入れる上限。連結成分は青天井に繋がるので、密なグラフだと全部が 1 塊になる。 */
 const SPREAD_MAX_MEMBERS = 12
@@ -237,24 +260,40 @@ type SpreadState = {
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi <= lo ? lo : hi)
 
+/** 押しのけの反復回数。12 点程度なので毎ホバー走らせても軽い。 */
+const SPREAD_ITERATIONS = 140
+/** 毎回どれだけ元の位置へ引き戻すか。大きいほど「動かない」寄りになる。 */
+const SPREAD_PULL = 0.06
+/** 完全に同じ座標のときに散らす向き(黄金角)。乱数を使わず毎回同じ結果にする。 */
+const GOLDEN_ANGLE = 2.399963
+
 /**
- * `seed` と重なっている点を集めて、円周へ配置する。
+ * `seed` と重なっている点を、**空いているほうへ最小限ずらす**。
+ *
+ * 円周へ飛ばすのではなく、重なりが解けるまで押しのけて、そのつど元の位置へ引き戻す。
+ * こうすると
+ *   - ずらし量が小さいので、どれがどれだか追える
+ *   - 他の点を飛び越えない
+ *   - 塊が大きくてもプロット領域からはみ出さない
  *
  * - 重なり = 画像の矩形が重なる ≒ 中心間の距離が一辺未満
  * - 塊は seed から連結成分をたどる(上限あり)
- * - **元の方角の順序は保つ**。並べ替えるとどれがどれか分からなくなる
+ * - **塊の外の点は動かない障害物**として避ける
  * - プロット領域の外は clip で切れるので内側へ丸める
  *
- * 2 点未満なら null(広げる意味が無い)。
+ * 2 点未満なら null(ずらす意味が無い)。
  */
 export function buildSpread(
   seedName: string,
   basePos: Map<string, { x: number; y: number }>,
   imagePx: number,
-  bounds: { width: number; height: number },
+  plot: { left: number; top: number; right: number; bottom: number },
 ): SpreadState | null {
   const seed = basePos.get(seedName)
   if (!seed) return null
+
+  // 広げた画像は少し拡大するので、間隔の計算はその分を見込む。
+  const span = imagePx * SPREAD_SCALE
 
   const names: string[] = [seedName]
   const seen = new Set<string>([seedName])
@@ -271,59 +310,86 @@ export function buildSpread(
   }
   if (names.length < 2) return null
 
-  const center = {
-    x: names.reduce((s, n) => s + basePos.get(n)!.x, 0) / names.length,
-    y: names.reduce((s, n) => s + basePos.get(n)!.y, 0) / names.length,
+  // 遅延はカーソルの点から近い順。そこから波紋のように動く。
+  const members = names
+    .map(name => {
+      const base = basePos.get(name)!
+      return { name, base, x: base.x, y: base.y, d: Math.hypot(base.x - seed.x, base.y - seed.y) }
+    })
+    .sort((a, b) => a.d - b.d)
+
+  // 塊の外にある点は**動かない障害物**。近くのものだけ見れば足りる。
+  const reach = span * 3
+  const fixed: { x: number; y: number }[] = []
+  for (const [name, p] of basePos) {
+    if (seen.has(name)) continue
+    if (Math.hypot(p.x - seed.x, p.y - seed.y) < reach) fixed.push(p)
   }
 
-  // 広げた画像は少し拡大するので、間隔の計算はその分を見込む。
-  const span = imagePx * SPREAD_SCALE
+  const half = span / 2
+  const lo = { x: plot.left + half, y: plot.top + half }
+  const hi = { x: plot.right - half, y: plot.bottom - half }
 
-  // 元の方角で並べ、その順に等間隔で置く。先頭の方角を起点にすると全体の向きも保てる。
-  const n = names.length
-  const ordered = names
-    .map(name => {
-      const p = basePos.get(name)!
-      return { name, angle: Math.atan2(p.y - center.y, p.x - center.x) }
-    })
-    .sort((a, b) => a.angle - b.angle)
-
-  // 塊の外にある点。ここを避けないと「広げた先で隣の点と重なる」。
-  const others: { x: number; y: number }[] = []
-  for (const [name, p] of basePos) if (!seen.has(name)) others.push(p)
-
-  const margin = span / 2 + 2
-  const place = (radius: number) =>
-    ordered.map((m, i) => {
-      const angle = ordered[0].angle + (i * 2 * Math.PI) / n
-      return {
-        name: m.name,
-        x: clamp(center.x + radius * Math.cos(angle), margin, bounds.width - margin),
-        y: clamp(center.y + radius * Math.sin(angle), margin, bounds.height - margin),
+  for (let iter = 0; iter < SPREAD_ITERATIONS; iter++) {
+    // 1. 元の位置へ引き戻す。これがあるので「必要なぶんだけ」ずれる。
+    for (const m of members) {
+      m.x += (m.base.x - m.x) * SPREAD_PULL
+      m.y += (m.base.y - m.y) * SPREAD_PULL
+    }
+    // 2. メンバー同士を押しのける。
+    for (let i = 0; i < members.length; i++) {
+      for (let j = i + 1; j < members.length; j++) {
+        const a = members[i], b = members[j]
+        let dx = b.x - a.x, dy = b.y - a.y
+        let dist = Math.hypot(dx, dy)
+        if (dist >= span) continue
+        if (dist < 1e-6) {
+          // 完全に重なっているときは決め打ちの向きへ。乱数だと毎回配置が変わる。
+          const angle = i * GOLDEN_ANGLE
+          dx = Math.cos(angle); dy = Math.sin(angle); dist = 1
+        }
+        const push = (span - dist) / 2
+        const ux = dx / dist, uy = dy / dist
+        a.x -= ux * push; a.y -= uy * push
+        b.x += ux * push; b.y += uy * push
       }
-    })
-
-  // 円周に n 個並べて**メンバー同士**が重ならない最小半径。n=2 なら一辺の半分。
-  const minR = span / (2 * Math.sin(Math.PI / n))
-  let radius = Math.max(minR + 4, span * 0.9)
-  // そのうえで**塊の外の点**とも重ならないところまで広げる。
-  // 密なグラフでは避けきれないこともあるので上限を切り、そのときは薄く塗るほうに任せる。
-  let placed = place(radius)
-  const maxRadius = Math.min(bounds.width, bounds.height) / 2
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const hit = placed.some(p => others.some(o => Math.hypot(p.x - o.x, p.y - o.y) < span * 0.95))
-    if (!hit || radius >= maxRadius) break
-    radius = Math.min(radius + span * 0.4, maxRadius)
-    placed = place(radius)
+    }
+    // 3. 動かない点からは自分だけ退く。
+    for (const m of members) {
+      for (const o of fixed) {
+        let dx = m.x - o.x, dy = m.y - o.y
+        let dist = Math.hypot(dx, dy)
+        if (dist >= span) continue
+        if (dist < 1e-6) { dx = 1; dy = 0; dist = 1 }
+        const push = span - dist
+        m.x += (dx / dist) * push
+        m.y += (dy / dist) * push
+      }
+    }
+    // 4. プロット領域の中へ。はみ出すと clip で切れる。
+    for (const m of members) {
+      m.x = clamp(m.x, lo.x, hi.x)
+      m.y = clamp(m.y, lo.y, hi.y)
+    }
   }
 
   const offsets = new Map<string, { dx: number; dy: number; order: number }>()
-  placed.forEach((p, i) => {
-    const base = basePos.get(p.name)!
-    offsets.set(p.name, { dx: p.x - base.x, dy: p.y - base.y, order: i })
+  members.forEach((m, i) => {
+    offsets.set(m.name, { dx: m.x - m.base.x, dy: m.y - m.base.y, order: i })
   })
 
-  return { center, hullR: radius + span / 2 + SPREAD_HULL_PAD, offsets }
+  // 当たり判定は塊全体を覆う円。ずらす前・後の両方を含める。
+  const center = {
+    x: members.reduce((s, m) => s + m.x, 0) / members.length,
+    y: members.reduce((s, m) => s + m.y, 0) / members.length,
+  }
+  let far = 0
+  for (const m of members) {
+    far = Math.max(far, Math.hypot(m.x - center.x, m.y - center.y))
+    far = Math.max(far, Math.hypot(m.base.x - center.x, m.base.y - center.y))
+  }
+
+  return { center, hullR: far + span / 2 + SPREAD_HULL_PAD, offsets }
 }
 
 /** Recharts Scatter の shape コールバック。payload.markerShape を読む。 */
@@ -1379,9 +1445,7 @@ export function ScatterChart({
       }}
     >
     <ResponsiveContainer width="100%" height={height}>
-      <RScatterChart
-        margin={{ top: 20, right: 18, left: 0, bottom: 28 }}
-      >
+      <RScatterChart margin={CHART_MARGIN}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         {/* ログ軸では 0 以下の基準線は載らない(extendDomain で軸ごと壊れるため出さない)。 */}
         {xRefLine != null && (!xLog || xRefLine > 0) && (
@@ -1409,7 +1473,7 @@ export function ScatterChart({
           name={yLabel}
           padding={{ top: SCATTER_EDGE_PADDING, bottom: SCATTER_EDGE_PADDING }}
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
-          width={56}
+          width={Y_AXIS_WIDTH}
           tickFormatter={yIsRate ? fmtRateTick : fmtTick}
           scale={yLog ? 'log' : 'auto'}
           allowDataOverflow={yLog}
@@ -1449,7 +1513,7 @@ export function ScatterChart({
             const area = areaRef.current
             if (!imagePx || spreadPinned || !area) return
             if (spread?.offsets.has(p.name)) return
-            setSpread(buildSpread(p.name, basePos, imagePx, { width: area.clientWidth, height }))
+            setSpread(buildSpread(p.name, basePos, imagePx, plotRect(area.clientWidth, height)))
           }}
           onClick={(p: any) => {
             // クリックでピン留め/再クリックで解除。画像保存前に点を固定できる。
