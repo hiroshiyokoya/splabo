@@ -221,6 +221,39 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
     }).catch(() => {})
   }, [])
 
+  // ブキ軸のチャートに出てくる名前で、まだ画像を持っていないものを足す(#626)。
+  //
+  // 上の事前ロードは `db_weapons_used` = **自分が使ったブキだけ**なので、
+  // 味方・相手ブキ軸の名前はほとんど埋まらない。画像そのものは取得時に
+  // 全プレイヤー分キャッシュ済みなので、名前さえ渡せば読める。
+  //
+  // 取りに行った名前は `weaponIconTried` に積み、見つからなかったものを毎回引き直さない
+  // (stat.ink 由来でローカルマスターに無いブキは永久に見つからない)。
+  const weaponIconTried = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const names = new Set<string>()
+    for (const c of customCharts) {
+      if (c.groupBy !== 'weapon' && c.groupBy !== 'ally_weapon' && c.groupBy !== 'enemy_weapon') continue
+      for (const row of groupedStatsCache[c.groupBy] ?? []) names.add(row.name)
+    }
+    const targets = [...names].filter(n => !weaponImages.has(n) && !weaponIconTried.current.has(n))
+    if (targets.length === 0) return
+    targets.forEach(n => weaponIconTried.current.add(n))   // 解決前に積む(再レンダーで二重に invoke しない)
+    Promise.all(targets.map(name =>
+      invoke<string | null>('read_image', { kind: 'weapon', name })
+        .then(url => (url ? ([name, url] as [string, string]) : null))
+        .catch(() => null)
+    )).then(results => {
+      const hits = results.filter((r): r is [string, string] => r !== null)
+      if (hits.length === 0) return
+      setWeaponImages(prev => {
+        const next = new Map(prev)
+        for (const [k, u] of hits) next.set(k, u)
+        return next
+      })
+    })
+  }, [customCharts, groupedStatsCache, weaponImages])
+
   const totalBattles = summary?.by_mode.reduce((s, e) => s + e.total, 0) ?? 0
   const totalWins    = summary?.by_mode.reduce((s, e) => s + e.wins,  0) ?? 0
   const totalDraws   = summary?.by_mode.reduce((s, e) => s + e.draws, 0) ?? 0

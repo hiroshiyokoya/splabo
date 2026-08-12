@@ -103,6 +103,9 @@ function buildAggScatterPoints(
   data: GroupedStatsRow[],
   xKey: string, yKey: string, sizeKey?: string, colorKey?: string,
   weaponMeta?: Map<string, WeaponMeta>,
+  /** ブキ名 → 画像 data URI。点がブキのときだけ渡す(#626)。
+   *  ここで取りに行かないのは、ホバーのたびに invoke を飛ばさないため。 */
+  weaponImages?: Map<string, string>,
 ): ScatterBundle {
   const filtered = data.filter(d => d.total > 0)
   const isCatColor = isScatterCategoryColorKey(colorKey)
@@ -138,6 +141,7 @@ function buildAggScatterPoints(
           ? colorOfValue(colorVal, colorIsRate, cmin, cmax, colorKey as MetricKey)
           : 'var(--accent)',
       markerShape: catStyle?.shape,
+      iconUrl: weaponImages?.get(d.name) ?? null,
       tooltipRows: dedupeRows([
         { key: xKey, row: () => ({ label: metricLabelOf(xKey), value: fmtScatterMetric(d, x, xKey) }) },
         { key: yKey, row: () => ({ label: metricLabelOf(yKey), value: fmtScatterMetric(d, y, yKey) }) },
@@ -178,6 +182,8 @@ function buildBattleScatterPoints(
   data: BattleRow[],
   xKey: string, yKey: string, sizeKey?: string, colorKey?: string,
   weaponMeta?: Map<string, WeaponMeta>,
+  /** ブキ名 → 画像 data URI(#626)。1 点 = 1 バトルで必ず自分のブキを持つ。 */
+  weaponImages?: Map<string, string>,
 ): ScatterBundle {
   const jitter = () => (Math.random() - 0.5) * 0.3  // ±0.15
   const applyJitter = (v: number | null): number | null =>
@@ -214,6 +220,7 @@ function buildBattleScatterPoints(
       size,
       color,
       markerShape,
+      iconUrl: weaponImages?.get(b.weapon) ?? null,
       // 重なり判定: 元の (x, y) が同じ点を 1 グループに
       groupKey: `${x ?? 'null'}|${y ?? 'null'}`,
       // 複数件表示時の 1 行: 日付・ブキ・勝敗
@@ -521,6 +528,14 @@ function renderChartBody(
   since:         string | null,
   until:         string | null,
 ): ReactNode {
+  // X 軸がブキ系(自分・味方・相手)のときだけ画像を有効化。他の groupBy では undefined。
+  // 棒グラフの画像 tick と、散布図のツールチップアイコン(#626)で共有する。
+  const isWeaponAxis =
+    chart.groupBy === 'weapon' ||
+    chart.groupBy === 'ally_weapon' ||
+    chart.groupBy === 'enemy_weapon'
+  const images = isWeaponAxis ? weaponImages : undefined
+
   // line: 時系列のみ。複数系列対応(#436)。
   if (chart.shape === 'line') {
     const metrics = chartMetrics(chart)
@@ -553,9 +568,12 @@ function renderChartBody(
       return <div className="chart-not-implemented">散布図には X 軸 / Y 軸 を選んでください。</div>
     }
     const isBattle = chart.dotUnit === 'battle'
+    // ツールチップのブキ画像(#626)。
+    // バトル単位は 1 点 = 1 バトルで必ず自分のブキを持つので、groupBy によらず渡す。
+    // 集計単位は点がブキのときだけ(ステージ別の点にブキ画像が付いたら嘘になる)。
     const { points, sizeLegend, colorLegend } = isBattle
-      ? buildBattleScatterPoints(battleData ?? [], chart.xMetric, chart.yMetric, chart.sizeMetric, chart.colorMetric, weaponMeta)
-      : buildAggScatterPoints(data, chart.xMetric, chart.yMetric, chart.sizeMetric, chart.colorMetric, weaponMeta)
+      ? buildBattleScatterPoints(battleData ?? [], chart.xMetric, chart.yMetric, chart.sizeMetric, chart.colorMetric, weaponMeta, weaponImages)
+      : buildAggScatterPoints(data, chart.xMetric, chart.yMetric, chart.sizeMetric, chart.colorMetric, weaponMeta, images)
     return (
       <ScatterChart
         points={points}
@@ -619,13 +637,6 @@ function renderChartBody(
       </div>
     )
   }
-  // X 軸がブキ系(自分・味方・相手)のときだけ画像 tick を有効化。他の groupBy では undefined。
-  const isWeaponAxis =
-    chart.groupBy === 'weapon' ||
-    chart.groupBy === 'ally_weapon' ||
-    chart.groupBy === 'enemy_weapon'
-  const images = isWeaponAxis ? weaponImages : undefined
-
   if (chart.yComposition === 'single_metric' && chart.metric) {
     return <SimpleBarChart data={data} metric={chart.metric} nameTransform={nameTransform} tickAngle={tickAngle} images={images} />
   }
