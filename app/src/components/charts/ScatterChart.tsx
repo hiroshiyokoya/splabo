@@ -655,13 +655,23 @@ const TOOLTIP_GAP = 14
 const TOOLTIP_EDGE_PAD = 6
 /** ドットを避けるときの外縁パディング。
  *
- *  ブキ画像は点より大きいので、4px では隣の画像に乗ってしまう。**離れてもいいから
- *  重ねない**ほうが読みやすいので、広めに取る。 */
-const DOT_AVOID_PAD = 10
+ *  ブキ画像は点より大きいので、4px では隣の画像に乗ってしまう。ただし広く取りすぎると
+ *  空きが見つからず遠くへ飛ぶので、**重ならない最小限**にとどめる。 */
+const DOT_AVOID_PAD = 6
 /** 画像保存時はさらに広めに見て、被りゼロを狙いやすくする。 */
-const EXPORT_DOT_AVOID_PAD = 16
+const EXPORT_DOT_AVOID_PAD = 12
 /** アクティブ点とツールチップの間に最低限空ける余白。 */
-const ANCHOR_CLEARANCE = 14
+const ANCHOR_CLEARANCE = 10
+/** 候補を作るときの向きの刻み数。細かいほど「近くの空き」を見つけやすい。 */
+const TOOLTIP_ANGLE_STEPS = 16
+
+/** 向きベクトルを 8 方位のラベルに落とす（`data-placement` 用）。 */
+function directionLabel(dx: number, dy: number): TooltipDirection {
+  const h = dx > 0.383 ? 'right' : dx < -0.383 ? 'left' : ''
+  const v = dy > 0.383 ? 'bottom' : dy < -0.383 ? 'top' : ''
+  if (h && v) return `${v}-${h}` as TooltipDirection
+  return (v || h || 'right') as TooltipDirection
+}
 
 function rectsOverlap(
   a: { left: number; top: number; right: number; bottom: number },
@@ -714,38 +724,49 @@ export function chooseScatterTooltipPlacement({
   /** 斜め・遠め候補を足す(画像保存向け)。 */
   richCandidates?: boolean
 }): TooltipPlacement {
-  const g = gap
-  const g2 = gap * 2
+  // 候補は「点のまわりをぐるりと、近いところから」作る。
+  //
+  // 🔴 決め打ちの数箇所から選ぶと、**近くが空いていても遠くの候補が選ばれる**ことがある。
+  // 向きを細かく刻んで距離を少しずつ伸ばし、被らない中で一番近いところを採る。
   const candidates: {
     direction: TooltipDirection
     left: number
     top: number
     dx: number
     dy: number
-  }[] = [
-    { direction: 'right',  left: anchorX + g,                top: anchorY - tooltipHeight / 2, dx:  1, dy:  0 },
-    { direction: 'left',   left: anchorX - g - tooltipWidth, top: anchorY - tooltipHeight / 2, dx: -1, dy:  0 },
-    { direction: 'bottom', left: anchorX - tooltipWidth / 2, top: anchorY + g,                dx:  0, dy:  1 },
-    { direction: 'top',    left: anchorX - tooltipWidth / 2, top: anchorY - g - tooltipHeight, dx:  0, dy: -1 },
-  ]
-  if (richCandidates) {
-    candidates.push(
-      { direction: 'top-right',    left: anchorX + g,                top: anchorY - g - tooltipHeight, dx:  1, dy: -1 },
-      { direction: 'top-left',     left: anchorX - g - tooltipWidth, top: anchorY - g - tooltipHeight, dx: -1, dy: -1 },
-      { direction: 'bottom-right', left: anchorX + g,                top: anchorY + g,                dx:  1, dy:  1 },
-      { direction: 'bottom-left',  left: anchorX - g - tooltipWidth, top: anchorY + g,                dx: -1, dy:  1 },
-      // 密集時用に、軸方向へさらに離した候補。
-      { direction: 'right',  left: anchorX + g2,                top: anchorY - tooltipHeight / 2, dx:  1, dy:  0 },
-      { direction: 'left',   left: anchorX - g2 - tooltipWidth, top: anchorY - tooltipHeight / 2, dx: -1, dy:  0 },
-      { direction: 'bottom', left: anchorX - tooltipWidth / 2,  top: anchorY + g2,               dx:  0, dy:  1 },
-      { direction: 'top',    left: anchorX - tooltipWidth / 2,  top: anchorY - g2 - tooltipHeight, dx: 0, dy: -1 },
-      // 近傍がすべて他ドットに被るとき用に、プロット四隅へ退避。
-      { direction: 'top-right',    left: chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD, top: TOOLTIP_EDGE_PAD, dx:  1, dy: -1 },
-      { direction: 'top-left',     left: TOOLTIP_EDGE_PAD, top: TOOLTIP_EDGE_PAD, dx: -1, dy: -1 },
-      { direction: 'bottom-right', left: chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD, top: chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD, dx:  1, dy:  1 },
-      { direction: 'bottom-left',  left: TOOLTIP_EDGE_PAD, top: chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD, dx: -1, dy:  1 },
-    )
+    /** 点からの距離。近いほどよい。 */
+    reach: number
+  }[] = []
+  const rings = richCandidates
+    ? [0, 10, 22, 38, 58, 84, 120]
+    : [0, 12, 28, 50, 80]
+  for (const extra of rings) {
+    const r = gap + extra
+    for (let k = 0; k < TOOLTIP_ANGLE_STEPS; k++) {
+      const a = (k / TOOLTIP_ANGLE_STEPS) * Math.PI * 2
+      const dx = Math.cos(a)
+      const dy = Math.sin(a)
+      // その向きへ、箱の手前の辺が点から r 離れるように置く。
+      const cx = anchorX + dx * (r + tooltipWidth / 2)
+      const cy = anchorY + dy * (r + tooltipHeight / 2)
+      candidates.push({
+        direction: directionLabel(dx, dy),
+        left: cx - tooltipWidth / 2,
+        top:  cy - tooltipHeight / 2,
+        dx, dy,
+        reach: r,
+      })
+    }
   }
+  // 近傍がすべて埋まっているとき用に、プロット四隅へ退避する候補。
+  // 距離が大きいので、近くに空きがあれば選ばれない。
+  const farReach = 1e6
+  candidates.push(
+    { direction: 'top-right',    left: chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD, top: TOOLTIP_EDGE_PAD, dx:  1, dy: -1, reach: farReach },
+    { direction: 'top-left',     left: TOOLTIP_EDGE_PAD, top: TOOLTIP_EDGE_PAD, dx: -1, dy: -1, reach: farReach },
+    { direction: 'bottom-right', left: chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD, top: chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD, dx:  1, dy:  1, reach: farReach },
+    { direction: 'bottom-left',  left: TOOLTIP_EDGE_PAD, top: chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD, dx: -1, dy:  1, reach: farReach },
+  )
 
   const maxLeft = Math.max(TOOLTIP_EDGE_PAD, chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD)
   const maxTop = Math.max(TOOLTIP_EDGE_PAD, chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD)
@@ -795,18 +816,21 @@ export function chooseScatterTooltipPlacement({
       anchorOverlapArea: anchorHit.area,
       overlapCount,
       overlapArea,
-      clampDistance,
+      // 端に寄せた補正も「遠ざかった量」として距離に含める。
+      reach: candidate.reach + clampDistance,
       outwardAlignment,
     }
   })
 
   // 数値の重み付けではなく辞書順で比較し、上記の優先順位を厳密に守る。
+  // 🔴 被らない候補が複数あるときは**一番近いもの**を採る。ここに距離が無いと、
+  // 近くが空いていても遠くの候補が選ばれて、点から離れたところにチップが出る。
   scored.sort((a, b) =>
     a.anchorCovered - b.anchorCovered ||
     a.anchorOverlapArea - b.anchorOverlapArea ||
     a.overlapCount - b.overlapCount ||
     a.overlapArea - b.overlapArea ||
-    a.clampDistance - b.clampDistance ||
+    a.reach - b.reach ||
     b.outwardAlignment - a.outwardAlignment,
   )
   const best = scored[0]
