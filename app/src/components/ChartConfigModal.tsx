@@ -228,8 +228,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             )}
           </div>
 
-          {/* scatter は X 軸 (集計キー) と Y 軸の構成・メトリクスを使わないので、shape ごとに分岐 */}
-          {shape !== 'scatter' && (
+          {/* scatter は X 軸 (集計キー) と Y 軸の構成・メトリクスを使わないので、shape ごとに分岐。
+              calendar_heatmap は日別で固定（上の useEffect が groupBy を 'day' に寄せる）。
+              選択肢が 1 つしかない select を灰色で出しても選べないだけなので、項目ごと出さない。 */}
+          {shape !== 'scatter' && shape !== 'calendar_heatmap' && (
             <div className="form-field">
               <label className="form-label">X 軸(集計キー)</label>
               <select
@@ -246,15 +248,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                     setGroupBy(v as GroupByKey)
                   }
                 }}
-                disabled={shape === 'calendar_heatmap'}
               >
                 <optgroup label="カテゴリ">
                   {(Object.keys(GROUP_BY_LABELS) as GroupByKey[])
-                    .filter(g =>
-                      shape === 'line' ? isTimeBucketGroupBy(g) :
-                      shape === 'calendar_heatmap' ? g === 'day' :
-                      !isTimeBucketGroupBy(g)
-                    )
+                    .filter(g => shape === 'line' ? isTimeBucketGroupBy(g) : !isTimeBucketGroupBy(g))
                     .map(g => (
                       <option key={g} value={g}>{GROUP_BY_LABELS[g]}</option>
                     ))}
@@ -270,9 +267,6 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               </select>
               {shape === 'line' && (
                 <p className="form-hint">線グラフは時系列のみ。粒度は {TIME_BUCKET_GROUP_BYS.map(k => GROUP_BY_LABELS[k]).join(' / ')} から選びます。</p>
-              )}
-              {shape === 'calendar_heatmap' && (
-                <p className="form-hint">カレンダーは「日」固定(GitHub 風コントリビューショングラフ)。</p>
               )}
               {shape === 'heatmap' && xNumericMetric && (
                 <div className="form-field" style={{ marginTop: 8 }}>
