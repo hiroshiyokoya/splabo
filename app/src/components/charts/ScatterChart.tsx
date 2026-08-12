@@ -214,17 +214,33 @@ const Y_AXIS_WIDTH   = 56
 const X_AXIS_HEIGHT  = 30
 
 /**
- * コンテナの実寸から、実際に点が描かれる矩形を出す。
+ * 実際に点が描かれる矩形（チャート座標）。
  *
- * 🔴 **軸のぶんを引くのを忘れないこと。** 下端は `余白` だけでなく
- * `余白 + X 軸の高さ` の内側。ここを間違えると、ばらけた点が軸の帯まで降りて
- * 見切れる。
+ * 🔴 **余白から計算しないこと。** 余白・軸の幅・軸の高さ・Recharts の既定値が
+ * どれか 1 つでも想定とズレると、ばらけた点が軸や外へはみ出して見切れる。
+ * 実際に何度もやった（下端で X 軸の高さを忘れ、左右で軸幅がズレた）。
+ *
+ * グリッド線はプロット領域いっぱいに引かれるので、**その実寸を読む**のが確実。
+ * 読めなかったときだけ計算に落ちる。
  */
-function plotRect(width: number, height: number) {
+function plotRect(area: HTMLElement, height: number) {
+  const grid = area.querySelector('.recharts-cartesian-grid')
+  if (grid) {
+    const areaRect = area.getBoundingClientRect()
+    const r = grid.getBoundingClientRect()
+    if (r.width > 1 && r.height > 1) {
+      return {
+        left:   r.left - areaRect.left,
+        top:    r.top - areaRect.top,
+        right:  r.right - areaRect.left,
+        bottom: r.bottom - areaRect.top,
+      }
+    }
+  }
   return {
     left:   CHART_MARGIN.left + Y_AXIS_WIDTH,
     top:    CHART_MARGIN.top,
-    right:  width - CHART_MARGIN.right,
+    right:  area.clientWidth - CHART_MARGIN.right,
     bottom: height - CHART_MARGIN.bottom - X_AXIS_HEIGHT,
   }
 }
@@ -637,11 +653,15 @@ type ObstacleRect = { left: number; top: number; right: number; bottom: number }
 
 const TOOLTIP_GAP = 14
 const TOOLTIP_EDGE_PAD = 6
-const DOT_AVOID_PAD = 4
-/** 画像保存時はドット同士の隙間を広めに見て、被りゼロを狙いやすくする。 */
-const EXPORT_DOT_AVOID_PAD = 10
+/** ドットを避けるときの外縁パディング。
+ *
+ *  ブキ画像は点より大きいので、4px では隣の画像に乗ってしまう。**離れてもいいから
+ *  重ねない**ほうが読みやすいので、広めに取る。 */
+const DOT_AVOID_PAD = 10
+/** 画像保存時はさらに広めに見て、被りゼロを狙いやすくする。 */
+const EXPORT_DOT_AVOID_PAD = 16
 /** アクティブ点とツールチップの間に最低限空ける余白。 */
-const ANCHOR_CLEARANCE = 8
+const ANCHOR_CLEARANCE = 14
 
 function rectsOverlap(
   a: { left: number; top: number; right: number; bottom: number },
@@ -1507,7 +1527,9 @@ export function ScatterChart({
       anchorObstacle,
       gap,
       dotAvoidPad: exportLayout ? EXPORT_DOT_AVOID_PAD : DOT_AVOID_PAD,
-      richCandidates: exportLayout,
+      // 斜め・遠め・四隅の候補も常に見る。**離れてもいいから重ねない**ほうが読みやすい。
+      // 遠い候補は順位付けで最後に回るので、近くに空きがあればそちらが選ばれる。
+      richCandidates: true,
     }))
   }, [active, hoverSiblings.length, height, exportLayout, spread, settleTick])
 
@@ -1665,7 +1687,7 @@ export function ScatterChart({
             const area = areaRef.current
             if (!imagePx || spreadPinned || !area) return
             if (spread?.offsets.has(p.name)) return
-            setSpread(buildSpread(p.name, basePos, imagePx, plotRect(area.clientWidth, height)))
+            setSpread(buildSpread(p.name, basePos, imagePx, plotRect(area, height)))
           }}
           onClick={(p: any) => {
             // クリックでピン留め/再クリックで解除。画像保存前に点を固定できる。
