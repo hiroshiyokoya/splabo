@@ -197,6 +197,99 @@ function buildScatterTipPayload(
 /** ホバー中の画像マーカーに描く輪の太さ。 */
 const IMAGE_RING_WIDTH = 2.5
 
+// ---------------------------------------------------------------------------
+// 重なった画像をばらけさせる(#630)
+// ---------------------------------------------------------------------------
+//
+// 画像モードは点が大きいので密集すると重なって読めない。ホバーした塊を一時的に
+// 円周へ広げ、元の位置へ引き出し線を引く。
+//
+// 🔴 散布図は**位置が値**なので、広げた位置をそのまま読まれると嘘になる。
+// 引き出し線は飾りではなく、これが無いと成立しない。
+
+/** 1 つの塊に入れる上限。連結成分は青天井に繋がるので、密なグラフだと全部が 1 塊になる。 */
+const SPREAD_MAX_MEMBERS = 12
+/** 当たり判定の円に足す余白。輪の外側で即畳まれるとチカチカする。 */
+const SPREAD_HULL_PAD = 12
+/** 広げた点と元の位置の間に引く線。 */
+const SPREAD_LINK_OPACITY = 0.55
+
+type SpreadState = {
+  /** 塊の重心(チャート座標)。当たり判定の円の中心。 */
+  center:  { x: number; y: number }
+  /** ここから出たら畳む。 */
+  hullR:   number
+  /** 点の名前 → 元の位置からのずらし量。 */
+  offsets: Map<string, { dx: number; dy: number }>
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi <= lo ? lo : hi)
+
+/**
+ * `seed` と重なっている点を集めて、円周へ配置する。
+ *
+ * - 重なり = 画像の矩形が重なる ≒ 中心間の距離が一辺未満
+ * - 塊は seed から連結成分をたどる(上限あり)
+ * - **元の方角の順序は保つ**。並べ替えるとどれがどれか分からなくなる
+ * - プロット領域の外は clip で切れるので内側へ丸める
+ *
+ * 2 点未満なら null(広げる意味が無い)。
+ */
+export function buildSpread(
+  seedName: string,
+  basePos: Map<string, { x: number; y: number }>,
+  imagePx: number,
+  bounds: { width: number; height: number },
+): SpreadState | null {
+  const seed = basePos.get(seedName)
+  if (!seed) return null
+
+  const names: string[] = [seedName]
+  const seen = new Set<string>([seedName])
+  for (let i = 0; i < names.length && names.length < SPREAD_MAX_MEMBERS; i++) {
+    const a = basePos.get(names[i])!
+    for (const [name, p] of basePos) {
+      if (seen.has(name)) continue
+      if (Math.hypot(p.x - a.x, p.y - a.y) < imagePx) {
+        seen.add(name)
+        names.push(name)
+        if (names.length >= SPREAD_MAX_MEMBERS) break
+      }
+    }
+  }
+  if (names.length < 2) return null
+
+  const center = {
+    x: names.reduce((s, n) => s + basePos.get(n)!.x, 0) / names.length,
+    y: names.reduce((s, n) => s + basePos.get(n)!.y, 0) / names.length,
+  }
+
+  // 円周に n 個並べて隣同士が重ならない最小半径。n=2 なら一辺の半分。
+  const n = names.length
+  const minR = imagePx / (2 * Math.sin(Math.PI / n))
+  const radius = Math.max(minR + 4, imagePx * 0.9)
+
+  // 元の方角で並べ、その順に等間隔で置く。先頭の方角を起点にすると全体の向きも保てる。
+  const ordered = names
+    .map(name => {
+      const p = basePos.get(name)!
+      return { name, angle: Math.atan2(p.y - center.y, p.x - center.x) }
+    })
+    .sort((a, b) => a.angle - b.angle)
+
+  const margin = imagePx / 2 + 2
+  const offsets = new Map<string, { dx: number; dy: number }>()
+  ordered.forEach((m, i) => {
+    const angle = ordered[0].angle + (i * 2 * Math.PI) / n
+    const tx = clamp(center.x + radius * Math.cos(angle), margin, bounds.width - margin)
+    const ty = clamp(center.y + radius * Math.sin(angle), margin, bounds.height - margin)
+    const base = basePos.get(m.name)!
+    offsets.set(m.name, { dx: tx - base.x, dy: ty - base.y })
+  })
+
+  return { center, hullR: radius + imagePx / 2 + SPREAD_HULL_PAD, offsets }
+}
+
 /** Recharts Scatter の shape コールバック。payload.markerShape を読む。 */
 function scatterPointShape(props: {
   cx?: number
@@ -213,6 +306,8 @@ function scatterPointShape(props: {
   tipJson?: string
   /** 画像モードの一辺(px)。指定があり `payload.iconUrl` もあるとき、図形の代わりに画像を描く(#627)。 */
   imagePx?: number
+  /** ばらけ表示のずらし量(#630)。元の位置へは引き出し線を引く。 */
+  offset?: { dx: number; dy: number } | null
 }) {
   const cx = props.cx ?? 0
   const cy = props.cy ?? 0
@@ -225,6 +320,11 @@ function scatterPointShape(props: {
   const iconUrl = props.payload?.iconUrl
   if (props.imagePx && iconUrl) {
     const s = props.imagePx
+    // ばらけ表示(#630)。ずらした先に描き、元の位置へ線を引く。
+    const dx = props.offset?.dx ?? 0
+    const dy = props.offset?.dy ?? 0
+    const px = cx + dx
+    const py = cy + dy
     // 強調は輪だけ。色メトリクスは画像モードでは効かないので、輪の色は固定でよい。
     return (
       <g
@@ -232,10 +332,22 @@ function scatterPointShape(props: {
         data-scatter-active={props.active ? 'true' : undefined}
         data-scatter-tip={props.tipJson}
       >
+        {props.offset && (
+          <>
+            {/* 元の位置。線だけだと「値がそこにある」ことが読み取りにくい。 */}
+            <circle cx={cx} cy={cy} r={2} fill="var(--text-muted)" opacity={SPREAD_LINK_OPACITY} />
+            <line
+              x1={cx} y1={cy} x2={px} y2={py}
+              stroke="var(--text-muted)"
+              strokeWidth={1}
+              opacity={SPREAD_LINK_OPACITY}
+            />
+          </>
+        )}
         {props.active && (
           <circle
-            cx={cx}
-            cy={cy}
+            cx={px}
+            cy={py}
             r={s / 2 + IMAGE_RING_WIDTH}
             fill="none"
             stroke="var(--text)"
@@ -244,8 +356,8 @@ function scatterPointShape(props: {
         )}
         <image
           href={iconUrl}
-          x={cx - s / 2}
-          y={cy - s / 2}
+          x={px - s / 2}
+          y={py - s / 2}
           width={s}
           height={s}
           // ヒット領域を画像全体にする(透明部分でもツールチップを出す)。
@@ -925,6 +1037,9 @@ export function ScatterChart({
   const [hover, setHover] = useState<ScatterPoint | null>(null)
   // クリックでピン留め。保存ボタンへマウスを移してもツールチップが消えないようにする。
   const [pinned, setPinned] = useState<ScatterPoint | null>(null)
+  // 重なった画像をばらけさせる(#630)。ピン留め中はカーソルが外れても畳まない。
+  const [spread, setSpread] = useState<SpreadState | null>(null)
+  const [spreadPinned, setSpreadPinned] = useState(false)
   const [tooltipPlacement, setTooltipPlacement] = useState<TooltipPlacement | null>(null)
   // 画像保存直前に立てる。配置を斜め・遠め候補込みでやり直す。
   const [exportLayout, setExportLayout] = useState(false)
@@ -1026,6 +1141,20 @@ export function ScatterChart({
   // 🔴 凡例と同じ定数を使う(SIZE_AREA_RANGE のコメント参照)。
   const zRange: [number, number] = hasSize ? SIZE_AREA_RANGE : [constSize, constSize]
 
+  // ばらけ表示用に、各点の**元の**描画座標を控える(#630)。
+  //
+  // `shape` コールバックに来る cx/cy は常に元の位置なので、広げている最中でも
+  // ここは base のまま保たれる。データが変わったら作り直す(古い名前を残さない)。
+  //
+  // キーは点の名前。画像モードはブキ単位だけなので名前は一意(#627)。
+  const basePos = useMemo(() => new Map<string, { x: number; y: number }>(), [drawable])
+
+  // データ・サイズ・モードが変わったら、広げたままにしない(座標が合わなくなる)。
+  useEffect(() => {
+    setSpread(null)
+    setSpreadPinned(false)
+  }, [drawable, imagePx])
+
   // ツールチップを一度 hidden で描画して実寸を測り、上下左右の最適位置へ移す。
   // マーカーも DOM の実寸を読むため、形・サイズ指標の有無にかかわらず避けられる(#497)。
   // 自分の点(ハロー込み)は他点より優先して隠さない。
@@ -1034,8 +1163,11 @@ export function ScatterChart({
     const tooltip = tooltipRef.current
     if (!active || !area || !tooltip) return
 
-    const anchorX = (active as unknown as { cx?: number }).cx ?? 0
-    const anchorY = (active as unknown as { cy?: number }).cy ?? 0
+    // ばらけているときはツールチップも移動先に付ける(#630)。元の位置に出すと、
+    // どの画像の説明なのか分からなくなる。
+    const off = spread?.offsets.get(active.name)
+    const anchorX = ((active as unknown as { cx?: number }).cx ?? 0) + (off?.dx ?? 0)
+    const anchorY = ((active as unknown as { cy?: number }).cy ?? 0) + (off?.dy ?? 0)
     const areaRect = area.getBoundingClientRect()
     const tooltipRect = tooltip.getBoundingClientRect()
 
@@ -1087,12 +1219,14 @@ export function ScatterChart({
       dotAvoidPad: exportLayout ? EXPORT_DOT_AVOID_PAD : DOT_AVOID_PAD,
       richCandidates: exportLayout,
     }))
-  }, [active, hoverSiblings.length, height, exportLayout])
+  }, [active, hoverSiblings.length, height, exportLayout, spread])
 
   // チャート上から保存ボタンへ移ってもツールチップを残す。
   // 消すのは「パネル全体」から出たときだけ(.chart-card / .env-chart-section)。
   const pinnedRef = useRef(pinned)
   pinnedRef.current = pinned
+  const spreadPinnedRef = useRef(spreadPinned)
+  spreadPinnedRef.current = spreadPinned
   useEffect(() => {
     const area = areaRef.current
     if (!area) return
@@ -1105,6 +1239,7 @@ export function ScatterChart({
       setHover(null)
       // ピン留め中はパネル外でも残す(明示クリック解除まで)。
       if (!pinnedRef.current) setTooltipPlacement(null)
+      if (!spreadPinnedRef.current) setSpread(null)
     }
     const onExportPrepare = () => {
       // キャプチャ前に同期で配置し直す(次フレーム待ちだけでは React 更新が間に合わない)。
@@ -1143,7 +1278,23 @@ export function ScatterChart({
   }, [])
 
   return (
-    <div className="chart-hover-area" ref={areaRef} style={{ position: 'relative' }}>
+    <div
+      className="chart-hover-area"
+      ref={areaRef}
+      style={{ position: 'relative' }}
+      // ばらけ表示の当たり判定(#630)。**点ではなく塊を覆う円**で判定する。
+      //
+      // 🔴 「点から外れたら畳む」にすると壊れる。広げた瞬間にカーソルの下から画像が
+      // 逃げるので mouseleave → 畳む → また重なる → mouseenter …とチカチカする。
+      onMouseMove={e => {
+        const area = areaRef.current
+        if (!spread || spreadPinned || !area) return
+        const rect = area.getBoundingClientRect()
+        const dx = e.clientX - rect.left - spread.center.x
+        const dy = e.clientY - rect.top - spread.center.y
+        if (Math.hypot(dx, dy) > spread.hullR) setSpread(null)
+      }}
+    >
     <ResponsiveContainer width="100%" height={height}>
       <RScatterChart
         margin={{ top: 20, right: 18, left: 0, bottom: 28 }}
@@ -1191,23 +1342,38 @@ export function ScatterChart({
             const tipJson = payload
               ? JSON.stringify(buildScatterTipPayload(payload, siblings))
               : undefined
+            // ばらけ表示の元座標を控える(#630)。cx/cy は広げていても常に元の位置。
+            if (payload && props.cx != null && props.cy != null) {
+              basePos.set(payload.name, { x: props.cx, y: props.cy })
+            }
             return scatterPointShape({
               ...props,
               fillOpacity,
               active: sameScatterAnchor(props, active as { cx?: number; cy?: number } | null),
               tipJson,
               imagePx,
+              offset: payload ? spread?.offsets.get(payload.name) ?? null : null,
             })
           }}
           onMouseEnter={(p: any) => {
             // 同じ点へ入り直した場合も再計測するため、新しいオブジェクトとして保持する。
             setTooltipPlacement(null)
             setHover({ ...p })
+            // 重なっているならばらけさせる(#630)。ピン留め中と、既に同じ塊を
+            // 広げているときは触らない(広げ直すと座標が跳ねる)。
+            const area = areaRef.current
+            if (!imagePx || spreadPinned || !area) return
+            if (spread?.offsets.has(p.name)) return
+            setSpread(buildSpread(p.name, basePos, imagePx, { width: area.clientWidth, height }))
           }}
           onClick={(p: any) => {
             // クリックでピン留め/再クリックで解除。画像保存前に点を固定できる。
             const next = { ...p }
-            setPinned(prev => sameScatterAnchor(prev as { cx?: number; cy?: number } | null, next) ? null : next)
+            const willUnpin = sameScatterAnchor(pinned as { cx?: number; cy?: number } | null, next)
+            setPinned(willUnpin ? null : next)
+            // ばらけた状態も一緒に固定する。こうすると広がったまま画像に保存できる。
+            setSpreadPinned(!willUnpin && !!spread)
+            if (willUnpin) setSpread(null)
             setTooltipPlacement(null)
             setHover(next)
           }}
@@ -1236,8 +1402,9 @@ export function ScatterChart({
     )}
     {active && (() => {
       // 初回はアクティブ点位置へ hidden で描画し、useLayoutEffect で実寸計測後に表示する。
-      const hx = (active as unknown as { cx?: number }).cx ?? 0
-      const hy = (active as unknown as { cy?: number }).cy ?? 0
+      const off = spread?.offsets.get(active.name)
+      const hx = ((active as unknown as { cx?: number }).cx ?? 0) + (off?.dx ?? 0)
+      const hy = ((active as unknown as { cy?: number }).cy ?? 0) + (off?.dy ?? 0)
       const tipStyle: CSSProperties = {
         position: 'absolute',
         left: tooltipPlacement?.left ?? hx,
