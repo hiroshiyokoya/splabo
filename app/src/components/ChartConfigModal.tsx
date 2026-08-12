@@ -502,15 +502,16 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                     <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
-                <label className="checkbox-label" style={{ marginTop: 6 }}>
-                  <input
-                    type="checkbox"
-                    checked={xLogScale && !isRateMetric(xMetric)}
-                    disabled={isRateMetric(xMetric)}
-                    onChange={e => setXLogScale(e.target.checked)}
-                  />
-                  ログスケール
-                </label>
+                {!isRateMetric(xMetric) && (
+                  <label className="checkbox-label" style={{ marginTop: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={xLogScale}
+                      onChange={e => setXLogScale(e.target.checked)}
+                    />
+                    ログスケール
+                  </label>
+                )}
                 <p className="form-hint">{logScaleHint(xMetric)}</p>
               </div>
               <div className="form-field">
@@ -520,34 +521,36 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                     <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
-                <label className="checkbox-label" style={{ marginTop: 6 }}>
-                  <input
-                    type="checkbox"
-                    checked={yLogScale && !isRateMetric(yMetric)}
-                    disabled={isRateMetric(yMetric)}
-                    onChange={e => setYLogScale(e.target.checked)}
-                  />
-                  ログスケール
-                </label>
+                {!isRateMetric(yMetric) && (
+                  <label className="checkbox-label" style={{ marginTop: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={yLogScale}
+                      onChange={e => setYLogScale(e.target.checked)}
+                    />
+                    ログスケール
+                  </label>
+                )}
                 <p className="form-hint">{logScaleHint(yMetric)}</p>
               </div>
+              {/* 🔴 画像モードでは**出さない**。使えない項目を灰色で並べても選べないだけで、
+                  理由は「点の見た目」のヒントに書いてある。 */}
+              {!imageMode && (
               <div className="form-field">
                 <label className="form-label">サイズ(任意)</label>
-                <select className="form-input" value={sizeMetric} disabled={imageMode} onChange={e => setSizeMetric(e.target.value)}>
+                <select className="form-input" value={sizeMetric} onChange={e => setSizeMetric(e.target.value)}>
                   <option value="">(一定サイズ)</option>
                   {scatterMetricOptions(dotUnit).map(o => (
                     <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
-                <p className="form-hint">
-                  {imageMode
-                    ? 'ブキ画像のときは一定サイズです。'
-                    : '値が大きいほど大きく見える(sqrt スケール)。'}
-                </p>
+                <p className="form-hint">値が大きいほど大きく見える(sqrt スケール)。</p>
               </div>
+              )}
+              {!imageMode && (
               <div className="form-field">
                 <label className="form-label">色・形(任意)</label>
-                <select className="form-input" value={colorMetric} disabled={imageMode} onChange={e => setColorMetric(e.target.value)}>
+                <select className="form-input" value={colorMetric} onChange={e => setColorMetric(e.target.value)}>
                   <option value="">(単色 = アクセント)</option>
                   {dotUnit === 'battle' && <option value="win_lose">勝敗</option>}
                   {scatterMetricOptions(dotUnit).map(o => (
@@ -558,15 +561,14 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                   ))}
                 </select>
                 <p className="form-hint">
-                  {imageMode
-                    ? 'ブキ画像のときは色を使えません(画像で塗りが埋まるため)。'
-                    : dotUnit === 'battle'
-                      ? '勝敗、またはブキカテゴリ・サブ・スペシャルを色×形で区別できます。'
-                      : dotUnit === 'weapon'
-                        ? '数値指標のほか、ブキカテゴリ・サブ・スペシャルを色×形で区別できます。'
-                        : '勝率は divergent (赤↔青)、それ以外は accent の濃淡。'}
+                  {dotUnit === 'battle'
+                    ? '勝敗、またはブキカテゴリ・サブ・スペシャルを色×形で区別できます。'
+                    : dotUnit === 'weapon'
+                      ? '数値指標のほか、ブキカテゴリ・サブ・スペシャルを色×形で区別できます。'
+                      : '勝率は divergent (赤↔青)、それ以外は accent の濃淡。'}
                 </p>
               </div>
+              )}
             </>
           )}
 
