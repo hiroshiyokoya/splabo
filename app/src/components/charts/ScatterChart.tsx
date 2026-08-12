@@ -267,59 +267,144 @@ function plotRect(area: HTMLElement, height: number) {
 /** 効果が及ぶ半径(px)。これより遠い点は 1px も動かない。 */
 const LENS_RADIUS = 130
 /**
- * 引き伸ばしの強さ。中心のごく近くは (強さ + 1) 倍まで押し広げられる。
+ * 反発の強さの落ち方。大きいほど**カーソルの近くだけが反発する**。
  *
- * 半径の縁ではぴったり 1 倍（＝動かない）に戻るので、効果の内と外で段差ができない。
+ *     強さ = (1 - カーソルからの距離 / 半径)^F
+ *
+ *     カーソルから  13px → 0.73    ← ほどけてほしいのはここ
+ *     　　　　　　  65px → 0.13
+ *     　　　　　　 117px → 0.001   ← ほぼ動かない
+ *
+ * 🔴 これを緩くすると、遠くの点までじわじわ動いて画面全体が揺れて見える。
  */
-const LENS_STRENGTH = 2.2
+const LENS_FALLOFF = 3
 /** カーソルを外したとき、元の位置へ戻るまでの時間。 */
 const LENS_COLLAPSE_MS = 220
+
+/** 反発の反復回数。動かすのはレンズの中の点だけなので、毎フレーム回しても軽い。 */
+const LENS_ITERATIONS = 60
+/** 毎回どれだけレンズの目標位置へ引き戻すか。大きいほど「重なってでも元の形」寄り。 */
+const LENS_PULL = 0.10
+/** 完全に同じ座標のときに散らす向き(黄金角)。乱数を使わず毎回同じ結果にする。 */
+const GOLDEN_ANGLE = 2.399963
 
 type LensState = {
   /** カーソル位置（チャート座標）。 */
   x: number
   y: number
-  /** ずらした先を収める矩形。毎フレーム測り直さないよう、掴んだときの値を持ち回る。 */
-  plot: { left: number; top: number; right: number; bottom: number }
-  /** はみ出さないための余白（画像の半分＋輪）。 */
-  margin: number
+  /** 点の名前 → 元の位置からのずらし量。レンズの外の点は入らない。 */
+  offsets: Map<string, { dx: number; dy: number }>
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi <= lo ? lo : hi)
 
+/** カーソルからの距離に応じた反発の強さ（0〜1）。縁で 0 になるので段差が出ない。 */
+function lensWeight(d: number): number {
+  if (d >= LENS_RADIUS) return 0
+  return Math.pow(1 - d / LENS_RADIUS, LENS_FALLOFF)
+}
+
 /**
- * 魚眼レンズのずらし量(#630)。
+ * カーソルのまわりのアイコンに**反発力を与える**(#630)。
  *
- * カーソルからの距離 d を d' に写す。**縁で連続**（d = R なら d' = d）なので、
- * 効果の内と外で点が飛ばない。
+ * 🔴 カーソルから外へ押しのける（魚眼）のではない。それだと
+ *   - ぴったり重なった 2 点は、何倍に引き伸ばしても離れない（距離 0 のまま）
+ *   - 重なっていない点まで動くので、画面全体が揺れて見える
  *
- *     n  = d / R
- *     n' = (S + 1) n / (S n + 1)
- *     d' = n' R
+ * ここでやるのは「カーソルに近いアイコンほど、**互いに強く反発する**」だけ。
+ * 押し合う相手はアイコン同士で、カーソルは強さを決めるだけ。そのつど元の位置へ
+ * 引き戻すので、重なりが解ける分だけ離れて止まる。
  *
- * n が小さいほど n'/n は (S + 1) に近づき、n = 1 では 1 になる。
- * つまり**中心に近いほど強く外へ、縁では動かない**。
+ * この作りだと、**もともと離れているアイコンにカーソルを当てても何も起きない**。
+ * 動くのは団子になっている所だけで、それ以外は静かなまま。狙いどおり。
  *
- * 中心そのもの（d ≒ 0）は向きが決まらないので動かさない。
+ * 動かすのは効果範囲の中の点だけ。外の点は動かない障害物として避ける。
  */
-export function lensOffset(
-  px: number,
-  py: number,
-  lens: LensState,
-): { dx: number; dy: number } {
-  const vx = px - lens.x
-  const vy = py - lens.y
-  const d = Math.hypot(vx, vy)
-  if (d >= LENS_RADIUS || d < 1e-6) return { dx: 0, dy: 0 }
+export function buildLens(
+  cursorX: number,
+  cursorY: number,
+  basePos: Map<string, { x: number; y: number }>,
+  imagePx: number,
+  plot: { left: number; top: number; right: number; bottom: number },
+): LensState {
+  const span = imagePx
+  const margin = imagePx / 2 + IMAGE_RING_GAP + IMAGE_RING_WIDTH
+  const lo = { x: plot.left + margin, y: plot.top + margin }
+  const hi = { x: plot.right - margin, y: plot.bottom - margin }
 
-  const n = d / LENS_RADIUS
-  const stretched = ((LENS_STRENGTH + 1) * n) / (LENS_STRENGTH * n + 1)
-  const scale = (stretched * LENS_RADIUS) / d
+  const moving: {
+    name: string
+    base: { x: number; y: number }
+    /** カーソルへの近さから決まる反発の強さ（0〜1）。 */
+    w: number
+    x: number; y: number
+    idx: number
+  }[] = []
+  const fixed: { x: number; y: number }[] = []
 
-  const m = lens.margin
-  const tx = clamp(lens.x + vx * scale, lens.plot.left + m, lens.plot.right - m)
-  const ty = clamp(lens.y + vy * scale, lens.plot.top + m, lens.plot.bottom - m)
-  return { dx: tx - px, dy: ty - py }
+  let idx = 0
+  for (const [name, p] of basePos) {
+    const d = Math.hypot(p.x - cursorX, p.y - cursorY)
+    if (d >= LENS_RADIUS) {
+      // 効果範囲の外。動かないが、すぐ外側のものは避ける相手になる。
+      if (d < LENS_RADIUS + span * 2) fixed.push(p)
+      continue
+    }
+    // 出発点は**元の位置そのもの**。カーソルから外へは押さない。
+    moving.push({ name, base: p, w: lensWeight(d), x: p.x, y: p.y, idx: idx++ })
+  }
+
+  for (let iter = 0; iter < LENS_ITERATIONS; iter++) {
+    // 1. 元の位置へ引き戻す。これがあるので「重なりが解ける分だけ」離れる。
+    for (const m of moving) {
+      m.x += (m.base.x - m.x) * LENS_PULL
+      m.y += (m.base.y - m.y) * LENS_PULL
+    }
+    // 2. 重なっている画像同士を押しのける。**押す量はカーソルへの近さで決まる。**
+    //    遠い所の重なりは動かないので、画面全体が揺れない。
+    for (let i = 0; i < moving.length; i++) {
+      for (let j = i + 1; j < moving.length; j++) {
+        const a = moving[i], b = moving[j]
+        let dx = b.x - a.x, dy = b.y - a.y
+        let dist = Math.hypot(dx, dy)
+        if (dist >= span) continue
+        if (dist < 1e-6) {
+          // ぴったり重なっている。向きが決まらないので決め打ちにする
+          // （乱数だとフレームごとに配置が変わってちらつく）。
+          const angle = i * GOLDEN_ANGLE
+          dx = Math.cos(angle); dy = Math.sin(angle); dist = 1
+        }
+        const w = (a.w + b.w) / 2
+        const push = ((span - dist) / 2) * w
+        const ux = dx / dist, uy = dy / dist
+        a.x -= ux * push; a.y -= uy * push
+        b.x += ux * push; b.y += uy * push
+      }
+    }
+    // 3. 効果範囲の外の点からは自分だけ退く。
+    for (const m of moving) {
+      for (const o of fixed) {
+        let dx = m.x - o.x, dy = m.y - o.y
+        let dist = Math.hypot(dx, dy)
+        if (dist >= span) continue
+        if (dist < 1e-6) { dx = 1; dy = 0; dist = 1 }
+        const push = (span - dist) * m.w
+        m.x += (dx / dist) * push
+        m.y += (dy / dist) * push
+      }
+    }
+    // 4. プロット領域の中へ。はみ出すと軸に載って見切れる。
+    for (const m of moving) {
+      m.x = clamp(m.x, lo.x, hi.x)
+      m.y = clamp(m.y, lo.y, hi.y)
+    }
+  }
+
+  const offsets = new Map<string, { dx: number; dy: number }>()
+  for (const m of moving) {
+    offsets.set(m.name, { dx: m.x - m.base.x, dy: m.y - m.base.y })
+  }
+  return { x: cursorX, y: cursorY, offsets }
 }
 
 /** 移動スタイル。画像・輪で**同じものを使う**（別々に書くと輪だけ遅れて動く）。
@@ -357,9 +442,10 @@ function ScatterUnderLayer({
   imagePx:    number
   animate:    boolean
 }) {
-  const activeBase = activeName ? basePos.get(activeName) : undefined
+  if (!activeName) return null
+  const activeBase = basePos.get(activeName)
   if (!activeBase) return null
-  const off = lens ? lensOffset(activeBase.x, activeBase.y, lens) : null
+  const off = lens?.offsets.get(activeName) ?? null
   return (
     <g pointerEvents="none">
       <g style={lensMoveStyle(off, animate)}>
@@ -1282,6 +1368,9 @@ export function ScatterChart({
   //
   // キーは点の名前。画像モードはブキ単位だけなので名前は一意(#627)。
   const basePos = useMemo(() => new Map<string, { x: number; y: number }>(), [drawable])
+  // rAF のコールバックから読むので ref でも持つ（クロージャが古い Map を掴まないように）。
+  const basePosRef = useRef(basePos)
+  basePosRef.current = basePos
 
   // データ・サイズ・モードが変わったら、ずらしたままにしない(座標が合わなくなる)。
   useEffect(() => {
@@ -1312,7 +1401,7 @@ export function ScatterChart({
     // どの画像の説明なのか分からなくなる。
     const baseX = (active as unknown as { cx?: number }).cx ?? 0
     const baseY = (active as unknown as { cy?: number }).cy ?? 0
-    const off = lens ? lensOffset(baseX, baseY, lens) : null
+    const off = lens?.offsets.get(active.name) ?? null
     const anchorX = baseX + (off?.dx ?? 0)
     const anchorY = baseY + (off?.dy ?? 0)
     const areaRect = area.getBoundingClientRect()
@@ -1394,12 +1483,7 @@ export function ScatterChart({
       const p = lensPendingRef.current
       const el = areaRef.current
       if (!p || !el || !imagePx) return
-      setLens({
-        x: p.x,
-        y: p.y,
-        plot: plotRect(el, height),
-        margin: imagePx / 2 + IMAGE_RING_GAP + IMAGE_RING_WIDTH,
-      })
+      setLens(buildLens(p.x, p.y, basePosRef.current, imagePx, plotRect(el, height)))
     })
   }, [imagePx, height])
 
@@ -1535,9 +1619,7 @@ export function ScatterChart({
               active: sameScatterAnchor(props, active as { cx?: number; cy?: number } | null),
               tipJson,
               imagePx,
-              offset: lens && props.cx != null && props.cy != null
-                ? lensOffset(props.cx, props.cy, lens)
-                : null,
+              offset: payload ? lens?.offsets.get(payload.name) ?? null : null,
               animate: !reduceMotion,
             })
           }}
@@ -1584,7 +1666,7 @@ export function ScatterChart({
       // 初回はアクティブ点位置へ hidden で描画し、useLayoutEffect で実寸計測後に表示する。
       const bx = (active as unknown as { cx?: number }).cx ?? 0
       const by = (active as unknown as { cy?: number }).cy ?? 0
-      const off = lens ? lensOffset(bx, by, lens) : null
+      const off = lens?.offsets.get(active.name) ?? null
       const hx = bx + (off?.dx ?? 0)
       const hy = by + (off?.dy ?? 0)
       const tipStyle: CSSProperties = {
