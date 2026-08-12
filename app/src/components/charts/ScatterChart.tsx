@@ -409,16 +409,34 @@ export function buildSpread(
   }
   if (names.length < 2) return null
 
+  // 画像の外側に輪(選択中)も描くので、その太さまで見込んで内側に収める。
+  const half = span / 2 + IMAGE_RING_GAP * SPREAD_SCALE + IMAGE_RING_WIDTH
+  const lo = { x: plot.left + half, y: plot.top + half }
+  const hi = { x: plot.right - half, y: plot.bottom - half }
+
   // 放射の中心。**元の位置から一度だけ決めて動かさない**。
   // 動かすと向きが揺れて、反復のたびに配置が変わる。
-  const origin = {
+  const centroid = {
     x: names.reduce((s, n) => s + basePos.get(n)!.x, 0) / names.length,
     y: names.reduce((s, n) => s + basePos.get(n)!.y, 0) / names.length,
   }
 
-  const half = span / 2
-  const lo = { x: plot.left + half, y: plot.top + half }
-  const hi = { x: plot.right - half, y: plot.bottom - half }
+  // 🔴 端に寄った塊は、**空いているほうへ寄せて散らす**。
+  //
+  // 重心をそのまま放射の中心にすると、外周を向いた点は端に阻まれて動けない。
+  // 均等に散らそうとして、行き場の無い向きにも配り続けることになる。
+  //
+  // 足りないぶんだけ中心を端側へずらすと、光線がまとめて内側を向く。
+  // 中心が塊の外に出ても構わない（向きを決めるためだけの点）。
+  const need = span * (0.5 + Math.sqrt(names.length) / 2)
+  const origin = {
+    x: centroid.x
+      - Math.max(0, need - (centroid.x - lo.x))
+      + Math.max(0, need - (hi.x - centroid.x)),
+    y: centroid.y
+      - Math.max(0, need - (centroid.y - lo.y))
+      + Math.max(0, need - (hi.y - centroid.y)),
+  }
 
   // 各点は「重心から自分へ向かう向き」に、どれだけ出るか(t)だけを持つ。
   // 遅延はカーソルの点から近い順。そこから波紋のように動く。
@@ -504,13 +522,15 @@ export function buildSpread(
   })
 
   // 当たり判定は塊全体を覆う円。ずらす前・後の両方を含める。
+  // 🔴 中心は**重心**。放射の中心（端に寄せてある）を使うと、円が塊から外れて
+  // 大きくなり、関係ない場所にカーソルを置いても広がったままになる。
   let far = 0
   for (const m of members) {
-    far = Math.max(far, Math.hypot(m.x - origin.x, m.y - origin.y))
-    far = Math.max(far, Math.hypot(m.base.x - origin.x, m.base.y - origin.y))
+    far = Math.max(far, Math.hypot(m.x - centroid.x, m.y - centroid.y))
+    far = Math.max(far, Math.hypot(m.base.x - centroid.x, m.base.y - centroid.y))
   }
 
-  return { center: origin, hullR: far + span / 2 + SPREAD_HULL_PAD, offsets }
+  return { center: centroid, hullR: far + span / 2 + SPREAD_HULL_PAD, offsets }
 }
 
 /** Recharts Scatter の shape コールバック。payload.markerShape を読む。 */
