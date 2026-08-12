@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey, BattleNumericMetric, ScatterDotUnit } from '../types'
+import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey, BattleNumericMetric, ScatterDotUnit, ScatterPointStyle, ScatterImageSize } from '../types'
 import {
   GROUP_BY_LABELS, METRIC_LABELS, HEATMAP_METRICS, SUM_METRICS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
   IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, scatterMetricOptions, SCATTER_DOT_UNITS,
-  scatterDotUnitLabel,
+  scatterDotUnitLabel, canScatterUseImages, SCATTER_IMAGE_SIZE_LABELS,
   BATTLE_NUMERIC_METRIC_LABELS, BATTLE_NUMERIC_DEFAULT_BIN, axisGroupOf, AXIS_GROUP_LABELS, chartMetrics,
 } from '../types'
 import { SCATTER_CATEGORY_COLOR_KEYS } from '../utils/scatterCategoryColors'
@@ -75,6 +75,11 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   // ログスケール (#381)。未設定は false(既存グラフはリニアのまま)。
   const [xLogScale,    setXLogScale]    = useState<boolean>(initial?.xLogScale ?? false)
   const [yLogScale,    setYLogScale]    = useState<boolean>(initial?.yLogScale ?? false)
+  // 点の見た目 (#627)。未設定は 'dot'(既存グラフは丸のまま)。
+  const [pointStyle,   setPointStyle]   = useState<ScatterPointStyle>(initial?.scatterPointStyle ?? 'dot')
+  const [imageSize,    setImageSize]    = useState<ScatterImageSize>(initial?.scatterImageSize ?? 'medium')
+  // 画像モードのときサイズ・色は効かない。設定は**消さずに無視**するので、丸に戻せば復帰する。
+  const imageMode = pointStyle === 'image' && canScatterUseImages(dotUnit)
 
   // shape ごとに groupBy / yComposition を適切に補正する：
   //   - line: 時系列バケット (day/three_day/week/month) + single_metric
@@ -180,6 +185,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       // 比率メトリクスにログは効かないので、選び直された場合は保存しない (#381)。
       xLogScale:    shape === 'scatter' && xLogScale && !isRateMetric(xMetric) ? true : undefined,
       yLogScale:    shape === 'scatter' && yLogScale && !isRateMetric(yMetric) ? true : undefined,
+      // 点の見た目 (#627)。ブキ軸以外では保存しない(ドット単位を変えて戻したとき
+      // 意図しない画像モードが復活しないように)。
+      scatterPointStyle: imageMode ? 'image' : undefined,
+      scatterImageSize:  imageMode ? imageSize : undefined,
       // 数値メトリクス bin 軸(#134、ヒートマップ専用)
       xNumericMetric: shape === 'heatmap' && xNumericMetric ? xNumericMetric : undefined,
       xBinWidth:      shape === 'heatmap' && xNumericMetric ? xBinWidth : undefined,
@@ -454,6 +463,38 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 </select>
                 <p className="form-hint">1 ドット = 1 {scatterDotUnitLabel(dotUnit)}。</p>
               </div>
+              {canScatterUseImages(dotUnit) && (
+                <div className="form-field">
+                  <label className="form-label">点の見た目</label>
+                  <select
+                    className="form-input"
+                    value={pointStyle}
+                    onChange={e => setPointStyle(e.target.value as ScatterPointStyle)}
+                  >
+                    <option value="dot">丸・記号</option>
+                    <option value="image">ブキ画像</option>
+                  </select>
+                  {pointStyle === 'image' && (
+                    <>
+                      <label className="form-label" style={{ marginTop: 8 }}>画像の大きさ</label>
+                      <select
+                        className="form-input"
+                        value={imageSize}
+                        onChange={e => setImageSize(e.target.value as ScatterImageSize)}
+                      >
+                        {(['small', 'medium', 'large'] as ScatterImageSize[]).map(s => (
+                          <option key={s} value={s}>{SCATTER_IMAGE_SIZE_LABELS[s]}</option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                  <p className="form-hint">
+                    {pointStyle === 'image'
+                      ? 'サイズ・色は使えません(画像で塗りが埋まるため)。密集して重なるときは小さくしてください。'
+                      : 'ブキ軸では点をブキ画像にできます。'}
+                  </p>
+                </div>
+              )}
               <div className="form-field">
                 <label className="form-label">X 軸</label>
                 <select className="form-input" value={xMetric} onChange={e => setXMetric(e.target.value)}>
@@ -492,17 +533,21 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               </div>
               <div className="form-field">
                 <label className="form-label">サイズ(任意)</label>
-                <select className="form-input" value={sizeMetric} onChange={e => setSizeMetric(e.target.value)}>
+                <select className="form-input" value={sizeMetric} disabled={imageMode} onChange={e => setSizeMetric(e.target.value)}>
                   <option value="">(一定サイズ)</option>
                   {scatterMetricOptions(dotUnit).map(o => (
                     <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
-                <p className="form-hint">値が大きいほど大きく見える(sqrt スケール)。</p>
+                <p className="form-hint">
+                  {imageMode
+                    ? 'ブキ画像のときは一定サイズです。'
+                    : '値が大きいほど大きく見える(sqrt スケール)。'}
+                </p>
               </div>
               <div className="form-field">
                 <label className="form-label">色・形(任意)</label>
-                <select className="form-input" value={colorMetric} onChange={e => setColorMetric(e.target.value)}>
+                <select className="form-input" value={colorMetric} disabled={imageMode} onChange={e => setColorMetric(e.target.value)}>
                   <option value="">(単色 = アクセント)</option>
                   {dotUnit === 'battle' && <option value="win_lose">勝敗</option>}
                   {scatterMetricOptions(dotUnit).map(o => (
@@ -513,11 +558,13 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                   ))}
                 </select>
                 <p className="form-hint">
-                  {dotUnit === 'battle'
-                    ? '勝敗、またはブキカテゴリ・サブ・スペシャルを色×形で区別できます。'
-                    : dotUnit === 'weapon'
-                      ? '数値指標のほか、ブキカテゴリ・サブ・スペシャルを色×形で区別できます。'
-                      : '勝率は divergent (赤↔青)、それ以外は accent の濃淡。'}
+                  {imageMode
+                    ? 'ブキ画像のときは色を使えません(画像で塗りが埋まるため)。'
+                    : dotUnit === 'battle'
+                      ? '勝敗、またはブキカテゴリ・サブ・スペシャルを色×形で区別できます。'
+                      : dotUnit === 'weapon'
+                        ? '数値指標のほか、ブキカテゴリ・サブ・スペシャルを色×形で区別できます。'
+                        : '勝率は divergent (赤↔青)、それ以外は accent の濃淡。'}
                 </p>
               </div>
             </>

@@ -90,6 +90,8 @@ export function loadCustomCharts(): CustomChart[] {
           colorMetric:     c.colorMetric,
           xLogScale:       c.xLogScale,
           yLogScale:       c.yLogScale,
+          scatterPointStyle: c.scatterPointStyle,
+          scatterImageSize:  c.scatterImageSize,
         }
         result.push(restored)
         continue

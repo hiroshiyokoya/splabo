@@ -194,6 +194,9 @@ function buildScatterTipPayload(
   }
 }
 
+/** ホバー中の画像マーカーに描く輪の太さ。 */
+const IMAGE_RING_WIDTH = 2.5
+
 /** Recharts Scatter の shape コールバック。payload.markerShape を読む。 */
 function scatterPointShape(props: {
   cx?: number
@@ -208,12 +211,49 @@ function scatterPointShape(props: {
   active?: boolean
   /** HTML 保存向け。無いときは属性を付けない。 */
   tipJson?: string
+  /** 画像モードの一辺(px)。指定があり `payload.iconUrl` もあるとき、図形の代わりに画像を描く(#627)。 */
+  imagePx?: number
 }) {
   const cx = props.cx ?? 0
   const cy = props.cy ?? 0
   const area = props.size ?? 120
   const r = Math.sqrt(Math.max(area, 0) / Math.PI)
   const shape = props.payload?.markerShape ?? 'circle'
+
+  // 画像モード(#627)。画像が無いブキは図形へフォールバックする
+  // (stat.ink 由来でローカルマスターに無いブキがある)。
+  const iconUrl = props.payload?.iconUrl
+  if (props.imagePx && iconUrl) {
+    const s = props.imagePx
+    // 強調は輪だけ。色メトリクスは画像モードでは効かないので、輪の色は固定でよい。
+    return (
+      <g
+        data-scatter-point="true"
+        data-scatter-active={props.active ? 'true' : undefined}
+        data-scatter-tip={props.tipJson}
+      >
+        {props.active && (
+          <circle
+            cx={cx}
+            cy={cy}
+            r={s / 2 + IMAGE_RING_WIDTH}
+            fill="none"
+            stroke="var(--text)"
+            strokeWidth={IMAGE_RING_WIDTH}
+          />
+        )}
+        <image
+          href={iconUrl}
+          x={cx - s / 2}
+          y={cy - s / 2}
+          width={s}
+          height={s}
+          // ヒット領域を画像全体にする(透明部分でもツールチップを出す)。
+          style={{ pointerEvents: 'all' }}
+        />
+      </g>
+    )
+  }
   const baseOpacity = props.fillOpacity ?? 0.55
   const common = {
     fill: props.fill ?? props.payload?.color ?? 'var(--accent)',
@@ -850,7 +890,7 @@ function ScatterLegends({ sizeLegend, colorLegend }: { sizeLegend?: SizeLegend |
 
 export function ScatterChart({
   points, xLabel, yLabel, xIsRate, yIsRate, xDomain, yDomain, xRefLine, yRefLine, hasSize, xLogScale, yLogScale, fillOpacity = 0.55, constSize = 120, height = 320,
-  sizeLegend, colorLegend,
+  sizeLegend, colorLegend, imagePx,
 }: {
   points:       ScatterPoint[]
   xLabel:       string
@@ -878,6 +918,9 @@ export function ScatterChart({
    *  未指定(サイズ・色にメトリクスを割り当てていない)なら出さない。 */
   sizeLegend?:  SizeLegend | null
   colorLegend?: ColorLegend | null
+  /** 点をブキ画像で描く(#627)。一辺の px。指定時はサイズ・色メトリクスが効かない。
+   *  画像を持たない点は従来の図形にフォールバックする。 */
+  imagePx?:     number
 }) {
   const [hover, setHover] = useState<ScatterPoint | null>(null)
   // クリックでピン留め。保存ボタンへマウスを移してもツールチップが消えないようにする。
@@ -1153,6 +1196,7 @@ export function ScatterChart({
               fillOpacity,
               active: sameScatterAnchor(props, active as { cx?: number; cy?: number } | null),
               tipJson,
+              imagePx,
             })
           }}
           onMouseEnter={(p: any) => {
