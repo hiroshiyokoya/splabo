@@ -561,6 +561,8 @@ const EXPORT_DOT_AVOID_PAD = 12
 const ANCHOR_CLEARANCE = 10
 /** 候補を作るときの向きの刻み数。細かいほど「近くの空き」を見つけやすい。 */
 const TOOLTIP_ANGLE_STEPS = 16
+/** 点からどれだけ離すかの候補（gap への上乗せ）。近い順に並べる。 */
+const TOOLTIP_RINGS = [0, 10, 22, 38, 58, 84, 120]
 /** 1px 遠ざかることを、何 px² の重なりと同じ価値とみなすか。
  *
  *  大きいほど点の近くに留まり、小さいほど重なりを避けて遠くへ行く。 */
@@ -588,13 +590,9 @@ function rectsOverlap(
  * ホバー点の周囲から、ドットを最も隠さないツールチップ位置を選ぶ(#497)。
  *
  * 優先順位:
- * 0. **自分のドットを隠さない**(端補正でスライドしても被らない方向を最優先)
- * 1. 重なるドット数が少ない
- * 2. 重なり面積が小さい
- * 3. 端からはみ出さないための補正量が小さい
- * 4. 同程度ならグラフ中心から外側へ向かう
- *
- * `richCandidates`(画像保存時)では斜め・遠めの候補も足して、他ドットとの被りゼロを狙いやすくする。
+ * 0. **自分のドットを隠さない**（絶対。ここだけ辞書順で先に見る）
+ * 1. 重なり面積と近さの釣り合い（`TOOLTIP_REACH_WEIGHT` 参照）
+ * 2. 同程度ならグラフ中心から外側へ向かう
  */
 export function chooseScatterTooltipPlacement({
   anchorX,
@@ -607,7 +605,6 @@ export function chooseScatterTooltipPlacement({
   anchorObstacle,
   gap = TOOLTIP_GAP,
   dotAvoidPad = DOT_AVOID_PAD,
-  richCandidates = false,
 }: {
   anchorX: number
   anchorY: number
@@ -622,8 +619,6 @@ export function chooseScatterTooltipPlacement({
   gap?: number
   /** 他ドットを避けるときの外縁パディング。 */
   dotAvoidPad?: number
-  /** 斜め・遠め候補を足す(画像保存向け)。 */
-  richCandidates?: boolean
 }): TooltipPlacement {
   // 候補は「点のまわりをぐるりと、近いところから」作る。
   //
@@ -638,10 +633,7 @@ export function chooseScatterTooltipPlacement({
     /** 点からの距離。近いほどよい。 */
     reach: number
   }[] = []
-  const rings = richCandidates
-    ? [0, 10, 22, 38, 58, 84, 120]
-    : [0, 12, 28, 50, 80]
-  for (const extra of rings) {
+  for (const extra of TOOLTIP_RINGS) {
     const r = gap + extra
     for (let k = 0; k < TOOLTIP_ANGLE_STEPS; k++) {
       const a = (k / TOOLTIP_ANGLE_STEPS) * Math.PI * 2
@@ -686,7 +678,6 @@ export function chooseScatterTooltipPlacement({
     // 自分の点を隠すかどうかは他ドットより重い。端へ寄せた結果の被りもここで拾う。
     const anchorHit = anchorAvoid ? rectsOverlap(tip, anchorAvoid) : { overlap: false, area: 0 }
 
-    let overlapCount = 0
     let overlapArea = 0
     for (const dot of obstacles) {
       const expanded = {
@@ -695,11 +686,7 @@ export function chooseScatterTooltipPlacement({
         right:  dot.right + dotAvoidPad,
         bottom: dot.bottom + dotAvoidPad,
       }
-      const hit = rectsOverlap(tip, expanded)
-      if (hit.overlap) {
-        overlapCount += 1
-        overlapArea += hit.area
-      }
+      overlapArea += rectsOverlap(tip, expanded).area
     }
 
     const clampDistance = Math.abs(left - candidate.left) + Math.abs(top - candidate.top)
@@ -710,7 +697,6 @@ export function chooseScatterTooltipPlacement({
       direction: candidate.direction,
       anchorCovered: anchorHit.overlap ? 1 : 0,
       anchorOverlapArea: anchorHit.area,
-      overlapCount,
       overlapArea,
       // 端に寄せた補正も「遠ざかった量」として距離に含める。
       reach: candidate.reach + clampDistance,
@@ -1450,9 +1436,6 @@ export function ScatterChart({
       anchorObstacle,
       gap,
       dotAvoidPad: exportLayout ? EXPORT_DOT_AVOID_PAD : DOT_AVOID_PAD,
-      // 斜め・遠め・四隅の候補も常に見る。**離れてもいいから重ねない**ほうが読みやすい。
-      // 遠い候補は順位付けで最後に回るので、近くに空きがあればそちらが選ばれる。
-      richCandidates: true,
     }))
   }, [active, hoverSiblings.length, height, exportLayout, lensKey])
 
