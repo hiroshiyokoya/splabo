@@ -89,7 +89,9 @@
 
 /* カレンダーセルのツールチップ */
 .cal-tooltip {
-  background: var(--surface);
+  /* 少し透かす。下のドット・ブキ画像が見えるので、チップに隠れた所を読み落としにくい。
+     保存 HTML のチップ（#splabo-export-tip）と同じ濃さに揃えてある。 */
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 6px 8px;
