@@ -549,7 +549,124 @@ const HTML_EXPORT_TIP_SCRIPT = `(function () {
     tip.classList.remove('is-visible');
     tip.innerHTML = '';
   }
+  // ── レンズ（ブキ画像の散布図・#630）──────────────────────────────
+  //
+  // アプリと同じ「カーソルに近いアイコン同士が反発する」を、保存した HTML でも動かす。
+  // React は無いので、DOM から元の座標を読んで transform を直接書く。
+  //
+  // 🔴 数値はアプリ側（ScatterChart.tsx の LENS_*）と揃えること。片方だけ変えると
+  // 画面と保存物で挙動が違う。
+  var LENS_R = 130, LENS_FALLOFF = 3, LENS_PULL = 0.10, LENS_ITER = 60;
+
+  /** 画像の点を持つチャートだけレンズを付ける。持たない（丸の）チャートは従来どおり。 */
+  function setupLens(area) {
+    var svg = area.querySelector('svg');
+    if (!svg) return false;
+    var nodes = [];
+    area.querySelectorAll('[data-scatter-point="true"]').forEach(function (el) {
+      var img = el.querySelector('image');
+      if (!img) return;
+      var w = parseFloat(img.getAttribute('width'));
+      if (!(w > 0)) return;
+      nodes.push({
+        el: el,
+        mover: img.parentNode,
+        size: w,
+        bx: parseFloat(img.getAttribute('x')) + w / 2,
+        by: parseFloat(img.getAttribute('y')) + w / 2,
+        w: 0, x: 0, y: 0
+      });
+    });
+    if (nodes.length < 2) return false;
+    var span = nodes[0].size;
+
+    // 収める範囲は「点が元から居る矩形」。アプリ側と同じ考え方。
+    var lo = { x: Infinity, y: Infinity }, hi = { x: -Infinity, y: -Infinity };
+    nodes.forEach(function (n) {
+      if (n.bx < lo.x) lo.x = n.bx;
+      if (n.by < lo.y) lo.y = n.by;
+      if (n.bx > hi.x) hi.x = n.bx;
+      if (n.by > hi.y) hi.y = n.by;
+    });
+    function cl(v, a, b) { return v < a ? a : (v > b ? b : v); }
+    function rest(n) { n.mover.style.transform = 'translate(0px, 0px)'; }
+
+    area.addEventListener('mouseleave', function () {
+      nodes.forEach(rest);
+      hide();
+    });
+    area.addEventListener('mousemove', function (ev) {
+      var r = svg.getBoundingClientRect();
+      var cx = ev.clientX - r.left, cy = ev.clientY - r.top;
+
+      var moving = [], fixed = [];
+      nodes.forEach(function (n) {
+        var d = Math.hypot(n.bx - cx, n.by - cy);
+        if (d >= LENS_R) {
+          rest(n);
+          if (d < LENS_R + span * 2) fixed.push(n);
+          return;
+        }
+        n.w = Math.pow(1 - d / LENS_R, LENS_FALLOFF);
+        n.x = n.bx; n.y = n.by;
+        moving.push(n);
+      });
+
+      for (var it = 0; it < LENS_ITER; it++) {
+        for (var a = 0; a < moving.length; a++) {
+          var m = moving[a];
+          m.x += (m.bx - m.x) * LENS_PULL;
+          m.y += (m.by - m.y) * LENS_PULL;
+        }
+        for (var i = 0; i < moving.length; i++) {
+          for (var j = i + 1; j < moving.length; j++) {
+            var p = moving[i], q = moving[j];
+            var dx = q.x - p.x, dy = q.y - p.y;
+            var dist = Math.hypot(dx, dy);
+            if (dist >= span) continue;
+            if (dist < 1e-6) { var ang = i * 2.399963; dx = Math.cos(ang); dy = Math.sin(ang); dist = 1; }
+            var push = ((span - dist) / 2) * ((p.w + q.w) / 2);
+            p.x -= (dx / dist) * push; p.y -= (dy / dist) * push;
+            q.x += (dx / dist) * push; q.y += (dy / dist) * push;
+          }
+        }
+        for (var k = 0; k < moving.length; k++) {
+          var mm = moving[k];
+          for (var f = 0; f < fixed.length; f++) {
+            var o = fixed[f];
+            var ox = mm.x - o.bx, oy = mm.y - o.by;
+            var od = Math.hypot(ox, oy);
+            if (od >= span) continue;
+            if (od < 1e-6) { ox = 1; oy = 0; od = 1; }
+            var opush = (span - od) * mm.w;
+            mm.x += (ox / od) * opush; mm.y += (oy / od) * opush;
+          }
+          mm.x = cl(mm.x, lo.x, hi.x);
+          mm.y = cl(mm.y, lo.y, hi.y);
+        }
+      }
+
+      // ずらした先でカーソルの下にある点をチップの対象にする。
+      var near = null, nd = span / 2;
+      moving.forEach(function (n) {
+        n.mover.style.transform = 'translate(' + (n.x - n.bx) + 'px, ' + (n.y - n.by) + 'px)';
+        var d = Math.hypot(n.x - cx, n.y - cy);
+        if (d <= nd) { nd = d; near = n; }
+      });
+      if (near) show(ev, near.el); else hide();
+      if (tip.classList.contains('is-visible')) place(ev);
+    });
+    return true;
+  }
+
+  var lensed = [];
+  document.querySelectorAll('.chart-hover-area').forEach(function (area) {
+    if (setupLens(area)) lensed.push(area);
+  });
+
+  // レンズを付けなかったチャート（丸の散布図）は、点ごとのホバーで従来どおり。
   document.querySelectorAll('[data-scatter-point="true"]').forEach(function (el) {
+    for (var i = 0; i < lensed.length; i++) if (lensed[i].contains(el)) return;
     el.addEventListener('mouseenter', function (ev) { show(ev, el); });
     el.addEventListener('mousemove', function (ev) {
       if (tip.classList.contains('is-visible')) place(ev);

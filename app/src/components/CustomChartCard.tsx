@@ -6,6 +6,7 @@ import {
   stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric, chartMetrics,
   METRIC_LABELS, BATTLE_METRIC_LABELS, BATTLE_NUMERIC_METRIC_LABELS,
   GROUP_BY_LABELS, formatMetric, winLoseBreakdown, type GroupByKey,
+  SCATTER_IMAGE_PX, isScatterImageMode,
 } from '../types'
 import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
@@ -568,17 +569,25 @@ function renderChartBody(
       return <div className="chart-not-implemented">散布図には X 軸 / Y 軸 を選んでください。</div>
     }
     const isBattle = chart.dotUnit === 'battle'
+    // 点をブキ画像で描くか(#627)。ブキ軸のときだけ。
+    // 🔴 画像モードではサイズ・色メトリクスを**渡さない**。画像が塗りを埋めるので色は
+    // 読めず、サイズは一定にする約束だから。設定は消さずに無視するので、丸に戻せば復帰する。
+    // 凡例も出さない(出すと嘘になる)。
+    const imagePx = isScatterImageMode(chart) ? SCATTER_IMAGE_PX[chart.scatterImageSize ?? 'medium'] : undefined
+    const sizeKey  = imagePx ? undefined : chart.sizeMetric
+    const colorKey = imagePx ? undefined : chart.colorMetric
     // ツールチップのブキ画像(#626)。
     // バトル単位は 1 点 = 1 バトルで必ず自分のブキを持つので、groupBy によらず渡す。
     // 集計単位は点がブキのときだけ(ステージ別の点にブキ画像が付いたら嘘になる)。
     const { points, sizeLegend, colorLegend } = isBattle
-      ? buildBattleScatterPoints(battleData ?? [], chart.xMetric, chart.yMetric, chart.sizeMetric, chart.colorMetric, weaponMeta, weaponImages)
-      : buildAggScatterPoints(data, chart.xMetric, chart.yMetric, chart.sizeMetric, chart.colorMetric, weaponMeta, images)
+      ? buildBattleScatterPoints(battleData ?? [], chart.xMetric, chart.yMetric, sizeKey, colorKey, weaponMeta, weaponImages)
+      : buildAggScatterPoints(data, chart.xMetric, chart.yMetric, sizeKey, colorKey, weaponMeta, images)
     return (
       <ScatterChart
         points={points}
-        sizeLegend={sizeLegend}
-        colorLegend={colorLegend}
+        imagePx={imagePx}
+        sizeLegend={imagePx ? null : sizeLegend}
+        colorLegend={imagePx ? null : colorLegend}
         xLabel={metricLabelOf(chart.xMetric)}
         yLabel={metricLabelOf(chart.yMetric)}
         xIsRate={chart.xMetric === 'win_rate'}
@@ -589,7 +598,7 @@ function renderChartBody(
         // 比率メトリクスはログにしても意味がないので、設定が残っていても効かせない (#381)。
         xLogScale={chart.xLogScale && chart.xMetric !== 'win_rate'}
         yLogScale={chart.yLogScale && chart.yMetric !== 'win_rate'}
-        hasSize={!!chart.sizeMetric}
+        hasSize={!!sizeKey}
         // 環境分析の散布図と同じ透過度に揃える (#435)
         fillOpacity={0.55}
         // サイズメトリクス未指定時の一定サイズ。バトルは点が多いので小さめ、集計単位は大きめ。

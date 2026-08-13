@@ -18,7 +18,8 @@ import type {
   EnvScatterStat, EnvMatrixCell, EnvMatrixMarginal, EnvMatrixStats,
   EnvStatus, EnvVersion, EnvRank, EnvFilterOption, MetricKey, GroupByKey, Season,
 } from '../types'
-import { currentSeasonStart, GROUP_BY_LABELS } from '../types'
+import { currentSeasonStart, GROUP_BY_LABELS, SCATTER_IMAGE_PX, SCATTER_IMAGE_SIZE_LABELS } from '../types'
+import type { ScatterImageSize } from '../types'
 import { ScatterChart, buildSizeLegend, buildColorLegend, metricRefLine } from './charts/ScatterChart'
 import type { ScatterPoint } from './charts/ScatterChart'
 import { Heatmap } from './charts/Heatmap'
@@ -380,6 +381,15 @@ export function EnvAnalysis() {
   const [colorKey, setColorKey] = useState<string>(prefs.colorKey) // 散布図色指標(''=なし・#406)
   const [xLog, setXLog]       = useState<boolean>(prefs.xLog)     // 散布図 X 軸ログスケール(#473)
   const [yLog, setYLog]       = useState<boolean>(prefs.yLog)
+  // 点をブキ画像にする(#631)。ブキ軸のときだけ。ステージ画像は横長で正方形に収まらない。
+  const [pointStyle, setPointStyle] = useState<string>(prefs.pointStyle)
+  const [imageSize,  setImageSize]  = useState<string>(prefs.imageSize)
+  // 🔴 画像モードではサイズ・色メトリクスが効かない。ダッシュボードと同じ約束(#627)。
+  // 設定は消さずに無視するので、丸に戻せばそのまま復帰する。
+  const imageMode = pointStyle === 'image' && groupBy === 'weapon'
+  const imagePx   = imageMode
+    ? SCATTER_IMAGE_PX[(imageSize as ScatterImageSize) in SCATTER_IMAGE_PX ? (imageSize as ScatterImageSize) : 'medium']
+    : undefined
   /**
    * 表示するブキ（#593）。空なら全部出す。
    *
@@ -456,6 +466,7 @@ export function EnvAnalysis() {
     const isSeason = period === 'season' && !!picked
     saveEnvPrefs({
       vizMode, groupBy, xKey, yKey, sizeKey, colorKey, xLog, yLog,
+      pointStyle, imageSize,
       rowDim, colDim, cellMetric,
       period:      isSeason ? 'custom' : period === 'season' ? 'current_season' : period,
       customSince: isSeason ? picked!.since : customSince,
@@ -465,7 +476,8 @@ export function EnvAnalysis() {
       displayWeapons,
       lobbyKeys, ruleKeys, weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax,
     })
-  }, [vizMode, groupBy, xKey, yKey, sizeKey, colorKey, xLog, yLog, rowDim, colDim, cellMetric,
+  }, [vizMode, groupBy, xKey, yKey, sizeKey, colorKey, xLog, yLog, pointStyle, imageSize,
+      rowDim, colDim, cellMetric,
       period, customSince, customUntil, seasonName, seasons, displayWeapons,
       lobbyKeys, ruleKeys, weaponKeys, stageKeys, gameVers, posterRanks, powerMin, powerMax])
 
@@ -812,9 +824,14 @@ export function EnvAnalysis() {
   const xLogOk = !NO_LOG_METRICS.has(xM.key)
   const yLogOk = !NO_LOG_METRICS.has(yM.key)
   // サイズ・色 指標(#406)。見つからなければ「なし」。カテゴリ色(#480)は metrics 外。
-  const sizeM  = metrics.find(m => m.key === sizeKey)
-  const colorM = isScatterCategoryColorKey(colorKey) ? undefined : metrics.find(m => m.key === colorKey)
-  const isCatColor = groupBy === 'weapon' && isScatterCategoryColorKey(colorKey)
+  //
+  // 🔴 画像モードでは**ここで落とす**(#631)。点・凡例・ZAxis はすべてこの 3 つから
+  // 派生するので、大元で無効にすれば「凡例だけ残る」ようなズレが起きない。
+  const sizeM  = imageMode ? undefined : metrics.find(m => m.key === sizeKey)
+  const colorM = imageMode || isScatterCategoryColorKey(colorKey)
+    ? undefined
+    : metrics.find(m => m.key === colorKey)
+  const isCatColor = !imageMode && groupBy === 'weapon' && isScatterCategoryColorKey(colorKey)
 
   // 色指標が sequential のときの正規化レンジ(勝率＝divergent は min/max 不要)。
   // カスタムグラフ CustomChartCard.colorOfValue と揃える(#406)。
@@ -1142,13 +1159,33 @@ export function EnvAnalysis() {
                   label="Y軸ログ" checked={yLog} allowed={yLogOk}
                   metricLabel={yM.label} onChange={setYLog}
                 />
-                <label>サイズ
+                {/* 点をブキ画像にする(#631)。ステージ画像は横長で正方形に収まらないので出さない。 */}
+                {groupBy === 'weapon' && (
+                  <label>点の見た目
+                    <select value={pointStyle} onChange={e => setPointStyle(e.target.value)}>
+                      <option value="dot">丸・記号</option>
+                      <option value="image">ブキ画像</option>
+                    </select>
+                  </label>
+                )}
+                {imageMode && (
+                  <label>画像の大きさ
+                    <select value={imageSize} onChange={e => setImageSize(e.target.value)}>
+                      {(['small', 'medium', 'large'] as ScatterImageSize[]).map(s => (
+                        <option key={s} value={s}>{SCATTER_IMAGE_SIZE_LABELS[s]}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {/* 🔴 画像モードでは**出さない**。画像が塗りを埋めるので色は読めず、
+                    サイズは一定にする約束（AGENTS.md「設定 UI のルール」）。 */}
+                {!imageMode && <label>サイズ
                   <select value={sizeKey} onChange={e => setSizeKey(e.target.value)}>
                     <option value="">なし</option>
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                   </select>
-                </label>
-                <label>色・形
+                </label>}
+                {!imageMode && <label>色・形
                   <select value={colorKey} onChange={e => setColorKey(e.target.value)}>
                     <option value="">なし</option>
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
@@ -1156,7 +1193,7 @@ export function EnvAnalysis() {
                       <option key={k} value={k}>{GROUP_BY_LABELS[k]}</option>
                     ))}
                   </select>
-                </label>
+                </label>}
               </div>
 
               <div className={`env-chart-section${loading ? ' is-loading' : ''}`} ref={scatterPanelRef}>
@@ -1190,6 +1227,7 @@ export function EnvAnalysis() {
                     hasSize={!!sizeM}
                     sizeLegend={sizeLegend}
                     colorLegend={colorLegend}
+                    imagePx={imagePx}
                     constSize={300}
                     fillOpacity={0.55}
                     height={440}
@@ -1304,32 +1342,29 @@ export function EnvAnalysis() {
   )
 }
 
-/** 「キリのよい」目盛り幅(1 / 2 / 5 × 10^n)を返す。 */
-function niceStep(x: number): number {
-  if (x <= 0) return 1
-  const base = Math.pow(10, Math.floor(Math.log10(x)))
-  const f = x / base
-  const nf = f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10
-  return nf * base
-}
-
-/** データ配列から、目盛りがキリのよい値になる軸ドメインを算出する(オートスケール)。
- *  値はすべて非負なので下端は 0 未満に伸ばさない。 */
+/**
+ * データ配列から軸ドメインを算出する(オートスケール)。値はすべて非負。
+ *
+ * 🔴 **キリのいい値へ外側に丸めない。** 以前は (hi - lo) / 4 の刻みで外へ広げていたが、
+ * 勝率のように幅の狭い指標だと上下に空白ができて点が中央に寄る
+ * （37〜59% のデータが 35〜60% の軸になり、さらに軸側の余白が乗る）。
+ *
+ * 目盛りは `ScatterChart` が domain から改めてキリのいい値で作るので、ここで
+ * 揃えておく必要は無い。**データに寄せるほど点が散らばって読みやすい。**
+ */
 function computeDomain(vals: number[], rate01: boolean): [number, number] {
   if (vals.length === 0) return [0, 1]
   let lo = Math.min(...vals)
   let hi = Math.max(...vals)
   if (lo === hi) {
+    // 幅が無いと軸が潰れるので、ここだけは広げる。
     const pad = Math.abs(lo) * 0.1 || (rate01 ? 0.05 : 1)
     lo -= pad; hi += pad
   }
-  const step = niceStep((hi - lo) / 4)
-  let nlo = Math.floor(lo / step) * step
-  let nhi = Math.ceil(hi / step) * step
-  if (nlo < 0) nlo = 0                               // 値は非負
-  if (rate01) { nlo = Math.max(0, nlo); nhi = Math.min(1, nhi) }
+  if (lo < 0) lo = 0                                 // 値は非負
+  if (rate01) { lo = Math.max(0, lo); hi = Math.min(1, hi) }
   const round = (x: number) => Math.round(x * 1e6) / 1e6  // 浮動小数の誤差を除去
-  return [round(nlo), round(nhi)]
+  return [round(lo), round(hi)]
 }
 
 /**

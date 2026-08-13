@@ -674,6 +674,55 @@ export interface CustomChart {
   xLogScale?:   boolean
   /** scatter の Y 軸をログスケールにするか (#381)。詳細は [xLogScale]。 */
   yLogScale?:   boolean
+  /**
+   * scatter の点の見た目 (#627)。**未設定 = 'dot'**(既存グラフは丸のまま)。
+   *
+   * `'image'` は点をブキ画像にする。**ブキ軸のときだけ**選べる
+   * (ステージ別の点にブキ画像が付いたら嘘になる)。
+   *
+   * 🔴 画像モードではサイズ・色メトリクスが効かない。画像が塗りを埋めるので
+   * 色は読めず、サイズは一定にする約束だから。設定は**消さずに無視**する
+   * (丸に戻したときそのまま復帰する)。凡例も出さない。
+   */
+  scatterPointStyle?: ScatterPointStyle
+  /** 画像モードの一定サイズ (#627)。未設定は 'medium'。 */
+  scatterImageSize?:  ScatterImageSize
+}
+
+/** scatter の点の見た目 (#627)。 */
+export type ScatterPointStyle = 'dot' | 'image'
+
+/** 画像モードの一定サイズ (#627)。密集すると画像同士が重なるので選べるようにしている。 */
+export type ScatterImageSize = 'small' | 'medium' | 'large'
+
+/** 画像モードの一辺(px)。ドットと違い面積ではなく実寸で指定する。 */
+export const SCATTER_IMAGE_PX: Record<ScatterImageSize, number> = {
+  small:  20,
+  medium: 30,
+  large:  44,
+}
+
+export const SCATTER_IMAGE_SIZE_LABELS: Record<ScatterImageSize, string> = {
+  small:  '小',
+  medium: '中',
+  large:  '大',
+}
+
+/** 点をブキ画像で描けるドット単位か (#627)。
+ *
+ * ブキ単位だけ。ステージ別・カテゴリ別の点にブキ画像が付いたら嘘になる。
+ * バトル単位は 1 点 = 1 バトルでジッタも乗るため、画像だと潰れるので外す。
+ *
+ * (散布図のドット単位に味方ブキ・相手ブキは無い。棒グラフ等の `groupBy` にはある。) */
+export function canScatterUseImages(dotUnit: ScatterDotUnit | undefined): boolean {
+  return dotUnit === 'weapon'
+}
+
+/** 設定 UI と描画で同じ判定を使う (#627)。片方だけ変えると凡例が嘘になる。 */
+export function isScatterImageMode(chart: CustomChart): boolean {
+  return chart.shape === 'scatter'
+    && chart.scatterPointStyle === 'image'
+    && canScatterUseImages(chart.dotUnit)
 }
 
 /** shape='line' の系列メトリクス一覧を取り出す(#436)。

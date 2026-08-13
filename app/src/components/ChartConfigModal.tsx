@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey, BattleNumericMetric, ScatterDotUnit } from '../types'
+import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey, BattleNumericMetric, ScatterDotUnit, ScatterPointStyle, ScatterImageSize } from '../types'
 import {
   GROUP_BY_LABELS, METRIC_LABELS, HEATMAP_METRICS, SUM_METRICS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
   IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, scatterMetricOptions, SCATTER_DOT_UNITS,
-  scatterDotUnitLabel,
+  scatterDotUnitLabel, canScatterUseImages, SCATTER_IMAGE_SIZE_LABELS,
   BATTLE_NUMERIC_METRIC_LABELS, BATTLE_NUMERIC_DEFAULT_BIN, axisGroupOf, AXIS_GROUP_LABELS, chartMetrics,
 } from '../types'
 import { SCATTER_CATEGORY_COLOR_KEYS } from '../utils/scatterCategoryColors'
@@ -75,6 +75,11 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   // ログスケール (#381)。未設定は false(既存グラフはリニアのまま)。
   const [xLogScale,    setXLogScale]    = useState<boolean>(initial?.xLogScale ?? false)
   const [yLogScale,    setYLogScale]    = useState<boolean>(initial?.yLogScale ?? false)
+  // 点の見た目 (#627)。未設定は 'dot'(既存グラフは丸のまま)。
+  const [pointStyle,   setPointStyle]   = useState<ScatterPointStyle>(initial?.scatterPointStyle ?? 'dot')
+  const [imageSize,    setImageSize]    = useState<ScatterImageSize>(initial?.scatterImageSize ?? 'medium')
+  // 画像モードのときサイズ・色は効かない。設定は**消さずに無視**するので、丸に戻せば復帰する。
+  const imageMode = pointStyle === 'image' && canScatterUseImages(dotUnit)
 
   // shape ごとに groupBy / yComposition を適切に補正する：
   //   - line: 時系列バケット (day/three_day/week/month) + single_metric
@@ -180,6 +185,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       // 比率メトリクスにログは効かないので、選び直された場合は保存しない (#381)。
       xLogScale:    shape === 'scatter' && xLogScale && !isRateMetric(xMetric) ? true : undefined,
       yLogScale:    shape === 'scatter' && yLogScale && !isRateMetric(yMetric) ? true : undefined,
+      // 点の見た目 (#627)。ブキ軸以外では保存しない(ドット単位を変えて戻したとき
+      // 意図しない画像モードが復活しないように)。
+      scatterPointStyle: imageMode ? 'image' : undefined,
+      scatterImageSize:  imageMode ? imageSize : undefined,
       // 数値メトリクス bin 軸(#134、ヒートマップ専用)
       xNumericMetric: shape === 'heatmap' && xNumericMetric ? xNumericMetric : undefined,
       xBinWidth:      shape === 'heatmap' && xNumericMetric ? xBinWidth : undefined,
@@ -219,8 +228,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             )}
           </div>
 
-          {/* scatter は X 軸 (集計キー) と Y 軸の構成・メトリクスを使わないので、shape ごとに分岐 */}
-          {shape !== 'scatter' && (
+          {/* scatter は X 軸 (集計キー) と Y 軸の構成・メトリクスを使わないので、shape ごとに分岐。
+              calendar_heatmap は日別で固定（上の useEffect が groupBy を 'day' に寄せる）。
+              選択肢が 1 つしかない select を灰色で出しても選べないだけなので、項目ごと出さない。 */}
+          {shape !== 'scatter' && shape !== 'calendar_heatmap' && (
             <div className="form-field">
               <label className="form-label">X 軸(集計キー)</label>
               <select
@@ -237,15 +248,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                     setGroupBy(v as GroupByKey)
                   }
                 }}
-                disabled={shape === 'calendar_heatmap'}
               >
                 <optgroup label="カテゴリ">
                   {(Object.keys(GROUP_BY_LABELS) as GroupByKey[])
-                    .filter(g =>
-                      shape === 'line' ? isTimeBucketGroupBy(g) :
-                      shape === 'calendar_heatmap' ? g === 'day' :
-                      !isTimeBucketGroupBy(g)
-                    )
+                    .filter(g => shape === 'line' ? isTimeBucketGroupBy(g) : !isTimeBucketGroupBy(g))
                     .map(g => (
                       <option key={g} value={g}>{GROUP_BY_LABELS[g]}</option>
                     ))}
@@ -261,9 +267,6 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               </select>
               {shape === 'line' && (
                 <p className="form-hint">線グラフは時系列のみ。粒度は {TIME_BUCKET_GROUP_BYS.map(k => GROUP_BY_LABELS[k]).join(' / ')} から選びます。</p>
-              )}
-              {shape === 'calendar_heatmap' && (
-                <p className="form-hint">カレンダーは「日」固定(GitHub 風コントリビューショングラフ)。</p>
               )}
               {shape === 'heatmap' && xNumericMetric && (
                 <div className="form-field" style={{ marginTop: 8 }}>
@@ -454,6 +457,38 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 </select>
                 <p className="form-hint">1 ドット = 1 {scatterDotUnitLabel(dotUnit)}。</p>
               </div>
+              {canScatterUseImages(dotUnit) && (
+                <div className="form-field">
+                  <label className="form-label">点の見た目</label>
+                  <select
+                    className="form-input"
+                    value={pointStyle}
+                    onChange={e => setPointStyle(e.target.value as ScatterPointStyle)}
+                  >
+                    <option value="dot">丸・記号</option>
+                    <option value="image">ブキ画像</option>
+                  </select>
+                  {pointStyle === 'image' && (
+                    <>
+                      <label className="form-label" style={{ marginTop: 8 }}>画像の大きさ</label>
+                      <select
+                        className="form-input"
+                        value={imageSize}
+                        onChange={e => setImageSize(e.target.value as ScatterImageSize)}
+                      >
+                        {(['small', 'medium', 'large'] as ScatterImageSize[]).map(s => (
+                          <option key={s} value={s}>{SCATTER_IMAGE_SIZE_LABELS[s]}</option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                  <p className="form-hint">
+                    {pointStyle === 'image'
+                      ? 'サイズ・色は使えません(画像で塗りが埋まるため)。密集して重なるときは小さくしてください。'
+                      : 'ブキ軸では点をブキ画像にできます。'}
+                  </p>
+                </div>
+              )}
               <div className="form-field">
                 <label className="form-label">X 軸</label>
                 <select className="form-input" value={xMetric} onChange={e => setXMetric(e.target.value)}>
@@ -461,15 +496,16 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                     <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
-                <label className="checkbox-label" style={{ marginTop: 6 }}>
-                  <input
-                    type="checkbox"
-                    checked={xLogScale && !isRateMetric(xMetric)}
-                    disabled={isRateMetric(xMetric)}
-                    onChange={e => setXLogScale(e.target.checked)}
-                  />
-                  ログスケール
-                </label>
+                {!isRateMetric(xMetric) && (
+                  <label className="checkbox-label" style={{ marginTop: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={xLogScale}
+                      onChange={e => setXLogScale(e.target.checked)}
+                    />
+                    ログスケール
+                  </label>
+                )}
                 <p className="form-hint">{logScaleHint(xMetric)}</p>
               </div>
               <div className="form-field">
@@ -479,17 +515,21 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                     <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
-                <label className="checkbox-label" style={{ marginTop: 6 }}>
-                  <input
-                    type="checkbox"
-                    checked={yLogScale && !isRateMetric(yMetric)}
-                    disabled={isRateMetric(yMetric)}
-                    onChange={e => setYLogScale(e.target.checked)}
-                  />
-                  ログスケール
-                </label>
+                {!isRateMetric(yMetric) && (
+                  <label className="checkbox-label" style={{ marginTop: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={yLogScale}
+                      onChange={e => setYLogScale(e.target.checked)}
+                    />
+                    ログスケール
+                  </label>
+                )}
                 <p className="form-hint">{logScaleHint(yMetric)}</p>
               </div>
+              {/* 🔴 画像モードでは**出さない**。使えない項目を灰色で並べても選べないだけで、
+                  理由は「点の見た目」のヒントに書いてある。 */}
+              {!imageMode && (
               <div className="form-field">
                 <label className="form-label">サイズ(任意)</label>
                 <select className="form-input" value={sizeMetric} onChange={e => setSizeMetric(e.target.value)}>
@@ -500,6 +540,8 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 </select>
                 <p className="form-hint">値が大きいほど大きく見える(sqrt スケール)。</p>
               </div>
+              )}
+              {!imageMode && (
               <div className="form-field">
                 <label className="form-label">色・形(任意)</label>
                 <select className="form-input" value={colorMetric} onChange={e => setColorMetric(e.target.value)}>
@@ -520,6 +562,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                       : '勝率は divergent (赤↔青)、それ以外は accent の濃淡。'}
                 </p>
               </div>
+              )}
             </>
           )}
 

@@ -25,6 +25,17 @@ export interface EnvPrefs {
   xLog:        boolean
   /** 散布図 Y 軸をログスケールにするか（#473）。 */
   yLog:        boolean
+  /**
+   * 散布図の点の見た目（#631）。'image' でブキ画像をプロットする。'' / 'dot' は丸。
+   *
+   * ブキ軸のときだけ意味を持つ。ステージ画像は横長で正方形の枠に収まらないので対象外。
+   *
+   * 🔴 **新しいキーを足すだけ**にしてある。既存キーの値に新しい列挙値を足すと、
+   * その値を知らない古いビルドが壊れる（#591）。設定は新旧のビルドで共有される。
+   */
+  pointStyle:  string
+  /** 画像モードの一定サイズ（#631）。'small' / 'medium' / 'large'。 */
+  imageSize:   string
   rowDim:      string
   colDim:      string
   cellMetric:  string
@@ -60,6 +71,8 @@ export const DEFAULT_ENV_PREFS: EnvPrefs = {
   colorKey:    '',
   xLog:        false,
   yLog:        false,
+  pointStyle:  'dot',
+  imageSize:   'medium',
   rowDim:      'weapon',
   colDim:      'stage',
   cellMetric:  'win_rate',
@@ -111,6 +124,9 @@ export function loadEnvPrefs(): EnvPrefs {
       colorKey:    str(p.colorKey, d.colorKey),
       xLog:        bool(p.xLog, d.xLog),
       yLog:        bool(p.yLog, d.yLog),
+      // 知らない値が入っていたら既定へ落とす（将来値を増やしたときに落ちないように）。
+      pointStyle:  p.pointStyle === 'image' ? 'image' : d.pointStyle,
+      imageSize:   ['small', 'medium', 'large'].includes(p.imageSize) ? p.imageSize : d.imageSize,
       rowDim:      str(p.rowDim, d.rowDim),
       colDim:      str(p.colDim, d.colDim),
       cellMetric:  str(p.cellMetric, d.cellMetric),

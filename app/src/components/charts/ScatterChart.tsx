@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { flushSync } from 'react-dom'
 import {
   ScatterChart as RScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, ReferenceLine, ResponsiveContainer, Cell,
@@ -194,6 +194,293 @@ function buildScatterTipPayload(
   }
 }
 
+/** ホバー中の画像マーカーに描く輪。
+ *
+ *  隣の画像と重なると輪が邪魔になるので、**細く・透かす**。
+ *  どれを見ているか分かればよく、主張は要らない。 */
+const IMAGE_RING_WIDTH   = 1.4
+const IMAGE_RING_OPACITY = 0.32
+/** 画像の外縁と輪のあいだの隙間。 */
+const IMAGE_RING_GAP     = 2
+
+/** チャートの余白と軸の太さ。軸のサイズは既定に頼らず**明示的に渡す**
+ *  （Recharts の既定値が変わったら黙ってズレるため）。 */
+const CHART_MARGIN   = { top: 20, right: 18, left: 0, bottom: 28 }
+const Y_AXIS_WIDTH   = 56
+/** X 軸が縦に取る高さ。Recharts の既定と同じ値を明示して渡す。 */
+const X_AXIS_HEIGHT  = 30
+
+
+// ---------------------------------------------------------------------------
+// 重なった画像をカーソル中心にずらす（魚眼レンズ・#630）
+// ---------------------------------------------------------------------------
+//
+// 画像モードは点が大きいので密集すると重なって読めない。
+// **カーソルのまわりだけを引き伸ばす**。近いものほど大きく外へ動くので、
+// 団子になっていたブキがほどけて 1 つずつ見えるようになる。
+//
+// 🔴 散布図は**位置が値**なので、ずらした位置をそのまま読まれると嘘になる。
+// ただし引き出し線は引かない。全部の点が動くので線だらけになって、かえって読めない。
+// 代わりに「カーソルを外せば元に戻る」ことと、効果の範囲を絞ることで担保する。
+//
+// 🔴 **塊を選んで散らす方式はやめた。** 以前は連結成分をたどって円周や空きへ
+// 押しのけていたが、
+//   - どこまでを 1 つの塊とみなすかが恣意的で、密なグラフでは全部が繋がる
+//   - 広げる/畳むの切り替わりが跳ねる（当たり判定の円が要る）
+//   - 端に寄ると散らす向きが偏り、一列に並ぶ
+// レンズなら**連続関数**なので、カーソルを動かすとぬるっと変わり、境目も無い。
+
+/** 効果が及ぶ半径(px)。これより遠い点は 1px も動かない。 */
+const LENS_RADIUS = 130
+/**
+ * 反発の強さの落ち方。大きいほど**カーソルの近くだけが反発する**。
+ *
+ *     強さ = (1 - カーソルからの距離 / 半径)^F
+ *
+ *     カーソルから  13px → 0.73    ← ほどけてほしいのはここ
+ *     　　　　　　  65px → 0.13
+ *     　　　　　　 117px → 0.001   ← ほぼ動かない
+ *
+ * 🔴 これを緩くすると、遠くの点までじわじわ動いて画面全体が揺れて見える。
+ */
+const LENS_FALLOFF = 3
+/** カーソルを外したとき、元の位置へ戻るまでの時間。 */
+const LENS_COLLAPSE_MS = 220
+
+/** 反発の反復回数。動かすのはレンズの中の点だけなので、毎フレーム回しても軽い。 */
+const LENS_ITERATIONS = 60
+/** 毎回どれだけレンズの目標位置へ引き戻すか。大きいほど「重なってでも元の形」寄り。 */
+const LENS_PULL = 0.10
+/** 完全に同じ座標のときに散らす向き(黄金角)。乱数を使わず毎回同じ結果にする。 */
+const GOLDEN_ANGLE = 2.399963
+
+type LensState = {
+  /** カーソル位置（チャート座標）。 */
+  x: number
+  y: number
+  /** 点の名前 → 元の位置からのずらし量。レンズの外の点は入らない。 */
+  offsets: Map<string, { dx: number; dy: number }>
+  /**
+   * **ずらしたあとの位置で**カーソルの下にある点。
+   *
+   * 🔴 マウスイベント任せにできない。反発で散らしている最中は、狙ったアイコンが
+   * カーソルの下から動いて隙間ができ、mouseenter が来ないまま「チップが出ない」に
+   * なる。動いた先の座標で当たりを取り直す。
+   */
+  nearest: string | null
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi <= lo ? lo : hi)
+
+/**
+ * 計算したずらしを DOM へ直接書く(#630)。
+ *
+ * 🔴 毎フレーム React の state にすると、点の数だけ Recharts の再描画が走って
+ * 追従が遅れる。**滑らかさが要る所は DOM を直接触る。**
+ *
+ * 対象は `data-lens-move` を付けた `<g>`（画像とその輪）。名前で引き当てる。
+ */
+function applyLens(area: HTMLElement, lens: LensState | null) {
+  const movers = area.querySelectorAll<SVGGElement>('[data-lens-move]')
+  movers.forEach(g => {
+    const name = g.getAttribute('data-lens-move') ?? ''
+    const off = lens?.offsets.get(name)
+    g.style.transform = off
+      ? `translate(${off.dx}px, ${off.dy}px)`
+      : 'translate(0px, 0px)'
+  })
+}
+
+/** カーソルからの距離に応じた反発の強さ（0〜1）。縁で 0 になるので段差が出ない。 */
+function lensWeight(d: number): number {
+  if (d >= LENS_RADIUS) return 0
+  return Math.pow(1 - d / LENS_RADIUS, LENS_FALLOFF)
+}
+
+/**
+ * カーソルのまわりのアイコンに**反発力を与える**(#630)。
+ *
+ * 🔴 カーソルから外へ押しのける（魚眼）のではない。それだと
+ *   - ぴったり重なった 2 点は、何倍に引き伸ばしても離れない（距離 0 のまま）
+ *   - 重なっていない点まで動くので、画面全体が揺れて見える
+ *
+ * ここでやるのは「カーソルに近いアイコンほど、**互いに強く反発する**」だけ。
+ * 押し合う相手はアイコン同士で、カーソルは強さを決めるだけ。そのつど元の位置へ
+ * 引き戻すので、重なりが解ける分だけ離れて止まる。
+ *
+ * この作りだと、**もともと離れているアイコンにカーソルを当てても何も起きない**。
+ * 動くのは団子になっている所だけで、それ以外は静かなまま。狙いどおり。
+ *
+ * 動かすのは効果範囲の中の点だけ。外の点は動かない障害物として避ける。
+ */
+export function buildLens(
+  cursorX: number,
+  cursorY: number,
+  basePos: Map<string, { x: number; y: number }>,
+  imagePx: number,
+): LensState {
+  const span = imagePx
+
+  // 🔴 収める範囲は**点が元から居る矩形**。プロット領域を計算・実測して使うのは
+  // やめた。余白・軸の幅と高さ・Recharts の既定値・グリッド線の引かれ方など、
+  // 依存するものが多すぎて何度も外した（下端で軸の高さを忘れ、左右でも外した）。
+  //
+  // 元の位置は軸の余白のぶんだけ内側に置かれていて、その余白は
+  // `scatterEdgePadding()` が「画像の半分＋輪」以上を確保している。
+  // つまり**点が元から居る範囲に収めれば、静止しているときと同じだけ安全**。
+  // 何にも依存しないので、もう外しようがない。
+  let lo = { x: Infinity, y: Infinity }
+  let hi = { x: -Infinity, y: -Infinity }
+  for (const p of basePos.values()) {
+    if (p.x < lo.x) lo.x = p.x
+    if (p.y < lo.y) lo.y = p.y
+    if (p.x > hi.x) hi.x = p.x
+    if (p.y > hi.y) hi.y = p.y
+  }
+  if (!Number.isFinite(lo.x)) { lo = { x: cursorX, y: cursorY }; hi = { x: cursorX, y: cursorY } }
+
+  const moving: {
+    name: string
+    base: { x: number; y: number }
+    /** カーソルへの近さから決まる反発の強さ（0〜1）。 */
+    w: number
+    x: number; y: number
+    idx: number
+  }[] = []
+  const fixed: { x: number; y: number }[] = []
+
+  let idx = 0
+  for (const [name, p] of basePos) {
+    const d = Math.hypot(p.x - cursorX, p.y - cursorY)
+    if (d >= LENS_RADIUS) {
+      // 効果範囲の外。動かないが、すぐ外側のものは避ける相手になる。
+      if (d < LENS_RADIUS + span * 2) fixed.push(p)
+      continue
+    }
+    // 出発点は**元の位置そのもの**。カーソルから外へは押さない。
+    moving.push({ name, base: p, w: lensWeight(d), x: p.x, y: p.y, idx: idx++ })
+  }
+
+  for (let iter = 0; iter < LENS_ITERATIONS; iter++) {
+    // 1. 元の位置へ引き戻す。これがあるので「重なりが解ける分だけ」離れる。
+    for (const m of moving) {
+      m.x += (m.base.x - m.x) * LENS_PULL
+      m.y += (m.base.y - m.y) * LENS_PULL
+    }
+    // 2. 重なっている画像同士を押しのける。**押す量はカーソルへの近さで決まる。**
+    //    遠い所の重なりは動かないので、画面全体が揺れない。
+    for (let i = 0; i < moving.length; i++) {
+      for (let j = i + 1; j < moving.length; j++) {
+        const a = moving[i], b = moving[j]
+        let dx = b.x - a.x, dy = b.y - a.y
+        let dist = Math.hypot(dx, dy)
+        if (dist >= span) continue
+        if (dist < 1e-6) {
+          // ぴったり重なっている。向きが決まらないので決め打ちにする
+          // （乱数だとフレームごとに配置が変わってちらつく）。
+          const angle = i * GOLDEN_ANGLE
+          dx = Math.cos(angle); dy = Math.sin(angle); dist = 1
+        }
+        const w = (a.w + b.w) / 2
+        const push = ((span - dist) / 2) * w
+        const ux = dx / dist, uy = dy / dist
+        a.x -= ux * push; a.y -= uy * push
+        b.x += ux * push; b.y += uy * push
+      }
+    }
+    // 3. 効果範囲の外の点からは自分だけ退く。
+    for (const m of moving) {
+      for (const o of fixed) {
+        let dx = m.x - o.x, dy = m.y - o.y
+        let dist = Math.hypot(dx, dy)
+        if (dist >= span) continue
+        if (dist < 1e-6) { dx = 1; dy = 0; dist = 1 }
+        const push = (span - dist) * m.w
+        m.x += (dx / dist) * push
+        m.y += (dy / dist) * push
+      }
+    }
+    // 4. 点が元から居る範囲の中へ。はみ出すと軸に載って見切れる。
+    for (const m of moving) {
+      m.x = clamp(m.x, lo.x, hi.x)
+      m.y = clamp(m.y, lo.y, hi.y)
+    }
+  }
+
+  const offsets = new Map<string, { dx: number; dy: number }>()
+  // ずらしたあとの位置で、カーソルが乗っている点を選び直す。
+  // 画像の中に入っていれば当たり。同じくらいなら近いほうを採る。
+  let nearest: string | null = null
+  let nearestD = span / 2
+  for (const m of moving) {
+    offsets.set(m.name, { dx: m.x - m.base.x, dy: m.y - m.base.y })
+    const d = Math.hypot(m.x - cursorX, m.y - cursorY)
+    if (d <= nearestD) {
+      nearestD = d
+      nearest = m.name
+    }
+  }
+  return { x: cursorX, y: cursorY, offsets, nearest }
+}
+
+/** 移動スタイル。画像・輪で**同じものを使う**（別々に書くと輪だけ遅れて動く）。
+ *
+ *  🔴 追従中は遷移を付けない。カーソルに合わせて毎フレーム変わるので、遷移を
+ *  付けると常に追いかけ続けて遅れる。**なめらかさは関数の連続性で出す。**
+ *  戻すときだけ、ぱっと消えないよう短い遷移を掛ける。 */
+function lensMoveStyle(
+  off: { dx: number; dy: number } | null,
+  animate: boolean,
+): CSSProperties {
+  return {
+    transformBox: 'fill-box',
+    transformOrigin: 'center',
+    transform: off ? `translate(${off.dx}px, ${off.dy}px)` : 'translate(0px, 0px)',
+    transition: off || !animate ? undefined : `transform ${LENS_COLLAPSE_MS}ms ease`,
+  }
+}
+
+/**
+ * 選択中の輪を描く層(#630)。**画像より下に置く。**
+ *
+ * 🔴 点ごとに描いてはいけない。SVG は書いた順に重なるので、後から描かれた点の輪が
+ * **先の点の画像の上を通る**。まとめて下の層に置けば、必ず画像が上に来る。
+ *
+ * Recharts 3 は子要素をそのまま順に描くので、`<Scatter>` より前に置けば下に来る
+ * (2.x の `Customized` は `<g>` で包むだけのラッパーで、3.x では不要)。
+ */
+function ScatterUnderLayer({
+  lensRef, basePos, activeName, imagePx, animate,
+}: {
+  lensRef:    { current: LensState | null }
+  basePos:    Map<string, { x: number; y: number }>
+  activeName: string | null
+  imagePx:    number
+  animate:    boolean
+}) {
+  if (!activeName) return null
+  const activeBase = basePos.get(activeName)
+  if (!activeBase) return null
+  // 輪も画像と同じ仕組みで動かす。`data-lens-move` を付けておけば、
+  // 毎フレームの DOM 書き換え(`applyLens`)が画像と一緒に面倒を見る。
+  const off = lensRef.current?.offsets.get(activeName) ?? null
+  return (
+    <g pointerEvents="none">
+      <g data-lens-move={activeName} style={lensMoveStyle(off, animate)}>
+        <circle
+          cx={activeBase.x}
+          cy={activeBase.y}
+          r={imagePx / 2 + IMAGE_RING_GAP}
+          fill="none"
+          stroke="var(--text)"
+          strokeWidth={IMAGE_RING_WIDTH}
+          strokeOpacity={IMAGE_RING_OPACITY}
+        />
+      </g>
+    </g>
+  )
+}
+
 /** Recharts Scatter の shape コールバック。payload.markerShape を読む。 */
 function scatterPointShape(props: {
   cx?: number
@@ -208,12 +495,54 @@ function scatterPointShape(props: {
   active?: boolean
   /** HTML 保存向け。無いときは属性を付けない。 */
   tipJson?: string
+  /** 画像モードの一辺(px)。指定があり `payload.iconUrl` もあるとき、図形の代わりに画像を描く(#627)。 */
+  imagePx?: number
+  /** ばらけ表示のずらし量(#630)。元の位置へは引き出し線を引く。 */
+  offset?: { dx: number; dy: number; order: number } | null
+  /** 遷移を付けるか(#630)。動きを減らす設定のときは false。 */
+  animate?: boolean
 }) {
   const cx = props.cx ?? 0
   const cy = props.cy ?? 0
   const area = props.size ?? 120
   const r = Math.sqrt(Math.max(area, 0) / Math.PI)
   const shape = props.payload?.markerShape ?? 'circle'
+
+  // 画像モード(#627)。画像が無いブキは図形へフォールバックする
+  // (stat.ink 由来でローカルマスターに無いブキがある)。
+  const iconUrl = props.payload?.iconUrl
+  if (props.imagePx && iconUrl) {
+    const s = props.imagePx
+    // レンズのずらし(#630)。
+    //
+    // 位置は x/y ではなく **CSS の transform** で動かす。属性を書き換えると
+    // レイアウトを作り直すことになり、全点が毎フレーム動くこの用途では重い。
+    const off = props.offset
+    const animate = props.animate !== false
+    // 🔴 選択中の輪は**ここでは描かない**(#630)。点ごとに描くと、後から描かれた点の
+    // 輪が先の点の画像の上を通る。まとめて下の層へ(ScatterUnderLayer)。
+    return (
+      <g
+        data-scatter-point="true"
+        data-scatter-active={props.active ? 'true' : undefined}
+        data-scatter-tip={props.tipJson}
+      >
+        {/* `data-lens-move` は毎フレームの DOM 書き換え(`applyLens`)の目印。
+            React を通さず、ここの transform を直接書き換える。 */}
+        <g data-lens-move={props.payload?.name} style={lensMoveStyle(off ?? null, animate)}>
+          <image
+            href={iconUrl}
+            x={cx - s / 2}
+            y={cy - s / 2}
+            width={s}
+            height={s}
+            // ヒット領域を画像全体にする(透明部分でもツールチップを出す)。
+            style={{ pointerEvents: 'all' }}
+          />
+        </g>
+      </g>
+    )
+  }
   const baseOpacity = props.fillOpacity ?? 0.55
   const common = {
     fill: props.fill ?? props.payload?.color ?? 'var(--accent)',
@@ -244,11 +573,31 @@ type ObstacleRect = { left: number; top: number; right: number; bottom: number }
 
 const TOOLTIP_GAP = 14
 const TOOLTIP_EDGE_PAD = 6
-const DOT_AVOID_PAD = 4
-/** 画像保存時はドット同士の隙間を広めに見て、被りゼロを狙いやすくする。 */
-const EXPORT_DOT_AVOID_PAD = 10
+/** ドットを避けるときの外縁パディング。
+ *
+ *  ブキ画像は点より大きいので、4px では隣の画像に乗ってしまう。ただし広く取りすぎると
+ *  空きが見つからず遠くへ飛ぶので、**重ならない最小限**にとどめる。 */
+const DOT_AVOID_PAD = 6
+/** 画像保存時はさらに広めに見て、被りゼロを狙いやすくする。 */
+const EXPORT_DOT_AVOID_PAD = 12
 /** アクティブ点とツールチップの間に最低限空ける余白。 */
-const ANCHOR_CLEARANCE = 8
+const ANCHOR_CLEARANCE = 10
+/** 候補を作るときの向きの刻み数。細かいほど「近くの空き」を見つけやすい。 */
+const TOOLTIP_ANGLE_STEPS = 16
+/** 点からどれだけ離すかの候補（gap への上乗せ）。近い順に並べる。 */
+const TOOLTIP_RINGS = [0, 10, 22, 38, 58, 84, 120]
+/** 1px 遠ざかることを、何 px² の重なりと同じ価値とみなすか。
+ *
+ *  大きいほど点の近くに留まり、小さいほど重なりを避けて遠くへ行く。 */
+const TOOLTIP_REACH_WEIGHT = 40
+
+/** 向きベクトルを 8 方位のラベルに落とす（`data-placement` 用）。 */
+function directionLabel(dx: number, dy: number): TooltipDirection {
+  const h = dx > 0.383 ? 'right' : dx < -0.383 ? 'left' : ''
+  const v = dy > 0.383 ? 'bottom' : dy < -0.383 ? 'top' : ''
+  if (h && v) return `${v}-${h}` as TooltipDirection
+  return (v || h || 'right') as TooltipDirection
+}
 
 function rectsOverlap(
   a: { left: number; top: number; right: number; bottom: number },
@@ -264,13 +613,9 @@ function rectsOverlap(
  * ホバー点の周囲から、ドットを最も隠さないツールチップ位置を選ぶ(#497)。
  *
  * 優先順位:
- * 0. **自分のドットを隠さない**(端補正でスライドしても被らない方向を最優先)
- * 1. 重なるドット数が少ない
- * 2. 重なり面積が小さい
- * 3. 端からはみ出さないための補正量が小さい
- * 4. 同程度ならグラフ中心から外側へ向かう
- *
- * `richCandidates`(画像保存時)では斜め・遠めの候補も足して、他ドットとの被りゼロを狙いやすくする。
+ * 0. **自分のドットを隠さない**（絶対。ここだけ辞書順で先に見る）
+ * 1. 重なり面積と近さの釣り合い（`TOOLTIP_REACH_WEIGHT` 参照）
+ * 2. 同程度ならグラフ中心から外側へ向かう
  */
 export function chooseScatterTooltipPlacement({
   anchorX,
@@ -283,7 +628,6 @@ export function chooseScatterTooltipPlacement({
   anchorObstacle,
   gap = TOOLTIP_GAP,
   dotAvoidPad = DOT_AVOID_PAD,
-  richCandidates = false,
 }: {
   anchorX: number
   anchorY: number
@@ -298,41 +642,42 @@ export function chooseScatterTooltipPlacement({
   gap?: number
   /** 他ドットを避けるときの外縁パディング。 */
   dotAvoidPad?: number
-  /** 斜め・遠め候補を足す(画像保存向け)。 */
-  richCandidates?: boolean
 }): TooltipPlacement {
-  const g = gap
-  const g2 = gap * 2
+  // 候補は「点のまわりをぐるりと、近いところから」作る。
+  //
+  // 🔴 決め打ちの数箇所から選ぶと、**近くが空いていても遠くの候補が選ばれる**ことがある。
+  // 向きを細かく刻んで距離を少しずつ伸ばし、被らない中で一番近いところを採る。
   const candidates: {
     direction: TooltipDirection
     left: number
     top: number
     dx: number
     dy: number
-  }[] = [
-    { direction: 'right',  left: anchorX + g,                top: anchorY - tooltipHeight / 2, dx:  1, dy:  0 },
-    { direction: 'left',   left: anchorX - g - tooltipWidth, top: anchorY - tooltipHeight / 2, dx: -1, dy:  0 },
-    { direction: 'bottom', left: anchorX - tooltipWidth / 2, top: anchorY + g,                dx:  0, dy:  1 },
-    { direction: 'top',    left: anchorX - tooltipWidth / 2, top: anchorY - g - tooltipHeight, dx:  0, dy: -1 },
-  ]
-  if (richCandidates) {
-    candidates.push(
-      { direction: 'top-right',    left: anchorX + g,                top: anchorY - g - tooltipHeight, dx:  1, dy: -1 },
-      { direction: 'top-left',     left: anchorX - g - tooltipWidth, top: anchorY - g - tooltipHeight, dx: -1, dy: -1 },
-      { direction: 'bottom-right', left: anchorX + g,                top: anchorY + g,                dx:  1, dy:  1 },
-      { direction: 'bottom-left',  left: anchorX - g - tooltipWidth, top: anchorY + g,                dx: -1, dy:  1 },
-      // 密集時用に、軸方向へさらに離した候補。
-      { direction: 'right',  left: anchorX + g2,                top: anchorY - tooltipHeight / 2, dx:  1, dy:  0 },
-      { direction: 'left',   left: anchorX - g2 - tooltipWidth, top: anchorY - tooltipHeight / 2, dx: -1, dy:  0 },
-      { direction: 'bottom', left: anchorX - tooltipWidth / 2,  top: anchorY + g2,               dx:  0, dy:  1 },
-      { direction: 'top',    left: anchorX - tooltipWidth / 2,  top: anchorY - g2 - tooltipHeight, dx: 0, dy: -1 },
-      // 近傍がすべて他ドットに被るとき用に、プロット四隅へ退避。
-      { direction: 'top-right',    left: chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD, top: TOOLTIP_EDGE_PAD, dx:  1, dy: -1 },
-      { direction: 'top-left',     left: TOOLTIP_EDGE_PAD, top: TOOLTIP_EDGE_PAD, dx: -1, dy: -1 },
-      { direction: 'bottom-right', left: chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD, top: chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD, dx:  1, dy:  1 },
-      { direction: 'bottom-left',  left: TOOLTIP_EDGE_PAD, top: chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD, dx: -1, dy:  1 },
-    )
+    /** 点からの距離。近いほどよい。 */
+    reach: number
+  }[] = []
+  for (const extra of TOOLTIP_RINGS) {
+    const r = gap + extra
+    for (let k = 0; k < TOOLTIP_ANGLE_STEPS; k++) {
+      const a = (k / TOOLTIP_ANGLE_STEPS) * Math.PI * 2
+      const dx = Math.cos(a)
+      const dy = Math.sin(a)
+      // その向きへ、箱の手前の辺が点から r 離れるように置く。
+      const cx = anchorX + dx * (r + tooltipWidth / 2)
+      const cy = anchorY + dy * (r + tooltipHeight / 2)
+      candidates.push({
+        direction: directionLabel(dx, dy),
+        left: cx - tooltipWidth / 2,
+        top:  cy - tooltipHeight / 2,
+        dx, dy,
+        reach: r,
+      })
+    }
   }
+  // 🔴 **四隅への退避はしない。** 環境分析のように点が密なグラフでは、近くに
+  // 「まったく重ならない場所」が存在しない。空いているのは隅だけなので、
+  // 「重なりが少ない順」で選ぶと隅まで飛ぶ。点から大きく外れたチップは読めない。
+  // 近くで多少重なるほうがまし、という前提で下の重み付けを使う。
 
   const maxLeft = Math.max(TOOLTIP_EDGE_PAD, chartWidth - tooltipWidth - TOOLTIP_EDGE_PAD)
   const maxTop = Math.max(TOOLTIP_EDGE_PAD, chartHeight - tooltipHeight - TOOLTIP_EDGE_PAD)
@@ -356,7 +701,6 @@ export function chooseScatterTooltipPlacement({
     // 自分の点を隠すかどうかは他ドットより重い。端へ寄せた結果の被りもここで拾う。
     const anchorHit = anchorAvoid ? rectsOverlap(tip, anchorAvoid) : { overlap: false, area: 0 }
 
-    let overlapCount = 0
     let overlapArea = 0
     for (const dot of obstacles) {
       const expanded = {
@@ -365,11 +709,7 @@ export function chooseScatterTooltipPlacement({
         right:  dot.right + dotAvoidPad,
         bottom: dot.bottom + dotAvoidPad,
       }
-      const hit = rectsOverlap(tip, expanded)
-      if (hit.overlap) {
-        overlapCount += 1
-        overlapArea += hit.area
-      }
+      overlapArea += rectsOverlap(tip, expanded).area
     }
 
     const clampDistance = Math.abs(left - candidate.left) + Math.abs(top - candidate.top)
@@ -380,20 +720,27 @@ export function chooseScatterTooltipPlacement({
       direction: candidate.direction,
       anchorCovered: anchorHit.overlap ? 1 : 0,
       anchorOverlapArea: anchorHit.area,
-      overlapCount,
       overlapArea,
-      clampDistance,
+      // 端に寄せた補正も「遠ざかった量」として距離に含める。
+      reach: candidate.reach + clampDistance,
       outwardAlignment,
     }
   })
 
-  // 数値の重み付けではなく辞書順で比較し、上記の優先順位を厳密に守る。
+  // 🔴 「自分の点を隠さない」だけは絶対。ここは辞書順で先に見る。
+  //
+  // そのうえで、**重なりと近さを天秤にかける**。辞書順で「重なりの少なさ」を先に
+  // 見ると、点が密なグラフでは近くに空きが無いので、空いている隅まで飛んでしまう。
+  // 逆に近さだけで決めると、すぐ隣のブキを隠す。
+  //
+  // `TOOLTIP_REACH_WEIGHT` は「1px 遠ざかることを、何 px² の重なりと同じ価値とみなすか」。
+  // 40 なら、ブキ 1 つ(30px 角 ≒ 900px²)を隠すのを避けるために 20px ほど動く。
+  // そこまでして避ける価値が無ければ、近い場所に留まる。
+  const cost = (s: typeof scored[number]) => s.overlapArea + s.reach * TOOLTIP_REACH_WEIGHT
   scored.sort((a, b) =>
     a.anchorCovered - b.anchorCovered ||
     a.anchorOverlapArea - b.anchorOverlapArea ||
-    a.overlapCount - b.overlapCount ||
-    a.overlapArea - b.overlapArea ||
-    a.clampDistance - b.clampDistance ||
+    cost(a) - cost(b) ||
     b.outwardAlignment - a.outwardAlignment,
   )
   const best = scored[0]
@@ -439,7 +786,18 @@ export const isLogPlottable = (v: number | null): v is number =>
  * ログ軸はログ空間がピクセルに線形対応するので、余白も加算ではなく**乗除**で作る。
  * span に対する割合で広げるので、データの桁数によらず見た目の余白が一定になる。
  */
-const LOG_PAD_RATIO = 0.12  // 選択ハロー込みでも端で切れないよう、少し広めに取る
+/**
+ * 軸の両端に取る余白（データ範囲に対する割合）。リニア軸・ログ軸で共有する。
+ *
+ * 🔴 **小さいほどよい。** ここを広く取ると点が中央に寄り、プロット領域の外周が
+ * 空白になる。散布図は点の散らばりを見るものなので、目盛りの少し外まで見えていれば足りる。
+ *
+ * マーカーが軸線に載って切れるのは、**ピクセル側の余白**（`SCATTER_EDGE_PADDING`）が
+ * 防いでいる。こちらは値の空間なので、切れ対策としては二重になっている。
+ * 以前は 0.10 / 0.12 も取っていて、そのぶん点が寄っていた。
+ */
+const AXIS_PAD_RATIO = 0.02
+const LOG_PAD_RATIO  = AXIS_PAD_RATIO
 
 /**
  * 🔴 範囲は**実データに寄せる**こと(#558)。
@@ -603,16 +961,33 @@ export function withRefTick(
 export const SIZE_AREA_RANGE: [number, number] = [40, 600]
 
 /**
- * 軸端に確保する描画余白(px)。
+ * 軸端に確保する描画余白(px)。マーカーが軸線に載って半分切れるのを防ぐ。
  *
- * 最大ドットは area=600 → 半径約 13.8px。選択時はさらにハロー 4px＋線幅・角形の対角が付くため、
- * 28px 確保する。あわせてドメイン側も広げて、clipPath 内に収める。
+ * 🔴 これは**値の範囲ではなくピクセル**なので、勝率のように 0〜100% で頭打ちの軸でも
+ * 「0% の下」「100% の上」に空白として見える。**必要な分だけにする。**
+ * 一律 28px にしていたころは、小さい点のグラフでも上下に 28px ずつ空いていた。
+ *
+ * 実際に必要なのは「一番大きく描かれるマーカーの半径 + 強調ぶん」。
  */
-const SCATTER_EDGE_PADDING = 28
+function scatterEdgePadding(opts: {
+  imagePx?: number
+  hasSize?: boolean
+  constSize: number
+}): number {
+  if (opts.imagePx) {
+    // 画像の半分に、選択中に外へ付く輪のぶんを足す。
+    return Math.ceil(opts.imagePx / 2 + IMAGE_RING_GAP + IMAGE_RING_WIDTH)
+  }
+  // ドットは面積指定。選択時のハロー・角形の対角ぶんを少し足す。
+  const area = opts.hasSize ? SIZE_AREA_RANGE[1] : opts.constSize
+  return Math.ceil(areaToRadius(area) + 6)
+}
 
 /**
  * 線形ドメインを値空間で広げ、上下限の点が軸線・clip に乗らないようにする。
  * (Axis padding だけだとログ軸の clip や nice tick の都合で足りないことがある)
+ *
+ * 広げる量は `AXIS_PAD_RATIO`。**点をプロット全体へ散らすため小さく取る**。
  */
 function expandLinearDomain(
   domain: [number, number] | undefined,
@@ -621,7 +996,7 @@ function expandLinearDomain(
   if (!domain) return undefined
   const [lo, hi] = domain
   const span = Math.max(hi - lo, opts.rate01 ? 0.05 : 1e-6)
-  const pad = span * 0.1
+  const pad = span * AXIS_PAD_RATIO
   let nlo = lo - pad
   let nhi = hi + pad
   if (opts.rate01) {
@@ -850,7 +1225,7 @@ function ScatterLegends({ sizeLegend, colorLegend }: { sizeLegend?: SizeLegend |
 
 export function ScatterChart({
   points, xLabel, yLabel, xIsRate, yIsRate, xDomain, yDomain, xRefLine, yRefLine, hasSize, xLogScale, yLogScale, fillOpacity = 0.55, constSize = 120, height = 320,
-  sizeLegend, colorLegend,
+  sizeLegend, colorLegend, imagePx,
 }: {
   points:       ScatterPoint[]
   xLabel:       string
@@ -878,10 +1253,22 @@ export function ScatterChart({
    *  未指定(サイズ・色にメトリクスを割り当てていない)なら出さない。 */
   sizeLegend?:  SizeLegend | null
   colorLegend?: ColorLegend | null
+  /** 点をブキ画像で描く(#627)。一辺の px。指定時はサイズ・色メトリクスが効かない。
+   *  画像を持たない点は従来の図形にフォールバックする。 */
+  imagePx?:     number
 }) {
   const [hover, setHover] = useState<ScatterPoint | null>(null)
   // クリックでピン留め。保存ボタンへマウスを移してもツールチップが消えないようにする。
   const [pinned, setPinned] = useState<ScatterPoint | null>(null)
+  // カーソル中心のレンズ(#630)。
+  //
+  // 🔴 **state ではなく ref に持つ。** 毎フレーム state を更新すると点の数だけ
+  // 再描画が走って追従が遅れる。位置は DOM へ直接書き、描画側もここを見る。
+  const lensRef = useRef<LensState | null>(null)
+  const [lensPinned, setLensPinned] = useState(false)
+  /** ツールチップの再配置を促すためだけの粗いキー（24px 刻み）。 */
+  const [lensKey, setLensKey] = useState('')
+  const lensKeyRef = useRef('')
   const [tooltipPlacement, setTooltipPlacement] = useState<TooltipPlacement | null>(null)
   // 画像保存直前に立てる。配置を斜め・遠め候補込みでやり直す。
   const [exportLayout, setExportLayout] = useState(false)
@@ -983,6 +1370,33 @@ export function ScatterChart({
   // 🔴 凡例と同じ定数を使う(SIZE_AREA_RANGE のコメント参照)。
   const zRange: [number, number] = hasSize ? SIZE_AREA_RANGE : [constSize, constSize]
 
+  // 軸端の余白は、実際に描かれるマーカーの大きさから出す(一律に取ると空白が目立つ)。
+  const edgePad = scatterEdgePadding({ imagePx, hasSize, constSize })
+
+  // ばらけ表示用に、各点の**元の**描画座標を控える(#630)。
+  //
+  // `shape` コールバックに来る cx/cy は常に元の位置なので、広げている最中でも
+  // ここは base のまま保たれる。データが変わったら作り直す(古い名前を残さない)。
+  //
+  // キーは点の名前。画像モードはブキ単位だけなので名前は一意(#627)。
+  const basePos = useMemo(() => new Map<string, { x: number; y: number }>(), [drawable])
+  // rAF のコールバックから読むので ref でも持つ（クロージャが古い Map を掴まないように）。
+  const basePosRef = useRef(basePos)
+  basePosRef.current = basePos
+
+  // データ・サイズ・モードが変わったら、ずらしたままにしない(座標が合わなくなる)。
+  useEffect(() => {
+    lensRef.current = null
+    setLensPinned(false)
+  }, [drawable, imagePx])
+
+  // 動きを減らす設定を尊重する。ずれること自体は情報なので残し、戻りの遷移だけ切る。
+  const reduceMotion = useMemo(
+    () => typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
+    [],
+  )
+
   // ツールチップを一度 hidden で描画して実寸を測り、上下左右の最適位置へ移す。
   // マーカーも DOM の実寸を読むため、形・サイズ指標の有無にかかわらず避けられる(#497)。
   // 自分の点(ハロー込み)は他点より優先して隠さない。
@@ -991,8 +1405,13 @@ export function ScatterChart({
     const tooltip = tooltipRef.current
     if (!active || !area || !tooltip) return
 
-    const anchorX = (active as unknown as { cx?: number }).cx ?? 0
-    const anchorY = (active as unknown as { cy?: number }).cy ?? 0
+    // ずれているときはツールチップも移動先に付ける(#630)。元の位置に出すと、
+    // どの画像の説明なのか分からなくなる。
+    const baseX = (active as unknown as { cx?: number }).cx ?? 0
+    const baseY = (active as unknown as { cy?: number }).cy ?? 0
+    const off = lensRef.current?.offsets.get(active.name) ?? null
+    const anchorX = baseX + (off?.dx ?? 0)
+    const anchorY = baseY + (off?.dy ?? 0)
     const areaRect = area.getBoundingClientRect()
     const tooltipRect = tooltip.getBoundingClientRect()
 
@@ -1042,14 +1461,72 @@ export function ScatterChart({
       anchorObstacle,
       gap,
       dotAvoidPad: exportLayout ? EXPORT_DOT_AVOID_PAD : DOT_AVOID_PAD,
-      richCandidates: exportLayout,
     }))
-  }, [active, hoverSiblings.length, height, exportLayout])
+  }, [active, hoverSiblings.length, height, exportLayout, lensKey])
 
   // チャート上から保存ボタンへ移ってもツールチップを残す。
   // 消すのは「パネル全体」から出たときだけ(.chart-card / .env-chart-section)。
   const pinnedRef = useRef(pinned)
   pinnedRef.current = pinned
+  const lensPinnedRef = useRef(lensPinned)
+  lensPinnedRef.current = lensPinned
+
+  // カーソル位置からレンズを更新する(#630)。
+  //
+  // 🔴 マウス移動のたびに state を更新すると、点の数だけ再描画が走って詰まる。
+  // **1 フレームに 1 回**にまとめる。マウスイベントは 1 フレームに何度も来る。
+  const lensFrameRef = useRef<number | null>(null)
+  const lensPendingRef = useRef<{ x: number; y: number } | null>(null)
+  /** いまツールチップを出している点の名前。同じなら state を触らない。 */
+  const lensHoverRef = useRef<string | null>(null)
+  const drawableRef = useRef(drawable)
+  drawableRef.current = drawable
+  const moveLens = useCallback((clientX: number, clientY: number) => {
+    const area = areaRef.current
+    if (!imagePx || !area || lensPinnedRef.current) return
+    const rect = area.getBoundingClientRect()
+    lensPendingRef.current = { x: clientX - rect.left, y: clientY - rect.top }
+    if (lensFrameRef.current !== null) return
+    lensFrameRef.current = requestAnimationFrame(() => {
+      lensFrameRef.current = null
+      const p = lensPendingRef.current
+      const el = areaRef.current
+      if (!p || !el || !imagePx) return
+      const next = buildLens(p.x, p.y, basePosRef.current, imagePx)
+
+      // 🔴 **React を通さず DOM へ直接書く。**
+      //
+      // ここを毎フレーム state にすると、点の数だけ Recharts の再描画が走る。
+      // 170 点あると 1 フレームに収まらず、カクついて追従が遅れる。
+      // 保存 HTML 側は React が無く直接書いているだけで、そちらのほうが滑らかだった。
+      //
+      // 描画は `lensRef` を見るので、別の理由で React が再描画しても食い違わない。
+      lensRef.current = next
+      applyLens(el, next)
+
+      // ツールチップの配置だけは React に任せる。毎フレームやると全マーカーの実寸を
+      // 読むことになるので、**対象が変わったときと、ある程度動いたときだけ**。
+      const key = `${Math.round(p.x / 24)},${Math.round(p.y / 24)}`
+      if (key !== lensKeyRef.current) {
+        lensKeyRef.current = key
+        setLensKey(key)
+      }
+
+      // ずらした先でカーソルの下にある点を、そのままツールチップの対象にする。
+      if (next.nearest === lensHoverRef.current) return
+      lensHoverRef.current = next.nearest
+      if (!next.nearest) { setHover(null); return }
+      const point = drawableRef.current.find(q => q.name === next.nearest)
+      const base = basePosRef.current.get(next.nearest)
+      if (!point || !base) { setHover(null); return }
+      setTooltipPlacement(null)
+      setHover({ ...point, cx: base.x, cy: base.y } as ScatterPoint)
+    })
+  }, [imagePx])
+
+  useEffect(() => () => {
+    if (lensFrameRef.current !== null) cancelAnimationFrame(lensFrameRef.current)
+  }, [])
   useEffect(() => {
     const area = areaRef.current
     if (!area) return
@@ -1062,14 +1539,37 @@ export function ScatterChart({
       setHover(null)
       // ピン留め中はパネル外でも残す(明示クリック解除まで)。
       if (!pinnedRef.current) setTooltipPlacement(null)
+      if (!lensPinnedRef.current) {
+        lensRef.current = null
+        if (areaRef.current) applyLens(areaRef.current, null)
+      }
+      lensHoverRef.current = null
+    }
+    // 🔴 保存の前にレンズを必ず戻す(#630)。
+    //
+    // 画像も HTML も「そのときの見た目」をそのまま持ち出す。ずらしたまま保存すると、
+    // **点の位置が値と違うファイルが残る**。散布図でこれは嘘になる。
+    // 画面上は「カーソルを外せば戻る」ので誤解しないが、保存物には戻る機会が無い。
+    //
+    // ずらしたまま保存できることに意味があったのは引き出し線を引いていたころで、
+    // その線はもう無い。
+    const resetLens = () => {
+      lensRef.current = null
+      setLensPinned(false)
+      lensHoverRef.current = null
+      if (areaRef.current) applyLens(areaRef.current, null)
     }
     const onExportPrepare = () => {
       // キャプチャ前に同期で配置し直す(次フレーム待ちだけでは React 更新が間に合わない)。
-      flushSync(() => setExportLayout(true))
+      flushSync(() => {
+        resetLens()
+        setExportLayout(true)
+      })
     }
     const onHtmlPrepare = () => {
       // HTML では埋め込み JS にホバーを任せるので、アプリ側の固定チップは消す。
       flushSync(() => {
+        resetLens()
         setHover(null)
         setPinned(null)
         setTooltipPlacement(null)
@@ -1100,11 +1600,19 @@ export function ScatterChart({
   }, [])
 
   return (
-    <div className="chart-hover-area" ref={areaRef} style={{ position: 'relative' }}>
+    <div
+      className="chart-hover-area"
+      ref={areaRef}
+      style={{ position: 'relative' }}
+      // レンズはカーソルそのものを中心にする(#630)。
+      //
+      // 🔴 点に乗ったかどうかは見ない。**カーソルの位置だけ**で決まるので、
+      // 「広げた瞬間に画像が逃げて mouseleave」というチカチカが起きようがない。
+      // 当たり判定の円も要らなくなった。
+      onMouseMove={e => moveLens(e.clientX, e.clientY)}
+    >
     <ResponsiveContainer width="100%" height={height}>
-      <RScatterChart
-        margin={{ top: 20, right: 18, left: 0, bottom: 28 }}
-      >
+      <RScatterChart margin={CHART_MARGIN}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         {/* ログ軸では 0 以下の基準線は載らない(extendDomain で軸ごと壊れるため出さない)。 */}
         {xRefLine != null && (!xLog || xRefLine > 0) && (
@@ -1113,15 +1621,24 @@ export function ScatterChart({
         {yRefLine != null && (!yLog || yRefLine > 0) && (
           <ReferenceLine y={yRefLine} stroke="var(--text-muted)" strokeDasharray="5 4" ifOverflow="extendDomain" />
         )}
+        {/* 🔴 `allowDataOverflow` は付けない。
+            付けるとその軸に clip が掛かり、しかも**clip の範囲は軸の余白の内側**になる
+            （GraphicalItemClipPath: clipX = min(xAxisRange) = offset.left + padding.left）。
+            端の点は必ず clip の境界にちょうど載るので、**マーカーの外半分が切れる**。
+            余白をいくら広げても、点と clip が一緒に内側へ動くだけで直らない。
+
+            ログ軸で以前これを付けていたが、ドメインは描画対象の点から作っていて
+            範囲外の点がそもそも無いので、clip する必要が無い。
+            上下が切れず左右だけ切れていたのは、X だけログ＝X だけ clip だったため。 */}
         <XAxis
           type="number"
           dataKey="x"
           name={xLabel}
-          padding={{ left: SCATTER_EDGE_PADDING, right: SCATTER_EDGE_PADDING }}
+          height={X_AXIS_HEIGHT}
+          padding={{ left: edgePad, right: edgePad }}
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           tickFormatter={xIsRate ? fmtRateTick : fmtTick}
           scale={xLog ? 'log' : 'auto'}
-          allowDataOverflow={xLog}
           domain={xAxisDomain ?? ['auto', 'auto']}
           ticks={xTicks ?? undefined}
           label={{ value: xLabel, position: 'insideBottom', offset: -10, fill: 'var(--text)', fontSize: 11, fontWeight: 600 } as object}
@@ -1130,17 +1647,27 @@ export function ScatterChart({
           type="number"
           dataKey="y"
           name={yLabel}
-          padding={{ top: SCATTER_EDGE_PADDING, bottom: SCATTER_EDGE_PADDING }}
+          padding={{ top: edgePad, bottom: edgePad }}
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
-          width={56}
+          width={Y_AXIS_WIDTH}
           tickFormatter={yIsRate ? fmtRateTick : fmtTick}
           scale={yLog ? 'log' : 'auto'}
-          allowDataOverflow={yLog}
           domain={yAxisDomain ?? ['auto', 'auto']}
           ticks={yTicks ?? undefined}
           label={{ value: yLabel, angle: -90, position: 'insideLeft', offset: 12, fill: 'var(--text)', fontSize: 11, fontWeight: 600, style: { textAnchor: 'middle' } } as object}
         />
         <ZAxis type="number" dataKey="size" range={zRange} />
+        {/* 🔴 <Scatter> より**前**に置く。SVG は書いた順に重なるので、ここに置いた
+            引き出し線・選択の輪は必ず画像の下に来る(#630)。 */}
+        {imagePx && (
+          <ScatterUnderLayer
+            lensRef={lensRef}
+            basePos={basePos}
+            activeName={active?.name ?? null}
+            imagePx={imagePx}
+            animate={!reduceMotion}
+          />
+        )}
         <Scatter
           data={drawable}
           shape={(props: any) => {
@@ -1148,11 +1675,18 @@ export function ScatterChart({
             const tipJson = payload
               ? JSON.stringify(buildScatterTipPayload(payload, siblings))
               : undefined
+            // レンズ計算用に元座標を控える(#630)。cx/cy はずらしていても常に元の位置。
+            if (payload && props.cx != null && props.cy != null) {
+              basePos.set(payload.name, { x: props.cx, y: props.cy })
+            }
             return scatterPointShape({
               ...props,
               fillOpacity,
               active: sameScatterAnchor(props, active as { cx?: number; cy?: number } | null),
               tipJson,
+              imagePx,
+              offset: payload ? lensRef.current?.offsets.get(payload.name) ?? null : null,
+              animate: !reduceMotion,
             })
           }}
           onMouseEnter={(p: any) => {
@@ -1163,7 +1697,14 @@ export function ScatterChart({
           onClick={(p: any) => {
             // クリックでピン留め/再クリックで解除。画像保存前に点を固定できる。
             const next = { ...p }
-            setPinned(prev => sameScatterAnchor(prev as { cx?: number; cy?: number } | null, next) ? null : next)
+            const willUnpin = sameScatterAnchor(pinned as { cx?: number; cy?: number } | null, next)
+            setPinned(willUnpin ? null : next)
+            // レンズも一緒に固定する。こうするとずらしたまま画像に保存できる。
+            setLensPinned(!willUnpin && !!lensRef.current)
+            if (willUnpin) {
+              lensRef.current = null
+              if (areaRef.current) applyLens(areaRef.current, null)
+            }
             setTooltipPlacement(null)
             setHover(next)
           }}
@@ -1192,8 +1733,11 @@ export function ScatterChart({
     )}
     {active && (() => {
       // 初回はアクティブ点位置へ hidden で描画し、useLayoutEffect で実寸計測後に表示する。
-      const hx = (active as unknown as { cx?: number }).cx ?? 0
-      const hy = (active as unknown as { cy?: number }).cy ?? 0
+      const bx = (active as unknown as { cx?: number }).cx ?? 0
+      const by = (active as unknown as { cy?: number }).cy ?? 0
+      const off = lensRef.current?.offsets.get(active.name) ?? null
+      const hx = bx + (off?.dx ?? 0)
+      const hy = by + (off?.dy ?? 0)
       const tipStyle: CSSProperties = {
         position: 'absolute',
         left: tooltipPlacement?.left ?? hx,
