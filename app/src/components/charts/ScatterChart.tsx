@@ -1502,13 +1502,30 @@ export function ScatterChart({
       if (!lensPinnedRef.current) setLens(null)
       lensHoverRef.current = null
     }
+    // 🔴 保存の前にレンズを必ず戻す(#630)。
+    //
+    // 画像も HTML も「そのときの見た目」をそのまま持ち出す。ずらしたまま保存すると、
+    // **点の位置が値と違うファイルが残る**。散布図でこれは嘘になる。
+    // 画面上は「カーソルを外せば戻る」ので誤解しないが、保存物には戻る機会が無い。
+    //
+    // ずらしたまま保存できることに意味があったのは引き出し線を引いていたころで、
+    // その線はもう無い。
+    const resetLens = () => {
+      setLens(null)
+      setLensPinned(false)
+      lensHoverRef.current = null
+    }
     const onExportPrepare = () => {
       // キャプチャ前に同期で配置し直す(次フレーム待ちだけでは React 更新が間に合わない)。
-      flushSync(() => setExportLayout(true))
+      flushSync(() => {
+        resetLens()
+        setExportLayout(true)
+      })
     }
     const onHtmlPrepare = () => {
       // HTML では埋め込み JS にホバーを任せるので、アプリ側の固定チップは消す。
       flushSync(() => {
+        resetLens()
         setHover(null)
         setPinned(null)
         setTooltipPlacement(null)
