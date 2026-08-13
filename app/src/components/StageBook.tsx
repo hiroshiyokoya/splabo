@@ -17,7 +17,7 @@ function winRateColor(rate: number): string {
 /** ステージ図鑑のソートキー。 */
 type SortKey =
   | 'total' | 'wins' | 'loses' | 'draws'
-  | 'win_rate' | 'avg_kill' | 'avg_assist' | 'avg_death' | 'kd' | 'knockout_rate' | 'name'
+  | 'win_rate' | 'avg_kill' | 'avg_assist' | 'avg_death' | 'kd' | 'knockout_rate' | 'avg_inked' | 'name'
 
 const SORT_LABELS: Record<SortKey, string> = {
   total:          'バトル数',
@@ -30,13 +30,14 @@ const SORT_LABELS: Record<SortKey, string> = {
   avg_death:      '平均D',
   kd:             'キルレ',
   knockout_rate:  'KO 率',
+  avg_inked:      '平均塗り',
   name:           '名前',
 }
 
-// 並びはバトル一覧と同じ K → A → D(#449)。
+// 並びはバトル一覧と同じ K → A → D(#449)。平均塗りは武器図鑑と同様に含める(#635)。
 const SORT_KEYS: SortKey[] = [
   'total', 'wins', 'loses', 'draws',
-  'win_rate', 'avg_kill', 'avg_assist', 'avg_death', 'kd', 'knockout_rate', 'name',
+  'win_rate', 'avg_kill', 'avg_assist', 'avg_death', 'kd', 'knockout_rate', 'avg_inked', 'name',
 ]
 
 /** K/D = 平均K ÷ 平均D。デス 0 は上位(Infinity)、データ無しは null。 */
@@ -89,6 +90,11 @@ function compareRows(a: GroupedStatsRow, b: GroupedStatsRow, sort: SortKey): num
       const ar = a.total > 0 ? a.knockout_win / a.total : 0
       const br = b.total > 0 ? b.knockout_win / b.total : 0
       return br - ar
+    }
+    case 'avg_inked': {
+      const av = a.avg_inked ?? -1
+      const bv = b.avg_inked ?? -1
+      return bv - av
     }
     case 'name':
       return a.name.localeCompare(b.name, 'ja')
@@ -257,7 +263,7 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
             <SortHeader label="平均D"    sortKey="avg_death"     activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="キルレ"    sortKey="kd"            activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="KO率"     sortKey="knockout_rate" activeKey={sort} ascending={ascending} onSort={onSort} />
-            <SortHeader label="平均塗り"                         activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="平均塗り" sortKey="avg_inked"     activeKey={sort} ascending={ascending} onSort={onSort} />
           </tr>
         </thead>
         <tbody>
