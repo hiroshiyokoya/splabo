@@ -541,9 +541,22 @@ body {
   display: block;
   overflow: visible;
   margin: -8px 0 12px;
+  /* 行末に 1〜2 文字だけ残る折り返しを避ける。下の span で区切り位置しか折らない
+     ようにしてあるので、これは「1 セグメントが長すぎて内部で折れるとき」の保険。
+     対応していないブラウザでは無視されるだけ（保存 HTML は相手の環境で開く）。 */
+  text-wrap: pretty;
   /* ロゴ（top:12px から高さ 44px）はタイトルの下まで届くので、キャプションも避ける(#592)。
      タイトル行だけ避けていた頃は、幅を詰めたときにキャプションがロゴに潜り込んでいた。 */
   padding-right: 140px;
+}
+/* 🔴 区切り単位を「折り返しの最小単位」にする。
+   inline-block にすると行分割の単位になり、入らなければ塊ごと次の行へ落ちる。
+   1 セグメントが幅を超えるとき（ブキを大量に選んだ「ブキ: …」など）だけ内部で折れる。
+   ブラウザに依存しないので、保存 HTML を誰がどの環境で開いても同じ。 */
+.is-exporting .panel-export-caption > span {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .is-exporting .panel-export-note {
   display: -webkit-box;
