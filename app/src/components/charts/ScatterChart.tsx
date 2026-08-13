@@ -272,6 +272,25 @@ type LensState = {
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi <= lo ? lo : hi)
 
+/**
+ * 計算したずらしを DOM へ直接書く(#630)。
+ *
+ * 🔴 毎フレーム React の state にすると、点の数だけ Recharts の再描画が走って
+ * 追従が遅れる。**滑らかさが要る所は DOM を直接触る。**
+ *
+ * 対象は `data-lens-move` を付けた `<g>`（画像とその輪）。名前で引き当てる。
+ */
+function applyLens(area: HTMLElement, lens: LensState | null) {
+  const movers = area.querySelectorAll<SVGGElement>('[data-lens-move]')
+  movers.forEach(g => {
+    const name = g.getAttribute('data-lens-move') ?? ''
+    const off = lens?.offsets.get(name)
+    g.style.transform = off
+      ? `translate(${off.dx}px, ${off.dy}px)`
+      : 'translate(0px, 0px)'
+  })
+}
+
 /** カーソルからの距離に応じた反発の強さ（0〜1）。縁で 0 になるので段差が出ない。 */
 function lensWeight(d: number): number {
   if (d >= LENS_RADIUS) return 0
@@ -431,9 +450,9 @@ function lensMoveStyle(
  * (2.x の `Customized` は `<g>` で包むだけのラッパーで、3.x では不要)。
  */
 function ScatterUnderLayer({
-  lens, basePos, activeName, imagePx, animate,
+  lensRef, basePos, activeName, imagePx, animate,
 }: {
-  lens:       LensState | null
+  lensRef:    { current: LensState | null }
   basePos:    Map<string, { x: number; y: number }>
   activeName: string | null
   imagePx:    number
@@ -442,10 +461,12 @@ function ScatterUnderLayer({
   if (!activeName) return null
   const activeBase = basePos.get(activeName)
   if (!activeBase) return null
-  const off = lens?.offsets.get(activeName) ?? null
+  // 輪も画像と同じ仕組みで動かす。`data-lens-move` を付けておけば、
+  // 毎フレームの DOM 書き換え(`applyLens`)が画像と一緒に面倒を見る。
+  const off = lensRef.current?.offsets.get(activeName) ?? null
   return (
     <g pointerEvents="none">
-      <g style={lensMoveStyle(off, animate)}>
+      <g data-lens-move={activeName} style={lensMoveStyle(off, animate)}>
         <circle
           cx={activeBase.x}
           cy={activeBase.y}
@@ -506,7 +527,9 @@ function scatterPointShape(props: {
         data-scatter-active={props.active ? 'true' : undefined}
         data-scatter-tip={props.tipJson}
       >
-        <g style={lensMoveStyle(off ?? null, animate)}>
+        {/* `data-lens-move` は毎フレームの DOM 書き換え(`applyLens`)の目印。
+            React を通さず、ここの transform を直接書き換える。 */}
+        <g data-lens-move={props.payload?.name} style={lensMoveStyle(off ?? null, animate)}>
           <image
             href={iconUrl}
             x={cx - s / 2}
@@ -1237,9 +1260,15 @@ export function ScatterChart({
   const [hover, setHover] = useState<ScatterPoint | null>(null)
   // クリックでピン留め。保存ボタンへマウスを移してもツールチップが消えないようにする。
   const [pinned, setPinned] = useState<ScatterPoint | null>(null)
-  // カーソル中心のレンズ(#630)。ピン留め中はカーソルが外れても保つ（画像保存用）。
-  const [lens, setLens] = useState<LensState | null>(null)
+  // カーソル中心のレンズ(#630)。
+  //
+  // 🔴 **state ではなく ref に持つ。** 毎フレーム state を更新すると点の数だけ
+  // 再描画が走って追従が遅れる。位置は DOM へ直接書き、描画側もここを見る。
+  const lensRef = useRef<LensState | null>(null)
   const [lensPinned, setLensPinned] = useState(false)
+  /** ツールチップの再配置を促すためだけの粗いキー（24px 刻み）。 */
+  const [lensKey, setLensKey] = useState('')
+  const lensKeyRef = useRef('')
   const [tooltipPlacement, setTooltipPlacement] = useState<TooltipPlacement | null>(null)
   // 画像保存直前に立てる。配置を斜め・遠め候補込みでやり直す。
   const [exportLayout, setExportLayout] = useState(false)
@@ -1357,13 +1386,9 @@ export function ScatterChart({
 
   // データ・サイズ・モードが変わったら、ずらしたままにしない(座標が合わなくなる)。
   useEffect(() => {
-    setLens(null)
+    lensRef.current = null
     setLensPinned(false)
   }, [drawable, imagePx])
-
-  // ツールチップの再配置は、レンズが**ある程度動いたときだけ**やる(#630)。
-  // 配置は全マーカーの実寸を読んで決めるので、毎フレームやると重い。
-  const lensKey = lens ? `${Math.round(lens.x / 24)},${Math.round(lens.y / 24)}` : ''
 
   // 動きを減らす設定を尊重する。ずれること自体は情報なので残し、戻りの遷移だけ切る。
   const reduceMotion = useMemo(
@@ -1384,7 +1409,7 @@ export function ScatterChart({
     // どの画像の説明なのか分からなくなる。
     const baseX = (active as unknown as { cx?: number }).cx ?? 0
     const baseY = (active as unknown as { cy?: number }).cy ?? 0
-    const off = lens?.offsets.get(active.name) ?? null
+    const off = lensRef.current?.offsets.get(active.name) ?? null
     const anchorX = baseX + (off?.dx ?? 0)
     const anchorY = baseY + (off?.dy ?? 0)
     const areaRect = area.getBoundingClientRect()
@@ -1468,11 +1493,26 @@ export function ScatterChart({
       const el = areaRef.current
       if (!p || !el || !imagePx) return
       const next = buildLens(p.x, p.y, basePosRef.current, imagePx)
-      setLens(next)
+
+      // 🔴 **React を通さず DOM へ直接書く。**
+      //
+      // ここを毎フレーム state にすると、点の数だけ Recharts の再描画が走る。
+      // 170 点あると 1 フレームに収まらず、カクついて追従が遅れる。
+      // 保存 HTML 側は React が無く直接書いているだけで、そちらのほうが滑らかだった。
+      //
+      // 描画は `lensRef` を見るので、別の理由で React が再描画しても食い違わない。
+      lensRef.current = next
+      applyLens(el, next)
+
+      // ツールチップの配置だけは React に任せる。毎フレームやると全マーカーの実寸を
+      // 読むことになるので、**対象が変わったときと、ある程度動いたときだけ**。
+      const key = `${Math.round(p.x / 24)},${Math.round(p.y / 24)}`
+      if (key !== lensKeyRef.current) {
+        lensKeyRef.current = key
+        setLensKey(key)
+      }
 
       // ずらした先でカーソルの下にある点を、そのままツールチップの対象にする。
-      // 🔴 **同じ点なら触らない。** ここで毎フレーム新しいオブジェクトを入れると、
-      // 配置の計算（全マーカーの実寸を読む）が毎フレーム走って詰まる。
       if (next.nearest === lensHoverRef.current) return
       lensHoverRef.current = next.nearest
       if (!next.nearest) { setHover(null); return }
@@ -1499,7 +1539,10 @@ export function ScatterChart({
       setHover(null)
       // ピン留め中はパネル外でも残す(明示クリック解除まで)。
       if (!pinnedRef.current) setTooltipPlacement(null)
-      if (!lensPinnedRef.current) setLens(null)
+      if (!lensPinnedRef.current) {
+        lensRef.current = null
+        if (areaRef.current) applyLens(areaRef.current, null)
+      }
       lensHoverRef.current = null
     }
     // 🔴 保存の前にレンズを必ず戻す(#630)。
@@ -1511,9 +1554,10 @@ export function ScatterChart({
     // ずらしたまま保存できることに意味があったのは引き出し線を引いていたころで、
     // その線はもう無い。
     const resetLens = () => {
-      setLens(null)
+      lensRef.current = null
       setLensPinned(false)
       lensHoverRef.current = null
+      if (areaRef.current) applyLens(areaRef.current, null)
     }
     const onExportPrepare = () => {
       // キャプチャ前に同期で配置し直す(次フレーム待ちだけでは React 更新が間に合わない)。
@@ -1617,7 +1661,7 @@ export function ScatterChart({
             引き出し線・選択の輪は必ず画像の下に来る(#630)。 */}
         {imagePx && (
           <ScatterUnderLayer
-            lens={lens}
+            lensRef={lensRef}
             basePos={basePos}
             activeName={active?.name ?? null}
             imagePx={imagePx}
@@ -1641,7 +1685,7 @@ export function ScatterChart({
               active: sameScatterAnchor(props, active as { cx?: number; cy?: number } | null),
               tipJson,
               imagePx,
-              offset: payload ? lens?.offsets.get(payload.name) ?? null : null,
+              offset: payload ? lensRef.current?.offsets.get(payload.name) ?? null : null,
               animate: !reduceMotion,
             })
           }}
@@ -1656,8 +1700,11 @@ export function ScatterChart({
             const willUnpin = sameScatterAnchor(pinned as { cx?: number; cy?: number } | null, next)
             setPinned(willUnpin ? null : next)
             // レンズも一緒に固定する。こうするとずらしたまま画像に保存できる。
-            setLensPinned(!willUnpin && !!lens)
-            if (willUnpin) setLens(null)
+            setLensPinned(!willUnpin && !!lensRef.current)
+            if (willUnpin) {
+              lensRef.current = null
+              if (areaRef.current) applyLens(areaRef.current, null)
+            }
             setTooltipPlacement(null)
             setHover(next)
           }}
@@ -1688,7 +1735,7 @@ export function ScatterChart({
       // 初回はアクティブ点位置へ hidden で描画し、useLayoutEffect で実寸計測後に表示する。
       const bx = (active as unknown as { cx?: number }).cx ?? 0
       const by = (active as unknown as { cy?: number }).cy ?? 0
-      const off = lens?.offsets.get(active.name) ?? null
+      const off = lensRef.current?.offsets.get(active.name) ?? null
       const hx = bx + (off?.dx ?? 0)
       const hy = by + (off?.dy ?? 0)
       const tipStyle: CSSProperties = {
