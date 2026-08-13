@@ -203,47 +203,13 @@ const IMAGE_RING_OPACITY = 0.32
 /** 画像の外縁と輪のあいだの隙間。 */
 const IMAGE_RING_GAP     = 2
 
-/** チャートの余白と軸の太さ。
- *
- *  🔴 ばらけ表示(#630)がプロット領域の内側へ丸めるのに同じ値を使う。
- *  片方だけ変えると、はみ出して切れる。軸のサイズは既定に頼らず**明示的に渡す**
- *  （既定値が変わったら黙ってズレるため）。 */
+/** チャートの余白と軸の太さ。軸のサイズは既定に頼らず**明示的に渡す**
+ *  （Recharts の既定値が変わったら黙ってズレるため）。 */
 const CHART_MARGIN   = { top: 20, right: 18, left: 0, bottom: 28 }
 const Y_AXIS_WIDTH   = 56
 /** X 軸が縦に取る高さ。Recharts の既定と同じ値を明示して渡す。 */
 const X_AXIS_HEIGHT  = 30
 
-/**
- * 実際に点が描かれる矩形（チャート座標）。
- *
- * 🔴 **余白から計算しないこと。** 余白・軸の幅・軸の高さ・Recharts の既定値が
- * どれか 1 つでも想定とズレると、ばらけた点が軸や外へはみ出して見切れる。
- * 実際に何度もやった（下端で X 軸の高さを忘れ、左右で軸幅がズレた）。
- *
- * グリッド線はプロット領域いっぱいに引かれるので、**その実寸を読む**のが確実。
- * 読めなかったときだけ計算に落ちる。
- */
-function plotRect(area: HTMLElement, height: number) {
-  const grid = area.querySelector('.recharts-cartesian-grid')
-  if (grid) {
-    const areaRect = area.getBoundingClientRect()
-    const r = grid.getBoundingClientRect()
-    if (r.width > 1 && r.height > 1) {
-      return {
-        left:   r.left - areaRect.left,
-        top:    r.top - areaRect.top,
-        right:  r.right - areaRect.left,
-        bottom: r.bottom - areaRect.top,
-      }
-    }
-  }
-  return {
-    left:   CHART_MARGIN.left + Y_AXIS_WIDTH,
-    top:    CHART_MARGIN.top,
-    right:  area.clientWidth - CHART_MARGIN.right,
-    bottom: height - CHART_MARGIN.bottom - X_AXIS_HEIGHT,
-  }
-}
 
 // ---------------------------------------------------------------------------
 // 重なった画像をカーソル中心にずらす（魚眼レンズ・#630）
@@ -325,12 +291,26 @@ export function buildLens(
   cursorY: number,
   basePos: Map<string, { x: number; y: number }>,
   imagePx: number,
-  plot: { left: number; top: number; right: number; bottom: number },
 ): LensState {
   const span = imagePx
-  const margin = imagePx / 2 + IMAGE_RING_GAP + IMAGE_RING_WIDTH
-  const lo = { x: plot.left + margin, y: plot.top + margin }
-  const hi = { x: plot.right - margin, y: plot.bottom - margin }
+
+  // 🔴 収める範囲は**点が元から居る矩形**。プロット領域を計算・実測して使うのは
+  // やめた。余白・軸の幅と高さ・Recharts の既定値・グリッド線の引かれ方など、
+  // 依存するものが多すぎて何度も外した（下端で軸の高さを忘れ、左右でも外した）。
+  //
+  // 元の位置は軸の余白のぶんだけ内側に置かれていて、その余白は
+  // `scatterEdgePadding()` が「画像の半分＋輪」以上を確保している。
+  // つまり**点が元から居る範囲に収めれば、静止しているときと同じだけ安全**。
+  // 何にも依存しないので、もう外しようがない。
+  let lo = { x: Infinity, y: Infinity }
+  let hi = { x: -Infinity, y: -Infinity }
+  for (const p of basePos.values()) {
+    if (p.x < lo.x) lo.x = p.x
+    if (p.y < lo.y) lo.y = p.y
+    if (p.x > hi.x) hi.x = p.x
+    if (p.y > hi.y) hi.y = p.y
+  }
+  if (!Number.isFinite(lo.x)) { lo = { x: cursorX, y: cursorY }; hi = { x: cursorX, y: cursorY } }
 
   const moving: {
     name: string
@@ -393,7 +373,7 @@ export function buildLens(
         m.y += (dy / dist) * push
       }
     }
-    // 4. プロット領域の中へ。はみ出すと軸に載って見切れる。
+    // 4. 点が元から居る範囲の中へ。はみ出すと軸に載って見切れる。
     for (const m of moving) {
       m.x = clamp(m.x, lo.x, hi.x)
       m.y = clamp(m.y, lo.y, hi.y)
@@ -1483,9 +1463,9 @@ export function ScatterChart({
       const p = lensPendingRef.current
       const el = areaRef.current
       if (!p || !el || !imagePx) return
-      setLens(buildLens(p.x, p.y, basePosRef.current, imagePx, plotRect(el, height)))
+      setLens(buildLens(p.x, p.y, basePosRef.current, imagePx))
     })
-  }, [imagePx, height])
+  }, [imagePx])
 
   useEffect(() => () => {
     if (lensFrameRef.current !== null) cancelAnimationFrame(lensFrameRef.current)
