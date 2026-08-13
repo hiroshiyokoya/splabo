@@ -260,6 +260,14 @@ type LensState = {
   y: number
   /** 点の名前 → 元の位置からのずらし量。レンズの外の点は入らない。 */
   offsets: Map<string, { dx: number; dy: number }>
+  /**
+   * **ずらしたあとの位置で**カーソルの下にある点。
+   *
+   * 🔴 マウスイベント任せにできない。反発で散らしている最中は、狙ったアイコンが
+   * カーソルの下から動いて隙間ができ、mouseenter が来ないまま「チップが出ない」に
+   * なる。動いた先の座標で当たりを取り直す。
+   */
+  nearest: string | null
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi <= lo ? lo : hi)
@@ -381,10 +389,19 @@ export function buildLens(
   }
 
   const offsets = new Map<string, { dx: number; dy: number }>()
+  // ずらしたあとの位置で、カーソルが乗っている点を選び直す。
+  // 画像の中に入っていれば当たり。同じくらいなら近いほうを採る。
+  let nearest: string | null = null
+  let nearestD = span / 2
   for (const m of moving) {
     offsets.set(m.name, { dx: m.x - m.base.x, dy: m.y - m.base.y })
+    const d = Math.hypot(m.x - cursorX, m.y - cursorY)
+    if (d <= nearestD) {
+      nearestD = d
+      nearest = m.name
+    }
   }
-  return { x: cursorX, y: cursorY, offsets }
+  return { x: cursorX, y: cursorY, offsets, nearest }
 }
 
 /** 移動スタイル。画像・輪で**同じものを使う**（別々に書くと輪だけ遅れて動く）。
@@ -1452,6 +1469,10 @@ export function ScatterChart({
   // **1 フレームに 1 回**にまとめる。マウスイベントは 1 フレームに何度も来る。
   const lensFrameRef = useRef<number | null>(null)
   const lensPendingRef = useRef<{ x: number; y: number } | null>(null)
+  /** いまツールチップを出している点の名前。同じなら state を触らない。 */
+  const lensHoverRef = useRef<string | null>(null)
+  const drawableRef = useRef(drawable)
+  drawableRef.current = drawable
   const moveLens = useCallback((clientX: number, clientY: number) => {
     const area = areaRef.current
     if (!imagePx || !area || lensPinnedRef.current) return
@@ -1463,7 +1484,20 @@ export function ScatterChart({
       const p = lensPendingRef.current
       const el = areaRef.current
       if (!p || !el || !imagePx) return
-      setLens(buildLens(p.x, p.y, basePosRef.current, imagePx))
+      const next = buildLens(p.x, p.y, basePosRef.current, imagePx)
+      setLens(next)
+
+      // ずらした先でカーソルの下にある点を、そのままツールチップの対象にする。
+      // 🔴 **同じ点なら触らない。** ここで毎フレーム新しいオブジェクトを入れると、
+      // 配置の計算（全マーカーの実寸を読む）が毎フレーム走って詰まる。
+      if (next.nearest === lensHoverRef.current) return
+      lensHoverRef.current = next.nearest
+      if (!next.nearest) { setHover(null); return }
+      const point = drawableRef.current.find(q => q.name === next.nearest)
+      const base = basePosRef.current.get(next.nearest)
+      if (!point || !base) { setHover(null); return }
+      setTooltipPlacement(null)
+      setHover({ ...point, cx: base.x, cy: base.y } as ScatterPoint)
     })
   }, [imagePx])
 
@@ -1483,6 +1517,7 @@ export function ScatterChart({
       // ピン留め中はパネル外でも残す(明示クリック解除まで)。
       if (!pinnedRef.current) setTooltipPlacement(null)
       if (!lensPinnedRef.current) setLens(null)
+      lensHoverRef.current = null
     }
     const onExportPrepare = () => {
       // キャプチャ前に同期で配置し直す(次フレーム待ちだけでは React 更新が間に合わない)。
