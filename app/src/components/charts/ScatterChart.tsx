@@ -1577,6 +1577,15 @@ export function ScatterChart({
         {yRefLine != null && (!yLog || yRefLine > 0) && (
           <ReferenceLine y={yRefLine} stroke="var(--text-muted)" strokeDasharray="5 4" ifOverflow="extendDomain" />
         )}
+        {/* 🔴 `allowDataOverflow` は付けない。
+            付けるとその軸に clip が掛かり、しかも**clip の範囲は軸の余白の内側**になる
+            （GraphicalItemClipPath: clipX = min(xAxisRange) = offset.left + padding.left）。
+            端の点は必ず clip の境界にちょうど載るので、**マーカーの外半分が切れる**。
+            余白をいくら広げても、点と clip が一緒に内側へ動くだけで直らない。
+
+            ログ軸で以前これを付けていたが、ドメインは描画対象の点から作っていて
+            範囲外の点がそもそも無いので、clip する必要が無い。
+            上下が切れず左右だけ切れていたのは、X だけログ＝X だけ clip だったため。 */}
         <XAxis
           type="number"
           dataKey="x"
@@ -1586,7 +1595,6 @@ export function ScatterChart({
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           tickFormatter={xIsRate ? fmtRateTick : fmtTick}
           scale={xLog ? 'log' : 'auto'}
-          allowDataOverflow={xLog}
           domain={xAxisDomain ?? ['auto', 'auto']}
           ticks={xTicks ?? undefined}
           label={{ value: xLabel, position: 'insideBottom', offset: -10, fill: 'var(--text)', fontSize: 11, fontWeight: 600 } as object}
@@ -1600,7 +1608,6 @@ export function ScatterChart({
           width={Y_AXIS_WIDTH}
           tickFormatter={yIsRate ? fmtRateTick : fmtTick}
           scale={yLog ? 'log' : 'auto'}
-          allowDataOverflow={yLog}
           domain={yAxisDomain ?? ['auto', 'auto']}
           ticks={yTicks ?? undefined}
           label={{ value: yLabel, angle: -90, position: 'insideLeft', offset: 12, fill: 'var(--text)', fontSize: 11, fontWeight: 600, style: { textAnchor: 'middle' } } as object}
