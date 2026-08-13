@@ -111,9 +111,29 @@ function DownloadIcon() {
 }
 
 /** タイトル直下に入る絞り込み条件。`describeFilters` などで作った 1 行を渡す。 */
+/** キャプションの区切り。`buildExportCaption` / `joinConditions` と揃える。 */
+const CAPTION_SEP = ' / '
+
+/**
+ * 保存画像・保存 HTML に焼き込む絞り込み条件。
+ *
+ * 🔴 **区切りの位置でしか折り返させない。** 日本語はほぼ全ての文字間で改行できるので、
+ * 素の文字列のまま置くとブラウザが幅に入るところで機械的に切る。
+ * 「該当 41,566 バトル」が「…バト / ル」に割れて、**行末に 1 文字だけ残る**ことがあった。
+ * 桁数や条件が変われば割れる場所も変わるので、書き方では避けられない。
+ *
+ * 区切りごとに `<span>` へ分けておけば、折り返しはそこだけで起きる。
+ * 見た目（区切りも含めた文字列）は変わらない。
+ */
 export function PanelExportCaption({ conditions }: { conditions: string }) {
+  const parts = conditions.split(CAPTION_SEP)
   return (
-    <div className="panel-export-caption" aria-hidden="true">{conditions}</div>
+    <div className="panel-export-caption" aria-hidden="true">
+      {parts.map((part, i) => (
+        // 区切りは前の塊に付ける。行頭に「/」が来ないようにするため。
+        <span key={i}>{i > 0 ? CAPTION_SEP : ''}{part}</span>
+      ))}
+    </div>
   )
 }
 
