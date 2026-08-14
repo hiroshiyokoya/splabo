@@ -135,7 +135,7 @@ npx tauri build    # インストーラーを生成（初回は Rust のフル�
 
 [**nxapi**](https://github.com/samuelthomas2774/nxapi)（samuelthomas2774 氏が開発する OSS）は、このフローを解析し、サードパーティ製ツールから SplatNet 3 へアクセスする方法を明らかにしました。splabo の認証実装はこの nxapi のフローを Rust で再実装したものです。
 
-GraphQL の持続クエリ名とハッシュは、nxapi と同じ作者（GitHub: [samuelthomas2774](https://github.com/samuelthomas2774)、GitLab 表示名 Ellie）の [splatnet3-types](https://gitlab.fancy.org.uk/samuel/splatnet3-types) を参照しています。nxapi 本体も GitHub は GitLab の [`samuel/nxapi`](https://gitlab.fancy.org.uk/samuel/nxapi) のミラーです。SplatNet 3 アプリ v10 以降のブキ公式記録・ステージ通算勝率は、旧 `WeaponRecordQuery` に代わり **WeaponQuery** / **StageRecordQuery** です。
+GraphQL の持続クエリ名とハッシュは、nxapi と同じ samuelthomas2774 氏の [splatnet3-types](https://github.com/nintendoapis/splatnet3-types) を参照しています（GitLab のミラー）。SplatNet 3 アプリ v10 以降のブキ公式記録・ステージ通算勝率は、旧 `WeaponRecordQuery` に代わり **WeaponQuery** / **StageRecordQuery** です。
 
 ### 認証
 
@@ -264,7 +264,7 @@ OpenAI / Google Gemini / Anthropic Claude / xAI Grok を **2 段**で使いま�
 Nintendo Switch Online 認証・SplatNet 3 API アクセス・stat.ink 連携の実装に際して以下を参照しました。
 
 - [samuelthomas2774/nxapi](https://github.com/samuelthomas2774/nxapi) — Nintendo Switch Online の認証・API アクセスライブラリ（samuelthomas2774 氏。GitHub は GitLab [`samuel/nxapi`](https://gitlab.fancy.org.uk/samuel/nxapi) のミラー）。splabo の認証フローはこのプロジェクトが明らかにした仕様に基づいています。f-token 生成も nxapi が内部で使用するエンドポイント（`nxapi-znca-api.fancy.org.uk`）を利用します。
-- [splatnet3-types](https://gitlab.fancy.org.uk/samuel/splatnet3-types) — 同じ GitLab アカウント `samuel`（表示名 Ellie）による SplatNet 3 / splatoon3.ink の TypeScript 型。持続クエリ名とハッシュの参照元です。v10 のブキ／ステージ公式記録は `WeaponQuery` / `StageRecordQuery` です。
+- [nintendoapis/splatnet3-types](https://github.com/nintendoapis/splatnet3-types) — samuelthomas2774 氏による SplatNet 3 / splatoon3.ink の TypeScript 型（GitLab [`samuel/splatnet3-types`](https://gitlab.fancy.org.uk/samuel/splatnet3-types) のミラー）。持続クエリ名とハッシュの参照元です。v10 のブキ／ステージ公式記録は `WeaponQuery` / `StageRecordQuery` です。
 - [fetus-hina/stat.ink](https://github.com/fetus-hina/stat.ink) — AIZAWA Hina 氏が運営する Splatoon シリーズのバトル統計共有プラットフォーム（[stat.ink](https://stat.ink/)）の OSS 実装。splabo の stat.ink アップロード機能はこのサービスの公開 API（`api/v3/battle`）を利用します。
 - [frozenpandaman/s3s](https://github.com/frozenpandaman/s3s) — SplatNet 3 から stat.ink へバトルデータを送る Python 製ツール。splabo の stat.ink アップロード機能はこのリポジトリのペイロード構築ロジック（`prepare_battle_result` / `set_scoreboard` 相当）・UUID v5 名前空間・ブキ/ステージ ID 変換ルールを Rust で再実装したものです。
 
