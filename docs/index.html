@@ -181,6 +181,11 @@
       gap: 1.5rem;
       margin-top: 1.5rem;
     }
+    .feature-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
     .feature-card {
       background: var(--surface2);
       border: 1px solid var(--border);
@@ -381,31 +386,39 @@
           <ul>
             <li>勝率・キル/デス・キルレシオなど主要指標を、ブキ・ステージ・ルール・モード別に集計</li>
             <li>カスタムグラフ: 線・棒・散布図・ヒートマップ・カレンダー。散布図はブキ画像にもできる。パネルは PNG / HTML で保存</li>
-            <li>AI 分析: 自然言語で聞くと SQL を書かせ、集計はこの PC の中だけで実行して表・グラフで表示（OpenAI / Gemini / Claude / Grok 対応）</li>
           </ul>
         </div>
         <div class="feature-card">
-          <h3>バトルログ・図鑑・ギア</h3>
+          <h3>バトル・ブキ・ステージ・ギア</h3>
           <ul>
             <li>バトル履歴を一覧（検索・フィルター・ソート）。詳細で編成・ギア・ランク変動を確認</li>
-            <li>ブキ図鑑・ステージ図鑑: 勝率や戦績。カテゴリ / サブ / スペシャルで絞り込み、列クリックで並び替え</li>
+            <li>ブキ・ステージ: 勝率や戦績。カテゴリ / サブ / スペシャルで絞り込み、列クリックで並び替え</li>
             <li>ギア: 所持ギアの取得・一覧。ギアパワーを組み合わせてコーデを作成</li>
           </ul>
         </div>
         <div class="feature-card">
           <h3>環境分析</h3>
           <ul>
-            <li>stat.ink の公開バトルデータ（全世界）からコミュニティ全体の環境を分析</li>
-            <li>ブキ・ステージ別の散布図（ブキ画像・キットのホバー）、マトリクスヒートマップ</li>
+            <li>stat.ink の公開バトルデータからコミュニティ全体の環境を分析</li>
+            <li>ブキ・ステージ別の散布図、マトリクスヒートマップ</li>
             <li>ロビー・ルール・ブキ・ステージ・バージョン・ウデマエ帯・期間で絞り込み</li>
           </ul>
         </div>
-        <div class="feature-card">
-          <h3>自動取得・連携</h3>
-          <ul>
-            <li>15 分〜24 時間ごとの自動取得（既定は 1 時間。バトル＋ギア・トレイ常駐・完了通知）</li>
-            <li>stat.ink への自動アップロード（s3s 互換、UUID v5 で重複排除）</li>
-          </ul>
+        <div class="feature-stack">
+          <div class="feature-card">
+            <h3>自動取得・連携</h3>
+            <ul>
+              <li>15 分〜24 時間ごとの自動取得（既定は 1 時間。バトル＋ギア・トレイ常駐・完了通知）</li>
+              <li>stat.ink への自動アップロード（s3s 互換、UUID v5 で重複排除）</li>
+            </ul>
+          </div>
+          <div class="feature-card">
+            <h3>AI 分析</h3>
+            <ul>
+              <li>自然言語で聞くと SQL を書かせ、集計はこの PC の中だけで実行して表・グラフで表示</li>
+              <li>OpenAI / Gemini / Claude / Grok に対応</li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
