@@ -76,7 +76,7 @@ def build_post(version: str, bullets: list[str]) -> str:
     chosen = short[:MAX_BULLETS]
 
     def compose(items: list[str]) -> str:
-        parts = [f"splabo v{version} を出しました。", ""]
+        parts = [f"SpLabo v{version} をリリースしました。", ""]
         if items:
             parts.extend(f"・{b}" for b in items)
             parts.append("")
@@ -121,16 +121,16 @@ def self_test() -> None:
 """
     text = render(sample, "0.10.4")
     assert "0.10.3" not in text
-    assert "splabo v0.10.4 を出しました。" in text
+    assert "SpLabo v0.10.4 をリリースしました。" in text
     assert DOWNLOAD_URL in text
     assert "**" not in text
     assert tweet_weight(text) <= MAX_WEIGHT, tweet_weight(text)
     assert "散布図" in text
     empty = render("# Changelog\n\n## [1.0.0]\n\n### Changed\n\n", "1.0.0")
-    assert empty.startswith("splabo v1.0.0")
+    assert empty.startswith("SpLabo v1.0.0")
     assert tweet_weight(empty) <= MAX_WEIGHT
     missing = render("# Changelog\n", "9.9.9")
-    assert "splabo v9.9.9" in missing
+    assert "SpLabo v9.9.9" in missing
     print(text)
     print("--- weight:", tweet_weight(text), "/", MAX_WEIGHT)
 
