@@ -924,6 +924,11 @@ export function linearTicks(
  */
 const REF_LINE_BY_METRIC: Record<string, number> = {
   win_rate:       0.5,
+  official_win_rate_tw: 0.5,
+  official_win_rate_ar: 0.5,
+  official_win_rate_lf: 0.5,
+  official_win_rate_gl: 0.5,
+  official_win_rate_cl: 0.5,
   kd:             1,
   contrib_kd:     1,
   avg_kd:         1,

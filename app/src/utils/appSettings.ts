@@ -101,20 +101,22 @@ const BASE_VARS: Record<string, string> = {
   '--inner-highlight-strong':'rgba(255, 255, 255, 0.10)',
   '--stat-item-bg':          'rgba(255, 255, 255, 0.04)',
   '--stage-img-filter':      'brightness(0.42) saturate(0.75)',
-  '--panel-label-tint':      '#ffffff',                   // パネルラベルの混色相手
-  // 勝率(発散) 11 段（#351）。淡い中立 → 濃い極。白黒方向へ振るので全テーマ共通。
-  '--cell-r1':               '#9d174d',
-  '--cell-r2':               '#db2777',
-  '--cell-r3':               '#f472b6',
-  '--cell-r4':               '#f68fc5',
-  '--cell-r5':               '#f9a8d4',
-  // 中立。サンプル不足セルの地も兼ねる（#383）
-  '--cell-r6':               '#d0d3d8',
-  '--cell-r7':               '#7dd3fc',
-  '--cell-r8':               '#57c8fa',
-  '--cell-r9':               '#38bdf8',
-  '--cell-r10':              '#0284c7',
-  '--cell-r11':              '#075985',
+  '--panel-label-tint':      '#ffffff',
+  // 勝率 11 段。端は旧スケールの端から 3 番目。彩度 72%。
+  // データなし線は --cell-hatch、サンプル不足の地はハッチ灰と r6 の中間。
+  '--cell-hatch':            '#d0d3d8',
+  '--cell-sparse-bg':        '#caccb4',
+  '--cell-r1':               '#f6927d',
+  '--cell-r2':               '#f09b75',
+  '--cell-r3':               '#e7a674',
+  '--cell-r4':               '#deaf79',
+  '--cell-r5':               '#d3b883',
+  '--cell-r6':               '#c2c4a2',
+  '--cell-r7':               '#a6c69e',
+  '--cell-r8':               '#96c7a2',
+  '--cell-r9':               '#82c7a9',
+  '--cell-r10':              '#6ec7b3',
+  '--cell-r11':              '#59c5bf',
   // 勝数・平均系のベース色。段は白/黒との混色で作るため全テーマ共通（#351）。
   '--seq-good':              '#22c55e',
   '--seq-bad':               '#ef4444',

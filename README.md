@@ -34,8 +34,8 @@ splabo/
 - **戦績** — タブ内で「ダッシュボード」と「一覧」を切り替えられます
   - ダッシュボード: ブキ別・ロビー別・ステージ別の勝率をグラフで表示。バトル数カレンダー（月の 1 日から新しい列が始まります）やカスタムグラフも
   - 一覧: バトル履歴を一覧表示（ページング対応）。詳細モーダルでチーム編成・ギア・ランク / X パワー変動を確認できます
-- **ブキ** — 「パネル」と「一覧」を切り替え可能。一覧は列見出しのクリックで並び替えでき、カテゴリ / サブ / スペシャルで絞り込めます。詳細では「よく戦うステージ」「勝率の良いステージ」やルール別勝率を確認できます
-- **ステージ** — 「パネル」と「一覧」を切り替え可能。ステージ別の勝率・バトル数・平均キル / デス・K/D・KO 率などを表示
+- **ブキ** — 「パネル」と「一覧」を切り替え可能。一覧は列見出しのクリックで並び替えでき、カテゴリ / サブ / スペシャルで絞り込めます。公式アプリの熟練度・通算勝利・通算塗りP・ブキチャレパワーも出せます。詳細では「よく戦うステージ」「勝率の良いステージ」やルール別勝率を確認できます
+- **ステージ** — 「パネル」と「一覧」を切り替え可能。自分の戦績に加え、公式アプリのルール別通算勝率を表示します
 - **ギアコーデ** — 所持ギアを取得して一覧表示。ギアパワーを組み合わせてコーデ（ギア構成）を組めます（旧 geartoon の機能を統合）
 - **環境分析** — [stat.ink](https://stat.ink/) の公開バトルデータを取り込み、ブキピック率・勝率などコミュニティ全体の環境を散布図・マトリクスヒートマップで分析。取得の開始日は設定の「データ」で選べます（既定は 2025.1.1〜）。期間・ロビー・ルール・ブキ（カテゴリ見出しで一括選択）・ステージ・バージョン・ウデマエ帯（全期間 / 今シーズン / 1年 / 180日 / 30日 / カスタム）で絞り込み可能。条件に合う該当バトル数も表示します。集計は stat.ink の全体統計と同じく、投稿者本人を除いた 7 人を母数にします
 - **stat.ink 自動アップロード** — 取得したバトルを [stat.ink](https://stat.ink/) へ自動アップロード（API キー登録時）。同一バトルは s3s と同じ UUID v5 名前空間で重複排除されます
@@ -43,7 +43,7 @@ splabo/
 - **AI 分析** — 自然言語で質問すると SQL を生成し、**この PC の中だけで集計**して表・グラフで表示（OpenAI / Google Gemini / Anthropic Claude / xAI Grok 対応）
 - **自動取得** — 15 分〜24 時間ごとの定期間隔でバトルデータをバックグラウンドで取得し、続けてギアも更新します（ギア失敗でもバトル取得の成功は維持）。有効時はウィンドウを閉じてもトレイに常駐し、完了をシステム通知でお知らせ。既定は 1 時間ごと（理由は[取得間隔と認証](#取得間隔と認証)）
 
-> **絞り込みについて**: ブキ・ステージも上部の絞り込み（期間・ロビー・ルール・結果）に対応しています。ただし熟練度・通算勝利数・総塗ポイントは任天堂から取得する累計値のため、絞り込みを変えても全期間の値のままです（「全期間」バッジで区別しています）。
+> **絞り込みについて**: ブキ・ステージも上部の絞り込み（期間・ロビー・ルール・結果）に対応しています。公式アプリから取る熟練度・通算勝利・通算塗りP・ブキチャレパワー・ステージの通算勝率は全期間の値なので、絞り込みを変えても変わりません。ダッシュボードのグラフ軸にも、これらの公式値を選べます。
 
 ## スクリーンショット
 
@@ -134,6 +134,8 @@ npx tauri build    # インストーラーを生成（初回は Rust のフル�
 **SplatNet 3** は、Nintendo Switch Online スマートフォンアプリが内部で使用している任天堂のサービスです。バトル履歴・ギア情報などを取得できる GraphQL API を持ちますが、公式には公開されていません。
 
 [**nxapi**](https://github.com/samuelthomas2774/nxapi)（samuelthomas2774 氏が開発する OSS）は、このフローを解析し、サードパーティ製ツールから SplatNet 3 へアクセスする方法を明らかにしました。splabo の認証実装はこの nxapi のフローを Rust で再実装したものです。
+
+GraphQL の持続クエリ名とハッシュは、nxapi と同じ samuelthomas2774 氏の [splatnet3-types](https://github.com/nintendoapis/splatnet3-types) を参照しています（GitLab のミラー）。SplatNet 3 アプリ v10 以降のブキ公式記録・ステージ通算勝率は、旧 `WeaponRecordQuery` に代わり **WeaponQuery** / **StageRecordQuery** です。
 
 ### 認証
 
@@ -261,7 +263,8 @@ OpenAI / Google Gemini / Anthropic Claude / xAI Grok を **2 段**で使いま�
 
 Nintendo Switch Online 認証・SplatNet 3 API アクセス・stat.ink 連携の実装に際して以下を参照しました。
 
-- [samuelthomas2774/nxapi](https://github.com/samuelthomas2774/nxapi) — Nintendo Switch Online の認証・API アクセスライブラリ。splabo の認証フローはこのプロジェクトが明らかにした仕様に基づいています。f-token 生成も nxapi が内部で使用するエンドポイント（`nxapi-znca-api.fancy.org.uk`）を利用します。
+- [samuelthomas2774/nxapi](https://github.com/samuelthomas2774/nxapi) — Nintendo Switch Online の認証・API アクセスライブラリ（samuelthomas2774 氏。GitHub は GitLab [`samuel/nxapi`](https://gitlab.fancy.org.uk/samuel/nxapi) のミラー）。splabo の認証フローはこのプロジェクトが明らかにした仕様に基づいています。f-token 生成も nxapi が内部で使用するエンドポイント（`nxapi-znca-api.fancy.org.uk`）を利用します。
+- [nintendoapis/splatnet3-types](https://github.com/nintendoapis/splatnet3-types) — samuelthomas2774 氏による SplatNet 3 / splatoon3.ink の TypeScript 型（GitLab [`samuel/splatnet3-types`](https://gitlab.fancy.org.uk/samuel/splatnet3-types) のミラー）。持続クエリ名とハッシュの参照元です。v10 のブキ／ステージ公式記録は `WeaponQuery` / `StageRecordQuery` です。
 - [fetus-hina/stat.ink](https://github.com/fetus-hina/stat.ink) — AIZAWA Hina 氏が運営する Splatoon シリーズのバトル統計共有プラットフォーム（[stat.ink](https://stat.ink/)）の OSS 実装。splabo の stat.ink アップロード機能はこのサービスの公開 API（`api/v3/battle`）を利用します。
 - [frozenpandaman/s3s](https://github.com/frozenpandaman/s3s) — SplatNet 3 から stat.ink へバトルデータを送る Python 製ツール。splabo の stat.ink アップロード機能はこのリポジトリのペイロード構築ロジック（`prepare_battle_result` / `set_scoreboard` 相当）・UUID v5 名前空間・ブキ/ステージ ID 変換ルールを Rust で再実装したものです。
 

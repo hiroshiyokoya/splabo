@@ -1,38 +1,52 @@
 import type { MetricKey } from '../types'
 
 /**
+ * 勝率の 3 色（文字・バー・ヒートマップで共用）。
+ *
+ * 端は旧スケールの端から 3 番目（珊瑚〜ティール）。中央は長い弧の黄緑。
+ * 3 色とも端の彩度は元の 72%。中央へ明るさを上げ、彩度を落とす。45% 未満 / 45–55% / 55% 以上。
+ */
+export const WIN_RATE_LO  = '#f6927d'  // くすみ珊瑚。負け越し
+export const WIN_RATE_MID = '#c2c4a2'  // くすみ黄緑。引き分け帯（明るめ・低彩度）
+export const WIN_RATE_HI  = '#59c5bf'  // くすみティール。勝ち越し
+
+export function winRateColor(rate: number): string {
+  if (rate >= 0.55) return WIN_RATE_HI
+  if (rate >= 0.45) return WIN_RATE_MID
+  return WIN_RATE_LO
+}
+
+/**
  * 勝率（発散スケール）の色マッピング（#351）。
  *
  * 同じ判定が HeatmapChart / CalendarHeatmapChart / CustomChartCard（散布図の点色）に
  * 重複していたため、ここへ集約する。勝率のスケールはアプリ全体で 1 つに保つ。
  *
  * 配色の考え方:
- *  - 発散スケールなので「2 色相（ピンク=負け越し / 青=勝ち越し）+ 中立の中央」。
- *  - 「薄い＝中立 / 濃い＝極端」の濃淡モデル。中央は無彩色なので、明るくても
- *    「色としては何も言っていない」＝中立として読める。
- *  - 中央に色相（黄・緑など）を置くと「無」ではなく独立したカテゴリに読めてしまい、
- *    発散スケールが 3 カテゴリの虹に見えるため使わない。
- *  - 実際の色は CSS 変数側（--cell-r1..r11）が持つ。白黒方向へ振る濃淡なので
- *    背景に依存せず、ダーク・ライトとも同じ向きで読める。
+ *  - 色相の幅を短くし（H≈33°〜190°）、彩度は元の 72% で揃える。
+ *    中央へ向かって L を 0.76→0.81、彩度を 72%→約 30% と振る。
+ *    中央の両隣は色相で約 28° 離し、そこから端までは均等。
+ *  - 11 段。r1 / r6 / r11 が文字色と同じ。データなし線は --cell-hatch。
+ *    サンプル不足の地は --cell-sparse-bg（ハッチ灰と r6 の中間）。
+ *  - 実際の色は CSS 変数（--cell-r1..r11）。
  */
 
 /**
  * 勝率 0..1 を 11 段階のセル色へ（#351）。
- * 中央の 45-55%（±5%）を「引き分け帯」として中立に置き、その外側を各 9% 刻みで 5 段ずつ。
- * 勝率は 2 色相を使うぶん段を細かく取れるので、他のメトリクス（7 段）より多い。
+ * 中央の 45-55%（±5%）をくすみ黄緑の引き分け帯に置き、その外側を各 9% 刻みで 5 段ずつ。
  */
 export function rateCellColor(value: number): string {
-  if (value < 0.09) return 'var(--cell-r1)'  // 〜9%   ピンク・極
+  if (value < 0.09) return 'var(--cell-r1)'  // 〜9%   くすみ珊瑚
   if (value < 0.18) return 'var(--cell-r2)'  // 9-18%
   if (value < 0.27) return 'var(--cell-r3)'  // 18-27%
   if (value < 0.36) return 'var(--cell-r4)'  // 27-36%
   if (value < 0.45) return 'var(--cell-r5)'  // 36-45%
-  if (value <= 0.55) return 'var(--cell-r6)' // 45-55% 中立
+  if (value <= 0.55) return 'var(--cell-r6)' // 45-55% くすみ黄緑
   if (value <= 0.64) return 'var(--cell-r7)' // 55-64%
   if (value <= 0.73) return 'var(--cell-r8)' // 64-73%
   if (value <= 0.82) return 'var(--cell-r9)' // 73-82%
   if (value <= 0.91) return 'var(--cell-r10)'// 82-91%
-  return 'var(--cell-r11)'                   // 91%〜  青・極
+  return 'var(--cell-r11)'                   // 91%〜  くすみティール
 }
 
 /** 勝率凡例のカラーバー（rateCellColor と同じ 11 段・同じ並び）。 */
@@ -41,6 +55,17 @@ export const RATE_LEGEND_COLORS = [
   'var(--cell-r6)',
   'var(--cell-r7)', 'var(--cell-r8)', 'var(--cell-r9)', 'var(--cell-r10)', 'var(--cell-r11)',
 ]
+
+/**
+ * 今見えている値の範囲 [min, max] を 11 段に割り振る（環境分析の勝率用）。
+ * ダッシュボードの絶対 0–100% スケール（{@link rateCellColor}）とは別。
+ * min==max のときは中央のくすみ黄緑。
+ */
+export function rateCellColorInRange(value: number, min: number, max: number): string {
+  if (!(max > min)) return 'var(--cell-r6)'
+  const t = Math.max(0, Math.min(1, (value - min) / (max - min)))
+  return RATE_LEGEND_COLORS[Math.round(t * 10)]
+}
 
 /**
  * 勝数・平均系（シーケンシャル）のベース色をメトリクスごとに決める（#351）。
@@ -62,6 +87,8 @@ function seqBase(metric: MetricKey): string {
     case 'avg_kd':
     case 'avg_contrib_kd':
     case 'sum_contrib_kill':
+    case 'official_win_count':
+    case 'official_weapon_level':
       return 'var(--seq-good)'
     case 'avg_death':
       return 'var(--seq-bad)'
@@ -207,13 +234,27 @@ export const AXIS_MIN_TOTAL_SAMPLES = 30
 export const AXIS_LABEL_MIN_INTENSITY = 0.12
 
 /**
+ * 軸ラベルに乗せる色。セルの中間段（くすみ黄緑など）は使わず、スケールの端だけを使う。
+ *  - 勝率: 50% 未満は珊瑚（r1）、以上はティール（r11）
+ *  - 件数・平均: そのメトリクスの最も濃い段
+ * 実際の文字色は {@link axisLabelColor} で既定色と混ぜる。
+ */
+export function axisLabelEndColor(
+  value: number,
+  kind: 'rate' | 'sequential',
+  sequentialMetric?: MetricKey,
+): string {
+  if (kind === 'rate') return value >= 0.5 ? 'var(--cell-r11)' : 'var(--cell-r1)'
+  return sequentialCellColor(1, sequentialMetric ?? 'total')
+}
+
+/**
  * 軸ラベルの文字色（#409・`HeatmapChart` 用）。
  *
- * セルと同じ色スケールの色（`rateCellColor` / `sequentialCellColor` の返り値）を受け取り、
- * 「文字」として読める強さへ寄せて返す。セル色は面（背景）として設計されているので
- * 淡い段はそのままでは文字に使えない。既定の文字色（--text）と混ぜることで、
- * 色相（=スケール上の位置）を残したままライト・ダーク双方で contrast を確保する。
- * 強度が高いほどセル色の比率を上げ、弱いほど既定色寄りに落とす（＝閾値未満は既定色そのもの）。
+ * スケールの端の色を受け取り、「文字」として読める強さへ寄せて返す。
+ * セル色は面（背景）として設計されているので、中間の淡い段はそのままでは文字に使えない。
+ * 既定の文字色（--text）と混ぜることで、ライト・ダーク双方で contrast を確保する。
+ * 強度が高いほど端の色の比率を上げ、弱いほど既定色寄りに落とす（＝閾値未満は既定色そのもの）。
  */
 export function axisLabelColor(cellColor: string, intensity: number): string | undefined {
   const c = Math.max(0, Math.min(1, intensity))
@@ -230,17 +271,15 @@ export function axisLabelColor(cellColor: string, intensity: number): string | u
  * 「値が無い」セルを示す SVG ハッチ（斜線）パターン。
  *
  * 欠損・サンプル不足は「値」ではないため、色スケール上の色を占有させない。
- * 色ではなく塗りの質（ハッチ / べた塗り）で区別することで、中立グレーの中央と紛れなくなる。
+ * 色ではなく塗りの質（ハッチ / べた塗り）で区別する。
  * 線色は --cell-sparse-line（テーマ追従）。
  *
- * 2 種類とも同じ斜線で、「中立色（--cell-r6）と背景色」の 2 色だけを地と線で
- * 入れ替えて描き分ける。欠損に固有の色を増やさないので全体で統一感が出る（#383）:
- *  - データなし（そもそもバトルが無い）      … ほぼ透明の地に中立色の線（線だけ・控えめ）
- *  - サンプル不足（データはあるが信頼できない）… 中立色の地に背景色の線（面で塗られる）
+ * 同じ斜線で地と線を入れ替えて描き分ける:
+ *  - データなし（そもそもバトルが無い）      … ほぼ透明の地にハッチ灰の線（線だけ・控えめ）
+ *  - サンプル不足（データはあるが信頼できない）… くすみ黄緑とハッチ灰の中間の地に背景色の線
  *
  * 「データはあるが足りない」方が「そもそも無い」より地がはっきりしている、という順序づけ。
- * どちらも中立色より濃くならないため、欠損がチャート内で最も濃い要素にはならない
- * （sequential の最も淡い数段だけは中立色より淡い）。
+ * サンプル不足の地は r6 より明るく低彩度なので、50% 勝率には見えない。
  *
  * `id` は useId() などで要素ごとに一意にすること（同一ページに複数チャートが載るため）。
  */
@@ -258,7 +297,7 @@ function HatchPattern({ id, bg, line, opacity }: {
   )
 }
 
-/** サンプル不足（データはあるが N が足りない）。中立色の地に背景色の線。
+/** サンプル不足（データはあるが N が足りない）。くすみ黄緑寄りの淡い地に背景色の線。
  *  線が背景色になったため、opacity で薄めると地との差が消える。ここは 1 で描く（#383）。 */
 export function SparseHatchPattern({ id }: { id: string }) {
   return <HatchPattern id={id} bg="var(--cell-sparse-bg)" line="var(--cell-sparse-line)" opacity={1} />

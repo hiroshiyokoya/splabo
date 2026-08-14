@@ -5,6 +5,7 @@ import {
   IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, scatterMetricOptions, SCATTER_DOT_UNITS,
   scatterDotUnitLabel, canScatterUseImages, SCATTER_IMAGE_SIZE_LABELS,
   BATTLE_NUMERIC_METRIC_LABELS, BATTLE_NUMERIC_DEFAULT_BIN, axisGroupOf, AXIS_GROUP_LABELS, chartMetrics,
+  LOCAL_METRIC_KEYS, officialMetricsForGroup, isOfficialRateMetric, OFFICIAL_METRICS,
 } from '../types'
 import { SCATTER_CATEGORY_COLOR_KEYS } from '../utils/scatterCategoryColors'
 
@@ -14,12 +15,30 @@ import { SCATTER_CATEGORY_COLOR_KEYS } from '../utils/scatterCategoryColors'
  * 0-1 に収まる値をログにしても読みやすくならないので、チェック自体を押せなくする。
  * `ScatterChart` の `xIsRate` / `yIsRate` と同じ条件。
  */
-const isRateMetric = (metric: string) => metric === 'win_rate'
+const isRateMetric = (metric: string) => isOfficialRateMetric(metric)
 
 /** ログスケールのチェックボックスに添える説明 (#381)。 */
 function logScaleHint(metric: string): string {
   if (isRateMetric(metric)) return '勝率は 0-100% に収まるのでログスケールは使えません。'
   return 'ロングテールや比率(キルレ)を読みやすくします。0 以下・∞ の点は除外されます。'
+}
+
+function scatterMetricSelectOptions(dotUnit: ScatterDotUnit) {
+  const official = officialMetricsForGroup(dotUnit)
+  return (
+    <>
+      {scatterMetricOptions(dotUnit).map(o => (
+        <option key={o.key} value={o.key}>{o.label}</option>
+      ))}
+      {official.length > 0 && (
+        <optgroup label="公式アプリ（全期間）">
+          {official.map(m => (
+            <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+          ))}
+        </optgroup>
+      )}
+    </>
+  )
 }
 
 /** 各 yComposition のヒント説明。 */
@@ -145,6 +164,12 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       setColorMetric('')
     }
   }, [dotUnit, shape])
+
+  // 公式メトリクスはブキ軸 / ステージ軸だけで意味がある。軸を変えたら退避する。
+  useEffect(() => {
+    if (!OFFICIAL_METRICS.includes(metric)) return
+    if (!officialMetricsForGroup(groupBy).includes(metric)) setMetric('win_rate')
+  }, [groupBy, metric])
 
   // ESC で閉じる
   useEffect(() => {
@@ -384,13 +409,24 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                     <option value="attack_defense">{Y_COMPOSITION_LABELS.attack_defense}</option>
                   </optgroup>
                   <optgroup label="単一メトリクス">
-                    {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => (
+                    {LOCAL_METRIC_KEYS.map(m => (
                       <option key={m} value={m}>{METRIC_LABELS[m]}</option>
                     ))}
                   </optgroup>
+                  {officialMetricsForGroup(groupBy).length > 0 && (
+                    <optgroup label="公式アプリ（全期間）">
+                      {officialMetricsForGroup(groupBy).map(m => (
+                        <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
                 <p className="form-hint">
-                  {isComposite ? Y_COMPOSITION_DESCRIPTIONS[yComposition] : '単一メトリクスの棒グラフ。'}
+                  {isComposite
+                    ? Y_COMPOSITION_DESCRIPTIONS[yComposition]
+                    : OFFICIAL_METRICS.includes(metric)
+                      ? '公式アプリの全期間の値です。上のフィルターには追従しません。'
+                      : '単一メトリクスの棒グラフ。'}
                 </p>
               </div>
             )
@@ -404,7 +440,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               {/* ヒートマップは合計系を出さない。2D クロス集計に列が無く、
                   選んでも全セルが空になるため(#351)。 */}
               <select className="form-input" value={metric} onChange={e => setMetric(e.target.value as MetricKey)}>
-                {(shape === 'heatmap' ? HEATMAP_METRICS : (Object.keys(METRIC_LABELS) as MetricKey[])).map(m => (
+                {(shape === 'heatmap' ? HEATMAP_METRICS : LOCAL_METRIC_KEYS).map(m => (
                   <option key={m} value={m}>{METRIC_LABELS[m]}</option>
                 ))}
               </select>
@@ -418,7 +454,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             <div className="form-field">
               <label className="form-label">メトリクス(複数選択可)</label>
               <div className="metric-checkbox-group">
-                {(Object.keys(METRIC_LABELS) as MetricKey[]).map(m => {
+                {(LOCAL_METRIC_KEYS).map(m => {
                   const group = axisGroupOf(m)
                   const checked = lineMetrics.includes(m)
                   const disabled = !checked && !lineUsedGroups.has(group) && lineUsedGroups.size >= 2
@@ -492,9 +528,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               <div className="form-field">
                 <label className="form-label">X 軸</label>
                 <select className="form-input" value={xMetric} onChange={e => setXMetric(e.target.value)}>
-                  {scatterMetricOptions(dotUnit).map(o => (
-                    <option key={o.key} value={o.key}>{o.label}</option>
-                  ))}
+                  {scatterMetricSelectOptions(dotUnit)}
                 </select>
                 {!isRateMetric(xMetric) && (
                   <label className="checkbox-label" style={{ marginTop: 6 }}>
@@ -511,9 +545,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               <div className="form-field">
                 <label className="form-label">Y 軸</label>
                 <select className="form-input" value={yMetric} onChange={e => setYMetric(e.target.value)}>
-                  {scatterMetricOptions(dotUnit).map(o => (
-                    <option key={o.key} value={o.key}>{o.label}</option>
-                  ))}
+                  {scatterMetricSelectOptions(dotUnit)}
                 </select>
                 {!isRateMetric(yMetric) && (
                   <label className="checkbox-label" style={{ marginTop: 6 }}>
@@ -534,9 +566,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 <label className="form-label">サイズ(任意)</label>
                 <select className="form-input" value={sizeMetric} onChange={e => setSizeMetric(e.target.value)}>
                   <option value="">(一定サイズ)</option>
-                  {scatterMetricOptions(dotUnit).map(o => (
-                    <option key={o.key} value={o.key}>{o.label}</option>
-                  ))}
+                  {scatterMetricSelectOptions(dotUnit)}
                 </select>
                 <p className="form-hint">値が大きいほど大きく見える(sqrt スケール)。</p>
               </div>
@@ -547,9 +577,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 <select className="form-input" value={colorMetric} onChange={e => setColorMetric(e.target.value)}>
                   <option value="">(単色 = アクセント)</option>
                   {dotUnit === 'battle' && <option value="win_lose">勝敗</option>}
-                  {scatterMetricOptions(dotUnit).map(o => (
-                    <option key={o.key} value={o.key}>{o.label}</option>
-                  ))}
+                  {scatterMetricSelectOptions(dotUnit)}
                   {(dotUnit === 'weapon' || dotUnit === 'battle') && SCATTER_CATEGORY_COLOR_KEYS.map(k => (
                     <option key={k} value={k}>{GROUP_BY_LABELS[k]}</option>
                   ))}
@@ -559,7 +587,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                     ? '勝敗、またはブキカテゴリ・サブ・スペシャルを色×形で区別できます。'
                     : dotUnit === 'weapon'
                       ? '数値指標のほか、ブキカテゴリ・サブ・スペシャルを色×形で区別できます。'
-                      : '勝率は divergent (赤↔青)、それ以外は accent の濃淡。'}
+                      : '勝率は divergent (くすみ珊瑚↔くすみ黄緑↔くすみティール)、それ以外は accent の濃淡。'}
                 </p>
               </div>
               )}

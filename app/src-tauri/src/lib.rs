@@ -112,6 +112,7 @@ pub fn run() {
             db::db_grouped_stats,
             db::db_grouped_stats_2d,
             db::db_list_weapons,
+            db::db_list_stage_records,
             db::backfill_battle_players,
             // AI 分析（#566）: プロンプトの土台を返す / AI が書いた SELECT を安全に実行する
             ai_sql::ai_analysis_prompt,
@@ -443,6 +444,18 @@ async fn run_fetch_full_inner(app: &AppHandle, db: &db::DbPool) -> Result<(usize
     // 全プレイヤー（味方・相手）のメインブキ画像もキャッシュ（#136）
     splatnet3::cache_all_weapon_images(db, app, &client).await?;
 
+    // 全ブキの熟練度・画像（#674）。失敗してもバトル取得は止めない。
+    if let Err(e) = splatnet3::fetch_and_store_weapon_records(
+        db, &client, app, &result.bullet_token, &result.country, &result.language,
+    ).await {
+        log_weapon_records_skip(&e);
+    }
+    if let Err(e) = splatnet3::fetch_and_store_stage_records(
+        db, &client, &result.bullet_token, &result.country, &result.language,
+    ).await {
+        log::warn!("[stage_records] 取得スキップ: {e}");
+    }
+
     // 「取得完了」はアップロードを待たずここで通知する（lastFetchedAt 更新用）。
     // uploaded は後段の best-effort アップロードで確定するため、ここでは 0 を載せる。
     let _ = app.emit("fetch_complete", FetchCompletePayload { battles, details, uploaded: 0 });
@@ -569,23 +582,24 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
     splatnet3::cache_all_ability_images(&app, &client).await?;
     splatnet3::cache_all_weapon_images(&db, &app, &client).await?;
 
-    // WeaponRecordQuery (#49) も同じ「ブキデータを更新」フローで取得する。
-    // ここではユーザー固有統計（熟練度・勝利数・塗りポイント）の upsert と、
-    // 全ブキ分の主・サブ・SP 画像キャッシュを行う（バトル未登場ブキのアイコン欠け解消も兼ねる）。
-    // 失敗してもメインフローは止めない（戻り値の count はそのまま）。
-    if let Err(e) = splatnet3::fetch_and_store_weapon_records(&db, &client, &app).await {
-        // nxapi 同梱の WeaponRecordQuery 持続クエリハッシュが Nintendo 側で廃止された場合は、
-        // 外部依存待ちの既知問題なので warn ではなく info に落とす（chartoon Issue #162 で追跡）。
-        if e.contains("persisted query") && e.contains("does not exist") {
-            log::info!(
-                "[weapon_records] スキップ: nxapi 同梱の WeaponRecordQuery 持続クエリハッシュが Nintendo 側で廃止。nxapi 更新待ち。"
-            );
-        } else {
-            log::warn!("[weapon_records] 取得スキップ: {e}");
-        }
+    // WeaponRecordQuery (#49 / #674) も同じ「ブキデータを更新」フローで取得する。
+    // ユーザー固有統計（熟練度・勝利数・塗りポイント）と全ブキ画像。失敗しても本流は止めない。
+    if let Err(e) = splatnet3::fetch_and_store_weapon_records(
+        &db, &client, &app, &result.bullet_token, &result.country, &result.language,
+    ).await {
+        log_weapon_records_skip(&e);
+    }
+    if let Err(e) = splatnet3::fetch_and_store_stage_records(
+        &db, &client, &result.bullet_token, &result.country, &result.language,
+    ).await {
+        log::warn!("[stage_records] 取得スキップ: {e}");
     }
 
     Ok(count)
+}
+
+fn log_weapon_records_skip(e: &str) {
+    log::warn!("[weapon_records] 取得スキップ: {e}");
 }
 
 /// スケジューラー設定を更新する。フロントエンドが設定変更時に呼び出す。

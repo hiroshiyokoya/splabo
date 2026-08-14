@@ -7,14 +7,14 @@
  */
 import { useMemo, useState, type MouseEvent } from 'react'
 import type { EnvMatrixCell } from '../../types'
-import { AXIS_LABEL_MIN_INTENSITY } from '../../utils/heatmapColors'
+import { AXIS_LABEL_MIN_INTENSITY, axisLabelColor, axisLabelEndColor, rateCellColorInRange } from '../../utils/heatmapColors'
 import { WeaponKitTipBody, weaponKitTipStyle, type WeaponKitTipData } from './WeaponKitTip'
 
 export interface HeatmapProps {
   cells:      EnvMatrixCell[]
   /** セル値の表示フォーマット。 */
   valueLabel: (v: number) => string
-  /** 'diverging' は mid を境に赤(低)/青(高)。'sequential' は薄→濃の単色。 */
+  /** 'diverging' は mid を境に低/高。勝率(mid=0.5)は 11 段のピンク→くすみ黄緑→青。キルレは赤/青の HSL。'sequential' は薄→濃の単色。 */
   scale:      'sequential' | 'diverging'
   /** diverging の中心値(勝率なら 0.5、キルレなら 1.0)。 */
   mid?:       number
@@ -147,10 +147,13 @@ export function Heatmap({
     return { rowKeys, colKeys, cellMap, min, max }
   }, [cells, rowOrder, colOrder, sortColKey, sortDir])
 
-  // 値 → (色相, 強度)。セル背景・軸ラベル文字色で共通に使う(色スケールの二重定義をしない・#405)。
+  // 勝率(mid=0.5)はダッシュボードと同じ 11 色だが、0–100% 固定ではなく
+  // 今見えているセルの min–max に割り振る（環境は勝率が狭いことが多い）。
+  const useWinRateScale = scale === 'diverging' && mid === 0.5
+
+  // 値 → (色相, 強度)。キルレなどの HSL スケール用(#405)。
   const hueIntensity = (v: number): { hue: number; intensity: number } => {
     if (scale === 'diverging') {
-      // mid を境に赤(低)/青(高)。上下それぞれの最大幅で正規化する。
       const span = Math.max(max - mid, mid - min, 1e-6)
       const d = (v - mid) / span
       return { hue: d >= 0 ? 210 : 8, intensity: Math.abs(d) }
@@ -160,6 +163,9 @@ export function Heatmap({
   }
 
   const styleFor = (v: number): { background: string; color: string } => {
+    if (useWinRateScale) {
+      return { background: rateCellColorInRange(v, min, max), color: '#14142a' }
+    }
     const { hue, intensity } = hueIntensity(v)
     return cellStyle(hue, intensity)
   }
@@ -175,6 +181,12 @@ export function Heatmap({
       if (v == null) return undefined
       if (axisRelative) {
         return axisMax > 0 ? labelColor(sequentialHue, v / axisMax) : undefined
+      }
+      if (useWinRateScale) {
+        // セル色は min–max 相対だが、ラベルは 50% からの隔たりだけを見る。
+        // 相対にすると狭い分布では大半の見出しに端の色が乗る。
+        const intensity = Math.min(1, Math.abs(v - 0.5) / 0.5)
+        return axisLabelColor(axisLabelEndColor(v, 'rate'), intensity)
       }
       const { hue, intensity } = hueIntensity(v)
       return labelColor(hue, intensity)

@@ -261,6 +261,9 @@ pub async fn nxapi_get_bullet_token(app: &AppHandle) -> Result<BulletTokenResult
 }
 
 /// nxapi-sidecar 経由で WeaponRecordQuery を実行し、`data` フィールドを返す (#49)。
+///
+/// 本番の取得は `splatnet3::fetch_and_store_weapon_records` が現行ハッシュで GraphQL 直叩きする（#674）。
+/// サイドカー同梱の古いハッシュは Nintendo 側で無効（#162）。この関数は互換のため残す。
 /// 戻り値はおおよそ `{ "weaponRecords": { "nodes": [...] } }` の serde_json::Value。
 pub async fn nxapi_fetch_weapon_records(app: &AppHandle) -> Result<serde_json::Value, NxapiError> {
     let data_dir = nxapi_data_dir(app)?;
