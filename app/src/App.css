@@ -1729,7 +1729,7 @@ body {
   width: 100%;
   margin-top: 4px;
   padding-top: 4px;
-  border-top: 1px dashed var(--border);
+  border-top: 1px solid var(--border);
 }
 .weapon-card-stats-col { display: flex; flex-direction: column; gap: 1px; }
 /* ミニ統計行のフォントは .stage-card-stat-row と統一（11px・値 600・#449）。 */

@@ -21,13 +21,6 @@ function statLine(label: string, value: string, title?: string): { label: string
   return { label, value, title }
 }
 
-/** コンパクト戦績「12戦 7勝5敗」。引き分けは 0 でないときだけ「2分」を付ける(#449)。
- *  WeaponDetailModal.fmtRecord / StageDetailModal.fmtRecord と同期。 */
-function fmtRecord(total: number, wins: number, draws: number): string {
-  const losses = total - wins - draws
-  return `${total}戦 ${wins}勝${losses}敗${draws > 0 ? `${draws}分` : ''}`
-}
-
 // カード一覧のソート種別。
 type SortKey =
   | 'total'           // バトル数(既定)
@@ -307,8 +300,8 @@ export function WeaponBook({ filters }: { filters: Filters }) {
       {hasOfficialStats && (
         <p className="book-note">
           <span className="book-note__badge">公式アプリ</span>
-          点線より上の熟練度・通算勝利・ブキチャレパワーは公式アプリの全期間の値です。
-          点線より下のバトル数・勝率・キルレは、上のフィルター（期間・ロビー・ルール）に追従します。
+          上段の熟練度・通算勝利・ブキチャレパワーは公式アプリの全期間の値です。
+          下段の勝ち・勝率・キルレは、上のフィルター（期間・ロビー・ルール）に追従します。
         </p>
       )}
 
@@ -597,9 +590,6 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
       )}
       {total > 0 ? (
         <div className={hasOfficial ? 'weapon-card-local' : undefined}>
-          <div className="weapon-card-stats">
-            <span className="weapon-card-stat">{fmtRecord(total, avgStats!.wins, avgStats!.draws)}</span>
-          </div>
           <div className="weapon-card-stats-grid">
             <div className="weapon-card-stats-col">
               {localLeft.map(r => (

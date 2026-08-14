@@ -37,7 +37,7 @@ function fmtPower(n: number | null | undefined): string {
 }
 
 /** コンパクト戦績「12戦 7勝5敗」。引き分けは 0 でないときだけ「2分」を付ける(#449)。
- *  WeaponBook.fmtRecord / StageDetailModal.fmtRecord と同期。 */
+ *  StageDetailModal.fmtRecord と同期。 */
 function fmtRecord(total: number, wins: number, draws: number): string {
   const losses = total - wins - draws
   return `${total}戦 ${wins}勝${losses}敗${draws > 0 ? `${draws}分` : ''}`
