@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- ダウンロードページの URL を [splaboon.pages.dev](https://splaboon.pages.dev/) にしました
+
 ## [0.10.4] — 2026-08-14
 
 ### Changed

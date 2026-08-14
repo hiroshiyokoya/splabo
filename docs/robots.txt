@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://chartoon.pages.dev/sitemap.xml
+Sitemap: https://splaboon.pages.dev/sitemap.xml

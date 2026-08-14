@@ -12,7 +12,7 @@ Nintendo アカウントから [nxapi](https://github.com/samuelthomas2774/nxapi
 
 バグ報告・機能要望・感想など、フィードバックは[フィードバックフォーム](https://docs.google.com/forms/d/e/1FAIpQLSd2m8eNn4HwTjOY1PMnecJvSH95QCJxNi0Lyy1w4zxhIdndrQ/viewform)からお気軽にどうぞ（匿名可）。
 
-🌐 **ダウンロードページ**: https://chartoon.pages.dev/
+🌐 **ダウンロードページ**: https://splaboon.pages.dev/
 
 ```
 splabo/
@@ -20,7 +20,7 @@ splabo/
 │  ├─ src/       #   フロント（戦績 components/ ＋ ギア gear/・.gear-root スコープ）
 │  └─ src-tauri/ #   Rust（auth / statink / gear.rs / gear_crypto.rs / migration.rs / companion.rs / battle_export.rs + SQLite）
 ├─ tools/        # nxapi サイドカーのビルド環境（nxapi-wrapper）
-├─ docs/         # GitHub Pages（chartoon.pages.dev）
+├─ docs/         # GitHub Pages（splaboon.pages.dev）
 ├─ .github/      # CI（ci.yml）+ リリース（splabo-release.yml）
 ├─ package.json  # npm workspaces（app）
 └─ Cargo.toml    # Cargo workspace + [workspace.dependencies]
