@@ -50,17 +50,17 @@ splabo/
 <table>
   <tr>
     <th>ダッシュボード</th>
-    <th>カスタムグラフ</th>
+    <th>ギアコーデ</th>
     <th>環境分析</th>
   </tr>
   <tr>
     <td><img src="docs/screenshots/dashboard.png" alt="ダッシュボード" height="240"></td>
-    <td><img src="docs/screenshots/scatter.png" alt="カスタムグラフ" height="240"></td>
+    <td><img src="docs/screenshots/gear-code.png" alt="ギアコーデ生成" height="240"></td>
     <td><img src="docs/screenshots/env-analysis.png" alt="環境分析" height="240"></td>
   </tr>
   <tr valign="top">
     <td>ダッシュボードでバトル結果を分析</td>
-    <td>散布図などチャートをカスタマイズ</td>
+    <td>目標スキルからギアコーデを自動生成</td>
     <td>stat.ink の公開データで環境を分析</td>
   </tr>
 </table>
