@@ -75,11 +75,6 @@ const OFFICIAL_SORT: SortKey[] = [
   'last_used_at', 'weapon_power', 'weapon_power_max',
 ]
 
-function fmtLastUsed(ts: number | null | undefined): string {
-  if (ts == null || ts <= 0) return '-'
-  return new Date(ts * 1000).toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' })
-}
-
 function fmtPower(n: number | null | undefined): string {
   if (n == null) return '-'
   return Math.round(n).toLocaleString()
@@ -312,7 +307,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
       {hasOfficialStats && (
         <p className="book-note">
           <span className="book-note__badge">公式アプリ</span>
-          点線より上の熟練度・通算勝利・通算塗・最終使用・チャレパワーは公式アプリの全期間の値です。
+          点線より上の熟練度・通算勝利・ブキチャレパワーは公式アプリの全期間の値です。
           点線より下のバトル数・勝率・キルレは、上のフィルター（期間・ロビー・ルール）に追従します。
         </p>
       )}
@@ -536,10 +531,8 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
   const officialRows = hasOfficial ? [
     statLine('熟練度', weapon.weapon_level != null ? String(weapon.weapon_level) : '-'),
     statLine('通算勝利', weapon.win_count_total != null ? weapon.win_count_total.toLocaleString() : '-'),
-    statLine('通算塗', weapon.paint_point_total != null ? weapon.paint_point_total.toLocaleString() : '-'),
-    statLine('最終使用', fmtLastUsed(weapon.last_used_at)),
-    statLine('チャレ', fmtPower(weapon.weapon_power)),
-    statLine('最大チャレ', fmtPower(weapon.weapon_power_max)),
+    statLine('ブキチャレパワー', fmtPower(weapon.weapon_power)),
+    statLine('(最大)', fmtPower(weapon.weapon_power_max)),
   ] : []
 
   const localLeft = total > 0 && avgStats ? [
@@ -585,7 +578,7 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
       {hasOfficial && (
         <div className="weapon-card-stats-grid weapon-card-stats-grid--official">
           <div className="weapon-card-stats-col">
-            {officialRows.slice(0, 3).map(r => (
+            {officialRows.slice(0, 2).map(r => (
               <div key={r.label} className="weapon-card-mini" title={r.title}>
                 <span className="weapon-card-mini-label">{r.label}</span>
                 <span className="weapon-card-mini-value">{r.value}</span>
@@ -593,7 +586,7 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
             ))}
           </div>
           <div className="weapon-card-stats-col">
-            {officialRows.slice(3).map(r => (
+            {officialRows.slice(2).map(r => (
               <div key={r.label} className="weapon-card-mini" title={r.title}>
                 <span className="weapon-card-mini-label">{r.label}</span>
                 <span className="weapon-card-mini-value">{r.value}</span>
