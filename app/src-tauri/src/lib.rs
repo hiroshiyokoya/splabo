@@ -687,12 +687,20 @@ fn log_fetch_failure(what: &str, err: &str) {
     }
 }
 
+/// 自動取得失敗の通知本文。何度も溜まるので**いつ失敗したか**を入れる（#637）。
+fn fetch_error_notification_body(now: chrono::DateTime<chrono::Local>) -> String {
+    format!(
+        "バトルデータの取得に失敗しました（{}）",
+        now.format("%m/%d %H:%M")
+    )
+}
+
 fn send_notification_error(app: &AppHandle) {
     use tauri_plugin_notification::NotificationExt;
     let _ = app.notification()
         .builder()
         .title("splabo")
-        .body("バトルデータの取得に失敗しました")
+        .body(fetch_error_notification_body(chrono::Local::now()))
         .show();
 }
 
@@ -750,5 +758,14 @@ mod tests {
         // エクスポートはフラグを握ったまま走り、その後に解放される
         flag.0.store(false, Ordering::SeqCst);
         assert!(!flag.0.swap(true, Ordering::SeqCst), "解放後は再び取得できる");
+    }
+
+    /// 失敗通知にローカル時刻が入ること（#637）。通知センターに積み上がったとき見分けられる。
+    #[test]
+    fn 失敗通知の本文に時刻が入る() {
+        use chrono::TimeZone;
+        let now = chrono::Local.with_ymd_and_hms(2026, 8, 14, 9, 40, 0).unwrap();
+        let body = fetch_error_notification_body(now);
+        assert_eq!(body, "バトルデータの取得に失敗しました（08/14 09:40）");
     }
 }
