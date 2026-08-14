@@ -21,6 +21,7 @@
 ## Docs
 
 - [README](https://github.com/hiroshiyokoya/splabo/blob/develop/README.md): 機能・セットアップ・技術メモ・プライバシーポリシー
+- [紹介・ダウンロード](https://splaboon.pages.dev/): 紹介ページ（Windows / macOS）
 - [CHANGELOG](https://github.com/hiroshiyokoya/splabo/blob/develop/CHANGELOG.md): バージョン履歴
 - [LICENSE](https://github.com/hiroshiyokoya/splabo/blob/develop/LICENSE): MIT License
 
