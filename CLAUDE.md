@@ -83,6 +83,8 @@ git tag splabo-vX.Y.Z
 git push origin splabo-vX.Y.Z
 ```
 
+ビルドが終わったら GitHub でドラフトを **Publish** する。Publish すると Slack に X 用の告知文が届く（#648）。プレリリースでは飛ばない。
+
 ---
 
 ## 旧 geartoon コードの参照
