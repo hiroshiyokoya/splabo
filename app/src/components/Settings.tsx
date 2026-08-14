@@ -616,22 +616,15 @@ async function handleUploadStatink() {
           onKind={k => patchEnvImport(k, envImportPrefs.custom)}
           onCustom={v => patchEnvImport(envImportPrefs.kind, v)}
         />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
-          <button
-            className="btn-secondary"
-            onClick={handleEnvRefetch}
-            disabled={envRefetching}
-          >
-            {envRefetching ? '再取得中...' : '再取得'}
-          </button>
-          {envRefetchResult && (
-            <span style={{ fontSize: 13, color: envRefetchResult.startsWith('エラー') || envRefetchResult.startsWith('開始日') ? 'var(--lose)' : 'var(--win)' }}>
-              {envRefetchResult}
-            </span>
-          )}
-        </div>
+        <button
+          className="btn-primary"
+          onClick={handleEnvRefetch}
+          disabled={envRefetching}
+        >
+          {envRefetching ? '再取得中...' : '再取得'}
+        </button>
         {envRefetchProgress && envRefetching && (
-          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 8 }}>
+          <div className="settings-help" style={{ marginTop: 8 }}>
             {envRefetchProgress.phase === 'download' ? 'ダウンロード中' :
              envRefetchProgress.phase === 'extract' ? '解凍中' :
              envRefetchProgress.phase === 'index' ? 'インデックス作成中' :
@@ -642,7 +635,18 @@ async function handleUploadStatink() {
               : ''}
             {' '}
             ({envRefetchProgress.current.toLocaleString()} / {envRefetchProgress.total.toLocaleString()})
-          </p>
+          </div>
+        )}
+        {envRefetchResult && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: envRefetchResult.startsWith('エラー') || envRefetchResult.startsWith('開始日') ? 'var(--accent2)' : 'var(--text-muted)',
+            }}
+          >
+            {envRefetchResult}
+          </div>
         )}
       </section>
       )}
@@ -653,20 +657,24 @@ async function handleUploadStatink() {
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
           取得済みのギアデータ(ギア一覧・画像キャッシュ)をすべて削除します。再度サイドバーの「最新データを取得」から取得できます。
         </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            className="btn-secondary"
-            onClick={handleDeleteGearData}
-            disabled={gearDeleting}
+        <button
+          className="btn-primary"
+          onClick={handleDeleteGearData}
+          disabled={gearDeleting}
+        >
+          {gearDeleting ? '削除中...' : 'ギアデータを削除'}
+        </button>
+        {gearDeleteResult && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: gearDeleteResult.startsWith('エラー') ? 'var(--accent2)' : 'var(--text-muted)',
+            }}
           >
-            {gearDeleting ? '削除中...' : 'ギアデータを削除'}
-          </button>
-          {gearDeleteResult && (
-            <span style={{ fontSize: 13, color: gearDeleteResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
-              {gearDeleteResult}
-            </span>
-          )}
-        </div>
+            {gearDeleteResult}
+          </div>
+        )}
       </section>
       )}
 
