@@ -184,32 +184,29 @@ export function WeaponDetailModal({
             </div>
           </section>
 
-          {/* ルール別勝率(横棒) */}
+          {/* ルール別勝率 */}
           <section className="modal-section">
             <h3 className="modal-section-title">ルール別勝率</h3>
             {loading && <div className="loading">読み込み中...</div>}
             {!loading && !error && (
-              <div className="weapon-modal-rule-list">
+              <div className="weapon-modal-stage-list">
                 {ruleOrder.map(rk => {
                   const row = ruleMap.get(rk)
-                  const dec = row ? row.total - row.draws : 0
+                  const total = row?.total ?? 0
+                  const wins  = row?.wins ?? 0
+                  const draws = row?.draws ?? 0
+                  const dec = total - draws
                   const wr  = row && dec > 0 ? row.wins / dec : null
-                  const widthPct = wr !== null ? Math.max(2, wr * 100) : 0
                   return (
-                    <div key={rk} className="weapon-modal-rule-row">
-                      <span className="weapon-modal-rule-name">{ruleLabel(rk)}</span>
-                      <div className="weapon-modal-rule-bar">
-                        {wr !== null && (
-                          <div
-                            className="weapon-modal-rule-bar-fill"
-                            style={{ width: `${widthPct}%`, background: winRateColor(wr) }}
-                          />
-                        )}
-                      </div>
-                      <span className="weapon-modal-rule-value">
-                        {wr !== null ? `${(wr * 100).toFixed(1)}%` : '-'}
-                        <span className="weapon-modal-rule-count"> ({row?.total ?? 0})</span>
+                    <div key={rk} className="weapon-modal-stage-row">
+                      <span className="weapon-modal-stage-name">{ruleLabel(rk)}</span>
+                      <span className="weapon-modal-stage-count">
+                        {fmtRecord(total, wins, draws)}
                       </span>
+                      <span
+                        className="weapon-modal-stage-rate"
+                        style={{ color: wr !== null ? winRateColor(wr) : 'var(--text-muted)' }}
+                      >{wr !== null ? `${(wr * 100).toFixed(1)}%` : '-'}</span>
                     </div>
                   )
                 })}

@@ -1833,25 +1833,6 @@ body {
 .weapon-modal-stage-count { color: var(--text-muted); font-size: 12px; min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; }
 .weapon-modal-stage-rate { font-weight: 700; min-width: 56px; text-align: right; }
 
-.weapon-modal-rule-list { display: flex; flex-direction: column; gap: 6px; }
-.weapon-modal-rule-row {
-  display: grid;
-  grid-template-columns: 96px 1fr 100px;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-}
-.weapon-modal-rule-name { color: var(--text); }
-.weapon-modal-rule-bar {
-  height: 10px;
-  background: var(--surface2);
-  border-radius: 5px;
-  overflow: hidden;
-}
-.weapon-modal-rule-bar-fill { height: 100%; border-radius: 5px; transition: width 0.2s; }
-.weapon-modal-rule-value { text-align: right; font-weight: 600; }
-.weapon-modal-rule-count { color: var(--text-muted); font-weight: 400; font-size: 11px; }
-
 /* ── Stage Book ── */
 /* 上限幅は付けない(#560・.battle-log と同じ理由)。 */
 
