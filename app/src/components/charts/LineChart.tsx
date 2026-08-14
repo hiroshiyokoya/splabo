@@ -106,6 +106,7 @@ const axisLabelStyle = {
  * - X 軸は実時間軸（timestamp の number 軸）。欠測バケットは null 埋めして線を切る
  *   （connectNulls={false}）。孤立バケット（両隣が欠測）は点のみ描かれる。
  * - 勝率グループの軸は固定 0–100% スケール、その他は相対スケール。
+ * - 勝率以外の Y 軸目盛は整数（#639）。回/バトルが 1.5 のように割れるのを防ぐ。
  * - ツールチップは Recharts 標準 Tooltip（#443）。全系列の値を 1 つにまとめて表示。
  * - 二軸時は Y 軸に軸グループ名を出し、凡例を左右の軸側へ寄せる（#463）。
  */
@@ -140,7 +141,9 @@ export function LineChart({
   const domainOf = (g: AxisGroup | null): [number, number] | ['auto', 'auto'] =>
     g === 'win_rate' ? [0, 1] : ['auto', 'auto']
   const tickFormatterOf = (g: AxisGroup | null) =>
-    g === 'win_rate' ? (v: number) => `${(v * 100).toFixed(0)}%` : undefined
+    g === 'win_rate'
+      ? (v: number) => `${(v * 100).toFixed(0)}%`
+      : (v: number) => String(Math.round(v))
 
   // 軸グループ名の縦書きラベルぶん、少し余白を取る。
   // margin.right は Recharts のプロット右端余白。凡例の左右パディングは
@@ -166,6 +169,7 @@ export function LineChart({
           yAxisId="left"
           tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
           width={leftPad}
+          allowDecimals={leftGroup === 'win_rate'}
           tickFormatter={tickFormatterOf(leftGroup)}
           domain={domainOf(leftGroup)}
           label={leftGroup ? {
@@ -182,6 +186,7 @@ export function LineChart({
             orientation="right"
             tick={{ fill: 'var(--text)', fontSize: 10, fontWeight: 600 } as object}
             width={rightPad}
+            allowDecimals={rightGroup === 'win_rate'}
             tickFormatter={tickFormatterOf(rightGroup)}
             domain={domainOf(rightGroup)}
             label={{
