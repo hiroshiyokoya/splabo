@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useId, useMemo, useState, type MouseEvent } from 'react'
 import type { GroupedStatsRow2D, MetricKey } from '../../types'
 import { METRIC_LABELS, getMetric2D, formatMetric, metricGroup, winLoseBreakdown } from '../../types'
 import {
@@ -6,6 +6,7 @@ import {
   integerRange, SparseHatchPattern, EmptyHatchPattern, hatchFill,
   weightedProjection, sumBy, axisLabelColor, AXIS_MIN_TOTAL_SAMPLES,
 } from '../../utils/heatmapColors'
+import { WeaponKitTipBody, weaponKitTipStyle, type WeaponKitTipData } from './WeaponKitTip'
 
 /**
  * 2 軸ヒートマップ。X 軸・Y 軸ともにカテゴリ系(ブキ・ステージ・モード・ルール・サブ・SP)。
@@ -82,6 +83,7 @@ function cellColor(value: number | null, group: Group, min: number, max: number,
 export function HeatmapChart({
   data, metric, xLabelTransform, yLabelTransform, minSampleSize = 5,
   xNumeric = false, yNumeric = false, xTitle, yTitle,
+  xWeaponTip, yWeaponTip,
 }: {
   data:             GroupedStatsRow2D[]
   metric:           MetricKey
@@ -94,6 +96,9 @@ export function HeatmapChart({
   /** X 軸タイトル(軸ラベルの上に表示)。#145 */
   xTitle?:          string
   yTitle?:          string
+  /** ブキ軸ラベルのホバーチップ(#643)。 */
+  xWeaponTip?:      (name: string) => WeaponKitTipData | undefined
+  yWeaponTip?:      (name: string) => WeaponKitTipData | undefined
 }) {
   // 軸タイトルがある場合は、tick ラベルスペースに追加で TITLE_PAD ぶん確保する。
   const PAD_LEFT = PAD_LEFT_BASE + (yTitle ? TITLE_PAD : 0)
@@ -108,6 +113,16 @@ export function HeatmapChart({
     mx: number; my: number; xKey: string; yKey: string; value: number | null
     total: number; wins: number; draws: number
   } | null>(null)
+  const [axisHover, setAxisHover] = useState<{ mx: number; my: number; tip: WeaponKitTipData } | null>(null)
+
+  function bindAxisTip(tip: WeaponKitTipData | undefined) {
+    if (!tip) return {}
+    return {
+      onMouseEnter: (e: MouseEvent) => setAxisHover({ mx: e.clientX, my: e.clientY, tip }),
+      onMouseMove:  (e: MouseEvent) => setAxisHover(h => h ? { ...h, mx: e.clientX, my: e.clientY } : { mx: e.clientX, my: e.clientY, tip }),
+      onMouseLeave: () => setAxisHover(null),
+    }
+  }
 
   const group = metricGroup(metric)
 
@@ -269,35 +284,61 @@ export function HeatmapChart({
         {xKeys.map((k, i) => {
           const x = PAD_LEFT + i * (CELL_W + GAP) + CELL_W / 2
           const c = xLabelColor(k)
+          const tip = xWeaponTip?.(xLabel(k))
+          const hitX = PAD_LEFT + i * (CELL_W + GAP)
+          const hitY = xTitle ? TITLE_PAD : 0
           return (
-            <text
-              key={`x-${k}`}
-              x={x}
-              y={PAD_TOP - 6}
-              fontSize={10}
-              fontWeight={600}
-              fill="var(--text)"
-              // 射影値がある軸だけ style で上書きする(color-mix を確実に CSS として解釈させる)。
-              style={c ? { fill: c } : undefined}
-              textAnchor="start"
-              transform={`rotate(-35 ${x} ${PAD_TOP - 6})`}
-            >{xLabel(k)}</text>
+            <g key={`x-${k}`} {...bindAxisTip(tip)}>
+              {tip && (
+                <rect
+                  x={hitX}
+                  y={hitY}
+                  width={CELL_W + GAP}
+                  height={PAD_TOP - hitY}
+                  fill="transparent"
+                />
+              )}
+              <text
+                x={x}
+                y={PAD_TOP - 6}
+                fontSize={10}
+                fontWeight={600}
+                fill="var(--text)"
+                // 射影値がある軸だけ style で上書きする(color-mix を確実に CSS として解釈させる)。
+                style={c ? { fill: c, pointerEvents: tip ? 'none' : undefined } : (tip ? { pointerEvents: 'none' } : undefined)}
+                textAnchor="start"
+                transform={`rotate(-35 ${x} ${PAD_TOP - 6})`}
+              >{xLabel(k)}</text>
+            </g>
           )
         })}
         {/* Y 軸ラベル(左) */}
         {yKeys.map((k, i) => {
           const c = yLabelColor(k)
+          const tip = yWeaponTip?.(yLabel(k))
+          const hitY = PAD_TOP + i * (CELL_H + GAP)
+          const hitX = yTitle ? TITLE_PAD : 0
           return (
-            <text
-              key={`y-${k}`}
-              x={PAD_LEFT - 6}
-              y={PAD_TOP + i * (CELL_H + GAP) + CELL_H * 0.7}
-              fontSize={10}
-              fontWeight={600}
-              fill="var(--text)"
-              style={c ? { fill: c } : undefined}
-              textAnchor="end"
-            >{yLabel(k)}</text>
+            <g key={`y-${k}`} {...bindAxisTip(tip)}>
+              {tip && (
+                <rect
+                  x={hitX}
+                  y={hitY}
+                  width={PAD_LEFT - hitX}
+                  height={CELL_H + GAP}
+                  fill="transparent"
+                />
+              )}
+              <text
+                x={PAD_LEFT - 6}
+                y={PAD_TOP + i * (CELL_H + GAP) + CELL_H * 0.7}
+                fontSize={10}
+                fontWeight={600}
+                fill="var(--text)"
+                style={c ? { fill: c, pointerEvents: tip ? 'none' : undefined } : (tip ? { pointerEvents: 'none' } : undefined)}
+                textAnchor="end"
+              >{yLabel(k)}</text>
+            </g>
           )
         })}
         {/* セル */}
@@ -348,7 +389,12 @@ export function HeatmapChart({
           </span>
         )}
       </div>
-      {hover && (
+      {axisHover && (
+        <div className="cal-tooltip" style={weaponKitTipStyle(axisHover.mx, axisHover.my)}>
+          <WeaponKitTipBody {...axisHover.tip} />
+        </div>
+      )}
+      {hover && !axisHover && (
         <div
           className="cal-tooltip"
           style={{
