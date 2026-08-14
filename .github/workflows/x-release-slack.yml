@@ -1,0 +1,69 @@
+# X 告知文を CHANGELOG から組んで Slack に流す (#648)。
+# ビルド workflow には混ぜない。投稿失敗でリリースを赤にしないため。
+#
+# 発火は GitHub リリースの Publish。タグ push やドラフト作成では飛ばない。
+# プレリリース（rc / beta）は出さない。
+# Secret `SLACK_WEBHOOK_URL` が無ければログに出すだけ（成功のまま）。
+
+name: X release draft (Slack)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'バージョン（例 0.10.4。splabo-v は付けない）'
+        required: true
+
+jobs:
+  slack-x-draft:
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - name: Self-test copy builder
+        run: python3 .github/scripts/x_release_post.py --self-test
+
+      - name: Build X post text
+        id: post
+        env:
+          VERSION: ${{ github.event.release.tag_name || inputs.version }}
+        run: |
+          VERSION="${VERSION#splabo-v}"
+          TEXT=$(python3 .github/scripts/x_release_post.py --changelog CHANGELOG.md --version "$VERSION")
+          {
+            echo "version=$VERSION"
+            echo "text<<EOF"
+            printf '%s\n' "$TEXT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "---- X 投稿文 ----"
+          printf '%s\n' "$TEXT"
+
+      - name: Notify Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          VERSION: ${{ steps.post.outputs.version }}
+          POST_TEXT: ${{ steps.post.outputs.text }}
+          RELEASE_URL: ${{ github.event.release.html_url || format('{0}/{1}/releases', github.server_url, github.repository) }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL 未設定。Slack はスキップ。"
+            exit 0
+          fi
+          # Slack 用。投稿本文はコードブロックに入れてそのままコピーできるようにする。
+          HEADER=$(printf '%s\n' \
+            "*X 告知（公開済み v${VERSION}）*" \
+            "このままコピーして Splabo 用アカウントへ投稿:" \
+            "" \
+            "\`\`\`" \
+            "${POST_TEXT}" \
+            "\`\`\`" \
+            "" \
+            "リリース: ${RELEASE_URL}")
+          PAYLOAD=$(jq -n --arg text "$HEADER" '{text: $text}')
+          curl -sS -X POST -H 'Content-Type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"
