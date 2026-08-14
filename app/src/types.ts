@@ -312,6 +312,7 @@ export interface WeaponRecord {
   paint_point_total: number | null
   weapon_power: number | null
   weapon_power_max: number | null
+  last_used_at: number | null
 }
 
 export interface AiSettings {

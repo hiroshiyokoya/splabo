@@ -587,8 +587,8 @@ async function handleUploadStatink() {
       <section className="settings-section">
         <h3>マスターデータ</h3>
         <div className="settings-help" style={{ marginBottom: 12 }}>
-          ブキ・サブ・SP・カテゴリと、公式アプリの熟練度・通算勝利・総塗、全ブキの画像を
-          SplatNet 3 から取得します。起動時に 24 時間ごとに自動取得しますが、手動でも実行できます。
+          ブキ・サブ・SP・カテゴリと、公式アプリの熟練度・通算勝利・通算塗・最終使用・ブキチャレパワー、
+          全ブキの画像を SplatNet 3 から取得します。起動時に 24 時間ごとに自動取得しますが、手動でも実行できます。
         </div>
         <button
           className="btn-primary"

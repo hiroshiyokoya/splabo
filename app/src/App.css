@@ -1717,15 +1717,19 @@ body {
 .weapon-card--clickable:hover { border-color: var(--accent-hover); }
 .weapon-card--clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* ブキカード内の 2 列ミニ統計（左: 公式統計、右: 平均統計） */
+/* ブキカード内の 2 列ミニ統計 */
 .weapon-card-stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px 10px;
   width: 100%;
   margin-top: 4px;
+}
+.weapon-card-local {
+  width: 100%;
+  margin-top: 4px;
   padding-top: 4px;
-  border-top: 1px solid var(--border);
+  border-top: 1px dashed var(--border);
 }
 .weapon-card-stats-col { display: flex; flex-direction: column; gap: 1px; }
 /* ミニ統計行のフォントは .stage-card-stat-row と統一（11px・値 600・#449）。 */

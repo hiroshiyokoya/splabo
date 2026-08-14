@@ -26,6 +26,16 @@ function fmtRatio(num: number | null | undefined, den: number | null | undefined
   return (num / den).toFixed(2)
 }
 
+function fmtLastUsed(ts: number | null | undefined): string {
+  if (ts == null || ts <= 0) return '-'
+  return new Date(ts * 1000).toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' })
+}
+
+function fmtPower(n: number | null | undefined): string {
+  if (n == null) return '-'
+  return Math.round(n).toLocaleString()
+}
+
 /** コンパクト戦績「12戦 7勝5敗」。引き分けは 0 でないときだけ「2分」を付ける(#449)。
  *  WeaponBook.fmtRecord / StageDetailModal.fmtRecord と同期。 */
 function fmtRecord(total: number, wins: number, draws: number): string {
@@ -42,7 +52,7 @@ function fmtRecord(total: number, wins: number, draws: number): string {
  *   ブキスラッグは `weapons.name`(旧テーブル)= `weapon.key`(新テーブル)= stat.ink キー。
  *   FE 側で持っている `WeaponRecord.name` をそのまま `weapon` フィルタとして渡せる。
  * - 直近 30 バトルの線グラフは仕様により非実装(#149)。
- * - WeaponRecordQuery 由来の公式アプリ統計(熟練度・通算勝利数・総塗)は取得できていれば表示する(#674)。
+ * - WeaponQuery 由来の公式アプリの数字（熟練度・通算勝利・通算塗・最終使用・チャレパワー）は取得できていれば表示する(#674)。
  */
 export function WeaponDetailModal({
   weapon, image, subImage, spImage, stats, onClose,
@@ -141,26 +151,26 @@ export function WeaponDetailModal({
             </div>
           </section>
 
-          {/* 公式アプリ累計（WeaponRecordQuery・#674）。未取得なら出さない。 */}
-          {(weapon.weapon_level != null || weapon.win_count_total != null || weapon.paint_point_total != null) && (
+          {(weapon.weapon_level != null || weapon.win_count_total != null || weapon.paint_point_total != null
+            || weapon.last_used_at != null || weapon.weapon_power != null || weapon.weapon_power_max != null) && (
             <section className="modal-section">
-              <h3 className="modal-section-title">公式アプリの累計</h3>
+              <h3 className="modal-section-title">公式アプリ</h3>
               <div className="weapon-modal-stats-grid">
                 <StatPanel label="熟練度" value={weapon.weapon_level != null ? String(weapon.weapon_level) : '-'} />
                 <StatPanel label="通算勝利" value={weapon.win_count_total != null ? weapon.win_count_total.toLocaleString() : '-'} />
-                <StatPanel label="総塗" value={weapon.paint_point_total != null ? weapon.paint_point_total.toLocaleString() : '-'} />
+                <StatPanel label="通算塗" value={weapon.paint_point_total != null ? weapon.paint_point_total.toLocaleString() : '-'} />
+                <StatPanel label="最終使用" value={fmtLastUsed(weapon.last_used_at)} />
+                <StatPanel label="チャレパワー" value={fmtPower(weapon.weapon_power)} />
+                <StatPanel label="最大チャレ" value={fmtPower(weapon.weapon_power_max)} />
               </div>
             </section>
           )}
 
-          {/* バトル統計：8 パネル(4×2 グリッド)。
-              上段はバトル数・勝敗・勝率・平均塗り、
-              下段は K/A/D 系(平均キル・平均アシスト・平均デス・キルレ)で揃える(#449 / #465)。 */}
           <section className="modal-section">
-            <h3 className="modal-section-title">バトル統計</h3>
+            <h3 className="modal-section-title">取得したバトル</h3>
             <div className="weapon-modal-stats-grid">
               <StatPanel label="バトル数"  value={weapon.total.toLocaleString()} />
-              <StatPanel label="Win / Lose (Draw)" value={`${weapon.wins} / ${losses} (${weapon.draws})`} />
+              <StatPanel label="勝ち / 負け（引分）" value={`${weapon.wins} / ${losses} (${weapon.draws})`} />
               <StatPanel
                 label="勝率"
                 value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '-'}

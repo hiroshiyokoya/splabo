@@ -910,9 +910,10 @@ pub async fn fetch_and_store_weapon_records(
             .pointer("/stats/currentWeaponPowerOrder/weaponPower")
             .and_then(|v| v.as_f64());
         let weapon_power_max = node.pointer("/stats/maxWeaponPower").and_then(|v| v.as_f64());
+        let last_used_at = parse_last_used_at(node);
 
         if let Err(e) = crate::db::upsert_weapon_record(
-            pool, name, level, win, paint, big_run_level, weapon_power, weapon_power_max,
+            pool, name, level, win, paint, big_run_level, weapon_power, weapon_power_max, last_used_at,
         ).await {
             log::warn!("weapon_records upsert スキップ ({name}): {e}");
             continue;
@@ -934,6 +935,17 @@ pub async fn fetch_and_store_weapon_records(
 
     log::info!("[weapon_records] WeaponQuery 取得 {count} 件");
     Ok(count)
+}
+
+fn parse_last_used_at(node: &serde_json::Value) -> Option<i64> {
+    let v = node.pointer("/stats/lastUsedTime")?;
+    if let Some(n) = v.as_i64() {
+        return Some(n);
+    }
+    let s = v.as_str()?;
+    chrono::DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|d| d.timestamp())
 }
 
 async fn cache_weapon_kit_images(
@@ -1329,5 +1341,14 @@ mod weapon_record_hash_tests {
             Some("PersistedQueryNotFound; persisted query does not exist")
         );
         assert_eq!(graphql_error_messages(&serde_json::json!({ "data": {} })), None);
+    }
+
+    #[test]
+    fn parse_last_used_at_rfc3339() {
+        let node = serde_json::json!({ "stats": { "lastUsedTime": "2026-08-14T10:00:00Z" } });
+        assert_eq!(parse_last_used_at(&node), Some(1786701600));
+        let unix = serde_json::json!({ "stats": { "lastUsedTime": 1786701600 } });
+        assert_eq!(parse_last_used_at(&unix), Some(1786701600));
+        assert_eq!(parse_last_used_at(&serde_json::json!({ "stats": {} })), None);
     }
 }

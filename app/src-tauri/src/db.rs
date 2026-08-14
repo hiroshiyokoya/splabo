@@ -93,6 +93,7 @@ pub(crate) const LEGACY_ALTERS: &[&str] = &[
     "ALTER TABLE battles ADD COLUMN parent_json   TEXT",
     "ALTER TABLE weapons ADD COLUMN sub_weapon_image     TEXT",
     "ALTER TABLE weapons ADD COLUMN special_weapon_image TEXT",
+    "ALTER TABLE weapon_records ADD COLUMN last_used_at INTEGER",
 ];
 
 /// 初期スキーマ（旧 `battles` 系）。AI 用ビューのテストが本番と同じ順序
@@ -415,6 +416,7 @@ pub struct WeaponRecord {
     pub paint_point_total: Option<i64>,
     pub weapon_power: Option<f64>,
     pub weapon_power_max: Option<f64>,
+    pub last_used_at: Option<i64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -2208,7 +2210,7 @@ pub async fn upsert_weapon(
     Ok(())
 }
 
-/// WeaponRecordQuery で取得したユーザー固有のブキ統計を upsert する (#49)。
+/// WeaponQuery で取得したユーザー固有のブキ統計を upsert する (#49 / #674)。
 /// weapon_id は weapons.name と一致するキー（ブキの日本語名）。
 pub async fn upsert_weapon_record(
     pool: &DbPool,
@@ -2216,18 +2218,18 @@ pub async fn upsert_weapon_record(
     weapon_level: i64,
     win_count_total: i64,
     paint_point_total: i64,
-    // 以下は WeaponRecordQuery には含まれないが、将来の別クエリで埋められる想定でカラムだけ用意。
     big_run_level: Option<i64>,
     weapon_power: Option<f64>,
     weapon_power_max: Option<f64>,
+    last_used_at: Option<i64>,
 ) -> Result<(), String> {
     let now_ts = chrono::Utc::now().timestamp();
     sqlx::query(
         "INSERT INTO weapon_records (
             weapon_id, weapon_level, big_run_level,
             win_count_total, paint_point_total,
-            weapon_power, weapon_power_max, last_fetched_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            weapon_power, weapon_power_max, last_used_at, last_fetched_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(weapon_id) DO UPDATE SET
             weapon_level      = excluded.weapon_level,
             big_run_level     = COALESCE(excluded.big_run_level, weapon_records.big_run_level),
@@ -2235,6 +2237,7 @@ pub async fn upsert_weapon_record(
             paint_point_total = excluded.paint_point_total,
             weapon_power      = COALESCE(excluded.weapon_power, weapon_records.weapon_power),
             weapon_power_max  = COALESCE(excluded.weapon_power_max, weapon_records.weapon_power_max),
+            last_used_at      = COALESCE(excluded.last_used_at, weapon_records.last_used_at),
             last_fetched_at   = excluded.last_fetched_at",
     )
     .bind(weapon_id)
@@ -2244,6 +2247,7 @@ pub async fn upsert_weapon_record(
     .bind(paint_point_total)
     .bind(weapon_power)
     .bind(weapon_power_max)
+    .bind(last_used_at)
     .bind(now_ts)
     .execute(pool.as_ref())
     .await
@@ -3178,6 +3182,7 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
                 paint_point_total  INTEGER NOT NULL DEFAULT 0,
                 weapon_power       REAL,
                 weapon_power_max   REAL,
+                last_used_at       INTEGER,
                 last_fetched_at    INTEGER
             )",
         )
@@ -4969,7 +4974,8 @@ pub async fn db_list_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<WeaponR
                 wr.win_count_total   as win_count_total,
                 wr.paint_point_total as paint_point_total,
                 wr.weapon_power      as weapon_power,
-                wr.weapon_power_max  as weapon_power_max
+                wr.weapon_power_max  as weapon_power_max,
+                wr.last_used_at      as last_used_at
          FROM weapons w
          LEFT JOIN weapon nw ON nw.key = w.name
          LEFT JOIN battle b ON b.weapon_id = nw.id
