@@ -1351,7 +1351,7 @@ export function EnvAnalysis() {
                 <p className={`env-chart-note ${EXPORT_HIDE_CLASS}`}>
                   {KDA_CELL_KEYS.includes(cellMetric) ? '20' : '30'} サンプル未満のセルは非表示。セルにマウスオーバーで件数を表示。
                   列見出しをクリックすると、その列の値で行を並べ替えられます(再クリックで昇順/降順切替)。
-                  {cellMetric === 'win_rate' && ' 勝率は 50% を中心に赤(低)~青(高)。'}
+                  {cellMetric === 'win_rate' && ' 勝率は、今見えているセルの最低〜最高をくすみ珊瑚〜くすみティールの 11 段階に割り振ります。'}
                   {cellMetric === 'avg_death' && ' デスは多いほど濃い赤(少ないほど良い)。'}
                   {(cellMetric === 'kill_ratio' || cellMetric === 'contrib_ratio') && ' 1.0 を中心に赤(低)~青(高)。'}
                   {cm.weapon && ` ${POSTER_EXCLUDED_NOTE}`}

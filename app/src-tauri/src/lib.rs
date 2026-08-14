@@ -112,6 +112,7 @@ pub fn run() {
             db::db_grouped_stats,
             db::db_grouped_stats_2d,
             db::db_list_weapons,
+            db::db_list_stage_records,
             db::backfill_battle_players,
             // AI 分析（#566）: プロンプトの土台を返す / AI が書いた SELECT を安全に実行する
             ai_sql::ai_analysis_prompt,
@@ -449,6 +450,11 @@ async fn run_fetch_full_inner(app: &AppHandle, db: &db::DbPool) -> Result<(usize
     ).await {
         log_weapon_records_skip(&e);
     }
+    if let Err(e) = splatnet3::fetch_and_store_stage_records(
+        db, &client, &result.bullet_token, &result.country, &result.language,
+    ).await {
+        log::warn!("[stage_records] 取得スキップ: {e}");
+    }
 
     // 「取得完了」はアップロードを待たずここで通知する（lastFetchedAt 更新用）。
     // uploaded は後段の best-effort アップロードで確定するため、ここでは 0 を載せる。
@@ -582,6 +588,11 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
         &db, &client, &app, &result.bullet_token, &result.country, &result.language,
     ).await {
         log_weapon_records_skip(&e);
+    }
+    if let Err(e) = splatnet3::fetch_and_store_stage_records(
+        &db, &client, &result.bullet_token, &result.country, &result.language,
+    ).await {
+        log::warn!("[stage_records] 取得スキップ: {e}");
     }
 
     Ok(count)

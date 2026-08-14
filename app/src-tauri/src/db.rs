@@ -94,6 +94,17 @@ pub(crate) const LEGACY_ALTERS: &[&str] = &[
     "ALTER TABLE weapons ADD COLUMN sub_weapon_image     TEXT",
     "ALTER TABLE weapons ADD COLUMN special_weapon_image TEXT",
     "ALTER TABLE weapon_records ADD COLUMN last_used_at INTEGER",
+    "CREATE TABLE IF NOT EXISTS stage_records (
+        stage_id        TEXT PRIMARY KEY,
+        vs_stage_id     INTEGER,
+        win_rate_tw     REAL,
+        win_rate_ar     REAL,
+        win_rate_lf     REAL,
+        win_rate_gl     REAL,
+        win_rate_cl     REAL,
+        last_played_at  INTEGER,
+        last_fetched_at INTEGER
+    )",
 ];
 
 /// 初期スキーマ（旧 `battles` 系）。AI 用ビューのテストが本番と同じ順序
@@ -194,6 +205,18 @@ pub(crate) const SCHEMA_V6: &str = r#"
         name_ja      TEXT,
         name_en      TEXT,
         splatnet3_id TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS stage_records (
+        stage_id        TEXT PRIMARY KEY,
+        vs_stage_id     INTEGER,
+        win_rate_tw     REAL,
+        win_rate_ar     REAL,
+        win_rate_lf     REAL,
+        win_rate_gl     REAL,
+        win_rate_cl     REAL,
+        last_played_at  INTEGER,
+        last_fetched_at INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS weapon (
@@ -1496,6 +1519,29 @@ pub async fn db_grouped_stats(
     const THREE_DAY_BUCKET: &str =
         "DATE(DATE('now'), \
               '-' || (3 * CAST((julianday(DATE('now')) - julianday(DATE(b.played_at))) / 3 AS INTEGER) + 2) || ' days')";
+    // 公式アプリの値は自分のブキ / ステージの全期間スナップショット。
+    // 他の group_by に JOIN すると MAX が混ざるので、軸が一致するときだけ足す。
+    let (extra_join, extra_select): (&str, &str) = match group_by.as_str() {
+        "weapon" => (
+            " LEFT JOIN weapon_records wr ON wr.weapon_id = w.name_ja OR wr.weapon_id = w.key ",
+            ", MAX(wr.weapon_level) as official_weapon_level
+              , MAX(wr.win_count_total) as official_win_count
+              , MAX(wr.paint_point_total) as official_paint
+              , MAX(wr.weapon_power) as official_weapon_power
+              , MAX(wr.weapon_power_max) as official_weapon_power_max
+              , MAX(wr.last_used_at) as official_last_used_at ",
+        ),
+        "stage" => (
+            " LEFT JOIN stage_records sr ON sr.stage_id = m.name_ja OR sr.stage_id = m.key ",
+            ", MAX(sr.win_rate_tw) as official_win_rate_tw
+              , MAX(sr.win_rate_ar) as official_win_rate_ar
+              , MAX(sr.win_rate_lf) as official_win_rate_lf
+              , MAX(sr.win_rate_gl) as official_win_rate_gl
+              , MAX(sr.win_rate_cl) as official_win_rate_cl ",
+        ),
+        _ => ("", ""),
+    };
+
     let (group_expr, display_expr): (&str, &str) = match group_by.as_str() {
         "weapon"          => ("w.key",                                                                                "COALESCE(w.name_ja, w.key)"),
         "stage"           => ("m.key",                                                                                "COALESCE(MAX(m.name_ja), m.key)"),
@@ -1552,12 +1598,14 @@ pub async fn db_grouped_stats(
             SUM(CASE WHEN b.detail_fetched = 1 THEN b.death  END)     as sum_death,
             SUM(CASE WHEN b.detail_fetched = 1 THEN b.assist END)     as sum_assist,
             SUM(CASE WHEN b.detail_fetched = 1 THEN b.inked  END)     as sum_inked
+            {extra_select}
          FROM battle b
          JOIN lobby  l   ON l.id   = b.lobby_id
          JOIN rule   r   ON r.id   = b.rule_id
          JOIN result res ON res.id = b.result_id
          JOIN weapon w   ON w.id   = b.weapon_id
          JOIN map    m   ON m.id   = b.map_id
+         {extra_join}
          WHERE {filter_where}
          GROUP BY {group_expr}
          ORDER BY {order_by}"
@@ -1603,6 +1651,17 @@ pub async fn db_grouped_stats(
             "sum_death":     r.try_get::<i64, _>("sum_death").ok(),
             "sum_assist":    r.try_get::<i64, _>("sum_assist").ok(),
             "sum_inked":     r.try_get::<i64, _>("sum_inked").ok(),
+            "official_weapon_level":     r.try_get::<i64, _>("official_weapon_level").ok(),
+            "official_win_count":        r.try_get::<i64, _>("official_win_count").ok(),
+            "official_paint":            r.try_get::<i64, _>("official_paint").ok(),
+            "official_weapon_power":     r.try_get::<f64, _>("official_weapon_power").ok(),
+            "official_weapon_power_max": r.try_get::<f64, _>("official_weapon_power_max").ok(),
+            "official_last_used_at":     r.try_get::<i64, _>("official_last_used_at").ok(),
+            "official_win_rate_tw":      r.try_get::<f64, _>("official_win_rate_tw").ok(),
+            "official_win_rate_ar":      r.try_get::<f64, _>("official_win_rate_ar").ok(),
+            "official_win_rate_lf":      r.try_get::<f64, _>("official_win_rate_lf").ok(),
+            "official_win_rate_gl":      r.try_get::<f64, _>("official_win_rate_gl").ok(),
+            "official_win_rate_cl":      r.try_get::<f64, _>("official_win_rate_cl").ok(),
         })
     }).collect())
 }
@@ -2253,6 +2312,95 @@ pub async fn upsert_weapon_record(
     .await
     .map_err(|e| format!("weapon_records upsert 失敗 ({weapon_id}): {e}"))?;
     Ok(())
+}
+
+pub async fn ensure_stage_records_table(pool: &DbPool) -> Result<(), String> {
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS stage_records (
+            stage_id        TEXT PRIMARY KEY,
+            vs_stage_id     INTEGER,
+            win_rate_tw     REAL,
+            win_rate_ar     REAL,
+            win_rate_lf     REAL,
+            win_rate_gl     REAL,
+            win_rate_cl     REAL,
+            last_played_at  INTEGER,
+            last_fetched_at INTEGER
+        )",
+    )
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct StageRecord {
+    pub stage_id: String,
+    pub vs_stage_id: Option<i64>,
+    pub win_rate_tw: Option<f64>,
+    pub win_rate_ar: Option<f64>,
+    pub win_rate_lf: Option<f64>,
+    pub win_rate_gl: Option<f64>,
+    pub win_rate_cl: Option<f64>,
+    pub last_played_at: Option<i64>,
+}
+
+/// StageRecordQuery の通算勝率を upsert する。stage_id は公式の日本語ステージ名。
+pub async fn upsert_stage_record(
+    pool: &DbPool,
+    stage_id: &str,
+    vs_stage_id: Option<i64>,
+    win_rate_tw: Option<f64>,
+    win_rate_ar: Option<f64>,
+    win_rate_lf: Option<f64>,
+    win_rate_gl: Option<f64>,
+    win_rate_cl: Option<f64>,
+    last_played_at: Option<i64>,
+) -> Result<(), String> {
+    let now_ts = chrono::Utc::now().timestamp();
+    sqlx::query(
+        "INSERT INTO stage_records (
+            stage_id, vs_stage_id,
+            win_rate_tw, win_rate_ar, win_rate_lf, win_rate_gl, win_rate_cl,
+            last_played_at, last_fetched_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(stage_id) DO UPDATE SET
+            vs_stage_id     = COALESCE(excluded.vs_stage_id, stage_records.vs_stage_id),
+            win_rate_tw     = excluded.win_rate_tw,
+            win_rate_ar     = excluded.win_rate_ar,
+            win_rate_lf     = excluded.win_rate_lf,
+            win_rate_gl     = excluded.win_rate_gl,
+            win_rate_cl     = excluded.win_rate_cl,
+            last_played_at  = COALESCE(excluded.last_played_at, stage_records.last_played_at),
+            last_fetched_at = excluded.last_fetched_at",
+    )
+    .bind(stage_id)
+    .bind(vs_stage_id)
+    .bind(win_rate_tw)
+    .bind(win_rate_ar)
+    .bind(win_rate_lf)
+    .bind(win_rate_gl)
+    .bind(win_rate_cl)
+    .bind(last_played_at)
+    .bind(now_ts)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| format!("stage_records upsert 失敗 ({stage_id}): {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn db_list_stage_records(db: tauri::State<'_, DbPool>) -> Result<Vec<StageRecord>, String> {
+    sqlx::query_as::<_, StageRecord>(
+        "SELECT stage_id, vs_stage_id,
+                win_rate_tw, win_rate_ar, win_rate_lf, win_rate_gl, win_rate_cl,
+                last_played_at
+         FROM stage_records",
+    )
+    .fetch_all(db.as_ref())
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// サブ・スペシャルウェポンの画像 URL を weapons テーブルに保存する。

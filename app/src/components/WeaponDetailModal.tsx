@@ -1,14 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { GroupedStatsRow, WeaponRecord } from '../types'
-import { RULE_LABELS, ruleLabel } from '../types'
-
-// Dashboard.winRateColor / WeaponBook.winRateColor と同期。
-function winRateColor(rate: number): string {
-  if (rate >= 0.55) return '#34d399'
-  if (rate >= 0.45) return '#fb923c'
-  return '#f472b6'
-}
+import type { Filters, GroupedStatsRow, WeaponRecord } from '../types'
+import { RULE_LABELS, filtersToBookDetailArgs, fmtKillRatioWithContrib, fmtOfficialDate, ruleLabel } from '../types'
+import { winRateColor } from '../utils/heatmapColors'
 
 /** 「勝率の良いステージ」の下限バトル数(少数サンプルによる勝率のブレを避ける)。
  *  StageDetailModal の「勝率 TOP ブキ」と同じ流儀・同じ値に揃えている。 */
@@ -19,16 +13,6 @@ const STAGE_TOP_N = 5
 function fmtNum(n: number | null | undefined, digits = 2): string {
   if (n === null || n === undefined) return '-'
   return n.toFixed(digits)
-}
-
-function fmtRatio(num: number | null | undefined, den: number | null | undefined): string {
-  if (num === null || num === undefined || den === null || den === undefined || den === 0) return '-'
-  return (num / den).toFixed(2)
-}
-
-function fmtLastUsed(ts: number | null | undefined): string {
-  if (ts == null || ts <= 0) return '-'
-  return new Date(ts * 1000).toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' })
 }
 
 function fmtPower(n: number | null | undefined): string {
@@ -47,21 +31,24 @@ function fmtRecord(total: number, wins: number, draws: number): string {
  * ブキカードをクリックして開く詳細モーダル。
  *
  * - バトル統計(バトル数 / W/L/D / 勝率 / 平均キル・デス・塗り / キルレ)は DB 集計。
- *   親 (WeaponBook) が statsByWeapon から該当行を `stats` prop として渡す。
+ *   親 (WeaponBook) が FilterBar 済みの statsByWeapon から該当行を `stats` prop として渡す。
+ *   WeaponRecord.total は全期間なので使わない。
  * - ステージ Top 5 とルール別勝率は `db_grouped_stats(group_by, weapon=ブキスラッグ)` を 2 回呼んで取得。
+ *   FilterBar と同じ期間・モード・ルール・結果を載せ、対象ブキだけ上書きする。
  *   ブキスラッグは `weapons.name`(旧テーブル)= `weapon.key`(新テーブル)= stat.ink キー。
  *   FE 側で持っている `WeaponRecord.name` をそのまま `weapon` フィルタとして渡せる。
  * - 直近 30 バトルの線グラフは仕様により非実装(#149)。
  * - WeaponQuery 由来の公式アプリの数字（熟練度・通算勝利・通算塗・最終使用・チャレパワー）は取得できていれば表示する(#674)。
  */
 export function WeaponDetailModal({
-  weapon, image, subImage, spImage, stats, onClose,
+  weapon, image, subImage, spImage, stats, filters, onClose,
 }: {
   weapon:   WeaponRecord
   image:    string | null
   subImage: string | null
   spImage:  string | null
   stats:    GroupedStatsRow | null
+  filters:  Filters
   onClose:  () => void
 }) {
   const [stageRows, setStageRows] = useState<GroupedStatsRow[] | null>(null)
@@ -82,9 +69,10 @@ export function WeaponDetailModal({
   useEffect(() => {
     setLoading(true)
     setError(null)
+    const filterArgs = filtersToBookDetailArgs(filters, { weapon: weapon.name })
     Promise.all([
-      invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'stage', weapon: weapon.name }),
-      invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'rule',  weapon: weapon.name }),
+      invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'stage', ...filterArgs }),
+      invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'rule',  ...filterArgs }),
     ])
       .then(([stages, rules]) => {
         setStageRows(stages)
@@ -92,11 +80,14 @@ export function WeaponDetailModal({
       })
       .catch(err => setError(typeof err === 'string' ? err : String(err)))
       .finally(() => setLoading(false))
-  }, [weapon.name])
+  }, [weapon.name, filters])
 
-  const decisive       = weapon.total - weapon.draws
-  const overallWinRate = decisive > 0 ? weapon.wins / decisive : null
-  const losses         = weapon.total - weapon.wins - weapon.draws
+  const total          = stats?.total ?? 0
+  const wins           = stats?.wins ?? 0
+  const draws          = stats?.draws ?? 0
+  const losses         = total - wins - draws
+  const decisive       = total - draws
+  const overallWinRate = decisive > 0 ? wins / decisive : null
 
   // ステージ Top 5(バトル数降順、既に db 側でソート済み)
   const topStages = (stageRows ?? []).slice(0, 5)
@@ -155,13 +146,13 @@ export function WeaponDetailModal({
             || weapon.last_used_at != null || weapon.weapon_power != null || weapon.weapon_power_max != null) && (
             <section className="modal-section">
               <h3 className="modal-section-title">公式アプリ</h3>
-              <div className="weapon-modal-stats-grid">
+              <div className="weapon-modal-stats-grid weapon-modal-stats-grid--official">
                 <StatPanel label="熟練度" value={weapon.weapon_level != null ? String(weapon.weapon_level) : '-'} />
                 <StatPanel label="通算勝利" value={weapon.win_count_total != null ? weapon.win_count_total.toLocaleString() : '-'} />
-                <StatPanel label="通算塗" value={weapon.paint_point_total != null ? weapon.paint_point_total.toLocaleString() : '-'} />
-                <StatPanel label="最終使用" value={fmtLastUsed(weapon.last_used_at)} />
+                <StatPanel label="通算塗りP" value={weapon.paint_point_total != null ? weapon.paint_point_total.toLocaleString() : '-'} />
                 <StatPanel label="現在ブキチャレパワー" value={fmtPower(weapon.weapon_power)} />
                 <StatPanel label="最大ブキチャレパワー" value={fmtPower(weapon.weapon_power_max)} />
+                <StatPanel label="最終使用日" value={fmtOfficialDate(weapon.last_used_at)} />
               </div>
             </section>
           )}
@@ -169,8 +160,8 @@ export function WeaponDetailModal({
           <section className="modal-section">
             <h3 className="modal-section-title">取得したバトル</h3>
             <div className="weapon-modal-stats-grid">
-              <StatPanel label="バトル数"  value={weapon.total.toLocaleString()} />
-              <StatPanel label="勝ち / 負け（引分）" value={`${weapon.wins} / ${losses} (${weapon.draws})`} />
+              <StatPanel label="バトル数"  value={total.toLocaleString()} />
+              <StatPanel label="勝ち / 負け（引分）" value={`${wins} / ${losses} (${draws})`} />
               <StatPanel
                 label="勝率"
                 value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '-'}
@@ -180,7 +171,7 @@ export function WeaponDetailModal({
               <StatPanel label="平均キル" value={fmtNum(stats?.avg_kill, 2)} />
               <StatPanel label="平均アシスト" value={fmtNum(stats?.avg_assist, 2)} />
               <StatPanel label="平均デス" value={fmtNum(stats?.avg_death, 2)} />
-              <StatPanel label="キルレ" value={fmtRatio(stats?.avg_kill, stats?.avg_death)} />
+              <StatPanel label="キルレ (貢献)" value={fmtKillRatioWithContrib(stats?.avg_kill, stats?.avg_assist, stats?.avg_death)} />
             </div>
           </section>
 
@@ -198,16 +189,15 @@ export function WeaponDetailModal({
                   const dec = total - draws
                   const wr  = row && dec > 0 ? row.wins / dec : null
                   return (
-                    <div key={rk} className="weapon-modal-stage-row">
-                      <span className="weapon-modal-stage-name">{ruleLabel(rk)}</span>
-                      <span className="weapon-modal-stage-count">
-                        {fmtRecord(total, wins, draws)}
-                      </span>
-                      <span
-                        className="weapon-modal-stage-rate"
-                        style={{ color: wr !== null ? winRateColor(wr) : 'var(--text-muted)' }}
-                      >{wr !== null ? `${(wr * 100).toFixed(1)}%` : '-'}</span>
-                    </div>
+                    <RecordRow
+                      key={rk}
+                      name={ruleLabel(rk)}
+                      total={total}
+                      wins={wins}
+                      draws={draws}
+                      winRate={wr}
+                      showBar
+                    />
                   )
                 })}
               </div>
@@ -226,14 +216,14 @@ export function WeaponDetailModal({
                   const dec = r.total - r.draws
                   const wr  = dec > 0 ? r.wins / dec : null
                   return (
-                    <div key={r.key} className="weapon-modal-stage-row">
-                      <span className="weapon-modal-stage-name" title={r.name}>{r.name}</span>
-                      <span className="weapon-modal-stage-count">{fmtRecord(r.total, r.wins, r.draws)}</span>
-                      <span
-                        className="weapon-modal-stage-rate"
-                        style={{ color: wr !== null ? winRateColor(wr) : 'var(--text-muted)' }}
-                      >{wr !== null ? `${(wr * 100).toFixed(1)}%` : '-'}</span>
-                    </div>
+                    <RecordRow
+                      key={r.key}
+                      name={r.name}
+                      total={r.total}
+                      wins={r.wins}
+                      draws={r.draws}
+                      winRate={wr}
+                    />
                   )
                 })}
               </div>
@@ -252,20 +242,53 @@ export function WeaponDetailModal({
             {!loading && !error && bestStages.length > 0 && (
               <div className="weapon-modal-stage-list">
                 {bestStages.map(({ row: r, winRate: wr }) => (
-                  <div key={r.key} className="weapon-modal-stage-row">
-                    <span className="weapon-modal-stage-name" title={r.name}>{r.name}</span>
-                    <span className="weapon-modal-stage-count">{fmtRecord(r.total, r.wins, r.draws)}</span>
-                    <span
-                      className="weapon-modal-stage-rate"
-                      style={{ color: winRateColor(wr) }}
-                    >{`${(wr * 100).toFixed(1)}%`}</span>
-                  </div>
+                  <RecordRow
+                    key={r.key}
+                    name={r.name}
+                    total={r.total}
+                    wins={r.wins}
+                    draws={r.draws}
+                    winRate={wr}
+                  />
                 ))}
               </div>
             )}
           </section>
         </div>
       </div>
+    </div>
+  )
+}
+
+function RecordRow({
+  name, total, wins, draws, winRate, showBar,
+}: {
+  name: string
+  total: number
+  wins: number
+  draws: number
+  winRate: number | null
+  showBar?: boolean
+}) {
+  const widthPct = winRate !== null ? Math.max(2, winRate * 100) : 0
+  return (
+    <div className={`weapon-modal-stage-row${showBar ? ' weapon-modal-stage-row--with-bar' : ''}`}>
+      <span className="weapon-modal-stage-name" title={name}>{name}</span>
+      {showBar && (
+        <div className="weapon-modal-rule-bar">
+          {winRate !== null && (
+            <div
+              className="weapon-modal-rule-bar-fill"
+              style={{ width: `${widthPct}%`, background: winRateColor(winRate) }}
+            />
+          )}
+        </div>
+      )}
+      <span className="weapon-modal-stage-count">{fmtRecord(total, wins, draws)}</span>
+      <span
+        className="weapon-modal-stage-rate"
+        style={{ color: winRate !== null ? winRateColor(winRate) : 'var(--text-muted)' }}
+      >{winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '-'}</span>
     </div>
   )
 }

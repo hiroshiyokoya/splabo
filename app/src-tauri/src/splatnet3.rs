@@ -23,6 +23,9 @@ const HASH_WEAPONS:  &str = "a654ecc80161a7ca5c38761c1d9e502d405eae764e2d343618b
 // graphql_queries.WeaponQuery（web 10.0.0-dfefd0af 以降。#674）。
 const HASH_WEAPON_RECORD: &str =
     "a329d22727dbec795dcfa1fa93804756a62542dc0a96dfb94c0f710068a2eb38";
+// ステージ図鑑の通算勝率。nintendo-app-versions splatnet3-app.json graphql_queries.StageRecordQuery。
+const HASH_STAGE_RECORD: &str =
+    "c8b31c491355b4d889306a22bd9003ac68f8ce31b2d5345017cdd30a2c8056f3";
 // MyOutfitCommonDataEquipmentsQuery（所持ギア一覧）。splabo v0.8 ギア取得 Rust 化（Phase A2）。
 // s3s utils.py の translate_rid より。Phase 0 スパイクで実機取得を実証済みの canonical hash。
 const HASH_GEAR: &str = "45a4c343d973864f7bb9e9efac404182be1d48cf2181619505e9b7cd3b56a6e8";
@@ -937,6 +940,93 @@ pub async fn fetch_and_store_weapon_records(
     Ok(count)
 }
 
+/// StageRecordQuery を GraphQL 直叩きし、stage_records に通算勝率を upsert する。
+///
+/// レスポンス: data.stageRecords.nodes[]（vsStages の alias）
+/// 各 node: name, vsStageId, stats.{winRateTw, winRateAr, winRateLf, winRateGl, winRateCl, lastPlayedTime}
+pub async fn fetch_and_store_stage_records(
+    pool: &crate::db::DbPool,
+    client: &reqwest::Client,
+    bullet_token: &str,
+    country: &str,
+    language: &str,
+) -> Result<usize, String> {
+    crate::db::ensure_stage_records_table(pool).await?;
+    let resp = graphql_request(
+        client,
+        bullet_token,
+        country,
+        language,
+        HASH_STAGE_RECORD,
+        None,
+    )
+    .await?;
+    if let Some(msg) = graphql_error_messages(&resp) {
+        return Err(format!("StageRecordQuery GraphQL エラー: {msg}"));
+    }
+
+    let nodes = resp
+        .pointer("/data/stageRecords/nodes")
+        .or_else(|| resp.pointer("/data/vsStages/nodes"))
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| {
+            let head = resp.to_string();
+            format!(
+                "StageRecordQuery レスポンスに data.stageRecords.nodes が無い。先頭: {}",
+                &head[..head.len().min(300)]
+            )
+        })?;
+
+    let mut count = 0usize;
+    for node in nodes {
+        let name = node.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        if name.is_empty() {
+            continue;
+        }
+        let vs_stage_id = node
+            .get("vsStageId")
+            .or_else(|| node.get("stageId"))
+            .and_then(|v| v.as_i64());
+        let last_played_at = parse_last_played_at(node);
+        if let Err(e) = crate::db::upsert_stage_record(
+            pool,
+            name,
+            vs_stage_id,
+            parse_win_rate(node.pointer("/stats/winRateTw")),
+            parse_win_rate(node.pointer("/stats/winRateAr")),
+            parse_win_rate(node.pointer("/stats/winRateLf")),
+            parse_win_rate(node.pointer("/stats/winRateGl")),
+            parse_win_rate(node.pointer("/stats/winRateCl")),
+            last_played_at,
+        )
+        .await
+        {
+            log::warn!("stage_records upsert スキップ ({name}): {e}");
+            continue;
+        }
+        count += 1;
+    }
+
+    log::info!("[stage_records] StageRecordQuery 取得 {count} 件");
+    Ok(count)
+}
+
+fn parse_win_rate(v: Option<&serde_json::Value>) -> Option<f64> {
+    let n = v?.as_f64()?;
+    if n > 1.5 { Some(n / 100.0) } else { Some(n) }
+}
+
+fn parse_last_played_at(node: &serde_json::Value) -> Option<i64> {
+    let v = node.pointer("/stats/lastPlayedTime")?;
+    if let Some(n) = v.as_i64() {
+        return Some(n);
+    }
+    let s = v.as_str()?;
+    chrono::DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|d| d.timestamp())
+}
+
 fn parse_last_used_at(node: &serde_json::Value) -> Option<i64> {
     let v = node.pointer("/stats/lastUsedTime")?;
     if let Some(n) = v.as_i64() {
@@ -1350,5 +1440,20 @@ mod weapon_record_hash_tests {
         let unix = serde_json::json!({ "stats": { "lastUsedTime": 1786701600 } });
         assert_eq!(parse_last_used_at(&unix), Some(1786701600));
         assert_eq!(parse_last_used_at(&serde_json::json!({ "stats": {} })), None);
+    }
+
+    #[test]
+    fn stage_record_hash_matches_nintendo_app_versions() {
+        assert_eq!(
+            HASH_STAGE_RECORD,
+            "c8b31c491355b4d889306a22bd9003ac68f8ce31b2d5345017cdd30a2c8056f3"
+        );
+    }
+
+    #[test]
+    fn parse_win_rate_accepts_ratio_or_percent() {
+        assert_eq!(parse_win_rate(Some(&serde_json::json!(0.512))), Some(0.512));
+        assert_eq!(parse_win_rate(Some(&serde_json::json!(51.2))), Some(0.512));
+        assert_eq!(parse_win_rate(None), None);
     }
 }

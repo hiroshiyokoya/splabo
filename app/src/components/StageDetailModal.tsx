@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { GroupedStatsRow } from '../types'
-import { RULE_LABELS, ruleLabel, avgKillRatio } from '../types'
-
-// Dashboard / WeaponBook / StageBook.winRateColor と同期。
-function winRateColor(rate: number): string {
-  if (rate >= 0.55) return '#34d399'
-  if (rate >= 0.45) return '#fb923c'
-  return '#f472b6'
-}
+import type { GroupedStatsRow, Filters, StageRecord } from '../types'
+import { RULE_LABELS, ruleLabel, filtersToBookDetailArgs, fmtKillRatioWithContrib, fmtOfficialWinRate } from '../types'
+import { winRateColor } from '../utils/heatmapColors'
 
 /** コンパクト戦績「12戦 7勝5敗」。引き分けは 0 でないときだけ「2分」を付ける(#449)。
  *  WeaponBook.fmtRecord / WeaponDetailModal.fmtRecord と同期。 */
 function fmtRecord(total: number, wins: number, draws: number): string {
   const losses = total - wins - draws
   return `${total}戦 ${wins}勝${losses}敗${draws > 0 ? `${draws}分` : ''}`
+}
+
+function fmtAvg(n: number | null | undefined): string {
+  if (n === null || n === undefined) return '-'
+  return n.toFixed(2)
 }
 
 /** ブキ TOP セクションの下限バトル数(勝率 TOP のブレを避ける)。 */
@@ -27,16 +26,19 @@ const WEAPON_TOP_N = 5
  *
  * - ルール別統計は `db_grouped_stats(group_by='rule', stage=<key>)` で取得。
  *   WHERE 句は `m.key` で絞られる(db.rs の filter_where 参照)ので row.key をそのまま渡せる。
+ *   FilterBar と同じ期間・モード・ルール・結果を載せ、対象ステージだけ上書きする。
  * - ブキ TOP は `db_grouped_stats(group_by='weapon', stage=<key>)` で取得し、
  *   FE 側で「勝利数 TOP」「勝率 TOP(≥ WEAPON_MIN_BATTLES)」の 2 リストに絞る。
  * - Rust 側の追加コマンドは不要。既存の `db_grouped_stats` の `stage` フィルタを利用。
  */
 export function StageDetailModal({
-  row, image, onClose,
+  row, image, official, filters, onClose,
 }: {
-  row:     GroupedStatsRow
-  image:   string | null
-  onClose: () => void
+  row:      GroupedStatsRow
+  image:    string | null
+  official: StageRecord | null
+  filters:  Filters
+  onClose:  () => void
 }) {
   const [ruleRows,   setRuleRows]   = useState<GroupedStatsRow[] | null>(null)
   const [weaponRows, setWeaponRows] = useState<GroupedStatsRow[] | null>(null)
@@ -57,9 +59,10 @@ export function StageDetailModal({
   useEffect(() => {
     setLoading(true)
     setError(null)
+    const filterArgs = filtersToBookDetailArgs(filters, { stage: row.key })
     Promise.all([
-      invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'rule',   stage: row.key }),
-      invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'weapon', stage: row.key }),
+      invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'rule',   ...filterArgs }),
+      invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'weapon', ...filterArgs }),
     ])
       .then(([rules, weapons]) => {
         setRuleRows(rules)
@@ -93,7 +96,7 @@ export function StageDetailModal({
       })
       .catch(err => setError(typeof err === 'string' ? err : String(err)))
       .finally(() => setLoading(false))
-  }, [row.key])
+  }, [row.key, filters])
 
   // ルール別は 5 ルール固定順で表示。データが無いルールは 0 で埋める。
   const ruleOrder = Object.keys(RULE_LABELS)
@@ -129,53 +132,70 @@ export function StageDetailModal({
             </div>
           </section>
 
+          {official && (
+            <section className="modal-section">
+              <h3 className="modal-section-title">公式アプリ</h3>
+              <div className="weapon-modal-stats-grid weapon-modal-stats-grid--official">
+                <StatPanel label="ナワバリバトル" value={fmtOfficialWinRate(official.win_rate_tw)} color={rateColor(official.win_rate_tw)} />
+                <StatPanel label="ガチエリア" value={fmtOfficialWinRate(official.win_rate_ar)} color={rateColor(official.win_rate_ar)} />
+                <StatPanel label="ガチヤグラ" value={fmtOfficialWinRate(official.win_rate_lf)} color={rateColor(official.win_rate_lf)} />
+                <StatPanel label="ガチホコバトル" value={fmtOfficialWinRate(official.win_rate_gl)} color={rateColor(official.win_rate_gl)} />
+                <StatPanel label="ガチアサリ" value={fmtOfficialWinRate(official.win_rate_cl)} color={rateColor(official.win_rate_cl)} />
+              </div>
+            </section>
+          )}
+
           {/* ルール別統計 */}
           <section className="modal-section">
             <h3 className="modal-section-title">ルール別統計</h3>
             {loading && <div className="loading">読み込み中...</div>}
             {!loading && error && <div className="empty">読み込み失敗: {error}</div>}
             {!loading && !error && (
-              <div className="stage-modal-rule-table-wrap">
-                <table className="stage-modal-rule-table">
-                  <thead>
-                    <tr>
-                      <th>ルール</th>
-                      <th className="num">バトル</th>
-                      <th className="num">勝率</th>
-                      <th className="num">平均K</th>
-                      <th className="num">平均A</th>
-                      <th className="num">平均D</th>
-                      <th className="num">キルレ</th>
-                      <th className="num">KO率</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ruleOrder.map(rk => {
-                      const r = ruleMap.get(rk)
-                      const total = r?.total ?? 0
-                      const dec   = r ? r.total - r.draws : 0
-                      const wr    = r && dec > 0 ? r.wins / dec : null
-                      const koR   = r && r.total > 0 ? r.knockout_win / r.total : null
-                      return (
-                        <tr key={rk} className={total === 0 ? 'stage-modal-rule-empty' : undefined}>
-                          <td>{ruleLabel(rk)}</td>
-                          <td className="num">{total}</td>
-                          <td
-                            className="num"
-                            style={{ color: wr !== null ? winRateColor(wr) : undefined }}
-                          >
-                            {wr !== null ? `${(wr * 100).toFixed(1)}%` : '-'}
-                          </td>
-                          <td className="num">{r?.avg_kill   !== null && r?.avg_kill   !== undefined ? r.avg_kill.toFixed(2)   : '-'}</td>
-                          <td className="num">{r?.avg_assist !== null && r?.avg_assist !== undefined ? r.avg_assist.toFixed(2) : '-'}</td>
-                          <td className="num">{r?.avg_death  !== null && r?.avg_death  !== undefined ? r.avg_death.toFixed(2)  : '-'}</td>
-                          <td className="num">{r ? avgKillRatio(r.avg_kill, r.avg_death) : '-'}</td>
-                          <td className="num">{koR !== null ? `${(koR * 100).toFixed(1)}%` : '-'}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+              <div className="stage-modal-rule-list">
+                <div className="stage-modal-rule-row stage-modal-rule-head">
+                  <span>ルール</span>
+                  <span />
+                  <span className="num">戦績</span>
+                  <span className="num">勝率</span>
+                  <span className="num">平均K</span>
+                  <span className="num">平均A</span>
+                  <span className="num">平均D</span>
+                  <span className="num">キルレ (貢献)</span>
+                </div>
+                {ruleOrder.map(rk => {
+                  const r = ruleMap.get(rk)
+                  const total = r?.total ?? 0
+                  const wins  = r?.wins ?? 0
+                  const draws = r?.draws ?? 0
+                  const dec   = total - draws
+                  const wr    = r && dec > 0 ? r.wins / dec : null
+                  const widthPct = wr !== null ? Math.max(2, wr * 100) : 0
+                  return (
+                    <div
+                      key={rk}
+                      className={`stage-modal-rule-row${total === 0 ? ' stage-modal-rule-row--empty' : ''}`}
+                    >
+                      <span className="weapon-modal-stage-name">{ruleLabel(rk)}</span>
+                      <div className="weapon-modal-rule-bar">
+                        {wr !== null && (
+                          <div
+                            className="weapon-modal-rule-bar-fill"
+                            style={{ width: `${widthPct}%`, background: winRateColor(wr) }}
+                          />
+                        )}
+                      </div>
+                      <span className="num stage-modal-rule-record">{fmtRecord(total, wins, draws)}</span>
+                      <span
+                        className="num stage-modal-rule-rate"
+                        style={{ color: wr !== null ? winRateColor(wr) : undefined }}
+                      >{wr !== null ? `${(wr * 100).toFixed(1)}%` : '-'}</span>
+                      <span className="num">{total > 0 ? fmtAvg(r?.avg_kill) : '-'}</span>
+                      <span className="num">{total > 0 ? fmtAvg(r?.avg_assist) : '-'}</span>
+                      <span className="num">{total > 0 ? fmtAvg(r?.avg_death) : '-'}</span>
+                      <span className="num">{total > 0 && r ? fmtKillRatioWithContrib(r.avg_kill, r.avg_assist, r.avg_death) : '-'}</span>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </section>
@@ -253,6 +273,20 @@ function WeaponRow({ row, icon, primary, primaryColor }: {
         className="stage-modal-weapon-primary"
         style={primaryColor ? { color: primaryColor } : undefined}
       >{primary}</span>
+    </div>
+  )
+}
+
+function rateColor(n: number | null | undefined): string | undefined {
+  if (n == null) return undefined
+  return winRateColor(n)
+}
+
+function StatPanel({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div className="weapon-modal-stat-panel">
+      <div className="weapon-modal-stat-label">{label}</div>
+      <div className="weapon-modal-stat-value" style={color ? { color } : undefined}>{value}</div>
     </div>
   )
 }
