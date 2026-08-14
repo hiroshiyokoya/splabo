@@ -23,6 +23,7 @@ import { CustomChartCard } from './CustomChartCard'
 import { ChartConfigModal } from './ChartConfigModal'
 import { loadCustomCharts, saveCustomCharts, generateChartId } from '../utils/customCharts'
 import type { WeaponMeta } from '../utils/scatterCategoryColors'
+import { loadSubSpImageMaps } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import { describeFilters, buildExportCaption, useStageNames } from '../utils/filterSummary'
@@ -104,6 +105,8 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
   const [refreshKey, setRefreshKey] = useState(0)
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
   const [weaponMeta, setWeaponMeta] = useState<Map<string, WeaponMeta>>(new Map())
+  const [subImages, setSubImages] = useState<Map<string, string>>(new Map())
+  const [spImages, setSpImages] = useState<Map<string, string>>(new Map())
   const [weaponSort, setWeaponSort] = useState<SortBy>('total')
   const [stageSort, setStageSort] = useState<SortBy>('total')
   const [ruleSort, setRuleSort] = useState<SortBy>('total')
@@ -207,6 +210,10 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
         sub_weapon: w.sub_weapon,
         special_weapon: w.special_weapon,
       }])))
+      loadSubSpImageMaps(list).then(({ subImages: sub, spImages: sp }) => {
+        setSubImages(sub)
+        setSpImages(sp)
+      }).catch(console.error)
     }).catch(console.error)
     invoke<string[]>('db_weapons_used').then(weapons => {
       Promise.all(
@@ -384,6 +391,8 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
                       onDelete={() => handleDelete(c.id)}
                       weaponImages={weaponImages}
                       weaponMeta={weaponMeta}
+                      subImages={subImages}
+                      spImages={spImages}
                       since={filterSince}
                       until={filterUntil}
                       filterSummary={filterSummary}

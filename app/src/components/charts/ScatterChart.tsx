@@ -25,6 +25,11 @@ export interface ScatterPoint {
    *  data URI を渡す。画像が無ければ省略(アイコンなしで名前だけ出す)。
    *  ここで画像を取りに行かないのは、ホバーのたびに invoke を飛ばさないため。 */
   iconUrl?:    string | null
+  /** 見出しの下に出すサブ／スペシャル(#641)。ブキ単位のときだけ。無い画像は省略。 */
+  subIconUrl?: string | null
+  spIconUrl?:  string | null
+  subName?:    string | null
+  spName?:     string | null
   tooltipRows: { label: string; value: string; muted?: boolean }[]
   /** 重なり判定用キー。同じ groupKey の点はツールチップで一緒に並べて表示する。
    *  バトル単位なら整数化された (x, y) 等、カテゴリ単位なら省略 (グループ化しない)。 */
@@ -162,6 +167,10 @@ type ScatterTipPayload =
       kind: 'single'
       name: string
       iconUrl?: string | null
+      subIconUrl?: string | null
+      spIconUrl?: string | null
+      subName?: string | null
+      spName?: string | null
       rows: { label: string; value: string; muted?: boolean }[]
     }
   | {
@@ -190,6 +199,10 @@ function buildScatterTipPayload(
     kind: 'single',
     name: point.name,
     iconUrl: point.iconUrl ?? null,
+    subIconUrl: point.subIconUrl ?? null,
+    spIconUrl: point.spIconUrl ?? null,
+    subName: point.subName ?? null,
+    spName: point.spName ?? null,
     rows: point.tooltipRows,
   }
 }
@@ -1772,6 +1785,16 @@ export function ScatterChart({
               {active.iconUrl && <img className="hover-tt-icon" src={active.iconUrl} alt="" />}
               {active.name}
             </div>
+            {(active.spIconUrl || active.subIconUrl) && (
+              <div className="hover-tt-kit">
+                {active.spIconUrl && (
+                  <img className="hover-tt-kit-icon hover-tt-kit-icon--sp" src={active.spIconUrl} alt="" title={active.spName ?? undefined} />
+                )}
+                {active.subIconUrl && (
+                  <img className="hover-tt-kit-icon" src={active.subIconUrl} alt="" title={active.subName ?? undefined} />
+                )}
+              </div>
+            )}
             {active.tooltipRows.map((r, i) => (
               <div key={i} className={r.muted ? 'hover-tt-row hover-tt-row--muted' : 'hover-tt-row'}>
                 {r.label}: {r.value}

@@ -17,6 +17,7 @@ import { listen } from '@tauri-apps/api/event'
 import type {
   EnvScatterStat, EnvMatrixCell, EnvMatrixMarginal, EnvMatrixStats,
   EnvStatus, EnvVersion, EnvRank, EnvFilterOption, MetricKey, GroupByKey, Season,
+  WeaponRecord,
 } from '../types'
 import { currentSeasonStart, GROUP_BY_LABELS, SCATTER_IMAGE_PX, SCATTER_IMAGE_SIZE_LABELS } from '../types'
 import type { ScatterImageSize } from '../types'
@@ -29,8 +30,10 @@ import { rateCellColor, sequentialCellColor, AXIS_MIN_TOTAL_SAMPLES } from '../u
 import { loadEnvPrefs, saveEnvPrefs, DEFAULT_ENV_PREFS } from '../utils/envPrefs'
 import {
   SCATTER_CATEGORY_COLOR_KEYS, isScatterCategoryColorKey, categoryStyleOf,
-  buildCategoryColorLegend, categoryValueForEnvStat,
+  buildCategoryColorLegend, categoryValueForEnvStat, kitIconsForWeapon,
+  type WeaponMeta,
 } from '../utils/scatterCategoryColors'
+import { loadSubSpImageMaps } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo, PanelExportNote } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import {
@@ -735,6 +738,23 @@ export function EnvAnalysis() {
   const [iconUrls, setIconUrls] = useState<Map<string, string>>(new Map())
   const iconTried = useRef<Set<string>>(new Set())
   const iconKind = scatterAxis === 'weapon' ? 'weapon' : 'stage'
+  const [weaponMeta, setWeaponMeta] = useState<Map<string, WeaponMeta>>(new Map())
+  const [subImages, setSubImages] = useState<Map<string, string>>(new Map())
+  const [spImages, setSpImages] = useState<Map<string, string>>(new Map())
+
+  useEffect(() => {
+    invoke<WeaponRecord[]>('db_list_weapons').then(list => {
+      setWeaponMeta(new Map(list.map(w => [w.name, {
+        category: w.category,
+        sub_weapon: w.sub_weapon,
+        special_weapon: w.special_weapon,
+      }])))
+      loadSubSpImageMaps(list).then(({ subImages: sub, spImages: sp }) => {
+        setSubImages(sub)
+        setSpImages(sp)
+      }).catch(console.error)
+    }).catch(console.error)
+  }, [])
 
   useEffect(() => {
     if (vizMode !== 'scatter') return
@@ -886,13 +906,14 @@ export function EnvAnalysis() {
       // 表示名(= key)はローカルマスターに無いブキだとスラッグのままで、当たらないパスを
       // 取りに行ってしまう。未ロード / 画像なしは undefined でアイコンなしになる。
       iconUrl: s.icon_name ? iconUrls.get(`${iconKind}:${s.icon_name}`) ?? null : null,
+      ...(iconKind === 'weapon' ? kitIconsForWeapon(s.icon_name, weaponMeta, subImages, spImages) : undefined),
       // 見出しにアイコン + 名前が出るので、ブキ/ステージ行は重複になる (#433)
       tooltipRows: [
         ...metricRows,
         { label: 'サンプル', value: s.n.toLocaleString() },
       ],
     }
-  }).filter(p => p.x !== null && p.y !== null), [shownScatter, xM, yM, sizeM, colorM, isCatColor, colorKey, pointColor, iconUrls, iconKind, presentCategories])
+  }).filter(p => p.x !== null && p.y !== null), [shownScatter, xM, yM, sizeM, colorM, isCatColor, colorKey, pointColor, iconUrls, iconKind, presentCategories, weaponMeta, subImages, spImages])
 
   // サイズ・色の凡例(#420)。
   // サイズは **描画された点** の値から作る(Recharts の ZAxis も描画データから

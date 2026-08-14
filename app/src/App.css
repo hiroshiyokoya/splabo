@@ -841,6 +841,23 @@ body {
   margin-right: 6px;
   border-radius: 3px;
 }
+/* 散布図チップのキット行(#641)。SP → サブ。名前は title のみ。 */
+.hover-tt-kit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -2px 0 6px;
+}
+.hover-tt-kit-icon {
+  height: 16px;
+  width: auto;
+  max-width: 24px;
+  object-fit: contain;
+}
+.hover-tt-kit-icon--sp {
+  height: 18px;
+  max-width: 28px;
+}
 .hover-tt-row { color: var(--text); }
 .hover-tt-row--muted { color: var(--text-muted); font-size: 11px; margin-top: 2px; }
 

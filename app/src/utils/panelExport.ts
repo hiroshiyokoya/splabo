@@ -489,6 +489,22 @@ body > .chart-card.chart-card--full {
   height: 18px;
   object-fit: contain;
 }
+#splabo-export-tip .hover-tt-kit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -2px 0 6px;
+}
+#splabo-export-tip .hover-tt-kit-icon {
+  height: 16px;
+  width: auto;
+  max-width: 24px;
+  object-fit: contain;
+}
+#splabo-export-tip .hover-tt-kit-icon--sp {
+  height: 18px;
+  max-width: 28px;
+}
 [data-scatter-point="true"] { cursor: pointer; }
 `
 
@@ -519,6 +535,16 @@ const HTML_EXPORT_TIP_SCRIPT = `(function () {
       ? '<img class="hover-tt-icon" src="' + esc(payload.iconUrl) + '" alt="">'
       : '';
     var out = '<div class="hover-tt-title">' + icon + esc(payload.name) + '</div>';
+    if (payload.spIconUrl || payload.subIconUrl) {
+      out += '<div class="hover-tt-kit">';
+      if (payload.spIconUrl) {
+        out += '<img class="hover-tt-kit-icon hover-tt-kit-icon--sp" src="' + esc(payload.spIconUrl) + '" alt="" title="' + esc(payload.spName) + '">';
+      }
+      if (payload.subIconUrl) {
+        out += '<img class="hover-tt-kit-icon" src="' + esc(payload.subIconUrl) + '" alt="" title="' + esc(payload.subName) + '">';
+      }
+      out += '</div>';
+    }
     (payload.rows || []).forEach(function (r) {
       var cls = r.muted ? 'hover-tt-row hover-tt-row--muted' : 'hover-tt-row';
       out += '<div class="' + cls + '">' + esc(r.label) + ': ' + esc(r.value) + '</div>';

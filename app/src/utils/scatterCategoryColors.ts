@@ -16,6 +16,32 @@ export type WeaponMeta = {
   special_weapon: string | null
 }
 
+/** 散布図ツールチップのキット行(#641)。呼び出し側で事前ロードした data URI。 */
+export type ScatterKitIcons = {
+  subIconUrl?: string | null
+  spIconUrl?:  string | null
+  subName?:    string | null
+  spName?:     string | null
+}
+
+/** ブキ名からサブ／スペシャル画像を引く。画像がどちらも無ければ undefined。 */
+export function kitIconsForWeapon(
+  weaponName: string | null | undefined,
+  meta?: Map<string, WeaponMeta>,
+  subImages?: Map<string, string>,
+  spImages?: Map<string, string>,
+): ScatterKitIcons | undefined {
+  if (!weaponName || !meta) return undefined
+  const m = meta.get(weaponName)
+  if (!m) return undefined
+  const subName = m.sub_weapon
+  const spName  = m.special_weapon
+  const subIconUrl = subName ? subImages?.get(subName) ?? null : null
+  const spIconUrl  = spName  ? spImages?.get(spName)  ?? null : null
+  if (!subIconUrl && !spIconUrl) return undefined
+  return { subIconUrl, spIconUrl, subName, spName }
+}
+
 export const UNCLASSIFIED_CATEGORY = '(未分類)'
 export const UNKNOWN_WEAPON_PART   = '(不明)'
 
