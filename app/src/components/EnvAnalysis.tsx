@@ -264,12 +264,15 @@ function splatoonSeasonStart(isoDate: string): string {
   return `${y}-12-01`
 }
 
-type ImportSinceKind = 'all' | 'current_season' | '1y' | 'custom'
+/** 全期間は集計が重く実用にならないので、取得の既定は 2025-01-01 以降。 */
+const DEFAULT_ENV_IMPORT_SINCE = '2025-01-01'
+
+type ImportSinceKind = 'all' | 'current_season' | 'from_2025' | 'custom'
 
 function resolveImportSince(kind: ImportSinceKind, custom: string): string | null {
   if (kind === 'all') return null
   if (kind === 'current_season') return splatoonSeasonStart(utcToday())
-  if (kind === '1y') return addDays(utcYesterday(), -365)
+  if (kind === 'from_2025') return DEFAULT_ENV_IMPORT_SINCE
   return custom || null
 }
 
@@ -285,7 +288,7 @@ function ImportSincePicker({
   const kinds: { key: ImportSinceKind; label: string }[] = [
     { key: 'all', label: '全期間' },
     { key: 'current_season', label: '今シーズン' },
-    { key: '1y', label: '1年' },
+    { key: 'from_2025', label: '2025.1.1〜' },
     { key: 'custom', label: 'カスタム' },
   ]
   return (
@@ -352,8 +355,8 @@ export function EnvAnalysis() {
   const [importing, setImporting]     = useState(false)
   const [progress, setProgress]       = useState<ImportProgress | null>(null)
   const [error, setError]             = useState<string | null>(null)
-  const [importSinceKind, setImportSinceKind] = useState<ImportSinceKind>('1y')
-  const [importSinceCustom, setImportSinceCustom] = useState(() => addDays(utcYesterday(), -365))
+  const [importSinceKind, setImportSinceKind] = useState<ImportSinceKind>('from_2025')
+  const [importSinceCustom, setImportSinceCustom] = useState(DEFAULT_ENV_IMPORT_SINCE)
   const [loading, setLoading]         = useState(false)   // 集計クエリ実行中
   // 連続フィルタ変更で古い結果が後から来るのを防ぐ(#511)
   const loadSeqRef = useRef(0)
