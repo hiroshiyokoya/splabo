@@ -485,25 +485,27 @@ body > .chart-card.chart-card--full {
   margin-bottom: 4px;
 }
 #splabo-export-tip .hover-tt-icon {
-  width: 18px;
-  height: 18px;
+  height: 36px;
+  width: auto;
+  max-width: 72px;
   object-fit: contain;
 }
 #splabo-export-tip .hover-tt-kit {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: -2px 0 6px;
+  margin: 2px 0 6px;
+  padding-left: 42px;
 }
 #splabo-export-tip .hover-tt-kit-icon {
-  height: 16px;
+  height: 14px;
   width: auto;
-  max-width: 24px;
+  max-width: 22px;
   object-fit: contain;
 }
 #splabo-export-tip .hover-tt-kit-icon--sp {
-  height: 18px;
-  max-width: 28px;
+  height: 16px;
+  max-width: 24px;
 }
 [data-scatter-point="true"] { cursor: pointer; }
 `
