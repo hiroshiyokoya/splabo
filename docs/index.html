@@ -194,8 +194,12 @@
       border: none;
       border-radius: 0;
     }
+    .feature-stack .feature-card:first-child {
+      padding-bottom: 0.7rem;
+    }
     .feature-stack .feature-card + .feature-card {
       border-top: 1px solid var(--border);
+      padding-top: 0.7rem;
     }
     .feature-card {
       background: var(--surface2);
@@ -396,6 +400,7 @@
           <h3>バトル・ダッシュボード</h3>
           <ul>
             <li>バトル履歴を一覧（検索・フィルター・ソート）。詳細で編成・ギア・ランク変動を確認</li>
+            <li>期間・ロビー・ルール・結果で絞り込める</li>
             <li>勝率・キル/デス・キルレシオなど主要指標を、ブキ・ステージ・ルール・モード別に集計</li>
             <li>カスタムグラフ: 線・棒・散布図・ヒートマップ・カレンダー。散布図はブキ画像にもできる</li>
             <li>パネルは PNG / HTML で保存可能</li>
