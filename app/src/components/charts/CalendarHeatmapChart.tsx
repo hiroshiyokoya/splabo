@@ -14,7 +14,7 @@ import {
  * - 横軸: 週(左が古い)
  * - メトリクスのグループで色スケールを自動切替:
  *   - count   → 相対 5 段階 (緑系)
- *   - rate    → 固定 0–100% divergent (赤 ↔ 白 ↔ 青)
+ *   - rate    → 固定 0–100% divergent (くすみ珊瑚 → くすみ黄緑 → くすみティール)
  *   - average → 相対 5 段階 (アクセント色)
  * - 率・平均系はサンプル数 < minSampleSize でグレーアウト
  * - データが無い日は空セル (薄いグレー)
@@ -42,7 +42,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const DOW_LABELS = ['月', '火', '水', '木', '金', '土', '日']
 
 /** カラーバー (凡例) を描画するための、メトリクスグループごとの色順序。
- *  count / average は 5 段階 (薄い→濃い)、rate は 5 段階 (赤→青) divergent。 */
+ *  count / average は 5 段階 (薄い→濃い)、rate は 11 段階 (ピンク→くすみ黄緑→青) divergent。 */
 const COUNT_COLORS  = ['var(--cell-count-c1)', 'var(--cell-count-c2)', 'var(--cell-count-c3)', 'var(--cell-count-c4)', 'var(--cell-count-c5)']
 // 平均系(シーケンシャル)の 7 段は utils/heatmapColors の SEQ_LEGEND_COLORS を共用する(#351)
 // 勝率(発散)の 7 段は utils/heatmapColors の RATE_LEGEND_COLORS を共用する(#351)

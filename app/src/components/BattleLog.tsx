@@ -8,15 +8,9 @@ import {
   fmtKillWithAssist, fmtKillRatioWithContrib,
 } from '../types'
 import { ABILITY_LABELS, abilityKeyFromUrl, colorToHex, loadAbilityImages } from '../utils/abilities'
+import { winRateColor } from '../utils/heatmapColors'
 
 const PAGE_SIZE = 50
-
-// Dashboard.winRateColor と同期。緑/赤は勝/負と衝突するため emerald/orange/pink。
-function winRateColor(rate: number): string {
-  if (rate >= 0.55) return '#34d399'
-  if (rate >= 0.45) return '#fb923c'
-  return '#f472b6'
-}
 
 /** キルレ表示。D=0 のときは ∞、それ以外は K/D を小数 2 桁で。 */
 function killRatio(kill: number, death: number): string {

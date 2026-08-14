@@ -26,25 +26,17 @@
 
   /* ヒートマップ用のセル色。
      sequential は「ほぼ白 → accent (ライム)」、
-     divergent (勝率) は「赤 ← 中立 → 青」の 7 段階（#351）。 */
+     divergent (勝率) はくすみ珊瑚 → くすみ黄緑 → くすみティール の 11 段階。 */
 
   /* 欠損は「値」ではないので色スケール上の色を持たせず、斜線ハッチで示す（#351）。
-     2 種類とも「中立色（--cell-r6）と背景色」の 2 色だけで作り、地と線を入れ替えて
-     区別する。欠損に固有の色を増やさないので、ヒートマップ全体で統一感が出る（#383）。
-       - データなし  : ほぼ透明の地に中立色の線（線だけ・控えめ）
-       - サンプル不足: 中立色の地に背景色の線（面で塗られる・存在感がある）
+       - データなし  : ほぼ透明の地にハッチ用グレーの線（線だけ・控えめ）
+       - サンプル不足: くすみ黄緑とハッチ用グレーの中間（明るさ・彩度）の地に背景色の線
      「データはあるが足りない」方が「そもそも無い」より地がはっきりしている、という順序づけ。
-     以前はサンプル不足を「中間グレー地＋ほぼ黒の線」で強調していたが、明るいテーマでは
-     実データより濃くなってチャート内で最も悪目立ちしていたため反転させた（#383）。
-     地は divergent の中立色なので、sequential の最も淡い数段を除けばどの実データより淡く、
-     チャート内で最も濃い要素にはならない。 */
+     サンプル不足の地は r6（50% 勝率）より明るく低彩度なので、引き分け帯とは別物に見える。 */
   --cell-empty:       color-mix(in srgb, var(--text) 6%, transparent);  /* データなしの地 */
-  /* データなしの線。--text-muted は 50%（中立）より濃く、欠損が実データより目立つ側に
-     倒れていたため中立色に揃えた（#383）。 */
-  --cell-empty-line:  var(--cell-r6);
-  /* サンプル不足は divergent の中立色（最も淡い段）を地にする。色スケール上の
-     どの実データよりも濃くならないため、明暗どちらのテーマでも悪目立ちしない。 */
-  --cell-sparse-bg:   var(--cell-r6);
+  --cell-hatch:       #d0d3d8;
+  --cell-empty-line:  var(--cell-hatch);
+  --cell-sparse-bg:   #caccb4;  /* ハッチ灰と r6 くすみ黄緑の OKLCH 中間 */
   --cell-sparse-line: var(--bg);
   /* 勝数・平均系 sequential のベース色（#351）。
      棒グラフの勝敗色を流用し、意味で色を割り当てる（割り当ては utils/heatmapColors.tsx）:
@@ -56,7 +48,7 @@
      同じ向きに読める。テーマ別の差し替えは不要。 */
   --seq-good:      #22c55e;  /* = --win */
   --seq-bad:       #ef4444;  /* = --lose */
-  --seq-neutral:   #fb923c;  /* = 勝率グラフの中間色 */
+  --seq-neutral:   #fb923c;  /* 量の中間。勝率の中央色とは別 */
   /* カウント系 (バトル数): 低カウント側は白寄り → 高カウント側はエメラルドグリーンへグラデ。
      カレンダー専用の accent 変数で棒グラフや他 UI には影響なし。 */
   --cell-count-accent: #10b981;
@@ -66,26 +58,20 @@
   --cell-count-c3:     color-mix(in srgb, var(--cell-count-accent) 58%, white);
   --cell-count-c4:     color-mix(in srgb, var(--cell-count-accent) 80%, white);
   --cell-count-c5:     var(--cell-count-accent);
-  /* 率系 (勝率) divergent: 濃いピンク ← 淡い中立 → 濃い青 の 11 段階（#351）。
-     勝率だけ 2 色相を使うぶん段を細かく取れるので、7 段ではなく 11 段（各アーム 5 段 + 中央）。
-     「薄い＝中立 / 濃い＝極端」の濃淡モデル。中央は無彩色なので、明るくても
-     「色としては何も言っていない」＝中立として読める。
-     ダッシュボードの勝率グラフの色（WIN_RATE_LO #f472b6 / WIN_RATE_HI #38bdf8）を
-     途中の段に含めつつ、極はさらに濃くして変化の幅を出している。
-     白黒方向へ振るので背景に依存せず、ダーク・ライトとも同じ向きで読める
-     （dark 2.2 → 11.7(中央) → 2.3 ／ light 7.3 → 1.4(中央) → 7.0）。 */
-  --cell-r1:        #9d174d;  /* 〜9%   濃いピンク・極 */
-  --cell-r2:        #db2777;  /* 9-18% */
-  --cell-r3:        #f472b6;  /* 18-27% 勝率グラフの低勝率と同色 */
-  --cell-r4:        #f68fc5;  /* 27-36% */
-  --cell-r5:        #f9a8d4;  /* 36-45% */
-  /* 45-55% 中立（無彩色）。divergent の中で最も淡い段であり、サンプル不足の地も兼ねる（#383）。 */
-  --cell-r6:        #d0d3d8;
-  --cell-r7:        #7dd3fc;  /* 55-64% */
-  --cell-r8:        #57c8fa;  /* 64-73% */
-  --cell-r9:        #38bdf8;  /* 73-82% 勝率グラフの高勝率と同色 */
-  --cell-r10:       #0284c7;  /* 82-91% */
-  --cell-r11:       #075985;  /* 91%〜  濃い青・極 */
+  /* 率系 (勝率) divergent: くすみ珊瑚 → くすみ黄緑 → くすみティール。
+     色相幅を短くし、中央へ明るさを上げ・彩度を落とす。
+     r1 / r6 / r11 が文字・棒グラフと同じ。 */
+  --cell-r1:        #f6927d;  /* 〜9%   = WIN_RATE_LO */
+  --cell-r2:        #f09b75;
+  --cell-r3:        #e7a674;
+  --cell-r4:        #deaf79;
+  --cell-r5:        #d3b883;
+  --cell-r6:        #c2c4a2;  /* 45-55% = WIN_RATE_MID */
+  --cell-r7:        #a6c69e;
+  --cell-r8:        #96c7a2;
+  --cell-r9:        #82c7a9;
+  --cell-r10:       #6ec7b3;
+  --cell-r11:       #59c5bf;  /* 91%〜  = WIN_RATE_HI */
 }
 
 /* カレンダーセルのツールチップ */
@@ -1085,29 +1071,6 @@ body {
 }
 .book-search:focus { outline: none; border-color: var(--accent); }
 
-.book-note {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin: 0 0 12px;
-  padding: 8px 10px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-.book-note__badge {
-  flex: none;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-size: 11px;
-  font-weight: 700;
-}
-
 /* .book--fill 内では flex:1 で残り高さを埋め、縦横ともこの中でスクロールする。
    .book--fill を持たない文脈（モーダル等）では flex は効かず従来どおり横スクロールのみ。 */
 .book-table-wrap { overflow: auto; flex: 1 1 auto; min-height: 0; }
@@ -1633,7 +1596,7 @@ body {
 
 .weapon-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 10px;
 }
 .weapon-card {
@@ -1717,17 +1680,49 @@ body {
 .weapon-card--clickable:hover { border-color: var(--accent-hover); }
 .weapon-card--clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* ブキカード内の 2 列ミニ統計（左: 公式統計、右: 平均統計） */
+/* ブキカード内の 2 列ミニ統計 */
 .weapon-card-stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px 10px;
   width: 100%;
   margin-top: 4px;
+}
+.weapon-card-local {
+  width: 100%;
+  margin-top: 4px;
   padding-top: 4px;
   border-top: 1px solid var(--border);
 }
-.weapon-card-stats-col { display: flex; flex-direction: column; gap: 1px; }
+.weapon-card-official-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px 6px;
+  width: 100%;
+  margin-top: 4px;
+}
+.weapon-card-official-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
+}
+.weapon-card-official-label {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.weapon-card-official-value {
+  font-weight: 600;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 /* ミニ統計行のフォントは .stage-card-stat-row と統一（11px・値 600・#449）。 */
 .weapon-card-mini {
   display: flex;
@@ -1735,6 +1730,8 @@ body {
   align-items: baseline;
   font-size: 11px;
   line-height: 1.3;
+  gap: 6px;
+  white-space: nowrap;
 }
 .weapon-card-mini-label { color: var(--text-muted); }
 .weapon-card-mini-value { font-weight: 600; color: var(--text); }
@@ -1797,6 +1794,7 @@ body {
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
 }
+.weapon-modal-stats-grid--official { grid-template-columns: repeat(3, 1fr); }
 .weapon-modal-stat-panel {
   background: var(--surface2);
   border: 1px solid var(--border);
@@ -1809,6 +1807,7 @@ body {
 
 @media (max-width: 520px) {
   .weapon-modal-stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .weapon-modal-stats-grid--official { grid-template-columns: repeat(3, 1fr); }
 }
 
 .weapon-modal-stage-list { display: flex; flex-direction: column; gap: 4px; }
@@ -1822,29 +1821,27 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .weapon-modal-stage-row:last-child { border-bottom: none; }
-.weapon-modal-stage-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 戦数＋勝敗のコンパクト表記。フォントは .stage-modal-weapon-count と統一（12px・#449）。 */
-.weapon-modal-stage-count { color: var(--text-muted); font-size: 12px; min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; }
-.weapon-modal-stage-rate { font-weight: 700; min-width: 56px; text-align: right; }
-
-.weapon-modal-rule-list { display: flex; flex-direction: column; gap: 6px; }
-.weapon-modal-rule-row {
-  display: grid;
-  grid-template-columns: 96px 1fr 100px;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
+.weapon-modal-stage-row--with-bar {
+  /* 戦績は「178戦 91勝82敗5分」まで1行。余りを横棒に渡す。 */
+  grid-template-columns: 7.5em minmax(40px, 1fr) 12em 3.6em;
 }
-.weapon-modal-rule-name { color: var(--text); }
+.weapon-modal-stage-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 戦数＋勝敗のコンパクト表記。フォントは .stage-modal-weapon-count と統一（12px・#449）。 */
+.weapon-modal-stage-count {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.weapon-modal-stage-rate { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 .weapon-modal-rule-bar {
   height: 10px;
   background: var(--surface2);
   border-radius: 5px;
   overflow: hidden;
 }
-.weapon-modal-rule-bar-fill { height: 100%; border-radius: 5px; transition: width 0.2s; }
-.weapon-modal-rule-value { text-align: right; font-weight: 600; }
-.weapon-modal-rule-count { color: var(--text-muted); font-weight: 400; font-size: 11px; }
+.weapon-modal-rule-bar-fill { height: 100%; border-radius: 5px; }
 
 /* ── Stage Book ── */
 /* 上限幅は付けない(#560・.battle-log と同じ理由)。 */
@@ -1991,28 +1988,28 @@ body {
   background: var(--surface2);
 }
 
-.stage-modal-rule-table-wrap { overflow-x: auto; }
-.stage-modal-rule-table {
-  width: 100%;
-  border-collapse: collapse;
+.stage-modal-rule-list { display: flex; flex-direction: column; }
+.stage-modal-rule-row {
+  display: grid;
+  grid-template-columns: 7em minmax(48px, 1fr) 12em 3.6em 3.2em 3.2em 3.2em 6.4em;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
 }
-.stage-modal-rule-table th,
-.stage-modal-rule-table td {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-}
-.stage-modal-rule-table th {
+.stage-modal-rule-row:last-child { border-bottom: none; }
+.stage-modal-rule-head {
   color: var(--text-muted);
   font-weight: 500;
   font-size: 11px;
   letter-spacing: 0.04em;
 }
-.stage-modal-rule-table td.num,
-.stage-modal-rule-table th.num { text-align: right; }
-.stage-modal-rule-empty td { color: var(--text-muted); }
+.stage-modal-rule-row .num { text-align: right; }
+.stage-modal-rule-row--empty { color: var(--text-muted); }
+.stage-modal-rule-record { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.stage-modal-rule-rate { font-weight: 700; }
 
 .stage-modal-weapon-cols {
   display: grid;
@@ -2062,9 +2059,9 @@ body {
 }
 .stage-modal-weapon-icon { width: 100%; height: 100%; object-fit: contain; }
 .stage-modal-weapon-icon--placeholder { background: var(--surface2); }
-/* 名前の太さは .weapon-modal-stage-name と統一（500・#449）。 */
+/* 名前の太さは .weapon-modal-stage-name と統一。 */
 .stage-modal-weapon-name {
-  font-weight: 500;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2073,9 +2070,10 @@ body {
 .stage-modal-weapon-count {
   color: var(--text-muted);
   font-size: 12px;
-  min-width: 44px;
+  min-width: 12em;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .stage-modal-weapon-primary {
   font-weight: 700;

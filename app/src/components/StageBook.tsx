@@ -1,23 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import type { GroupedStatsRow, BookView, Filters } from '../types'
-import { avgKillRatio, filtersToBookArgs } from '../types'
+import type { GroupedStatsRow, BookView, Filters, StageRecord } from '../types'
+import { avgKillRatio, filtersToBookArgs, fmtOfficialWinRate } from '../types'
 import { StageDetailModal } from './StageDetailModal'
 import { ViewToggle, BOOK_VIEWS } from './ViewToggle'
 import { SortHeader } from './SortHeader'
 import { loadViewPrefs, saveViewPrefs } from '../utils/viewPrefs'
-
-// Dashboard / WeaponBook.winRateColor と同期。
-function winRateColor(rate: number): string {
-  if (rate >= 0.55) return '#34d399'
-  if (rate >= 0.45) return '#fb923c'
-  return '#f472b6'
-}
+import { winRateColor } from '../utils/heatmapColors'
 
 /** ステージタブのソートキー。 */
 type SortKey =
   | 'total' | 'wins' | 'loses' | 'draws'
-  | 'win_rate' | 'avg_kill' | 'avg_assist' | 'avg_death' | 'kd' | 'knockout_rate' | 'avg_inked' | 'name'
+  | 'win_rate' | 'avg_kill' | 'avg_assist' | 'avg_death' | 'kd' | 'contrib_kd' | 'avg_inked' | 'name'
 
 const SORT_LABELS: Record<SortKey, string> = {
   total:          'バトル数',
@@ -29,15 +23,14 @@ const SORT_LABELS: Record<SortKey, string> = {
   avg_assist:     '平均A',
   avg_death:      '平均D',
   kd:             'キルレ',
-  knockout_rate:  'KO 率',
+  contrib_kd:     '貢献キルレ',
   avg_inked:      '平均塗り',
   name:           '名前',
 }
 
-// 並びはバトル一覧と同じ K → A → D(#449)。平均塗りはブキタブと同様に含める(#635)。
 const SORT_KEYS: SortKey[] = [
   'total', 'wins', 'loses', 'draws',
-  'win_rate', 'avg_kill', 'avg_assist', 'avg_death', 'kd', 'knockout_rate', 'avg_inked', 'name',
+  'win_rate', 'avg_kill', 'avg_assist', 'avg_death', 'kd', 'contrib_kd', 'avg_inked', 'name',
 ]
 
 /** K/D = 平均K ÷ 平均D。デス 0 は上位(Infinity)、データ無しは null。 */
@@ -45,6 +38,12 @@ function kdOf(r: GroupedStatsRow): number | null {
   if (r.avg_kill === null || r.avg_death === null) return null
   if (r.avg_death === 0) return r.avg_kill > 0 ? Number.POSITIVE_INFINITY : null
   return r.avg_kill / r.avg_death
+}
+
+function contribKdOf(r: GroupedStatsRow): number | null {
+  if (r.avg_kill === null || r.avg_assist === null || r.avg_death === null) return null
+  if (r.avg_death === 0) return (r.avg_kill + r.avg_assist) > 0 ? Number.POSITIVE_INFINITY : null
+  return (r.avg_kill + r.avg_assist) / r.avg_death
 }
 
 /** compareRows が「昇順」で並べるキー(それ以外は降順)。一覧ビューの矢印表示に使う。 */
@@ -69,6 +68,11 @@ function compareRows(a: GroupedStatsRow, b: GroupedStatsRow, sort: SortKey): num
       const bv = kdOf(b) ?? Number.NEGATIVE_INFINITY
       return bv - av
     }
+    case 'contrib_kd': {
+      const av = contribKdOf(a) ?? Number.NEGATIVE_INFINITY
+      const bv = contribKdOf(b) ?? Number.NEGATIVE_INFINITY
+      return bv - av
+    }
     case 'avg_kill': {
       const av = a.avg_kill ?? -1
       const bv = b.avg_kill ?? -1
@@ -86,11 +90,6 @@ function compareRows(a: GroupedStatsRow, b: GroupedStatsRow, sort: SortKey): num
       const bv = b.avg_death ?? Number.POSITIVE_INFINITY
       return av - bv
     }
-    case 'knockout_rate': {
-      const ar = a.total > 0 ? a.knockout_win / a.total : 0
-      const br = b.total > 0 ? b.knockout_win / b.total : 0
-      return br - ar
-    }
     case 'avg_inked': {
       const av = a.avg_inked ?? -1
       const bv = b.avg_inked ?? -1
@@ -104,6 +103,7 @@ function compareRows(a: GroupedStatsRow, b: GroupedStatsRow, sort: SortKey): num
 export function StageBook({ filters }: { filters: Filters }) {
   const [rows,        setRows]        = useState<GroupedStatsRow[]>([])
   const [stageImages, setStageImages] = useState<Map<string, string>>(new Map())
+  const [officialByName, setOfficialByName] = useState<Map<string, StageRecord>>(new Map())
   const [loading,     setLoading]     = useState(true)
   const [sort,        setSort]        = useState<SortKey>('total')
   const [selected,    setSelected]    = useState<GroupedStatsRow | null>(null)
@@ -146,6 +146,19 @@ export function StageBook({ filters }: { filters: Filters }) {
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [filters])
+
+  useEffect(() => {
+    invoke<StageRecord[]>('db_list_stage_records')
+      .then(list => setOfficialByName(new Map(list.map(r => [r.stage_id, r]))))
+      .catch(console.error)
+  }, [])
+
+  useEffect(() => {
+    setSelected(prev => {
+      if (!prev) return prev
+      return rows.find(r => r.key === prev.key) ?? null
+    })
+  }, [rows])
 
   // 一覧ビューの名前検索(パネルには出さない)。
   const filtered = useMemo(() => {
@@ -219,6 +232,7 @@ export function StageBook({ filters }: { filters: Filters }) {
               key={r.key}
               row={r}
               image={stageImages.get(r.name) ?? null}
+              official={officialByName.get(r.name) ?? null}
               onClick={() => setSelected(r)}
             />
           ))}
@@ -229,6 +243,8 @@ export function StageBook({ filters }: { filters: Filters }) {
         <StageDetailModal
           row={selected}
           image={stageImages.get(selected.name) ?? null}
+          official={officialByName.get(selected.name) ?? null}
+          filters={filters}
           onClose={() => setSelected(null)}
         />
       )}
@@ -261,9 +277,9 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
             <SortHeader label="平均K"    sortKey="avg_kill"      activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均A"    sortKey="avg_assist"    activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label="平均D"    sortKey="avg_death"     activeKey={sort} ascending={ascending} onSort={onSort} />
-            <SortHeader label="キルレ"    sortKey="kd"            activeKey={sort} ascending={ascending} onSort={onSort} />
-            <SortHeader label="KO率"     sortKey="knockout_rate" activeKey={sort} ascending={ascending} onSort={onSort} />
-            <SortHeader label="平均塗り" sortKey="avg_inked"     activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="キルレ"     sortKey="kd"            activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="貢献キルレ" sortKey="contrib_kd"    activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label="平均塗り"  sortKey="avg_inked"     activeKey={sort} ascending={ascending} onSort={onSort} />
           </tr>
         </thead>
         <tbody>
@@ -271,7 +287,6 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
             const decisive = r.total - r.draws
             const winRate  = decisive > 0 ? r.wins / decisive : null
             const loses    = r.total - r.wins - r.draws
-            const koWin    = r.total > 0 ? r.knockout_win / r.total : 0
             return (
               <tr key={r.key} className="book-tr clickable-row" onClick={() => onSelect(r)}>
                 <td className="book-td book-td--left">{r.name}</td>
@@ -286,7 +301,10 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
                 <td className="book-td">{r.avg_assist !== null ? r.avg_assist.toFixed(2) : '-'}</td>
                 <td className="book-td">{r.avg_death  !== null ? r.avg_death.toFixed(2)  : '-'}</td>
                 <td className="book-td">{avgKillRatio(r.avg_kill, r.avg_death)}</td>
-                <td className="book-td">{(koWin * 100).toFixed(1)}%</td>
+                <td className="book-td">{avgKillRatio(
+                  r.avg_kill != null && r.avg_assist != null ? r.avg_kill + r.avg_assist : null,
+                  r.avg_death,
+                )}</td>
                 <td className="book-td">{r.avg_inked !== null ? r.avg_inked.toFixed(0) : '-'}</td>
               </tr>
             )
@@ -297,17 +315,16 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
   )
 }
 
-function StageCard({ row, image, onClick }: {
-  row:     GroupedStatsRow
-  image:   string | null
-  onClick: () => void
+function StageCard({ row, image, official, onClick }: {
+  row:      GroupedStatsRow
+  image:    string | null
+  official: StageRecord | null
+  onClick:  () => void
 }) {
   const decisive = row.total - row.draws
   const winRate  = decisive > 0 ? row.wins / decisive : null
   const loses    = row.total - row.wins - row.draws
-
-  const koWinRate  = row.total > 0 ? row.knockout_win  / row.total : 0
-  const koLoseRate = row.total > 0 ? row.knockout_lose / row.total : 0
+  const hasOfficial = official != null
 
   return (
     <div
@@ -325,6 +342,32 @@ function StageCard({ row, image, onClick }: {
       </div>
       <div className="stage-card-name" title={row.name}>{row.name}</div>
 
+      {hasOfficial && (
+        <div className="weapon-card-official-grid">
+          <div className="weapon-card-official-cell">
+            <span className="weapon-card-official-label">ナワバリ</span>
+            <span className="weapon-card-official-value" style={official.win_rate_tw != null ? { color: winRateColor(official.win_rate_tw) } : undefined}>{fmtOfficialWinRate(official.win_rate_tw)}</span>
+          </div>
+          <div className="weapon-card-official-cell">
+            <span className="weapon-card-official-label">エリア</span>
+            <span className="weapon-card-official-value" style={official.win_rate_ar != null ? { color: winRateColor(official.win_rate_ar) } : undefined}>{fmtOfficialWinRate(official.win_rate_ar)}</span>
+          </div>
+          <div className="weapon-card-official-cell">
+            <span className="weapon-card-official-label">ヤグラ</span>
+            <span className="weapon-card-official-value" style={official.win_rate_lf != null ? { color: winRateColor(official.win_rate_lf) } : undefined}>{fmtOfficialWinRate(official.win_rate_lf)}</span>
+          </div>
+          <div className="weapon-card-official-cell">
+            <span className="weapon-card-official-label">ホコ</span>
+            <span className="weapon-card-official-value" style={official.win_rate_gl != null ? { color: winRateColor(official.win_rate_gl) } : undefined}>{fmtOfficialWinRate(official.win_rate_gl)}</span>
+          </div>
+          <div className="weapon-card-official-cell">
+            <span className="weapon-card-official-label">アサリ</span>
+            <span className="weapon-card-official-value" style={official.win_rate_cl != null ? { color: winRateColor(official.win_rate_cl) } : undefined}>{fmtOfficialWinRate(official.win_rate_cl)}</span>
+          </div>
+        </div>
+      )}
+
+      <div className={hasOfficial ? 'weapon-card-local' : undefined}>
       <div className="stage-card-stats">
         <div className="stage-card-stat-row">
           <span className="stage-card-stat-label">バトル数</span>
@@ -370,15 +413,12 @@ function StageCard({ row, image, onClick }: {
           </span>
         </div>
         <div className="stage-card-stat-row">
-          <span className="stage-card-stat-label">KO 率</span>
+          <span className="stage-card-stat-label">貢献キルレ</span>
           <span className="stage-card-stat-value">
-            {`${(koWinRate * 100).toFixed(1)}%`}
-          </span>
-        </div>
-        <div className="stage-card-stat-row">
-          <span className="stage-card-stat-label">被 KO 率</span>
-          <span className="stage-card-stat-value">
-            {`${(koLoseRate * 100).toFixed(1)}%`}
+            {avgKillRatio(
+              row.avg_kill != null && row.avg_assist != null ? row.avg_kill + row.avg_assist : null,
+              row.avg_death,
+            )}
           </span>
         </div>
         <div className="stage-card-stat-row">
@@ -387,6 +427,7 @@ function StageCard({ row, image, onClick }: {
             {row.avg_inked !== null ? row.avg_inked.toFixed(0) : '-'}
           </span>
         </div>
+      </div>
       </div>
     </div>
   )

@@ -5,13 +5,11 @@ import {
 import type { GroupedStatsRow } from '../../types'
 import { categoryTick } from './CategoryTick'
 import { HoverTooltip } from './HoverTooltip'
+import { WIN_RATE_HI, WIN_RATE_LO, WIN_RATE_MID } from '../../utils/heatmapColors'
 
 const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
 const COLOR_DRAW = '#9ca3af'
-const WIN_RATE_HI  = '#38bdf8'   // 勝率55%以上は青系（勝数の緑と区別しやすく）
-const WIN_RATE_MID = '#fb923c'
-const WIN_RATE_LO  = '#f472b6'
 
 function winRateLevel(rate: number): 'hi' | 'mid' | 'lo' {
   if (rate >= 0.55) return 'hi'

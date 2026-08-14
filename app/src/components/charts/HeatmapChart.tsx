@@ -4,7 +4,7 @@ import { METRIC_LABELS, getMetric2D, formatMetric, metricGroup, winLoseBreakdown
 import {
   rateCellColor, RATE_LEGEND_COLORS, sequentialCellColor, seqLegendColors,
   integerRange, SparseHatchPattern, EmptyHatchPattern, hatchFill,
-  weightedProjection, sumBy, axisLabelColor, AXIS_MIN_TOTAL_SAMPLES,
+  weightedProjection, sumBy, axisLabelColor, axisLabelEndColor, AXIS_MIN_TOTAL_SAMPLES,
 } from '../../utils/heatmapColors'
 import { WeaponKitTipBody, weaponKitTipStyle, type WeaponKitTipData } from './WeaponKitTip'
 
@@ -18,9 +18,8 @@ import { WeaponKitTipBody, weaponKitTipStyle, type WeaponKitTipData } from './We
  * - サンプル不足 (率・平均で N 未満) はグレーアウト
  * - 0 サンプルセルは薄いグレー
  * - X / Y の表示順は バトル数合計の多い順
- * - X / Y の軸ラベルは、その軸に射影した値でセルと同じ色スケールに従って色付けする
- *   (#409。環境分析の Heatmap.tsx = #405 と揃えた挙動)。射影はその軸の
- *   **全セル**(サンプル不足セルも含む)から算出する。詳細は #411 / heatmapColors。
+ * - X / Y の軸ラベルは、その軸に射影した値の強さで色を付ける。
+ *   色相はスケールの端（勝率なら珊瑚／ティール）だけを使い、中間段は載せない。
  */
 
 const CELL_W  = 32
@@ -44,9 +43,7 @@ function nawabariLast(keys: string[]): string[] {
 type Group = ReturnType<typeof metricGroup>
 
 /**
- * 値 → 色スケール上の色(欠損・サンプル不足の判定は含まない)。
- * セル塗りと軸ラベルの文字色で共有し、色スケールを二重定義しない(#409)。
- * 色を決められない(カウント系で max<=0)ときは null。
+ * 値 → セル塗りの色。色を決められない(カウント系で max<=0)ときは null。
  */
 function scaleColor(value: number, group: Group, min: number, max: number, metric: MetricKey): string | null {
   if (group === 'count') {
@@ -71,7 +68,7 @@ function scaleIntensity(value: number, group: Group, min: number, max: number): 
 }
 
 function cellColor(value: number | null, group: Group, min: number, max: number, total: number, minSampleSize: number, sparseId: string, emptyId: string, metric: MetricKey): string {
-  // 値が無いセルは色ではなくハッチで示す(中立グレーの中央と紛れさせないため・#351)。
+  // 値が無いセルは色ではなくハッチで示す(中央のくすみ黄緑と紛れさせないため・#351)。
   // データなしはサンプル不足より強い(詰まった)ハッチ。
   if (value === null || total === 0) return hatchFill(emptyId)
   if ((group === 'rate' || group === 'average') && total < minSampleSize) {
@@ -213,9 +210,8 @@ export function HeatmapChart({
       if ((samples.get(key) ?? 0) < AXIS_MIN_TOTAL_SAMPLES) return undefined
       const v = proj.get(key)
       if (v === undefined) return undefined
-      const c = scaleColor(v, group, axisMin, axisMax, metric)
-      if (c === null) return undefined
-      return axisLabelColor(c, scaleIntensity(v, group, axisMin, axisMax))
+      const end = axisLabelEndColor(v, group === 'rate' ? 'rate' : 'sequential', metric)
+      return axisLabelColor(end, scaleIntensity(v, group, axisMin, axisMax))
     }
   }
   const xLabelColor = labelColor(xProj, xSamples)

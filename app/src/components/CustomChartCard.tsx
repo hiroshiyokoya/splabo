@@ -6,7 +6,7 @@ import {
   stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric, chartMetrics,
   METRIC_LABELS, BATTLE_METRIC_LABELS, BATTLE_NUMERIC_METRIC_LABELS,
   GROUP_BY_LABELS, formatMetric, winLoseBreakdown, type GroupByKey,
-  SCATTER_IMAGE_PX, isScatterImageMode,
+  SCATTER_IMAGE_PX, isScatterImageMode, isOfficialRateMetric,
 } from '../types'
 import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
@@ -114,7 +114,7 @@ function buildAggScatterPoints(
   const filtered = data.filter(d => d.total > 0)
   const isCatColor = isScatterCategoryColorKey(colorKey)
   // 色マッピング用 min/max(連続値のみ)
-  const colorIsRate = colorKey === 'win_rate'
+  const colorIsRate = isOfficialRateMetric(colorKey ?? '')
   let cmin = Infinity, cmax = -Infinity
   if (colorKey && !isCatColor) {
     for (const d of filtered) {
@@ -607,14 +607,14 @@ function renderChartBody(
         colorLegend={imagePx ? null : colorLegend}
         xLabel={metricLabelOf(chart.xMetric)}
         yLabel={metricLabelOf(chart.yMetric)}
-        xIsRate={chart.xMetric === 'win_rate'}
-        yIsRate={chart.yMetric === 'win_rate'}
+        xIsRate={isOfficialRateMetric(chart.xMetric)}
+        yIsRate={isOfficialRateMetric(chart.yMetric)}
         // 勝率 50% / キルレ 1 に破線を引く。環境分析と同じ判定を使う(#548)。
         xRefLine={metricRefLine(chart.xMetric)}
         yRefLine={metricRefLine(chart.yMetric)}
         // 比率メトリクスはログにしても意味がないので、設定が残っていても効かせない (#381)。
-        xLogScale={chart.xLogScale && chart.xMetric !== 'win_rate'}
-        yLogScale={chart.yLogScale && chart.yMetric !== 'win_rate'}
+        xLogScale={chart.xLogScale && !isOfficialRateMetric(chart.xMetric)}
+        yLogScale={chart.yLogScale && !isOfficialRateMetric(chart.yMetric)}
         hasSize={!!sizeKey}
         // 環境分析の散布図と同じ透過度に揃える (#435)
         fillOpacity={0.55}

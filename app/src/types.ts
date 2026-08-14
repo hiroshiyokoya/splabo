@@ -151,6 +151,18 @@ export function filtersToBookArgs(filters: Filters): {
   }
 }
 
+/** 図鑑の詳細モーダル用。FilterBar と同じ期間・モード・ルール・結果に、対象ブキ/ステージだけ足す。 */
+export function filtersToBookDetailArgs(
+  filters: Filters,
+  extra: { weapon?: string | null; stage?: string | null },
+) {
+  return {
+    ...filtersToBookArgs(filters),
+    weapon: extra.weapon ?? null,
+    stage: extra.stage ?? null,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // バトル詳細用の型(my_team / other_teams JSON から復元)
 // ---------------------------------------------------------------------------
@@ -312,6 +324,19 @@ export interface WeaponRecord {
   paint_point_total: number | null
   weapon_power: number | null
   weapon_power_max: number | null
+  last_used_at: number | null
+}
+
+/** 公式アプリのステージ通算勝率（StageRecordQuery）。未取得は null。 */
+export interface StageRecord {
+  stage_id: string
+  vs_stage_id: number | null
+  win_rate_tw: number | null
+  win_rate_ar: number | null
+  win_rate_lf: number | null
+  win_rate_gl: number | null
+  win_rate_cl: number | null
+  last_played_at: number | null
 }
 
 export interface AiSettings {
@@ -543,6 +568,19 @@ export function fmtKillRatioWithContrib(
   return `${kd} (${contrib})`
 }
 
+/** 公式アプリの最終使用日。`2026/8/14`。 */
+export function fmtOfficialDate(ts: number | null | undefined): string {
+  if (ts == null || ts <= 0) return '-'
+  const d = new Date(ts * 1000)
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
+}
+
+/** 公式の通算勝率（0–1）。 */
+export function fmtOfficialWinRate(n: number | null | undefined): string {
+  if (n == null) return '-'
+  return `${(n * 100).toFixed(1)}%`
+}
+
 /**
  * バトル数の勝敗内訳 `70 勝 50 敗 3 分`(#562)。
  *
@@ -601,6 +639,18 @@ export type MetricKey =
   | 'sum_contrib_kill'   // 貢献キル合計 = キル合計 + アシスト合計(クライアント算出)
   | 'sum_death'          // デス数合計
   | 'sum_inked'          // 塗りポイント合計
+  // 公式アプリ（全期間。ブキ軸 / ステージ軸だけで値が入る）
+  | 'official_weapon_level'
+  | 'official_win_count'
+  | 'official_paint'
+  | 'official_weapon_power'
+  | 'official_weapon_power_max'
+  | 'official_last_used_at'
+  | 'official_win_rate_tw'
+  | 'official_win_rate_ar'
+  | 'official_win_rate_lf'
+  | 'official_win_rate_gl'
+  | 'official_win_rate_cl'
 
 /**
  * カスタムグラフ 1 個分の設定。localStorage に CustomChart[] として保存する想定。
@@ -817,6 +867,33 @@ export function scatterMetricOptions(dotUnit: ScatterDotUnit): { key: string; la
   return SCATTER_AGG_METRIC_KEYS.map(k => ({ key: k, label: METRIC_LABELS[k] }))
 }
 
+/** 公式アプリ由来。ブキ軸のみ。フィルター（期間・ロビー・ルール）には追従しない。 */
+export const OFFICIAL_WEAPON_METRICS: MetricKey[] = [
+  'official_weapon_level', 'official_win_count', 'official_paint',
+  'official_weapon_power', 'official_weapon_power_max', 'official_last_used_at',
+]
+
+/** 公式アプリのルール別通算勝率。ステージ軸のみ。 */
+export const OFFICIAL_STAGE_METRICS: MetricKey[] = [
+  'official_win_rate_tw', 'official_win_rate_ar', 'official_win_rate_lf',
+  'official_win_rate_gl', 'official_win_rate_cl',
+]
+
+export const OFFICIAL_METRICS: MetricKey[] = [
+  ...OFFICIAL_WEAPON_METRICS,
+  ...OFFICIAL_STAGE_METRICS,
+]
+
+export function officialMetricsForGroup(group: string): MetricKey[] {
+  if (group === 'weapon') return OFFICIAL_WEAPON_METRICS
+  if (group === 'stage') return OFFICIAL_STAGE_METRICS
+  return []
+}
+
+export function isOfficialRateMetric(metric: string): boolean {
+  return metric === 'win_rate' || metric.startsWith('official_win_rate_')
+}
+
 /** ヒートマップ用の 2D 集計行(db_grouped_stats_2d の返り値)。 */
 export interface GroupedStatsRow2D {
   key_x:        string
@@ -863,6 +940,18 @@ export function getMetric2D(row: GroupedStatsRow2D, metric: MetricKey): number |
     case 'sum_assist':
     case 'sum_contrib_kill':
     case 'sum_inked':    return null
+    case 'official_weapon_level':
+    case 'official_win_count':
+    case 'official_paint':
+    case 'official_weapon_power':
+    case 'official_weapon_power_max':
+    case 'official_last_used_at':
+    case 'official_win_rate_tw':
+    case 'official_win_rate_ar':
+    case 'official_win_rate_lf':
+    case 'official_win_rate_gl':
+    case 'official_win_rate_cl':
+      return null
   }
 }
 
@@ -888,7 +977,7 @@ export const IMPLEMENTED_SHAPES: ChartShape[] = ['bar', 'line', 'calendar_heatma
 /**
  * メトリクスを「色スケールのグループ」に分類する。
  * - count: バトル数・勝数。相対 max-based。
- * - rate:  勝率。固定 0–100% (50% を中央色とした divergent)。
+ * - rate:  勝率。固定 0–100% (45–55% をくすみ黄緑中央とした divergent)。
  * - average: K/D/A・スペシャル・塗り。相対 min-max。
  */
 export type MetricGroup = 'count' | 'rate' | 'average'
@@ -897,7 +986,8 @@ export function metricGroup(metric: MetricKey): MetricGroup {
   if (metric === 'sum_kill' || metric === 'sum_death' ||
       metric === 'sum_assist' || metric === 'sum_contrib_kill' ||
       metric === 'sum_inked')                                   return 'count'
-  if (metric === 'win_rate')                                    return 'rate'
+  if (metric === 'win_rate' || metric.startsWith('official_win_rate_')) return 'rate'
+  if (OFFICIAL_METRICS.includes(metric)) return 'count'
   return 'average'
 }
 
@@ -922,11 +1012,14 @@ export const AXIS_GROUP_LABELS: Record<AxisGroup, string> = {
   paint:      '塗り',
 }
 export function axisGroupOf(metric: MetricKey): AxisGroup {
-  if (metric === 'win_rate') return 'win_rate'
-  if (metric === 'avg_inked' || metric === 'sum_inked') return 'paint'
+  if (metric === 'win_rate' || metric.startsWith('official_win_rate_')) return 'win_rate'
+  if (metric === 'avg_inked' || metric === 'sum_inked' || metric === 'official_paint') return 'paint'
   if (metric === 'total' || metric === 'wins' ||
       metric === 'sum_kill' || metric === 'sum_death' ||
-      metric === 'sum_assist' || metric === 'sum_contrib_kill') return 'count'
+      metric === 'sum_assist' || metric === 'sum_contrib_kill' ||
+      metric === 'official_win_count' || metric === 'official_weapon_level' ||
+      metric === 'official_weapon_power' || metric === 'official_weapon_power_max' ||
+      metric === 'official_last_used_at') return 'count'
   return 'per_battle'  // avg_kill / avg_assist / avg_contrib_kill / avg_death / avg_kd / avg_contrib_kd / avg_special
 }
 
@@ -1026,6 +1119,19 @@ export interface GroupedStatsRow {
   sum_death:     number | null
   sum_assist:    number | null
   sum_inked:     number | null
+  /** 公式アプリ。ブキ軸以外は null。 */
+  official_weapon_level?:     number | null
+  official_win_count?:        number | null
+  official_paint?:            number | null
+  official_weapon_power?:     number | null
+  official_weapon_power_max?: number | null
+  official_last_used_at?:     number | null
+  /** 公式アプリ。ステージ軸以外は null。 */
+  official_win_rate_tw?: number | null
+  official_win_rate_ar?: number | null
+  official_win_rate_lf?: number | null
+  official_win_rate_gl?: number | null
+  official_win_rate_cl?: number | null
 }
 
 /** UI 表示用のラベル。 */
@@ -1068,7 +1174,22 @@ export const METRIC_LABELS: Record<MetricKey, string> = {
   sum_contrib_kill:  '貢献キル(合計)',
   sum_death:         'デス数(合計)',
   sum_inked:         '塗りP(合計)',
+  official_weapon_level:      '熟練度',
+  official_win_count:         '通算勝利',
+  official_paint:             '通算塗りP',
+  official_weapon_power:      'ブキチャレパワー',
+  official_weapon_power_max:  '最大ブキチャレパワー',
+  official_last_used_at:      '最終使用日',
+  official_win_rate_tw:       '公式勝率 ナワバリ',
+  official_win_rate_ar:       '公式勝率 エリア',
+  official_win_rate_lf:       '公式勝率 ヤグラ',
+  official_win_rate_gl:       '公式勝率 ホコ',
+  official_win_rate_cl:       '公式勝率 アサリ',
 }
+
+/** 折れ線・ヒートマップ・カレンダーなど、公式値を出さないセレクト用。 */
+export const LOCAL_METRIC_KEYS: MetricKey[] =
+  (Object.keys(METRIC_LABELS) as MetricKey[]).filter(k => !OFFICIAL_METRICS.includes(k))
 
 /**
  * 合計系メトリクス。2D クロス集計(GroupedStatsRow2D)には列が無く、
@@ -1080,8 +1201,7 @@ export const SUM_METRICS: MetricKey[] = [
 ]
 
 /** ヒートマップ(2D クロス集計)で選べるメトリクス。合計系を除いたもの(#351)。 */
-export const HEATMAP_METRICS = (Object.keys(METRIC_LABELS) as MetricKey[])
-  .filter(m => !SUM_METRICS.includes(m))
+export const HEATMAP_METRICS = LOCAL_METRIC_KEYS.filter(m => !SUM_METRICS.includes(m))
 
 /** GroupedStatsRow から指定メトリクスの数値を取り出す。NULL は null を返す。
  *  `avg_kd` / `avg_contrib_*` / `sum_contrib_kill` はクライアント側で算出(#465)。 */
@@ -1113,15 +1233,30 @@ export function getMetric(row: GroupedStatsRow, metric: MetricKey): number | nul
       return row.sum_kill + row.sum_assist
     case 'sum_death':    return row.sum_death
     case 'sum_inked':    return row.sum_inked
+    case 'official_weapon_level':      return row.official_weapon_level ?? null
+    case 'official_win_count':         return row.official_win_count ?? null
+    case 'official_paint':             return row.official_paint ?? null
+    case 'official_weapon_power':      return row.official_weapon_power ?? null
+    case 'official_weapon_power_max':  return row.official_weapon_power_max ?? null
+    case 'official_last_used_at':      return row.official_last_used_at ?? null
+    case 'official_win_rate_tw':       return row.official_win_rate_tw ?? null
+    case 'official_win_rate_ar':       return row.official_win_rate_ar ?? null
+    case 'official_win_rate_lf':       return row.official_win_rate_lf ?? null
+    case 'official_win_rate_gl':       return row.official_win_rate_gl ?? null
+    case 'official_win_rate_cl':       return row.official_win_rate_cl ?? null
   }
 }
 
 /** メトリクス値の表示文字列。勝率は %、それ以外は小数 2 桁。 */
 export function formatMetric(value: number | null, metric: MetricKey): string {
   if (value === null) return '-'
-  if (metric === 'win_rate') return `${(value * 100).toFixed(1)}%`
+  if (metric === 'win_rate' || metric.startsWith('official_win_rate_')) return `${(value * 100).toFixed(1)}%`
+  if (metric === 'official_last_used_at') return fmtOfficialDate(value)
   if (metric === 'total' || metric === 'wins' ||
       metric === 'sum_kill' || metric === 'sum_death' ||
-      metric === 'sum_assist' || metric === 'sum_contrib_kill' || metric === 'sum_inked') return value.toLocaleString()
+      metric === 'sum_assist' || metric === 'sum_contrib_kill' || metric === 'sum_inked' ||
+      metric === 'official_weapon_level' || metric === 'official_win_count' ||
+      metric === 'official_paint' || metric === 'official_weapon_power' ||
+      metric === 'official_weapon_power_max') return Math.round(value).toLocaleString()
   return value.toFixed(2)
 }

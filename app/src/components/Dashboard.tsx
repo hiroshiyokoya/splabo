@@ -28,25 +28,11 @@ import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelE
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import { describeFilters, buildExportCaption, useStageNames } from '../utils/filterSummary'
 import { rankRowsForBarChart } from '../utils/chartSort'
+import { WIN_RATE_HI, WIN_RATE_LO, WIN_RATE_MID, winRateColor } from '../utils/heatmapColors'
 
 const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
 const COLOR_DRAW = '#9ca3af'
-
-// 勝率の閾値色。勝/負の緑/赤との衝突を避けつつ、
-// まぶしくならないよう少しトーンを抑える。
-//   ≥55% : emerald-400(緑＋青み、ライムの代わり)
-//   45-55% : orange-400(落ち着いた橙)
-//   <45% : pink-400(柔らかいピンク)
-const WIN_RATE_HI  = '#38bdf8'   // 勝率55%以上は青系(勝数の緑と区別しやすく)
-const WIN_RATE_MID = '#fb923c'
-const WIN_RATE_LO  = '#f472b6'
-
-function winRateColor(rate: number): string {
-  if (rate >= 0.55) return WIN_RATE_HI
-  if (rate >= 0.45) return WIN_RATE_MID
-  return WIN_RATE_LO
-}
 
 function winRateLevel(rate: number): 'hi' | 'mid' | 'lo' {
   if (rate >= 0.55) return 'hi'
