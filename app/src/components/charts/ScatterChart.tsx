@@ -1787,14 +1787,12 @@ export function ScatterChart({
             </div>
             {(active.spIconUrl || active.subIconUrl) && (
               <div className="hover-tt-kit">
-                <div className="hover-tt-kit-well">
-                  {active.spIconUrl && (
-                    <img className="hover-tt-kit-icon hover-tt-kit-icon--sp" src={active.spIconUrl} alt="" title={active.spName ?? undefined} />
-                  )}
-                  {active.subIconUrl && (
-                    <img className="hover-tt-kit-icon" src={active.subIconUrl} alt="" title={active.subName ?? undefined} />
-                  )}
-                </div>
+                {active.spIconUrl && (
+                  <img className="hover-tt-kit-icon hover-tt-kit-icon--sp" src={active.spIconUrl} alt="" title={active.spName ?? undefined} />
+                )}
+                {active.subIconUrl && (
+                  <img className="hover-tt-kit-icon" src={active.subIconUrl} alt="" title={active.subName ?? undefined} />
+                )}
               </div>
             )}
             {active.tooltipRows.map((r, i) => (
