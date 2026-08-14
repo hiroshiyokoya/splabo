@@ -988,7 +988,7 @@ export function EnvAnalysis() {
               データ: {status.min_date} ~ {status.max_date} /&nbsp;
               {(status.total_rows / 10000).toFixed(1)} 万行
             </span>
-            <button className="btn-secondary" onClick={handleDelta} disabled={importing}
+            <button className="btn-primary" onClick={handleDelta} disabled={importing}
                     title="最終取得日の翌日から昨日分を差分取得します">
               {importing ? '更新中...' : '差分更新'}
             </button>
