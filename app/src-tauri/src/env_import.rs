@@ -662,11 +662,24 @@ pub async fn sync_env_masters(
     sync_statink_masters(&db, &client).await
 }
 
-/// 全期間 ZIP をダウンロードして env_battles に取り込む。
+/// 環境データを入れ直す。`since` が無いときは全期間 ZIP、あるときはその日から昨日までの日次 CSV。
 ///
 /// 進捗は "env_import_progress" emit で通知する。
 #[tauri::command]
 pub async fn import_env_full(
+    app: AppHandle,
+    db:  tauri::State<'_, DbPool>,
+    since: Option<String>,
+) -> Result<usize, String> {
+    let since = since.filter(|s| !s.is_empty());
+    match since {
+        None => import_env_zip(app, db).await,
+        Some(s) => import_env_from_date(app, db, s).await,
+    }
+}
+
+/// 全期間 ZIP をダウンロードして env_battles に取り込む。
+async fn import_env_zip(
     app: AppHandle,
     db:  tauri::State<'_, DbPool>,
 ) -> Result<usize, String> {
@@ -697,38 +710,7 @@ pub async fn import_env_full(
     // しかも実行後プールへ返却されてしまうため、書き込みごとに別コネクションへ散って
     // journal_mode が混在し "database is locked" を誘発していた。専用コネクション固定で解消する。
     let mut conn = db.acquire().await.map_err(|e| format!("DB コネクション取得失敗: {e}"))?;
-
-    // ── バルクインポート高速化のセットアップ（この 1 本のコネクションにのみ適用）──
-    // synchronous=OFF + temp_store=MEMORY で fsync を減らす。
-    // journal_mode は WAL のまま維持する（MEMORY にすると他コネクションと混在して
-    // ロック競合し、かつ中断時に DB 破損リスクがある）。
-    // FK 検証はインポート中のみオフ（参照先 id は解決済み or NULL なので整合は保てる）。
-    for pragma in [
-        "PRAGMA busy_timeout = 30000",
-        "PRAGMA foreign_keys = OFF",
-        "PRAGMA synchronous = OFF",
-        "PRAGMA temp_store = MEMORY",
-    ] {
-        let _ = sqlx::query(pragma).execute(&mut *conn).await;
-    }
-    // env_battles のインデックスを DROP（インポート中の逐次更新を避け、全行挿入後に一括 CREATE）。
-    for idx in [
-        "idx_env_date_rule", "idx_env_date_map", "idx_env_date_lobby",
-        "idx_env_a1_weapon", "idx_env_b1_weapon",
-        // 集計に使うスロット（#602）。ここに足し忘れると、再取得のたびに索引が消えて
-        // ブキの選択肢の取得が 50 秒に戻る。
-        "idx_env_a2_weapon", "idx_env_a3_weapon", "idx_env_a4_weapon",
-        "idx_env_b2_weapon", "idx_env_b3_weapon", "idx_env_b4_weapon",
-    ] {
-        let _ = sqlx::query(&format!("DROP INDEX IF EXISTS {idx}"))
-            .execute(&mut *conn).await;
-    }
-
-    // 全期間取り込みなので既存の env_battles を一旦クリア（中断後の再実行で重複を防ぐ）。
-    sqlx::query("DELETE FROM env_battles")
-        .execute(&mut *conn)
-        .await
-        .map_err(|e| format!("env_battles クリア失敗: {e}"))?;
+    begin_env_replace(&mut *conn).await?;
 
     // ZIP 解凍 + CSV インポート
     let mut archive = ZipArchive::new(Cursor::new(bytes.as_ref()))
@@ -783,39 +765,45 @@ pub async fn import_env_full(
         }
     }
 
-    // ── 全行挿入後にインデックスをまとめて再作成 ──
-    emit_progress(&app, total_days, total_days, "index");
-    log::info!("[env_import] インデックス再構築中...");
-    for sql in [
-        "CREATE INDEX IF NOT EXISTS idx_env_date_rule  ON env_battles(source_date, rule_id)",
-        "CREATE INDEX IF NOT EXISTS idx_env_date_map   ON env_battles(source_date, map_id)",
-        "CREATE INDEX IF NOT EXISTS idx_env_date_lobby ON env_battles(source_date, lobby_id)",
-        "CREATE INDEX IF NOT EXISTS idx_env_a1_weapon  ON env_battles(a1_weapon_id)",
-        "CREATE INDEX IF NOT EXISTS idx_env_b1_weapon  ON env_battles(b1_weapon_id)",
-        // 投稿者 a1 は集計対象外なので、実際に数えるのはこちら（#602 / #501）。
-        "CREATE INDEX IF NOT EXISTS idx_env_a2_weapon  ON env_battles(a2_weapon_id)",
-        "CREATE INDEX IF NOT EXISTS idx_env_a3_weapon  ON env_battles(a3_weapon_id)",
-        "CREATE INDEX IF NOT EXISTS idx_env_a4_weapon  ON env_battles(a4_weapon_id)",
-        "CREATE INDEX IF NOT EXISTS idx_env_b2_weapon  ON env_battles(b2_weapon_id)",
-        "CREATE INDEX IF NOT EXISTS idx_env_b3_weapon  ON env_battles(b3_weapon_id)",
-        "CREATE INDEX IF NOT EXISTS idx_env_b4_weapon  ON env_battles(b4_weapon_id)",
-    ] {
-        sqlx::query(sql).execute(&mut *conn).await
-            .map_err(|e| format!("インデックス再作成失敗: {e}"))?;
-    }
-
-    // PRAGMA を通常運用の安全側に戻してからコネクションをプールへ返却する
-    // （journal_mode は WAL のまま変更していない）。
-    for pragma in [
-        "PRAGMA foreign_keys = ON",
-        "PRAGMA synchronous = NORMAL",
-    ] {
-        let _ = sqlx::query(pragma).execute(&mut *conn).await;
-    }
+    finish_env_replace(&app, &mut *conn, total_days).await?;
     drop(conn);
 
     emit_progress(&app, total_days, total_days, "import");
     log::info!("[env_import] 完了: 合計 {total_inserted} 行挿入");
+    Ok(total_inserted)
+}
+
+/// 指定日から昨日までを日次 CSV で取り込む。既存の env_battles は消す。
+async fn import_env_from_date(
+    app: AppHandle,
+    db:  tauri::State<'_, DbPool>,
+    since: String,
+) -> Result<usize, String> {
+    let dates = dates_from_since(&since)?;
+    if dates.is_empty() {
+        return Err("取得する日がありません".into());
+    }
+    log::info!("[env_import] 日次 CSV {} 日分 ({} 〜 {})", dates.len(), dates.first().unwrap(), dates.last().unwrap());
+
+    let client = crate::http::build_client()?;
+    sync_statink_masters(&db, &client).await?;
+
+    let mut conn = db.acquire().await.map_err(|e| format!("DB コネクション取得失敗: {e}"))?;
+    begin_env_replace(&mut *conn).await?;
+
+    let mut lobby_cache:  std::collections::HashMap<String, Option<i64>> = Default::default();
+    let mut rule_cache:   std::collections::HashMap<String, Option<i64>> = Default::default();
+    let mut map_cache:    std::collections::HashMap<String, Option<i64>> = Default::default();
+    let mut weapon_cache: std::collections::HashMap<String, Option<i64>> = Default::default();
+    let total_inserted = import_daily_csvs(
+        &app, &client, &mut *conn, &dates,
+        &mut lobby_cache, &mut rule_cache, &mut map_cache, &mut weapon_cache,
+    ).await?;
+
+    finish_env_replace(&app, &mut *conn, dates.len()).await?;
+    drop(conn);
+    emit_progress(&app, dates.len(), dates.len(), "import");
+    log::info!("[env_import] 完了: 合計 {total_inserted} 行挿入 (since={since})");
     Ok(total_inserted)
 }
 
@@ -844,18 +832,115 @@ pub async fn import_env_delta(
         return Ok(0);
     }
 
-    let total = dates.len();
     let mut lobby_cache:  std::collections::HashMap<String, Option<i64>> = Default::default();
     let mut rule_cache:   std::collections::HashMap<String, Option<i64>> = Default::default();
     let mut map_cache:    std::collections::HashMap<String, Option<i64>> = Default::default();
     let mut weapon_cache: std::collections::HashMap<String, Option<i64>> = Default::default();
-    let mut total_inserted = 0usize;
 
     // 差分取り込みも専用コネクション 1 本に固定し、書き込みを散らさない。
     let mut conn = db.acquire().await.map_err(|e| format!("DB コネクション取得失敗: {e}"))?;
+    let total_inserted = import_daily_csvs(
+        &app, &client, &mut *conn, &dates,
+        &mut lobby_cache, &mut rule_cache, &mut map_cache, &mut weapon_cache,
+    ).await?;
 
+    emit_progress(&app, dates.len(), dates.len(), "import");
+    log::info!("[env_import] 差分インポート完了: {total_inserted} 行");
+    Ok(total_inserted)
+}
+
+// ---------------------------------------------------------------------------
+// ユーティリティ
+// ---------------------------------------------------------------------------
+
+fn emit_progress(app: &AppHandle, current: usize, total: usize, phase: &str) {
+    let _ = app.emit("env_import_progress", ImportProgress {
+        current,
+        total,
+        phase: phase.to_string(),
+    });
+}
+
+const ENV_INDEX_NAMES: &[&str] = &[
+    "idx_env_date_rule", "idx_env_date_map", "idx_env_date_lobby",
+    "idx_env_a1_weapon", "idx_env_b1_weapon",
+    "idx_env_a2_weapon", "idx_env_a3_weapon", "idx_env_a4_weapon",
+    "idx_env_b2_weapon", "idx_env_b3_weapon", "idx_env_b4_weapon",
+];
+
+/// 入れ直し用: 索引を外し、既存行を消す。専用コネクション 1 本にだけ PRAGMA を当てる。
+///
+/// journal_mode は WAL のまま（MEMORY にすると他コネクションと混在してロックし、
+/// 中断時に DB 破損リスクがある）。FK は参照先 id が解決済み or NULL なので一時オフ可。
+/// 索引名を足し忘れると再取得のたびに消えて、ブキ選択肢が 50 秒に戻る（#602）。
+async fn begin_env_replace(conn: &mut SqliteConnection) -> Result<(), String> {
+    for pragma in [
+        "PRAGMA busy_timeout = 30000",
+        "PRAGMA foreign_keys = OFF",
+        "PRAGMA synchronous = OFF",
+        "PRAGMA temp_store = MEMORY",
+    ] {
+        let _ = sqlx::query(pragma).execute(&mut *conn).await;
+    }
+    for idx in ENV_INDEX_NAMES {
+        let _ = sqlx::query(&format!("DROP INDEX IF EXISTS {idx}"))
+            .execute(&mut *conn).await;
+    }
+    sqlx::query("DELETE FROM env_battles")
+        .execute(&mut *conn)
+        .await
+        .map_err(|e| format!("env_battles クリア失敗: {e}"))?;
+    Ok(())
+}
+
+async fn finish_env_replace(
+    app: &AppHandle,
+    conn: &mut SqliteConnection,
+    total_days: usize,
+) -> Result<(), String> {
+    emit_progress(app, total_days, total_days, "index");
+    log::info!("[env_import] インデックス再構築中...");
+    for sql in [
+        "CREATE INDEX IF NOT EXISTS idx_env_date_rule  ON env_battles(source_date, rule_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_date_map   ON env_battles(source_date, map_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_date_lobby ON env_battles(source_date, lobby_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_a1_weapon  ON env_battles(a1_weapon_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_b1_weapon  ON env_battles(b1_weapon_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_a2_weapon  ON env_battles(a2_weapon_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_a3_weapon  ON env_battles(a3_weapon_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_a4_weapon  ON env_battles(a4_weapon_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_b2_weapon  ON env_battles(b2_weapon_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_b3_weapon  ON env_battles(b3_weapon_id)",
+        "CREATE INDEX IF NOT EXISTS idx_env_b4_weapon  ON env_battles(b4_weapon_id)",
+    ] {
+        sqlx::query(sql).execute(&mut *conn).await
+            .map_err(|e| format!("インデックス再作成失敗: {e}"))?;
+    }
+    for pragma in [
+        "PRAGMA foreign_keys = ON",
+        "PRAGMA synchronous = NORMAL",
+    ] {
+        let _ = sqlx::query(pragma).execute(&mut *conn).await;
+    }
+    Ok(())
+}
+
+type IdCache = std::collections::HashMap<String, Option<i64>>;
+
+async fn import_daily_csvs(
+    app: &AppHandle,
+    client: &Client,
+    conn: &mut SqliteConnection,
+    dates: &[String],
+    lobby_cache: &mut IdCache,
+    rule_cache: &mut IdCache,
+    map_cache: &mut IdCache,
+    weapon_cache: &mut IdCache,
+) -> Result<usize, String> {
+    let total = dates.len();
+    let mut total_inserted = 0usize;
     for (idx, date) in dates.iter().enumerate() {
-        emit_progress(&app, idx, total, "download");
+        emit_progress(app, idx, total, "download");
         let (year, month) = (&date[..4], &date[5..7]);
         let url = format!("{DAILY_BASE}/{year}/{month}/{date}.csv");
         let resp = match client
@@ -880,28 +965,13 @@ pub async fn import_env_delta(
         };
         let csv_bytes = resp.bytes().await.map_err(|e| e.to_string())?;
         let inserted = import_csv_bytes(
-            &mut *conn, &csv_bytes, date,
-            &mut lobby_cache, &mut rule_cache, &mut map_cache, &mut weapon_cache,
+            conn, &csv_bytes, date,
+            lobby_cache, rule_cache, map_cache, weapon_cache,
         ).await?;
         total_inserted += inserted;
         log::info!("[env_import] {} → {} 行挿入", date, inserted);
     }
-
-    emit_progress(&app, total, total, "import");
-    log::info!("[env_import] 差分インポート完了: {total_inserted} 行");
     Ok(total_inserted)
-}
-
-// ---------------------------------------------------------------------------
-// ユーティリティ
-// ---------------------------------------------------------------------------
-
-fn emit_progress(app: &AppHandle, current: usize, total: usize, phase: &str) {
-    let _ = app.emit("env_import_progress", ImportProgress {
-        current,
-        total,
-        phase: phase.to_string(),
-    });
 }
 
 /// "YYYY/MM/YYYY-MM-DD.csv" 形式のパスから "YYYY-MM-DD" を抽出する。
@@ -915,29 +985,43 @@ fn extract_date_from_path(path: &str) -> String {
     }
 }
 
+fn dates_inclusive(start: chrono::NaiveDate, end: chrono::NaiveDate) -> Vec<String> {
+    let mut dates = Vec::new();
+    let mut cur = start;
+    while cur <= end {
+        dates.push(cur.format("%Y-%m-%d").to_string());
+        cur += chrono::Duration::days(1);
+    }
+    dates
+}
+
+fn yesterday_utc() -> chrono::NaiveDate {
+    (chrono::Utc::now() - chrono::Duration::days(1)).date_naive()
+}
+
+/// `since`（含む）から昨日までの日付一覧。
+fn dates_from_since(since: &str) -> Result<Vec<String>, String> {
+    let start = chrono::NaiveDate::parse_from_str(since, "%Y-%m-%d")
+        .map_err(|_| format!("開始日が読めません: {since}"))?;
+    let end = yesterday_utc();
+    if start > end {
+        return Err(format!("開始日 {since} が昨日より後です"));
+    }
+    Ok(dates_inclusive(start, end))
+}
+
 /// max_date の翌日から昨日までの "YYYY-MM-DD" 一覧を返す。
 fn build_date_range(max_date: Option<&str>) -> Vec<String> {
-    use chrono::{Duration, NaiveDate, Utc};
-
-    let yesterday = (Utc::now() - Duration::days(1)).date_naive();
+    let yesterday = yesterday_utc();
     let start = if let Some(d) = max_date {
-        // parse 失敗時は空リスト返す（安全側）。
-        match NaiveDate::parse_from_str(d, "%Y-%m-%d") {
-            Ok(dt) => dt + Duration::days(1),
+        match chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d") {
+            Ok(dt) => dt + chrono::Duration::days(1),
             Err(_) => return Vec::new(),
         }
     } else {
-        // 全期間取得前の差分実行は想定外だが、安全に昨日だけ返す。
         yesterday
     };
-
-    let mut dates = Vec::new();
-    let mut cur = start;
-    while cur <= yesterday {
-        dates.push(cur.format("%Y-%m-%d").to_string());
-        cur += Duration::days(1);
-    }
-    dates
+    dates_inclusive(start, yesterday)
 }
 
 #[cfg(test)]
@@ -980,5 +1064,20 @@ medal1-grade,medal1-name,medal2-grade,medal2-name,medal3-grade,medal3-name,event
     fn insert_placeholder_count_matches_binds() {
         let sql = env_insert_sql();
         assert_eq!(sql.matches('?').count(), 17 + 8 + 8 * 4);
+    }
+
+    #[test]
+    fn dates_inclusive_includes_both_ends() {
+        let start = chrono::NaiveDate::from_ymd_opt(2026, 8, 10).unwrap();
+        let end = chrono::NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
+        assert_eq!(
+            dates_inclusive(start, end),
+            vec!["2026-08-10", "2026-08-11", "2026-08-12"]
+        );
+    }
+
+    #[test]
+    fn dates_from_since_rejects_bad_date() {
+        assert!(dates_from_since("2026/08/01").is_err());
     }
 }

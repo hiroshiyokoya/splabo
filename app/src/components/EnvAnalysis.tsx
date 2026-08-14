@@ -246,6 +246,69 @@ function addDays(dateStr: string, delta: number): string {
   return dt.toISOString().slice(0, 10)
 }
 
+function utcToday(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function utcYesterday(): string {
+  return addDays(utcToday(), -1)
+}
+
+/** その日が属する Splatoon シーズンの開始日（`season.rs` と同じ 3/6/9/12 月）。 */
+function splatoonSeasonStart(isoDate: string): string {
+  const [y, m] = isoDate.split('-').map(Number)
+  if (m === 1 || m === 2) return `${y - 1}-12-01`
+  if (m <= 5) return `${y}-03-01`
+  if (m <= 8) return `${y}-06-01`
+  if (m <= 11) return `${y}-09-01`
+  return `${y}-12-01`
+}
+
+type ImportSinceKind = 'all' | 'current_season' | '1y' | 'custom'
+
+function resolveImportSince(kind: ImportSinceKind, custom: string): string | null {
+  if (kind === 'all') return null
+  if (kind === 'current_season') return splatoonSeasonStart(utcToday())
+  if (kind === '1y') return addDays(utcYesterday(), -365)
+  return custom || null
+}
+
+function ImportSincePicker({
+  kind, custom, disabled, onKind, onCustom,
+}: {
+  kind: ImportSinceKind
+  custom: string
+  disabled: boolean
+  onKind: (k: ImportSinceKind) => void
+  onCustom: (v: string) => void
+}) {
+  const kinds: { key: ImportSinceKind; label: string }[] = [
+    { key: 'all', label: '全期間' },
+    { key: 'current_season', label: '今シーズン' },
+    { key: '1y', label: '1年' },
+    { key: 'custom', label: 'カスタム' },
+  ]
+  return (
+    <label className="env-import-since">いつから取得
+      <span className="env-period-btns">
+        {kinds.map(k => (
+          <button
+            key={k.key}
+            type="button"
+            disabled={disabled}
+            className={`filter-btn${kind === k.key ? ' active' : ''}`}
+            onClick={() => onKind(k.key)}
+          >{k.label}</button>
+        ))}
+      </span>
+      {kind === 'custom' && (
+        <input type="date" value={custom} disabled={disabled}
+               max={utcYesterday()} onChange={e => onCustom(e.target.value)} />
+      )}
+    </label>
+  )
+}
+
 /** ゲームバージョン表記の整形。stat.ink 由来の 3 桁コード("800")はドット区切り
  *  ("8.0.0")へ。既にドット区切りならそのまま返す。 */
 function formatGameVer(v: string): string {
@@ -289,6 +352,8 @@ export function EnvAnalysis() {
   const [importing, setImporting]     = useState(false)
   const [progress, setProgress]       = useState<ImportProgress | null>(null)
   const [error, setError]             = useState<string | null>(null)
+  const [importSinceKind, setImportSinceKind] = useState<ImportSinceKind>('1y')
+  const [importSinceCustom, setImportSinceCustom] = useState(() => addDays(utcYesterday(), -365))
   const [loading, setLoading]         = useState(false)   // 集計クエリ実行中
   // 連続フィルタ変更で古い結果が後から来るのを防ぐ(#511)
   const loadSeqRef = useRef(0)
@@ -811,10 +876,15 @@ export function EnvAnalysis() {
 
   async function handleDownloadFull() {
     if (importing) return
+    const since = resolveImportSince(importSinceKind, importSinceCustom)
+    if (importSinceKind === 'custom' && !since) {
+      setError('開始日を選んでください')
+      return
+    }
     setImporting(true); setError(null)
     setProgress({ current: 0, total: 1, phase: 'download' })
     try {
-      await invoke<number>('import_env_full')
+      await invoke<number>('import_env_full', { since })
       await loadStatus()
     } catch (e) { setError(String(e)) }
     finally { setImporting(false); setProgress(null) }
@@ -837,10 +907,17 @@ export function EnvAnalysis() {
   // それ以前に取り込んだデータを最新の集計に揃えるには全期間の再取得が必要になる。
   async function handleRefetchFull() {
     if (importing) return
+    const since = resolveImportSince(importSinceKind, importSinceCustom)
+    if (importSinceKind === 'custom' && !since) {
+      setError('開始日を選んでください')
+      return
+    }
+    const range = since ? `${since} 以降` : '全期間'
+    const zipNote = since
+      ? '日次 CSV で取得します（ZIP は使いません）。'
+      : '全期間 ZIP（約 980 MiB・10〜15 分）を取り込みます。'
     const ok = window.confirm(
-      '全期間データを削除して stat.ink から取り込み直します(約 944 MiB・10~15 分)。\n\n' +
-      'このバージョンから、キル・デス・アシスト・塗りポイントを投稿者を除く 7 人分すべて取り込みます。' +
-      'それ以前に取得したデータは 1 人分しか記録が無く、キル系の母数が不足します。実行しますか？'
+      `環境データを削除して、${range} を取り込み直します。${zipNote}\n\n実行しますか？`
     )
     if (!ok) return
     await handleDownloadFull()
@@ -982,7 +1059,15 @@ export function EnvAnalysis() {
           <div className="env-placeholder-icon">🌍</div>
           <h3>環境データが未取得です</h3>
           <p>stat.ink の公開データからバトル統計を取得します</p>
-          <p className="env-placeholder-sub">推定ダウンロード量: 約 944 MiB / 推定時間: 10~15 分</p>
+          <ImportSincePicker
+            kind={importSinceKind} custom={importSinceCustom} disabled={importing}
+            onKind={setImportSinceKind} onCustom={setImportSinceCustom}
+          />
+          <p className="env-placeholder-sub">
+            {importSinceKind === 'all'
+              ? '全期間は ZIP 約 980 MiB / 推定 10〜15 分'
+              : '指定した日から昨日までを日次 CSV で取得します'}
+          </p>
           <button className="btn-primary" onClick={handleDownloadFull} disabled={importing}>
             {importing ? 'ダウンロード中...' : 'データを取得する'}
           </button>
@@ -996,13 +1081,17 @@ export function EnvAnalysis() {
               データ: {status.min_date} ~ {status.max_date} /&nbsp;
               {(status.total_rows / 10000).toFixed(1)} 万行
             </span>
+            <ImportSincePicker
+              kind={importSinceKind} custom={importSinceCustom} disabled={importing}
+              onKind={setImportSinceKind} onCustom={setImportSinceCustom}
+            />
             <button className="btn-secondary" onClick={handleDelta} disabled={importing}
                     title="最終取得日の翌日から昨日分を差分取得します">
               {importing ? '更新中...' : '差分更新'}
             </button>
             <button className="btn-secondary" onClick={handleRefetchFull} disabled={importing}
-                    title="全期間データを削除して stat.ink から取り込み直します(約 944 MiB・10~15 分)">
-              全期間再取得
+                    title="環境データを消して、選んだ開始日から取り込み直します">
+              再取得
             </button>
             {error && <span className="env-error">{error}</span>}
           </div>
@@ -1010,7 +1099,7 @@ export function EnvAnalysis() {
           {!status.full_kda && (
             <p className="env-filter-note">
               ※ v0.9.6 以前に取り込んだデータは、キル・デス・アシスト・塗りポイントが 1 人分しかありません。
-              「全期間再取得」を実行してください(勝率・ピック率は再取得なしでも 7 人分で集計されます)。
+              「再取得」を実行してください(勝率・ピック率は再取得なしでも 7 人分で集計されます)。
             </p>
           )}
 

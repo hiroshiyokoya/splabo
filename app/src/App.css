@@ -2916,6 +2916,18 @@ body {
   flex-wrap: wrap;
 }
 .env-data-range { font-size: 13px; color: var(--text-muted); }
+.env-import-since {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.env-placeholder .env-import-since {
+  justify-content: center;
+  margin: 8px 0 0;
+}
 
 /* フィルタ */
 .env-filters {
