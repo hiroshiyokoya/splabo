@@ -42,8 +42,7 @@ function fmtRecord(total: number, wins: number, draws: number): string {
  *   ブキスラッグは `weapons.name`(旧テーブル)= `weapon.key`(新テーブル)= stat.ink キー。
  *   FE 側で持っている `WeaponRecord.name` をそのまま `weapon` フィルタとして渡せる。
  * - 直近 30 バトルの線グラフは仕様により非実装(#149)。
- * - WeaponRecordQuery 由来の公式アプリ統計(熟練度・通算勝利数・総塗)は #162 廃止中のため
- *   今 PR では表示しない(混乱回避)。
+ * - WeaponRecordQuery 由来の公式アプリ統計(熟練度・通算勝利数・総塗)は取得できていれば表示する(#674)。
  */
 export function WeaponDetailModal({
   weapon, image, subImage, spImage, stats, onClose,
@@ -141,6 +140,18 @@ export function WeaponDetailModal({
               )}
             </div>
           </section>
+
+          {/* 公式アプリ累計（WeaponRecordQuery・#674）。未取得なら出さない。 */}
+          {(weapon.weapon_level != null || weapon.win_count_total != null || weapon.paint_point_total != null) && (
+            <section className="modal-section">
+              <h3 className="modal-section-title">公式アプリの累計</h3>
+              <div className="weapon-modal-stats-grid">
+                <StatPanel label="熟練度" value={weapon.weapon_level != null ? String(weapon.weapon_level) : '-'} />
+                <StatPanel label="通算勝利" value={weapon.win_count_total != null ? weapon.win_count_total.toLocaleString() : '-'} />
+                <StatPanel label="総塗" value={weapon.paint_point_total != null ? weapon.paint_point_total.toLocaleString() : '-'} />
+              </div>
+            </section>
+          )}
 
           {/* バトル統計：8 パネル(4×2 グリッド)。
               上段はバトル数・勝敗・勝率・平均塗り、

@@ -230,8 +230,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
   const hasFilter = !!(category || subWeapon || specialWeapon)
 
   // 公式統計(熟練度・勝利数・塗りポイント)が 1 件でも取得できているか。
-  // WeaponRecordQuery が nxapi 同梱ハッシュ廃止(#162)で取れていない場合、
-  // 全ブキ 0/null になるためソート項目から外す。
+  // 未取得（0/null）のときはソート項目から外す。取得は設定「ブキデータを更新」(#674)。
   const hasOfficialStats = useMemo(
     () => weapons.some(w =>
       (w.weapon_level     !== null && w.weapon_level     > 0) ||

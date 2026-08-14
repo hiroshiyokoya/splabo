@@ -12,13 +12,17 @@ const HASH_REGULAR: &str = "2fe6ea7a2de1d6a888b7bd3dbeb6acc8e3246f055ca39b80c453
 const HASH_BANKARA: &str = "9863ea4744730743268e2940396e21b891104ed40e2286789f05100b45a0b0fd";
 const HASH_XMATCH: &str = "eb5996a12705c2e94813a62e05c0dc419aad2811b8d49d53e5732290105559cb";
 // イベントマッチ（EventBattleHistoriesQuery）。値は splatnet3-types v4.0.0 同梱のハッシュ。
-// ⚠ 注意: このハッシュは Nintendo 側で廃止されている可能性がある（#162 で WeaponRecordQuery の
-// v4 ハッシュが廃止と判明した前例あり）。実機で叩いて `persisted query does not exist` が出たら、
-// splatoon3.ink 等で有効な最新 EventBattleHistoriesQuery ハッシュに差し替えること。
+// ⚠ 注意: このハッシュは Nintendo 側で廃止されている可能性がある。
+// 実機で叩いて `persisted query does not exist` が出たら、splatnet3-types の最新ハッシュに差し替えること。
 const HASH_EVENT: &str = "e47f9aac5599f75c842335ef0ab8f4c640e8bf2afe588a3b1d4b480ee79198ac";
 const HASH_DETAIL:   &str = "94faa2ff992222d11ced55e0f349920a82ac50f414ae33c83d1d1c9d8161c5dd";
-// WeaponRecordQuery は v10 で廃止。HistoryRecordQuery の weaponHistory にブキ+カテゴリが含まれる。
+// HistoryRecordQuery（使ったブキ＋カテゴリ）。ハッシュは s3s / splatnet3-types を参照。
 const HASH_WEAPONS:  &str = "a654ecc80161a7ca5c38761c1d9e502d405eae764e2d343618b9c74b1dc0a80f";
+// WeaponRecordQuery（全ブキ＋熟練度・通算勝利・総塗）。クエリ自体は公式アプリに残っている。
+// 現行ハッシュは nintendoapis/splatnet3-types の RequestId.WeaponRecordQuery（#674）。
+// nxapi 同梱の古いハッシュは Nintendo 側で無効になった（#162）。
+const HASH_WEAPON_RECORD: &str =
+    "974fad8a1275b415c3386aa212b07eddc3f6582686e4fef286ec4043cdf17135";
 // MyOutfitCommonDataEquipmentsQuery（所持ギア一覧）。splabo v0.8 ギア取得 Rust 化（Phase A2）。
 // s3s utils.py の translate_rid より。Phase 0 スパイクで実機取得を実証済みの canonical hash。
 const HASH_GEAR: &str = "45a4c343d973864f7bb9e9efac404182be1d48cf2181619505e9b7cd3b56a6e8";
@@ -77,6 +81,22 @@ async fn graphql_request(
     resp.json::<serde_json::Value>()
         .await
         .map_err(|e| format!("SplatNet3 GraphQL レスポンス解析失敗: {e}"))
+}
+
+fn graphql_error_messages(resp: &serde_json::Value) -> Option<String> {
+    let errs = resp.get("errors")?.as_array()?;
+    if errs.is_empty() {
+        return None;
+    }
+    let msgs: Vec<&str> = errs
+        .iter()
+        .filter_map(|e| e.get("message").and_then(|m| m.as_str()))
+        .collect();
+    if msgs.is_empty() {
+        Some(resp["errors"].to_string())
+    } else {
+        Some(msgs.join("; "))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -828,8 +848,9 @@ pub async fn fetch_and_store_weapons(
     Ok(count)
 }
 
-/// WeaponRecordQuery (#49) を nxapi-sidecar 経由で実行し、weapon_records テーブルに upsert する。
-/// 同時に全ブキの主・サブ・SP 画像をキャッシュする（バトルに登場しないブキのアイコン欠け対策）。
+/// WeaponRecordQuery (#49 / #674) をバトル取得と同じ GraphQL 直叩きで実行し、
+/// weapon_records テーブルに upsert する。同時に全ブキの主・サブ・SP 画像をキャッシュする
+/// （バトルに登場しないブキのアイコン欠け対策）。
 ///
 /// レスポンス構造 (data.weaponRecords.nodes[]):
 ///   name, image2d.url, weaponId, stats.{level, paint, win, vibes, ...},
@@ -840,17 +861,30 @@ pub async fn fetch_and_store_weapon_records(
     pool: &crate::db::DbPool,
     client: &reqwest::Client,
     app: &tauri::AppHandle,
+    bullet_token: &str,
+    country: &str,
+    language: &str,
 ) -> Result<usize, String> {
-    // nxapi-sidecar に WeaponRecordQuery を実行させ、最新の query hash を利用する。
-    let data = crate::nxapi::nxapi_fetch_weapon_records(app).await?;
+    let resp = graphql_request(
+        client,
+        bullet_token,
+        country,
+        language,
+        HASH_WEAPON_RECORD,
+        None,
+    )
+    .await?;
+    if let Some(msg) = graphql_error_messages(&resp) {
+        return Err(format!("WeaponRecordQuery GraphQL エラー: {msg}"));
+    }
 
-    let nodes = data
-        .pointer("/weaponRecords/nodes")
+    let nodes = resp
+        .pointer("/data/weaponRecords/nodes")
         .and_then(|v| v.as_array())
         .ok_or_else(|| {
-            let head = data.to_string();
+            let head = resp.to_string();
             format!(
-                "WeaponRecordQuery レスポンスに weaponRecords.nodes が無い。先頭: {}",
+                "WeaponRecordQuery レスポンスに data.weaponRecords.nodes が無い。先頭: {}",
                 &head[..head.len().min(300)]
             )
         })?;
@@ -1249,5 +1283,34 @@ mod ability_image_tests {
             crate::abilities::cache_key_from_url(&ability_image_url(empty_hash)),
             Some(crate::abilities::EMPTY_SLOT_KEY)
         );
+    }
+}
+
+#[cfg(test)]
+mod weapon_record_hash_tests {
+    use super::*;
+
+    #[test]
+    fn weapon_record_hash_matches_splatnet3_types() {
+        // nintendoapis/splatnet3-types RequestId.WeaponRecordQuery（現行）。
+        assert_eq!(
+            HASH_WEAPON_RECORD,
+            "974fad8a1275b415c3386aa212b07eddc3f6582686e4fef286ec4043cdf17135"
+        );
+    }
+
+    #[test]
+    fn graphql_error_messages_joins_error_array() {
+        let resp = serde_json::json!({
+            "errors": [
+                { "message": "PersistedQueryNotFound" },
+                { "message": "persisted query does not exist" }
+            ]
+        });
+        assert_eq!(
+            graphql_error_messages(&resp).as_deref(),
+            Some("PersistedQueryNotFound; persisted query does not exist")
+        );
+        assert_eq!(graphql_error_messages(&serde_json::json!({ "data": {} })), None);
     }
 }
