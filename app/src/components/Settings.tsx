@@ -370,7 +370,7 @@ async function handleUploadStatink() {
         {loggedIn ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ color: 'var(--win)', fontSize: 13 }}>連携済み</span>
-            <button className="btn-primary" onClick={handleLogout} disabled={authLoading}>
+            <button className="btn-danger" onClick={handleLogout} disabled={authLoading}>
               {authLoading ? '処理中...' : '認証解除'}
             </button>
           </div>
@@ -421,38 +421,47 @@ async function handleUploadStatink() {
             ⚠ 開発ビルド(0.0.0-dev)では、実データの誤送信を防ぐため stat.ink へのアップロードは無効化されています。
           </p>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
-          <button
-            className="btn-secondary"
-            onClick={handleUploadStatink}
-            disabled={uploading || !settings.statink.apiKey || isDevBuild}
+        <button
+          className="btn-primary"
+          style={{ marginTop: 10 }}
+          onClick={handleUploadStatink}
+          disabled={uploading || !settings.statink.apiKey || isDevBuild}
+        >
+          {uploading ? 'アップロード中...' : '今すぐアップロード'}
+        </button>
+        {uploadResult && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: uploadResult.startsWith('エラー') ? 'var(--accent2)' : 'var(--text-muted)',
+            }}
           >
-            {uploading ? 'アップロード中...' : '今すぐアップロード'}
-          </button>
-          {uploadResult && (
-            <span style={{ fontSize: 13, color: uploadResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
-              {uploadResult}
-            </span>
-          )}
-        </div>
+            {uploadResult}
+          </div>
+        )}
         <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '16px 0 10px' }}>
           stat.ink に保存済みの自分の過去バトルをデータベースに取り込みます。
           SplatNet 3 が保持しない古いバトルも集計対象にできます(重複は自動でスキップ)。
         </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            className="btn-secondary"
-            onClick={handleImportStatink}
-            disabled={importing || !settings.statink.apiKey}
+        <button
+          className="btn-primary"
+          onClick={handleImportStatink}
+          disabled={importing || !settings.statink.apiKey}
+        >
+          {importing ? '取り込み中...' : 'stat.ink から過去履歴を取得'}
+        </button>
+        {importResult && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: importResult.startsWith('エラー') ? 'var(--accent2)' : 'var(--text-muted)',
+            }}
           >
-            {importing ? '取り込み中...' : 'stat.ink から過去履歴を取得'}
-          </button>
-          {importResult && (
-            <span style={{ fontSize: 13, color: importResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
-              {importResult}
-            </span>
-          )}
-        </div>
+            {importResult}
+          </div>
+        )}
       </section>
       )}
 
@@ -658,7 +667,7 @@ async function handleUploadStatink() {
           取得済みのギアデータ(ギア一覧・画像キャッシュ)をすべて削除します。再度サイドバーの「最新データを取得」から取得できます。
         </p>
         <button
-          className="btn-primary"
+          className="btn-danger"
           onClick={handleDeleteGearData}
           disabled={gearDeleting}
         >
@@ -704,7 +713,7 @@ async function handleUploadStatink() {
           追加したカスタムグラフをすべて消してダッシュボードを初期状態(既存の固定 4 グラフのみ)に戻します。
         </p>
         <button
-          className="btn-secondary"
+          className="btn-danger"
           onClick={() => {
             if (window.confirm('追加したカスタムグラフをすべて削除します。よろしいですか？')) {
               clearCustomCharts()

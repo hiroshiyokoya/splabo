@@ -8,6 +8,7 @@
   --accent-hover:  #9dc024;
   --accent-fg:     #2e0a4f; /* accent (ライム) の上に載せる文字色（補色寄りの濃紫） */
   --accent2:       #ff7621;
+  --accent2-fg:    #1a1208; /* accent2 (オレンジ) の上に載せる文字色 */
   --text:          #eeeef8;
   --text-muted:    #9b9bd0;
   --win:           #22c55e;
@@ -2272,6 +2273,36 @@ body {
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 .btn-primary:disabled { opacity: 0.5; cursor: default; }
+
+.btn-danger {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent2) 92%, #ffffff),
+    color-mix(in srgb, var(--accent2) 85%, #000000)
+  );
+  color: var(--accent2-fg);
+  border: 1px solid color-mix(in srgb, var(--accent2) 75%, #000);
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-family: 'M PLUS Rounded 1c', system-ui, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow:
+    0 2px 0 color-mix(in srgb, var(--accent2) 60%, #000),
+    0 4px 10px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: transform 0.05s, box-shadow 0.05s, filter 0.15s;
+}
+.btn-danger:hover { filter: brightness(1.08); }
+.btn-danger:active {
+  transform: translateY(2px);
+  box-shadow:
+    0 0 0 color-mix(in srgb, var(--accent2) 60%, #000),
+    0 1px 4px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.btn-danger:disabled { opacity: 0.5; cursor: default; }
 
 .btn-secondary {
   background: var(--surface2);

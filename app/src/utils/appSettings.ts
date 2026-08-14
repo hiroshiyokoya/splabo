@@ -30,6 +30,8 @@ export const THEMES: Theme[] = [
       '--accent':       '#268bd2',
       '--accent-hover': '#1a6fa8',
       '--accent-fg':    '#fdf6e3',                 // 青ボタンには明るい文字
+      '--accent2':      '#cb4b16',
+      '--accent2-fg':   '#fdf6e3',
       '--text':         '#3d454a',
       '--text-muted':   '#657b83',                 // #93a1a1 だと薄すぎたので Solarized base00 寄りに
       // パネル系を反転：明るい背景・暗い文字
@@ -62,6 +64,8 @@ export const THEMES: Theme[] = [
       '--accent':       '#b58900',
       '--accent-hover': '#8a6800',
       '--accent-fg':    '#002b36', // アンバーボタンには濃文字
+      '--accent2':      '#cb4b16',
+      '--accent2-fg':   '#fdf6e3',
       '--text':         '#93a1a1',
       '--text-muted':   '#586e75',
       // Solarized アクセント（散布図カテゴリ色・#527）
@@ -86,6 +90,7 @@ const BASE_VARS: Record<string, string> = {
   '--accent-hover':  '#9dc024',
   '--accent-fg':     '#2e0a4f',
   '--accent2':       '#ff7621',
+  '--accent2-fg':    '#1a1208',
   '--text':          '#eeeef8',
   '--text-muted':    '#9b9bd0',
   // モーダル / パネル系のオーバーレイ色（ライトテーマで上書き）
