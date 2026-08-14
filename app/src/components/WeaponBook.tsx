@@ -58,8 +58,8 @@ const SORT_LABELS: Record<SortKey, string> = {
   win_count_total:   '通算勝利',
   paint_point_total: '通算塗',
   last_used_at:      '最終使用',
-  weapon_power:      'チャレパワー',
-  weapon_power_max:  '最大チャレ',
+  weapon_power:      'ブキチャレパワー',
+  weapon_power_max:  '(最大)',
   name:              '名前',
 }
 

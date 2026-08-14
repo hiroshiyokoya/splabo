@@ -160,8 +160,8 @@ export function WeaponDetailModal({
                 <StatPanel label="通算勝利" value={weapon.win_count_total != null ? weapon.win_count_total.toLocaleString() : '-'} />
                 <StatPanel label="通算塗" value={weapon.paint_point_total != null ? weapon.paint_point_total.toLocaleString() : '-'} />
                 <StatPanel label="最終使用" value={fmtLastUsed(weapon.last_used_at)} />
-                <StatPanel label="チャレパワー" value={fmtPower(weapon.weapon_power)} />
-                <StatPanel label="最大チャレ" value={fmtPower(weapon.weapon_power_max)} />
+                <StatPanel label="ブキチャレパワー" value={fmtPower(weapon.weapon_power)} />
+                <StatPanel label="(最大)" value={fmtPower(weapon.weapon_power_max)} />
               </div>
             </section>
           )}
