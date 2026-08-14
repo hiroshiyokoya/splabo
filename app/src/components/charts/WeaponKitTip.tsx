@@ -16,24 +16,22 @@ export function WeaponKitTipBody(t: WeaponKitTipData) {
       </div>
       {(t.spIconUrl || t.subIconUrl) && (
         <div className="hover-tt-kit">
-          <div className="hover-tt-kit-well">
-            {t.spIconUrl && (
-              <img
-                className="hover-tt-kit-icon hover-tt-kit-icon--sp"
-                src={t.spIconUrl}
-                alt=""
-                title={t.spName ?? undefined}
-              />
-            )}
-            {t.subIconUrl && (
-              <img
-                className="hover-tt-kit-icon"
-                src={t.subIconUrl}
-                alt=""
-                title={t.subName ?? undefined}
-              />
-            )}
-          </div>
+          {t.spIconUrl && (
+            <img
+              className="hover-tt-kit-icon hover-tt-kit-icon--sp"
+              src={t.spIconUrl}
+              alt=""
+              title={t.spName ?? undefined}
+            />
+          )}
+          {t.subIconUrl && (
+            <img
+              className="hover-tt-kit-icon"
+              src={t.subIconUrl}
+              alt=""
+              title={t.subName ?? undefined}
+            />
+          )}
         </div>
       )}
     </>
