@@ -23,6 +23,7 @@ import {
   isScatterCategoryColorKey, categoryStyleOf, buildCategoryColorLegend,
   categoryValueForWeaponName, categoryValueForBattle, kitIconsForWeapon, type WeaponMeta,
 } from '../utils/scatterCategoryColors'
+import { weaponAxisTip } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import { rankRowsForBarChart, type ChartSortDir } from '../utils/chartSort'
@@ -547,6 +548,10 @@ function renderChartBody(
     chart.groupBy === 'weapon' ||
     chart.groupBy === 'ally_weapon' ||
     chart.groupBy === 'enemy_weapon'
+  const isWeaponAxisY =
+    chart.groupBy2 === 'weapon' ||
+    chart.groupBy2 === 'ally_weapon' ||
+    chart.groupBy2 === 'enemy_weapon'
   const images = isWeaponAxis ? weaponImages : undefined
 
   // line: 時系列のみ。複数系列対応(#436)。
@@ -636,6 +641,7 @@ function renderChartBody(
     const yTitle = chart.yNumericMetric
       ? `${BATTLE_NUMERIC_METRIC_LABELS[chart.yNumericMetric]} (bin ${chart.yBinWidth ?? '?'})`
       : chart.groupBy2 ? GROUP_BY_LABELS[chart.groupBy2] : undefined
+    const kitTip = (name: string) => weaponAxisTip(name, weaponMeta, weaponImages, subImages, spImages)
     return (
       <HeatmapChart
         data={data2d ?? []}
@@ -646,6 +652,8 @@ function renderChartBody(
         yNumeric={!!chart.yNumericMetric}
         xTitle={xTitle}
         yTitle={yTitle}
+        xWeaponTip={!chart.xNumericMetric && isWeaponAxis ? kitTip : undefined}
+        yWeaponTip={!chart.yNumericMetric && isWeaponAxisY ? kitTip : undefined}
       />
     )
   }

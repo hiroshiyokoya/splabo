@@ -33,7 +33,7 @@ import {
   buildCategoryColorLegend, categoryValueForEnvStat, kitIconsForWeapon,
   type WeaponMeta,
 } from '../utils/scatterCategoryColors'
-import { loadSubSpImageMaps } from '../utils/weaponKitImages'
+import { loadSubSpImageMaps, loadWeaponImageMap, weaponAxisTip } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo, PanelExportNote } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import {
@@ -739,8 +739,23 @@ export function EnvAnalysis() {
   const iconTried = useRef<Set<string>>(new Set())
   const iconKind = scatterAxis === 'weapon' ? 'weapon' : 'stage'
   const [weaponMeta, setWeaponMeta] = useState<Map<string, WeaponMeta>>(new Map())
+  const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
   const [subImages, setSubImages] = useState<Map<string, string>>(new Map())
   const [spImages, setSpImages] = useState<Map<string, string>>(new Map())
+  const weaponJaByKey = useMemo(
+    () => new Map(weaponOptions.map(w => [w.key, w.label])),
+    [weaponOptions],
+  )
+  const heatmapWeaponTip = useCallback((key: string) => {
+    const name = weaponJaByKey.get(key) ?? key
+    const tip = weaponAxisTip(name, weaponMeta, weaponImages, subImages, spImages)
+    if (!tip) return undefined
+    if (!tip.iconUrl) {
+      const byKey = weaponImages.get(key)
+      if (byKey) return { ...tip, iconUrl: byKey }
+    }
+    return tip
+  }, [weaponJaByKey, weaponMeta, weaponImages, subImages, spImages])
 
   useEffect(() => {
     invoke<WeaponRecord[]>('db_list_weapons').then(list => {
@@ -753,6 +768,7 @@ export function EnvAnalysis() {
         setSubImages(sub)
         setSpImages(sp)
       }).catch(console.error)
+      loadWeaponImageMap(list.map(w => w.name)).then(setWeaponImages).catch(console.error)
     }).catch(console.error)
   }, [])
 
@@ -1340,6 +1356,8 @@ export function EnvAnalysis() {
                     colValue={colProj}
                     // バトル数は合計なので、セルの min/max ではなく軸内の相対で色付けする(#411)。
                     axisRelative={cellMetric === 'battles'}
+                    rowTip={rowDim === 'weapon' ? heatmapWeaponTip : undefined}
+                    colTip={colDim === 'weapon' ? heatmapWeaponTip : undefined}
                   />
                 )}
                 <p className={`env-chart-note ${EXPORT_HIDE_CLASS}`}>

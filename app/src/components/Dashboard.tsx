@@ -240,8 +240,22 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
   useEffect(() => {
     const names = new Set<string>()
     for (const c of customCharts) {
-      if (c.groupBy !== 'weapon' && c.groupBy !== 'ally_weapon' && c.groupBy !== 'enemy_weapon') continue
-      for (const row of groupedStatsCache[c.groupBy] ?? []) names.add(row.name)
+      if (c.groupBy === 'weapon' || c.groupBy === 'ally_weapon' || c.groupBy === 'enemy_weapon') {
+        for (const row of groupedStatsCache[c.groupBy] ?? []) names.add(row.name)
+      }
+      if (c.shape !== 'heatmap' || !(c.groupBy2 || c.xNumericMetric || c.yNumericMetric)) continue
+      const xa = c.xNumericMetric
+        ? { gb: `numeric:${c.xNumericMetric}`, bin: c.xBinWidth ?? BATTLE_NUMERIC_DEFAULT_BIN[c.xNumericMetric] }
+        : { gb: c.groupBy, bin: null as number | null }
+      const ya = c.yNumericMetric
+        ? { gb: `numeric:${c.yNumericMetric}`, bin: c.yBinWidth ?? BATTLE_NUMERIC_DEFAULT_BIN[c.yNumericMetric] }
+        : { gb: c.groupBy2 ?? 'stage', bin: null as number | null }
+      const key = `${xa.gb}|${xa.bin ?? ''}|${ya.gb}|${ya.bin ?? ''}|${c.topN ?? 20}`
+      const rows = grouped2dCache[key] ?? []
+      const xW = !c.xNumericMetric && (c.groupBy === 'weapon' || c.groupBy === 'ally_weapon' || c.groupBy === 'enemy_weapon')
+      const yW = !c.yNumericMetric && (c.groupBy2 === 'weapon' || c.groupBy2 === 'ally_weapon' || c.groupBy2 === 'enemy_weapon')
+      if (xW) for (const r of rows) names.add(r.name_x)
+      if (yW) for (const r of rows) names.add(r.name_y)
     }
     const targets = [...names].filter(n => !weaponImages.has(n) && !weaponIconTried.current.has(n))
     if (targets.length === 0) return
@@ -259,7 +273,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
         return next
       })
     })
-  }, [customCharts, groupedStatsCache, weaponImages])
+  }, [customCharts, groupedStatsCache, grouped2dCache, weaponImages])
 
   const totalBattles = summary?.by_mode.reduce((s, e) => s + e.total, 0) ?? 0
   const totalWins    = summary?.by_mode.reduce((s, e) => s + e.wins,  0) ?? 0

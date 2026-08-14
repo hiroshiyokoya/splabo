@@ -5,9 +5,10 @@
  * 行カテゴリ × 列カテゴリのグリッドとして描画する。Recharts に専用型が無いため
  * CSS グリッド + カラースケールで自前実装する。集計後データは数十×数十セルで軽量。
  */
-import { useMemo } from 'react'
+import { useMemo, useState, type MouseEvent } from 'react'
 import type { EnvMatrixCell } from '../../types'
 import { AXIS_LABEL_MIN_INTENSITY } from '../../utils/heatmapColors'
+import { WeaponKitTipBody, weaponKitTipStyle, type WeaponKitTipData } from './WeaponKitTip'
 
 export interface HeatmapProps {
   cells:      EnvMatrixCell[]
@@ -45,6 +46,9 @@ export interface HeatmapProps {
    *  カウント系(バトル数)の射影は合計なので、必ずセルの最大値以上になり、
    *  セルの min/max で正規化すると全見出しが最濃で潰れる。合計にはこちらを使う。 */
   axisRelative?: boolean
+  /** ブキ軸ラベルのホバーチップ(#643)。返すとブラウザ title の代わりに出す。 */
+  rowTip?: (key: string) => WeaponKitTipData | undefined
+  colTip?: (key: string) => WeaponKitTipData | undefined
 }
 
 /** 集計マップを並べ替える。order 指定時はその順(未指定キーはサンプル数降順で後続)、
@@ -107,7 +111,18 @@ export function Heatmap({
   rowAxis, colAxis, rowLabel, colLabel, diagonalCols = false, rowOrder, colOrder,
   sortColKey = null, sortDir = 'desc', onColHeaderClick,
   rowValue, colValue, axisRelative = false,
+  rowTip, colTip,
 }: HeatmapProps) {
+  const [axisHover, setAxisHover] = useState<{ mx: number; my: number; tip: WeaponKitTipData } | null>(null)
+
+  function axisHoverHandlers(tip: WeaponKitTipData | undefined) {
+    if (!tip) return {}
+    return {
+      onMouseEnter: (e: MouseEvent) => setAxisHover({ mx: e.clientX, my: e.clientY, tip }),
+      onMouseMove:  (e: MouseEvent) => setAxisHover(h => h ? { ...h, mx: e.clientX, my: e.clientY } : { mx: e.clientX, my: e.clientY, tip }),
+      onMouseLeave: () => setAxisHover(null),
+    }
+  }
   const { rowKeys, colKeys, cellMap, min, max } = useMemo(() => {
     const rowAgg = new Map<string, number>()
     const colAgg = new Map<string, number>()
@@ -187,6 +202,7 @@ export function Heatmap({
             {colKeys.map(ck => {
               const sorted = sortColKey === ck
               const sortable = !!onColHeaderClick
+              const kit = colTip?.(ck)
               const headClass = [
                 'env-heatmap-colhead',
                 diagonalCols && 'is-diagonal',
@@ -197,9 +213,10 @@ export function Heatmap({
                 <th key={ck}
                     className={headClass}
                     style={colHeadColor(ck) ? { color: colHeadColor(ck) } : undefined}
-                    title={sortable ? `${cl(ck)} - クリックで行を並べ替え` : ck}
+                    title={kit ? undefined : (sortable ? `${cl(ck)} - クリックで行を並べ替え` : ck)}
                     aria-sort={sorted ? (sortDir === 'asc' ? 'ascending' : 'descending') : sortable ? 'none' : undefined}
-                    onClick={sortable ? () => onColHeaderClick!(ck) : undefined}>
+                    onClick={sortable ? () => onColHeaderClick!(ck) : undefined}
+                    {...axisHoverHandlers(kit)}>
                   <span>{cl(ck)}{sorted ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</span>
                 </th>
               )
@@ -207,10 +224,13 @@ export function Heatmap({
           </tr>
         </thead>
         <tbody>
-          {rowKeys.map(rk => (
+          {rowKeys.map(rk => {
+            const kit = rowTip?.(rk)
+            return (
             <tr key={rk}>
-              <th className="env-heatmap-rowhead" title={rl(rk)}
-                  style={rowHeadColor(rk) ? { color: rowHeadColor(rk) } : undefined}>{rl(rk)}</th>
+              <th className="env-heatmap-rowhead" title={kit ? undefined : rl(rk)}
+                  style={rowHeadColor(rk) ? { color: rowHeadColor(rk) } : undefined}
+                  {...axisHoverHandlers(kit)}>{rl(rk)}</th>
               {colKeys.map(ck => {
                 const cell = cellMap.get(`${rk}${CELL_KEY_SEP}${ck}`)
                 if (!cell || cell.value === null) {
@@ -228,9 +248,15 @@ export function Heatmap({
                 )
               })}
             </tr>
-          ))}
+            )
+          })}
         </tbody>
       </table>
+      {axisHover && (
+        <div className="cal-tooltip" style={weaponKitTipStyle(axisHover.mx, axisHover.my)}>
+          <WeaponKitTipBody {...axisHover.tip} />
+        </div>
+      )}
     </div>
   )
 }
