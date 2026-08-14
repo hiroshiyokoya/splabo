@@ -312,7 +312,7 @@ pub const AI_VIEWS: &[ViewDoc] = &[
     },
     ViewDoc {
         name: "ai_env_slots",
-        row_meaning: "1 行 = 環境データ（stat.ink の全世界のバトル）1 件 × スロット 1 つ。\
+        row_meaning: "1 行 = 環境データ（stat.ink の公開バトル）1 件 × スロット 1 つ。\
                       スロットは投稿者本人を除く 7 人分（味方 3 + 相手 4）。\
                       投稿者は母数に入っていない（stat.ink の全体統計と同じ数え方）",
         columns: &[

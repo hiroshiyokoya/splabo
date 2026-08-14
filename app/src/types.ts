@@ -3,7 +3,7 @@ export type Tab = 'battles' | 'weapons' | 'stages' | 'ai' | 'env' | 'gear' | 'se
 /** 「バトル」タブ内のビュー(#296: 旧ダッシュボードタブ + 旧バトルログタブの統合)。 */
 export type BattlesView = 'dashboard' | 'list'
 
-/** 図鑑(ブキ・ステージ)タブ内のビュー(#297)。 */
+/** ブキ・ステージタブ内のビュー(#297)。 */
 export type BookView = 'panel' | 'list'
 
 /** 設定タブ内のサブタブ(#428 / #434)。連携・データ・表示・AI。 */
@@ -125,10 +125,10 @@ export function filtersToRange(filters: Filters): { since: string | null; until:
   return { since: periodToSince(filters.period), until: null }
 }
 
-/** 図鑑(ブキ・ステージ)用の集計フィルタ引数(#298)。
+/** ブキ・ステージ用の集計フィルタ引数(#298)。
  *
- *  ブキ図鑑をブキで、ステージ図鑑をステージで絞るのは自己言及的で不自然なため、
- *  `weapon` / `stage` は常に null にする(FilterBar 側でも図鑑タブでは非表示)。
+ *  ブキタブをブキで、ステージタブをステージで絞るのは自己言及的で不自然なため、
+ *  `weapon` / `stage` は常に null にする(FilterBar 側でもこれらのタブでは非表示)。
  *  フィルタ state 自体は「バトル」タブと共有なので、ここで明示的に落とす必要がある。 */
 export function filtersToBookArgs(filters: Filters): {
   since: string | null

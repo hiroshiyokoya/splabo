@@ -407,7 +407,7 @@ export default function App() {
             )}
           </>
         )}
-        {/* 図鑑タブ(#298): 期間・モード・ルール・結果を集計に反映する。
+        {/* ブキ・ステージタブ(#298): 期間・ロビー・ルール・結果を集計に反映する。
             ブキ/ステージ絞り込みは自己言及的なので hideTargetFilters で隠す。
             FilterBar は sticky。見出し行は各 Book 内で chrome 高さ分ずらして sticky(#450)。 */}
         {(tab === 'weapons' || tab === 'stages') && (
@@ -435,7 +435,7 @@ function NavItem({ id, icon, label, legacyName, active, onClick }: { id: Tab; ic
       <span className="nav-item-label">
         {label}
         {/* 旧アプリ由来のタブ(バトル＝Chartoon / ギア＝Geartoon)に添える旧アプリ名。
-            タブの中は絞り込み窓を図鑑と揃えている都合で置き場所が無いため、メニューに一本化した。
+            タブの中は絞り込み窓をブキ・ステージと揃えている都合で置き場所が無いため、メニューに一本化した。
             aria からは外す(読み上げでは日本語名だけで十分)。 */}
         {legacyName && <span className="nav-item-legacy" aria-hidden="true">({legacyName})</span>}
       </span>

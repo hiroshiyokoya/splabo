@@ -23,7 +23,7 @@ const WEAPON_MIN_BATTLES = 5
 const WEAPON_TOP_N = 5
 
 /**
- * ステージ図鑑カードをクリックして開く詳細モーダル (#226)。
+ * ステージカードをクリックして開く詳細モーダル (#226)。
  *
  * - ルール別統計は `db_grouped_stats(group_by='rule', stage=<key>)` で取得。
  *   WHERE 句は `m.key` で絞られる(db.rs の filter_where 参照)ので row.key をそのまま渡せる。

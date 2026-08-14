@@ -14,7 +14,7 @@ function winRateColor(rate: number): string {
   return '#f472b6'
 }
 
-/** ステージ図鑑のソートキー。 */
+/** ステージタブのソートキー。 */
 type SortKey =
   | 'total' | 'wins' | 'loses' | 'draws'
   | 'win_rate' | 'avg_kill' | 'avg_assist' | 'avg_death' | 'kd' | 'knockout_rate' | 'avg_inked' | 'name'
@@ -34,7 +34,7 @@ const SORT_LABELS: Record<SortKey, string> = {
   name:           '名前',
 }
 
-// 並びはバトル一覧と同じ K → A → D(#449)。平均塗りは武器図鑑と同様に含める(#635)。
+// 並びはバトル一覧と同じ K → A → D(#449)。平均塗りはブキタブと同様に含める(#635)。
 const SORT_KEYS: SortKey[] = [
   'total', 'wins', 'loses', 'draws',
   'win_rate', 'avg_kill', 'avg_assist', 'avg_death', 'kd', 'knockout_rate', 'avg_inked', 'name',
@@ -127,7 +127,7 @@ export function StageBook({ filters }: { filters: Filters }) {
   useEffect(() => {
     setLoading(true)
     // 共通 FilterBar(期間・モード・ルール・結果)を集計に反映する(#298)。
-    // ステージ図鑑はローカル集計のみなので、全項目がフィルタに追従する。
+    // ステージタブはローカル集計のみなので、全項目がフィルタに追従する。
     invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'stage', ...filtersToBookArgs(filters) })
       .then(data => {
         setRows(data)

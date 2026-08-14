@@ -1,7 +1,7 @@
 /**
  * 環境分析タブ(#184 / 拡張 #187)。
  *
- * stat.ink の公開バトルデータ(全世界のプレイヤー投稿)を取り込み、
+ * stat.ink の公開バトルデータを取り込み、
  * 散布図(ブキ/ステージ別)とマトリクスヒートマップ(カテゴリ×カテゴリ)で
  * 「ステージやブキによってバトル統計がどう変わるか」を見る。
  *
@@ -981,7 +981,7 @@ export function EnvAnalysis() {
         <div className="env-placeholder">
           <div className="env-placeholder-icon">🌍</div>
           <h3>環境データが未取得です</h3>
-          <p>stat.ink の公開データから全世界のバトル統計を取得します</p>
+          <p>stat.ink の公開データからバトル統計を取得します</p>
           <p className="env-placeholder-sub">推定ダウンロード量: 約 944 MiB / 推定時間: 10~15 分</p>
           <button className="btn-primary" onClick={handleDownloadFull} disabled={importing}>
             {importing ? 'ダウンロード中...' : 'データを取得する'}

@@ -1,5 +1,5 @@
 // タブ内のビューを切り替えるセグメンテッドコントロール（#296）。
-// 「バトル」タブ（ダッシュボード / 一覧）と図鑑タブ（パネル / 一覧・#297）で共用する。
+// 「バトル」タブ（ダッシュボード / 一覧）とブキ・ステージタブ（パネル / 一覧・#297）で共用する。
 
 import type { BookView } from '../types'
 
@@ -9,7 +9,7 @@ export interface ViewToggleOption<T extends string> {
   icon?: string
 }
 
-/** 図鑑（ブキ・ステージ）共通のビュー切替（#297）。 */
+/** ブキ・ステージ共通のビュー切替（#297）。 */
 export const BOOK_VIEWS: readonly ViewToggleOption<BookView>[] = [
   { key: 'panel', label: 'パネル', icon: '🖼' },
   { key: 'list',  label: '一覧',   icon: '📋' },
