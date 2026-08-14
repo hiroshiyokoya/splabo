@@ -485,9 +485,27 @@ body > .chart-card.chart-card--full {
   margin-bottom: 4px;
 }
 #splabo-export-tip .hover-tt-icon {
-  width: 18px;
-  height: 18px;
+  height: 36px;
+  width: auto;
+  max-width: 72px;
   object-fit: contain;
+}
+#splabo-export-tip .hover-tt-kit {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  margin: 2px 0 6px;
+}
+#splabo-export-tip .hover-tt-kit-icon {
+  height: 14px;
+  width: auto;
+  max-width: 22px;
+  object-fit: contain;
+}
+#splabo-export-tip .hover-tt-kit-icon--sp {
+  height: 16px;
+  max-width: 24px;
 }
 [data-scatter-point="true"] { cursor: pointer; }
 `
@@ -519,6 +537,16 @@ const HTML_EXPORT_TIP_SCRIPT = `(function () {
       ? '<img class="hover-tt-icon" src="' + esc(payload.iconUrl) + '" alt="">'
       : '';
     var out = '<div class="hover-tt-title">' + icon + esc(payload.name) + '</div>';
+    if (payload.spIconUrl || payload.subIconUrl) {
+      out += '<div class="hover-tt-kit">';
+      if (payload.spIconUrl) {
+        out += '<img class="hover-tt-kit-icon hover-tt-kit-icon--sp" src="' + esc(payload.spIconUrl) + '" alt="" title="' + esc(payload.spName) + '">';
+      }
+      if (payload.subIconUrl) {
+        out += '<img class="hover-tt-kit-icon" src="' + esc(payload.subIconUrl) + '" alt="" title="' + esc(payload.subName) + '">';
+      }
+      out += '</div>';
+    }
     (payload.rows || []).forEach(function (r) {
       var cls = r.muted ? 'hover-tt-row hover-tt-row--muted' : 'hover-tt-row';
       out += '<div class="' + cls + '">' + esc(r.label) + ': ' + esc(r.value) + '</div>';

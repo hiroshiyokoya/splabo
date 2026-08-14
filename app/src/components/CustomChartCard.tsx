@@ -21,7 +21,7 @@ import {
 import { rateCellColor, sequentialCellColor } from '../utils/heatmapColors'
 import {
   isScatterCategoryColorKey, categoryStyleOf, buildCategoryColorLegend,
-  categoryValueForWeaponName, categoryValueForBattle, type WeaponMeta,
+  categoryValueForWeaponName, categoryValueForBattle, kitIconsForWeapon, type WeaponMeta,
 } from '../utils/scatterCategoryColors'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
@@ -107,6 +107,8 @@ function buildAggScatterPoints(
   /** ブキ名 → 画像 data URI。点がブキのときだけ渡す(#626)。
    *  ここで取りに行かないのは、ホバーのたびに invoke を飛ばさないため。 */
   weaponImages?: Map<string, string>,
+  subImages?: Map<string, string>,
+  spImages?: Map<string, string>,
 ): ScatterBundle {
   const filtered = data.filter(d => d.total > 0)
   const isCatColor = isScatterCategoryColorKey(colorKey)
@@ -143,6 +145,7 @@ function buildAggScatterPoints(
           : 'var(--accent)',
       markerShape: catStyle?.shape,
       iconUrl: weaponImages?.get(d.name) ?? null,
+      ...kitIconsForWeapon(d.name, weaponMeta, subImages, spImages),
       tooltipRows: dedupeRows([
         { key: xKey, row: () => ({ label: metricLabelOf(xKey), value: fmtScatterMetric(d, x, xKey) }) },
         { key: yKey, row: () => ({ label: metricLabelOf(yKey), value: fmtScatterMetric(d, y, yKey) }) },
@@ -185,6 +188,8 @@ function buildBattleScatterPoints(
   weaponMeta?: Map<string, WeaponMeta>,
   /** ブキ名 → 画像 data URI(#626)。1 点 = 1 バトルで必ず自分のブキを持つ。 */
   weaponImages?: Map<string, string>,
+  subImages?: Map<string, string>,
+  spImages?: Map<string, string>,
 ): ScatterBundle {
   const jitter = () => (Math.random() - 0.5) * 0.3  // ±0.15
   const applyJitter = (v: number | null): number | null =>
@@ -222,6 +227,7 @@ function buildBattleScatterPoints(
       color,
       markerShape,
       iconUrl: weaponImages?.get(b.weapon) ?? null,
+      ...kitIconsForWeapon(b.weapon, weaponMeta, subImages, spImages),
       // 重なり判定: 元の (x, y) が同じ点を 1 グループに
       groupKey: `${x ?? 'null'}|${y ?? 'null'}`,
       // 複数件表示時の 1 行: 日付・ブキ・勝敗
@@ -380,6 +386,7 @@ function sortAndSlice(
  */
 export function CustomChartCard({
   chart, data, data2d, battleData, onEdit, onDelete, weaponImages, weaponMeta,
+  subImages, spImages,
   since = null, until = null, filterSummary = '',
 }: {
   chart:    CustomChart
@@ -394,6 +401,9 @@ export function CustomChartCard({
   weaponImages?: Map<string, string>
   /** ブキ名 → カテゴリ/サブ/スペシャル。散布図のカテゴリ色分け(#480)用。 */
   weaponMeta?: Map<string, WeaponMeta>
+  /** サブ／スペシャル画像(#641)。散布図ツールチップのキット行用。 */
+  subImages?: Map<string, string>
+  spImages?: Map<string, string>
   /** カレンダー用。FilterBar の期間(#461)。 */
   since?:   string | null
   until?:   string | null
@@ -509,7 +519,7 @@ export function CustomChartCard({
         )}
       </div>
       <PanelExportCaption conditions={filterSummary} />
-      {renderChartBody(chart, sliced, data2d, battleData, nameTransform, tickAngle, weaponImages, weaponMeta, since, until)}
+      {renderChartBody(chart, sliced, data2d, battleData, nameTransform, tickAngle, weaponImages, weaponMeta, subImages, spImages, since, until)}
     </div>
   )
 }
@@ -526,6 +536,8 @@ function renderChartBody(
   tickAngle:     number | undefined,
   weaponImages:  Map<string, string> | undefined,
   weaponMeta:    Map<string, WeaponMeta> | undefined,
+  subImages:     Map<string, string> | undefined,
+  spImages:      Map<string, string> | undefined,
   since:         string | null,
   until:         string | null,
 ): ReactNode {
@@ -580,8 +592,8 @@ function renderChartBody(
     // バトル単位は 1 点 = 1 バトルで必ず自分のブキを持つので、groupBy によらず渡す。
     // 集計単位は点がブキのときだけ(ステージ別の点にブキ画像が付いたら嘘になる)。
     const { points, sizeLegend, colorLegend } = isBattle
-      ? buildBattleScatterPoints(battleData ?? [], chart.xMetric, chart.yMetric, sizeKey, colorKey, weaponMeta, weaponImages)
-      : buildAggScatterPoints(data, chart.xMetric, chart.yMetric, sizeKey, colorKey, weaponMeta, images)
+      ? buildBattleScatterPoints(battleData ?? [], chart.xMetric, chart.yMetric, sizeKey, colorKey, weaponMeta, weaponImages, subImages, spImages)
+      : buildAggScatterPoints(data, chart.xMetric, chart.yMetric, sizeKey, colorKey, weaponMeta, images, images ? subImages : undefined, images ? spImages : undefined)
     return (
       <ScatterChart
         points={points}
