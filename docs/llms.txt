@@ -1,9 +1,9 @@
 # splabo
 
-> Nintendo アカウントから非公式 API（nxapi が解析した SplatNet 3 / GraphQL）経由で Splatoon 3 のバトル履歴を取得しグラフで可視化し、所持ギアの取得・コーデ作成もできる OSS の PC アプリ。Windows / macOS / Linux 対応（Tauri）。**任天堂株式会社とは無関係の非公式アプリ**。
+> Nintendo アカウントから非公式 API（nxapi が解析した SplatNet 3 / GraphQL）経由で Splatoon 3 の戦績とギアを取得し、可視化・分析する OSS の PC アプリ。Windows / macOS（Tauri）。Linux は未検証。**任天堂株式会社とは無関係の非公式アプリ**。
 
 主な機能:
-- ダッシュボード: 主要指標（バトル数・勝率・キル/デス・キルレシオ）と、ブキ・ステージ・ルール・モード別の集計グラフ
+- ダッシュボード: 主要指標（バトル数・勝率・キル/デス・キルレシオ）と、ブキ・ステージ・ルール・ロビー別の集計グラフ
 - カスタムグラフ: 線・棒・散布図・ヒートマップ・カレンダーを、集計軸と表示メトリクスを自由に組み合わせて追加
 - バトルログ: 履歴を検索・フィルター・ソート。詳細モーダルでチーム編成・ギア・ランク変動を確認
 - ブキ: 所持ブキの勝率・サブ/SP 一覧
@@ -38,4 +38,3 @@
 - [stat.ink](https://github.com/fetus-hina/stat.ink): Splatoon シリーズのバトル統計共有プラットフォーム。splabo はこの API にバトルをアップロードできる。
 - [s3s](https://github.com/frozenpandaman/s3s): SplatNet 3 から stat.ink へバトルデータを送る Python ツール。splabo の stat.ink アップロード機能はこのリポジトリのペイロード構築ロジックを Rust で再実装したもの。
 - [geartoon](https://github.com/hiroshiyokoya/geartoon): 旧・Splatoon 3 所持ギア表示アプリ。splabo に統合済み（「ギア」タブ）。
-- [splabo-viewer](https://github.com/hiroshiyokoya/splabo-viewer): splabo のモバイル・コンパニオン（Android）。同一 LAN でペアリングし、ギア・直近バトルを持ち出して閲覧する。任天堂 API には触れず、通信相手は splabo デスクトップのみ。

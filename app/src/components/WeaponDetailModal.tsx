@@ -34,7 +34,7 @@ function fmtRecord(total: number, wins: number, draws: number): string {
 }
 
 /**
- * ブキ図鑑カードをクリックして開く詳細モーダル。
+ * ブキカードをクリックして開く詳細モーダル。
  *
  * - バトル統計(バトル数 / W/L/D / 勝率 / 平均キル・デス・塗り / キルレ)は DB 集計。
  *   親 (WeaponBook) が statsByWeapon から該当行を `stats` prop として渡す。

@@ -82,7 +82,7 @@ function pairingPayload(info: CompanionInfo): string {
 export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   // サブタブ(#428)。前回選択を復元し、focus 指定(遷移時の着地)が来たら上書きする。
   const [subTab, setSubTab] = useState<SettingsTab>(() => loadViewPrefs().settings)
-  // 選択が変わったら永続化。他のタブ内ビュー(バトル/図鑑)と同じ shellViews に相乗り。
+  // 選択が変わったら永続化。他のタブ内ビュー(バトル/ブキ/ステージ)と同じ shellViews に相乗り。
   useEffect(() => { saveViewPrefs({ settings: subTab }) }, [subTab])
   // 遷移元の着地指定。nonce が変わるたびに効く(同じ tab を再指定しても発火する)ので、
   // 復元した選択より優先される。

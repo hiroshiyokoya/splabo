@@ -19,8 +19,8 @@ const PERIODS = PERIOD_OPTIONS
 interface Props {
   filters: Filters
   onChange: (f: Filters) => void
-  /** ブキ・ステージの絞り込みを隠す（#298）。ブキ図鑑をブキで、ステージ図鑑を
-   *  ステージで絞るのは自己言及的で不自然なため、図鑑タブでは出さない。 */
+  /** ブキ・ステージの絞り込みを隠す（#298）。ブキタブをブキで、ステージタブを
+   *  ステージで絞るのは自己言及的で不自然なため、これらのタブでは出さない。 */
   hideTargetFilters?: boolean
 }
 
