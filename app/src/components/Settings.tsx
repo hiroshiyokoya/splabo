@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { getVersion } from '@tauri-apps/api/app'
 import { isDevVersion } from '../utils/version'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -11,6 +12,13 @@ import { THEMES, saveTheme, getThemeId } from '../utils/appSettings'
 import { AI_MODELS, PROVIDER_LABELS, modelDisplayLabel, defaultModelFor, type AiProvider } from '../utils/aiModels'
 import { clearCustomCharts } from '../utils/customCharts'
 import { mirrorToStore } from '../utils/settingsStore'
+import {
+  ImportSincePicker,
+  loadEnvImportPrefs,
+  saveEnvImportPrefs,
+  resolveImportSince,
+  type ImportSinceKind,
+} from './EnvImportSince'
 import {
   DENSITIES,
   COMBO_LIMITS,
@@ -112,6 +120,17 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   const [gearNearLimit, setGearNearLimit] = useState<NearLimitValue>(loadNearLimit)
   const [gearDeleting, setGearDeleting] = useState(false)
   const [gearDeleteResult, setGearDeleteResult] = useState<string | null>(null)
+  const [envImportPrefs, setEnvImportPrefs] = useState(loadEnvImportPrefs)
+  const [envRefetching, setEnvRefetching] = useState(false)
+  const [envRefetchResult, setEnvRefetchResult] = useState<string | null>(null)
+  const [envRefetchProgress, setEnvRefetchProgress] = useState<{ current: number; total: number; phase: string } | null>(null)
+  useEffect(() => {
+    const unlisten = listen<{ current: number; total: number; phase: string }>(
+      'env_import_progress',
+      (e) => setEnvRefetchProgress(e.payload),
+    )
+    return () => { unlisten.then(fn => fn()) }
+  }, [])
 
   // ── モバイル同期(コンパニオン)──────────────────────────────
   // Rust 側 CompanionState が真実。UI は companion_status / _start / _stop を叩くだけ。
@@ -276,6 +295,40 @@ async function handleUploadStatink() {
       setGearDeleteResult(`エラー: ${String(e)}`)
     } finally {
       setGearDeleting(false)
+    }
+  }
+
+  function patchEnvImport(kind: ImportSinceKind, custom: string) {
+    const next = { kind, custom }
+    setEnvImportPrefs(next)
+    saveEnvImportPrefs(next)
+  }
+
+  async function handleEnvRefetch() {
+    if (envRefetching) return
+    const since = resolveImportSince(envImportPrefs.kind, envImportPrefs.custom)
+    if (envImportPrefs.kind === 'custom' && !since) {
+      setEnvRefetchResult('開始日を選んでください')
+      return
+    }
+    const range = since ? `${since} 以降` : '全期間'
+    const zipNote = since
+      ? '日次 CSV で取得します（ZIP は使いません）。'
+      : '全期間 ZIP（約 980 MiB・10〜15 分）を取り込みます。'
+    if (!window.confirm(
+      `環境データを削除して、${range} を取り込み直します。${zipNote}\n\n実行しますか？`
+    )) return
+    setEnvRefetching(true)
+    setEnvRefetchResult(null)
+    setEnvRefetchProgress({ current: 0, total: 1, phase: 'download' })
+    try {
+      const n = await invoke<number>('import_env_full', { since })
+      setEnvRefetchResult(`${n.toLocaleString()} 行を取り込みました。環境分析タブで確認できます。`)
+    } catch (e) {
+      setEnvRefetchResult(`エラー: ${String(e)}`)
+    } finally {
+      setEnvRefetching(false)
+      setEnvRefetchProgress(null)
     }
   }
 
@@ -545,6 +598,51 @@ async function handleUploadStatink() {
           >
             {weaponUpdateResult}
           </div>
+        )}
+      </section>
+      )}
+
+      {subTab === 'data' && (
+      <section className="settings-section">
+        <h3>環境分析データ</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+          stat.ink の公開バトルです。差分更新は環境分析タブ、開始日の変更と入れ直しはこの画面です。
+          既定は 2025.1.1〜です（全期間は集計が重く、ZIP 約 980 MiB になります）。
+        </p>
+        <ImportSincePicker
+          kind={envImportPrefs.kind}
+          custom={envImportPrefs.custom}
+          disabled={envRefetching}
+          onKind={k => patchEnvImport(k, envImportPrefs.custom)}
+          onCustom={v => patchEnvImport(envImportPrefs.kind, v)}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+          <button
+            className="btn-secondary"
+            onClick={handleEnvRefetch}
+            disabled={envRefetching}
+          >
+            {envRefetching ? '再取得中...' : '再取得'}
+          </button>
+          {envRefetchResult && (
+            <span style={{ fontSize: 13, color: envRefetchResult.startsWith('エラー') || envRefetchResult.startsWith('開始日') ? 'var(--lose)' : 'var(--win)' }}>
+              {envRefetchResult}
+            </span>
+          )}
+        </div>
+        {envRefetchProgress && envRefetching && (
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 8 }}>
+            {envRefetchProgress.phase === 'download' ? 'ダウンロード中' :
+             envRefetchProgress.phase === 'extract' ? '解凍中' :
+             envRefetchProgress.phase === 'index' ? 'インデックス作成中' :
+             'インポート中'}
+            {' '}
+            {envRefetchProgress.total > 0
+              ? `${Math.round((envRefetchProgress.current / envRefetchProgress.total) * 100)}%`
+              : ''}
+            {' '}
+            ({envRefetchProgress.current.toLocaleString()} / {envRefetchProgress.total.toLocaleString()})
+          </p>
         )}
       </section>
       )}
