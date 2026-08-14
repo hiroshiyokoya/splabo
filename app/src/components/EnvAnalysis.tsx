@@ -448,20 +448,6 @@ export function EnvAnalysis() {
       (colDim !== 'weapon' || keep.has(c.col_key)),
     )
   }, [matrixData, displayWeapons, rowDim, colDim])
-  const weaponJaByKey = useMemo(
-    () => new Map(weaponOptions.map(w => [w.key, w.label])),
-    [weaponOptions],
-  )
-  const heatmapWeaponTip = useCallback((key: string) => {
-    const name = weaponJaByKey.get(key) ?? key
-    const tip = weaponAxisTip(name, weaponMeta, weaponImages, subImages, spImages)
-    if (!tip) return undefined
-    if (!tip.iconUrl) {
-      const byKey = weaponImages.get(key)
-      if (byKey) return { ...tip, iconUrl: byKey }
-    }
-    return tip
-  }, [weaponJaByKey, weaponMeta, weaponImages, subImages, spImages])
   // ヒートマップ列見出しクリックによる行ソート(#479)。永続化しない。
   const [heatmapSortCol, setHeatmapSortCol] = useState<string | null>(null)
   const [heatmapSortDir, setHeatmapSortDir] = useState<'asc' | 'desc'>('desc')
@@ -756,6 +742,20 @@ export function EnvAnalysis() {
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
   const [subImages, setSubImages] = useState<Map<string, string>>(new Map())
   const [spImages, setSpImages] = useState<Map<string, string>>(new Map())
+  const weaponJaByKey = useMemo(
+    () => new Map(weaponOptions.map(w => [w.key, w.label])),
+    [weaponOptions],
+  )
+  const heatmapWeaponTip = useCallback((key: string) => {
+    const name = weaponJaByKey.get(key) ?? key
+    const tip = weaponAxisTip(name, weaponMeta, weaponImages, subImages, spImages)
+    if (!tip) return undefined
+    if (!tip.iconUrl) {
+      const byKey = weaponImages.get(key)
+      if (byKey) return { ...tip, iconUrl: byKey }
+    }
+    return tip
+  }, [weaponJaByKey, weaponMeta, weaponImages, subImages, spImages])
 
   useEffect(() => {
     invoke<WeaponRecord[]>('db_list_weapons').then(list => {
