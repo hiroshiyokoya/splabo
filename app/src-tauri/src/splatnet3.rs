@@ -18,11 +18,11 @@ const HASH_EVENT: &str = "e47f9aac5599f75c842335ef0ab8f4c640e8bf2afe588a3b1d4b48
 const HASH_DETAIL:   &str = "94faa2ff992222d11ced55e0f349920a82ac50f414ae33c83d1d1c9d8161c5dd";
 // HistoryRecordQuery（使ったブキ＋カテゴリ）。ハッシュは s3s / splatnet3-types を参照。
 const HASH_WEAPONS:  &str = "a654ecc80161a7ca5c38761c1d9e502d405eae764e2d343618b9c74b1dc0a80f";
-// WeaponRecordQuery（全ブキ＋熟練度・通算勝利・総塗）。クエリ自体は公式アプリに残っている。
-// 現行ハッシュは nintendoapis/splatnet3-types の RequestId.WeaponRecordQuery（#674）。
-// nxapi 同梱の古いハッシュは Nintendo 側で無効になった（#162）。
+// ブキ図鑑（全ブキ＋熟練度・通算勝利・総塗）。SplatNet 3 v10 では WeaponRecordQuery が
+// WeaponQuery に置き換わっている。ハッシュは nintendo-app-versions の splatnet3-app.json
+// graphql_queries.WeaponQuery（web 10.0.0-dfefd0af 以降。#674）。
 const HASH_WEAPON_RECORD: &str =
-    "974fad8a1275b415c3386aa212b07eddc3f6582686e4fef286ec4043cdf17135";
+    "a329d22727dbec795dcfa1fa93804756a62542dc0a96dfb94c0f710068a2eb38";
 // MyOutfitCommonDataEquipmentsQuery（所持ギア一覧）。splabo v0.8 ギア取得 Rust 化（Phase A2）。
 // s3s utils.py の translate_rid より。Phase 0 スパイクで実機取得を実証済みの canonical hash。
 const HASH_GEAR: &str = "45a4c343d973864f7bb9e9efac404182be1d48cf2181619505e9b7cd3b56a6e8";
@@ -75,7 +75,10 @@ async fn graphql_request(
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
-        return Err(format!("SplatNet3 GraphQL エラー ({status}): {text}"));
+        let body = if text.trim().is_empty() { "(empty body)" } else { text.as_str() };
+        return Err(format!(
+            "SplatNet3 GraphQL エラー ({status}) hash={hash}: {body}"
+        ));
     }
 
     resp.json::<serde_json::Value>()
@@ -848,15 +851,15 @@ pub async fn fetch_and_store_weapons(
     Ok(count)
 }
 
-/// WeaponRecordQuery (#49 / #674) をバトル取得と同じ GraphQL 直叩きで実行し、
+/// WeaponQuery (#49 / #674。v10 で WeaponRecordQuery から改名) を GraphQL 直叩きし、
 /// weapon_records テーブルに upsert する。同時に全ブキの主・サブ・SP 画像をキャッシュする
 /// （バトルに登場しないブキのアイコン欠け対策）。
 ///
-/// レスポンス構造 (data.weaponRecords.nodes[]):
-///   name, image2d.url, weaponId, stats.{level, paint, win, vibes, ...},
-///   subWeapon.{name, image.url}, specialWeapon.{name, image.url}, weaponCategory.{...}
-///
-/// 戻り値は upsert 件数。
+/// レスポンス構造:
+///   data.weaponRecords.nodes[]（weapons の alias）…所持寄り＋統計
+///   data.allWeapons.nodes[]（isOwnedOnly:false）…全ブキの画像
+///   各 node: name, image2d.url, stats.{level, paint, win, maxWeaponPower, ...},
+///            subWeapon / specialWeapon
 pub async fn fetch_and_store_weapon_records(
     pool: &crate::db::DbPool,
     client: &reqwest::Client,
@@ -875,7 +878,7 @@ pub async fn fetch_and_store_weapon_records(
     )
     .await?;
     if let Some(msg) = graphql_error_messages(&resp) {
-        return Err(format!("WeaponRecordQuery GraphQL エラー: {msg}"));
+        return Err(format!("WeaponQuery GraphQL エラー: {msg}"));
     }
 
     let nodes = resp
@@ -884,7 +887,7 @@ pub async fn fetch_and_store_weapon_records(
         .ok_or_else(|| {
             let head = resp.to_string();
             format!(
-                "WeaponRecordQuery レスポンスに data.weaponRecords.nodes が無い。先頭: {}",
+                "WeaponQuery レスポンスに data.weaponRecords.nodes が無い。先頭: {}",
                 &head[..head.len().min(300)]
             )
         })?;
@@ -902,11 +905,11 @@ pub async fn fetch_and_store_weapon_records(
         let win     = node.pointer("/stats/win").and_then(|v| v.as_i64()).unwrap_or(0);
         let paint   = node.pointer("/stats/paint").and_then(|v| v.as_i64()).unwrap_or(0);
 
-        // WeaponRecordQuery には big_run_level / weapon_power / weapon_power_max が無い。
-        // 将来別クエリ（HistoryRecordQuery 等）が見つかったらここで埋める。今は None。
         let big_run_level: Option<i64> = None;
-        let weapon_power: Option<f64>  = None;
-        let weapon_power_max: Option<f64> = None;
+        let weapon_power = node
+            .pointer("/stats/currentWeaponPowerOrder/weaponPower")
+            .and_then(|v| v.as_f64());
+        let weapon_power_max = node.pointer("/stats/maxWeaponPower").and_then(|v| v.as_f64());
 
         if let Err(e) = crate::db::upsert_weapon_record(
             pool, name, level, win, paint, big_run_level, weapon_power, weapon_power_max,
@@ -915,51 +918,64 @@ pub async fn fetch_and_store_weapon_records(
             continue;
         }
         count += 1;
+        cache_weapon_kit_images(pool, app, client, node, name).await;
+    }
 
-        // 主ブキ画像（image2d を優先、なければ image / image3d でフォールバック）。
-        let weapon_url = node
-            .pointer("/image2d/url")
-            .and_then(|v| v.as_str())
-            .or_else(|| node.pointer("/image/url").and_then(|v| v.as_str()))
-            .or_else(|| node.pointer("/image2dThumbnail/url").and_then(|v| v.as_str()))
-            .or_else(|| node.pointer("/image3d/url").and_then(|v| v.as_str()));
-        if let Some(url) = weapon_url {
-            if let Err(e) = crate::images::download_and_cache(app, client, "weapon", name, url).await {
-                log::warn!("主ブキ画像キャッシュ失敗 ({name}): {e}");
+    // 未所持ブキのアイコン（allWeapons = weapons(isOwnedOnly: false)）。
+    if let Some(all) = resp.pointer("/data/allWeapons/nodes").and_then(|v| v.as_array()) {
+        for node in all {
+            let name = node.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            if name.is_empty() {
+                continue;
             }
-        }
-
-        // サブ
-        let sub_name = node.pointer("/subWeapon/name").and_then(|v| v.as_str());
-        let sub_url  = node.pointer("/subWeapon/image/url").and_then(|v| v.as_str());
-        if let (Some(sname), Some(surl)) = (sub_name, sub_url) {
-            if let Err(e) = crate::images::download_and_cache(app, client, "sub_weapon", sname, surl).await {
-                log::warn!("サブウェポン画像キャッシュ失敗 ({sname}): {e}");
-            }
-        }
-
-        // SP
-        let sp_name = node.pointer("/specialWeapon/name").and_then(|v| v.as_str());
-        let sp_url  = node.pointer("/specialWeapon/image/url").and_then(|v| v.as_str());
-        if let (Some(sname), Some(surl)) = (sp_name, sp_url) {
-            if let Err(e) = crate::images::download_and_cache(app, client, "special_weapon", sname, surl).await {
-                log::warn!("スペシャルウェポン画像キャッシュ失敗 ({sname}): {e}");
-            }
-        }
-
-        // 旧 weapons テーブルにも sub / sp 名と画像を補完しておく（db_list_weapons 用）。
-        // ここで上書きしないように COALESCE。
-        if sub_name.is_some() || sp_name.is_some() {
-            if let Err(e) = crate::db::update_weapon_sub_special_images(
-                pool, name, sub_url, sp_url,
-            ).await {
-                log::warn!("ブキ画像URL更新失敗 ({name}): {e}");
-            }
+            cache_weapon_kit_images(pool, app, client, node, name).await;
         }
     }
 
-    log::info!("[weapon_records] WeaponRecordQuery 取得 {} 件", count);
+    log::info!("[weapon_records] WeaponQuery 取得 {count} 件");
     Ok(count)
+}
+
+async fn cache_weapon_kit_images(
+    pool: &crate::db::DbPool,
+    app: &tauri::AppHandle,
+    client: &reqwest::Client,
+    node: &serde_json::Value,
+    name: &str,
+) {
+    let weapon_url = node
+        .pointer("/image2d/url")
+        .and_then(|v| v.as_str())
+        .or_else(|| node.pointer("/image/url").and_then(|v| v.as_str()))
+        .or_else(|| node.pointer("/image2dThumbnail/url").and_then(|v| v.as_str()))
+        .or_else(|| node.pointer("/image3d/url").and_then(|v| v.as_str()));
+    if let Some(url) = weapon_url {
+        if let Err(e) = crate::images::download_and_cache(app, client, "weapon", name, url).await {
+            log::warn!("主ブキ画像キャッシュ失敗 ({name}): {e}");
+        }
+    }
+
+    let sub_name = node.pointer("/subWeapon/name").and_then(|v| v.as_str());
+    let sub_url = node.pointer("/subWeapon/image/url").and_then(|v| v.as_str());
+    if let (Some(sname), Some(surl)) = (sub_name, sub_url) {
+        if let Err(e) = crate::images::download_and_cache(app, client, "sub_weapon", sname, surl).await {
+            log::warn!("サブウェポン画像キャッシュ失敗 ({sname}): {e}");
+        }
+    }
+
+    let sp_name = node.pointer("/specialWeapon/name").and_then(|v| v.as_str());
+    let sp_url = node.pointer("/specialWeapon/image/url").and_then(|v| v.as_str());
+    if let (Some(sname), Some(surl)) = (sp_name, sp_url) {
+        if let Err(e) = crate::images::download_and_cache(app, client, "special_weapon", sname, surl).await {
+            log::warn!("スペシャルウェポン画像キャッシュ失敗 ({sname}): {e}");
+        }
+    }
+
+    if sub_name.is_some() || sp_name.is_some() {
+        if let Err(e) = crate::db::update_weapon_sub_special_images(pool, name, sub_url, sp_url).await {
+            log::warn!("ブキ画像URL更新失敗 ({name}): {e}");
+        }
+    }
 }
 
 /// 保存済みバトルの my_team / other_teams JSON から **全プレイヤーのメインブキ画像** をキャッシュする (#136)。
@@ -1292,10 +1308,11 @@ mod weapon_record_hash_tests {
 
     #[test]
     fn weapon_record_hash_matches_splatnet3_types() {
-        // nintendoapis/splatnet3-types RequestId.WeaponRecordQuery（現行）。
+        // nintendo-app-versions splatnet3-app.json graphql_queries.WeaponQuery
+        // （web 10.0.0-dfefd0af / 10.0.0-4787c271）。
         assert_eq!(
             HASH_WEAPON_RECORD,
-            "974fad8a1275b415c3386aa212b07eddc3f6582686e4fef286ec4043cdf17135"
+            "a329d22727dbec795dcfa1fa93804756a62542dc0a96dfb94c0f710068a2eb38"
         );
     }
 
