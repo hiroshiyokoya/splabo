@@ -28,6 +28,7 @@ import { MultiSelect } from './MultiSelect'
 import { SeasonSelect } from './SeasonSelect'
 import { rateCellColor, sequentialCellColor, AXIS_MIN_TOTAL_SAMPLES } from '../utils/heatmapColors'
 import { loadEnvPrefs, saveEnvPrefs, DEFAULT_ENV_PREFS } from '../utils/envPrefs'
+import { loadEnvImportPrefs, resolveImportSince } from './EnvImportSince'
 import {
   SCATTER_CATEGORY_COLOR_KEYS, isScatterCategoryColorKey, categoryStyleOf,
   buildCategoryColorLegend, categoryValueForEnvStat, kitIconsForWeapon,
@@ -811,10 +812,16 @@ export function EnvAnalysis() {
 
   async function handleDownloadFull() {
     if (importing) return
+    const prefs = loadEnvImportPrefs()
+    const since = resolveImportSince(prefs.kind, prefs.custom)
+    if (prefs.kind === 'custom' && !since) {
+      setError('設定 → データで開始日を選んでください')
+      return
+    }
     setImporting(true); setError(null)
     setProgress({ current: 0, total: 1, phase: 'download' })
     try {
-      await invoke<number>('import_env_full')
+      await invoke<number>('import_env_full', { since })
       await loadStatus()
     } catch (e) { setError(String(e)) }
     finally { setImporting(false); setProgress(null) }
@@ -829,21 +836,6 @@ export function EnvAnalysis() {
       await loadStatus()
     } catch (e) { setError(String(e)) }
     finally { setImporting(false); setProgress(null) }
-  }
-
-  // 全期間の再取得。既存 env_battles を削除して stat.ink から取り込み直す。
-  // #336 で per-player 列(kill/assist/death/inked)の取り込み位置を修正し、
-  // #501 で投稿者以外 6 人分のキル系も取り込むようにしたため、
-  // それ以前に取り込んだデータを最新の集計に揃えるには全期間の再取得が必要になる。
-  async function handleRefetchFull() {
-    if (importing) return
-    const ok = window.confirm(
-      '全期間データを削除して stat.ink から取り込み直します(約 944 MiB・10~15 分)。\n\n' +
-      'このバージョンから、キル・デス・アシスト・塗りポイントを投稿者を除く 7 人分すべて取り込みます。' +
-      'それ以前に取得したデータは 1 人分しか記録が無く、キル系の母数が不足します。実行しますか？'
-    )
-    if (!ok) return
-    await handleDownloadFull()
   }
 
   // 散布図ポイント生成
@@ -981,8 +973,8 @@ export function EnvAnalysis() {
         <div className="env-placeholder">
           <div className="env-placeholder-icon">🌍</div>
           <h3>環境データが未取得です</h3>
-          <p>stat.ink の公開データからバトル統計を取得します</p>
-          <p className="env-placeholder-sub">推定ダウンロード量: 約 944 MiB / 推定時間: 10~15 分</p>
+          <p>stat.ink の公開データからバトル統計を取得します（既定は 2025.1.1〜）</p>
+          <p className="env-placeholder-sub">開始日の変更と入れ直しは、設定 → データ</p>
           <button className="btn-primary" onClick={handleDownloadFull} disabled={importing}>
             {importing ? 'ダウンロード中...' : 'データを取得する'}
           </button>
@@ -1000,17 +992,13 @@ export function EnvAnalysis() {
                     title="最終取得日の翌日から昨日分を差分取得します">
               {importing ? '更新中...' : '差分更新'}
             </button>
-            <button className="btn-secondary" onClick={handleRefetchFull} disabled={importing}
-                    title="全期間データを削除して stat.ink から取り込み直します(約 944 MiB・10~15 分)">
-              全期間再取得
-            </button>
             {error && <span className="env-error">{error}</span>}
           </div>
 
           {!status.full_kda && (
             <p className="env-filter-note">
               ※ v0.9.6 以前に取り込んだデータは、キル・デス・アシスト・塗りポイントが 1 人分しかありません。
-              「全期間再取得」を実行してください(勝率・ピック率は再取得なしでも 7 人分で集計されます)。
+              設定 → データの「再取得」を実行してください(勝率・ピック率は再取得なしでも 7 人分で集計されます)。
             </p>
           )}
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { getVersion } from '@tauri-apps/api/app'
 import { isDevVersion } from '../utils/version'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -11,6 +12,13 @@ import { THEMES, saveTheme, getThemeId } from '../utils/appSettings'
 import { AI_MODELS, PROVIDER_LABELS, modelDisplayLabel, defaultModelFor, type AiProvider } from '../utils/aiModels'
 import { clearCustomCharts } from '../utils/customCharts'
 import { mirrorToStore } from '../utils/settingsStore'
+import {
+  ImportSincePicker,
+  loadEnvImportPrefs,
+  saveEnvImportPrefs,
+  resolveImportSince,
+  type ImportSinceKind,
+} from './EnvImportSince'
 import {
   DENSITIES,
   COMBO_LIMITS,
@@ -112,6 +120,17 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   const [gearNearLimit, setGearNearLimit] = useState<NearLimitValue>(loadNearLimit)
   const [gearDeleting, setGearDeleting] = useState(false)
   const [gearDeleteResult, setGearDeleteResult] = useState<string | null>(null)
+  const [envImportPrefs, setEnvImportPrefs] = useState(loadEnvImportPrefs)
+  const [envRefetching, setEnvRefetching] = useState(false)
+  const [envRefetchResult, setEnvRefetchResult] = useState<string | null>(null)
+  const [envRefetchProgress, setEnvRefetchProgress] = useState<{ current: number; total: number; phase: string } | null>(null)
+  useEffect(() => {
+    const unlisten = listen<{ current: number; total: number; phase: string }>(
+      'env_import_progress',
+      (e) => setEnvRefetchProgress(e.payload),
+    )
+    return () => { unlisten.then(fn => fn()) }
+  }, [])
 
   // ── モバイル同期(コンパニオン)──────────────────────────────
   // Rust 側 CompanionState が真実。UI は companion_status / _start / _stop を叩くだけ。
@@ -279,6 +298,40 @@ async function handleUploadStatink() {
     }
   }
 
+  function patchEnvImport(kind: ImportSinceKind, custom: string) {
+    const next = { kind, custom }
+    setEnvImportPrefs(next)
+    saveEnvImportPrefs(next)
+  }
+
+  async function handleEnvRefetch() {
+    if (envRefetching) return
+    const since = resolveImportSince(envImportPrefs.kind, envImportPrefs.custom)
+    if (envImportPrefs.kind === 'custom' && !since) {
+      setEnvRefetchResult('開始日を選んでください')
+      return
+    }
+    const range = since ? `${since} 以降` : '全期間'
+    const zipNote = since
+      ? '日次 CSV で取得します（ZIP は使いません）。'
+      : '全期間 ZIP（約 980 MiB・10〜15 分）を取り込みます。'
+    if (!window.confirm(
+      `環境データを削除して、${range} を取り込み直します。${zipNote}\n\n実行しますか？`
+    )) return
+    setEnvRefetching(true)
+    setEnvRefetchResult(null)
+    setEnvRefetchProgress({ current: 0, total: 1, phase: 'download' })
+    try {
+      const n = await invoke<number>('import_env_full', { since })
+      setEnvRefetchResult(`${n.toLocaleString()} 行を取り込みました。環境分析タブで確認できます。`)
+    } catch (e) {
+      setEnvRefetchResult(`エラー: ${String(e)}`)
+    } finally {
+      setEnvRefetching(false)
+      setEnvRefetchProgress(null)
+    }
+  }
+
   // ── モバイル同期ハンドラ ──────────────────────────────────
   async function handleToggleCompanion(enabled: boolean) {
     setCompanionBusy(true)
@@ -317,7 +370,7 @@ async function handleUploadStatink() {
         {loggedIn ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ color: 'var(--win)', fontSize: 13 }}>連携済み</span>
-            <button className="btn-primary" onClick={handleLogout} disabled={authLoading}>
+            <button className="btn-danger" onClick={handleLogout} disabled={authLoading}>
               {authLoading ? '処理中...' : '認証解除'}
             </button>
           </div>
@@ -368,38 +421,47 @@ async function handleUploadStatink() {
             ⚠ 開発ビルド(0.0.0-dev)では、実データの誤送信を防ぐため stat.ink へのアップロードは無効化されています。
           </p>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
-          <button
-            className="btn-secondary"
-            onClick={handleUploadStatink}
-            disabled={uploading || !settings.statink.apiKey || isDevBuild}
+        <button
+          className="btn-primary"
+          style={{ marginTop: 10 }}
+          onClick={handleUploadStatink}
+          disabled={uploading || !settings.statink.apiKey || isDevBuild}
+        >
+          {uploading ? 'アップロード中...' : '今すぐアップロード'}
+        </button>
+        {uploadResult && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: uploadResult.startsWith('エラー') ? 'var(--accent2)' : 'var(--text-muted)',
+            }}
           >
-            {uploading ? 'アップロード中...' : '今すぐアップロード'}
-          </button>
-          {uploadResult && (
-            <span style={{ fontSize: 13, color: uploadResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
-              {uploadResult}
-            </span>
-          )}
-        </div>
+            {uploadResult}
+          </div>
+        )}
         <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '16px 0 10px' }}>
           stat.ink に保存済みの自分の過去バトルをデータベースに取り込みます。
           SplatNet 3 が保持しない古いバトルも集計対象にできます(重複は自動でスキップ)。
         </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            className="btn-secondary"
-            onClick={handleImportStatink}
-            disabled={importing || !settings.statink.apiKey}
+        <button
+          className="btn-primary"
+          onClick={handleImportStatink}
+          disabled={importing || !settings.statink.apiKey}
+        >
+          {importing ? '取り込み中...' : 'stat.ink から過去履歴を取得'}
+        </button>
+        {importResult && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: importResult.startsWith('エラー') ? 'var(--accent2)' : 'var(--text-muted)',
+            }}
           >
-            {importing ? '取り込み中...' : 'stat.ink から過去履歴を取得'}
-          </button>
-          {importResult && (
-            <span style={{ fontSize: 13, color: importResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
-              {importResult}
-            </span>
-          )}
-        </div>
+            {importResult}
+          </div>
+        )}
       </section>
       )}
 
@@ -551,24 +613,77 @@ async function handleUploadStatink() {
 
       {subTab === 'data' && (
       <section className="settings-section">
+        <h3>環境分析データ</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
+          stat.ink の公開バトルです。差分更新は環境分析タブ、開始日の変更と入れ直しはこの画面です。
+          既定は 2025.1.1〜です（全期間は集計が重く、ZIP 約 980 MiB になります）。
+        </p>
+        <ImportSincePicker
+          kind={envImportPrefs.kind}
+          custom={envImportPrefs.custom}
+          disabled={envRefetching}
+          onKind={k => patchEnvImport(k, envImportPrefs.custom)}
+          onCustom={v => patchEnvImport(envImportPrefs.kind, v)}
+        />
+        <button
+          className="btn-primary"
+          onClick={handleEnvRefetch}
+          disabled={envRefetching}
+        >
+          {envRefetching ? '再取得中...' : '再取得'}
+        </button>
+        {envRefetchProgress && envRefetching && (
+          <div className="settings-help" style={{ marginTop: 8 }}>
+            {envRefetchProgress.phase === 'download' ? 'ダウンロード中' :
+             envRefetchProgress.phase === 'extract' ? '解凍中' :
+             envRefetchProgress.phase === 'index' ? 'インデックス作成中' :
+             'インポート中'}
+            {' '}
+            {envRefetchProgress.total > 0
+              ? `${Math.round((envRefetchProgress.current / envRefetchProgress.total) * 100)}%`
+              : ''}
+            {' '}
+            ({envRefetchProgress.current.toLocaleString()} / {envRefetchProgress.total.toLocaleString()})
+          </div>
+        )}
+        {envRefetchResult && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: envRefetchResult.startsWith('エラー') || envRefetchResult.startsWith('開始日') ? 'var(--accent2)' : 'var(--text-muted)',
+            }}
+          >
+            {envRefetchResult}
+          </div>
+        )}
+      </section>
+      )}
+
+      {subTab === 'data' && (
+      <section className="settings-section">
         <h3>ギアデータ</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
           取得済みのギアデータ(ギア一覧・画像キャッシュ)をすべて削除します。再度サイドバーの「最新データを取得」から取得できます。
         </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            className="btn-secondary"
-            onClick={handleDeleteGearData}
-            disabled={gearDeleting}
+        <button
+          className="btn-danger"
+          onClick={handleDeleteGearData}
+          disabled={gearDeleting}
+        >
+          {gearDeleting ? '削除中...' : 'ギアデータを削除'}
+        </button>
+        {gearDeleteResult && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: gearDeleteResult.startsWith('エラー') ? 'var(--accent2)' : 'var(--text-muted)',
+            }}
           >
-            {gearDeleting ? '削除中...' : 'ギアデータを削除'}
-          </button>
-          {gearDeleteResult && (
-            <span style={{ fontSize: 13, color: gearDeleteResult.startsWith('エラー') ? 'var(--lose)' : 'var(--win)' }}>
-              {gearDeleteResult}
-            </span>
-          )}
-        </div>
+            {gearDeleteResult}
+          </div>
+        )}
       </section>
       )}
 
@@ -598,7 +713,7 @@ async function handleUploadStatink() {
           追加したカスタムグラフをすべて消してダッシュボードを初期状態(既存の固定 4 グラフのみ)に戻します。
         </p>
         <button
-          className="btn-secondary"
+          className="btn-danger"
           onClick={() => {
             if (window.confirm('追加したカスタムグラフをすべて削除します。よろしいですか？')) {
               clearCustomCharts()

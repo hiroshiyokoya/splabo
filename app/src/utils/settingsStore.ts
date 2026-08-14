@@ -70,6 +70,7 @@ const MIRROR_KEYS: readonly string[] = [
   CUSTOM_CHARTS_KEY,
   VIEWS_KEY,
   SHELL_ENV_KEY,
+  'splabo:envImport',
   // gear 側設定（gear/utils/appSettings.ts と同名。ここでは値をそのままミラーするだけ）
   'splabo:densityId',
   'splabo:comboLimit',
