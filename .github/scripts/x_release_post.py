@@ -11,7 +11,7 @@ import re
 import sys
 import unicodedata
 
-DOWNLOAD_URL = "https://chartoon.pages.dev/"
+DOWNLOAD_URL = "https://splaboon.pages.dev/"
 TCO_LEN = 23
 MAX_WEIGHT = 280
 MAX_BULLETS = 3
