@@ -3,6 +3,7 @@
 
 GitHub リリース Publish 後に Slack へ流す文面。280 加重字に収める。
 非 ASCII は 2、ASCII は 1。投稿本文に URL は入れない（自動投稿のコスト）。
+誘導は「ダウンロードはプロフィールからどうぞ。」。
 Query 名は出さない。末尾のタグは #スプラトゥーン3 #Splatoon3 #SpLabo で固定。
 """
 from __future__ import annotations
@@ -14,6 +15,7 @@ import unicodedata
 
 DOWNLOAD_PAGE = "https://splaboon.pages.dev/"
 HASHTAGS = "#スプラトゥーン3 #Splatoon3 #SpLabo"
+PROFILE_CTA = "ダウンロードはプロフィールからどうぞ。"
 MAX_WEIGHT = 280
 MAX_BULLETS = 3
 QUERY_NAME_RE = re.compile(
@@ -89,7 +91,7 @@ def build_post(version: str, bullets: list[str]) -> str:
         if items:
             parts.extend(f"・{b}" for b in items)
             parts.append("")
-        parts.extend([HASHTAGS])
+        parts.extend([PROFILE_CTA, "", HASHTAGS])
         return "\n".join(parts)
 
     text = compose(chosen)
@@ -131,6 +133,7 @@ def self_test() -> None:
     text = render(sample, "0.10.4")
     assert "0.10.3" not in text
     assert "SpLabo v0.10.4 をリリースしました。" in text
+    assert PROFILE_CTA in text
     assert DOWNLOAD_PAGE not in text
     assert "http" not in text
     assert HASHTAGS in text

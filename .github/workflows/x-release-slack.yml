@@ -55,16 +55,14 @@ jobs:
             echo "SLACK_WEBHOOK_URL 未設定。Slack はスキップ。"
             exit 0
           fi
-          # Slack 用。投稿本文はコードブロックに入れてそのままコピーできるようにする。
-          HEADER=$(printf '%s\n' \
+          # 1通目は注記。2通目は投稿文だけ（スマホで長押しコピーしやすくする）。
+          NOTE=$(printf '%s\n' \
             "*X 告知（公開済み v${VERSION}）*" \
-            "このままコピーして Splabo 用アカウントへ投稿（URL なし）:" \
-            "" \
-            "\`\`\`" \
-            "${POST_TEXT}" \
-            "\`\`\`" \
-            "" \
+            "次のメッセージを長押ししてコピーし、Splabo 用アカウントへ投稿。" \
             "ダウンロードページ（投稿には入れない）: https://splaboon.pages.dev/" \
             "リリース: ${RELEASE_URL}")
-          PAYLOAD=$(jq -n --arg text "$HEADER" '{text: $text}')
-          curl -sS -X POST -H 'Content-Type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"
+          NOTE_PAYLOAD=$(jq -n --arg text "$NOTE" '{text: $text}')
+          curl -sS -X POST -H 'Content-Type: application/json' --data "$NOTE_PAYLOAD" "$SLACK_WEBHOOK_URL"
+          POST_PAYLOAD=$(jq -n --arg text "$POST_TEXT" \
+            '{text: $text, blocks: [{type: "section", text: {type: "plain_text", text: $text, emoji: false}}]}')
+          curl -sS -X POST -H 'Content-Type: application/json' --data "$POST_PAYLOAD" "$SLACK_WEBHOOK_URL"
