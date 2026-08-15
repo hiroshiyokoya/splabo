@@ -58,12 +58,13 @@ jobs:
           # Slack 用。投稿本文はコードブロックに入れてそのままコピーできるようにする。
           HEADER=$(printf '%s\n' \
             "*X 告知（公開済み v${VERSION}）*" \
-            "このままコピーして Splabo 用アカウントへ投稿:" \
+            "このままコピーして Splabo 用アカウントへ投稿（URL なし）:" \
             "" \
             "\`\`\`" \
             "${POST_TEXT}" \
             "\`\`\`" \
             "" \
+            "ダウンロードページ（投稿には入れない）: https://splaboon.pages.dev/" \
             "リリース: ${RELEASE_URL}")
           PAYLOAD=$(jq -n --arg text "$HEADER" '{text: $text}')
           curl -sS -X POST -H 'Content-Type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK_URL"

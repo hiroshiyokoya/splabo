@@ -2,7 +2,7 @@
 """CHANGELOG から X 告知文を組む (#648)。
 
 GitHub リリース Publish 後に Slack へ流す文面。280 加重字に収める。
-URL は t.co 換算 23、非 ASCII は 2、ASCII は 1。
+非 ASCII は 2、ASCII は 1。投稿本文に URL は入れない（自動投稿のコスト）。
 Query 名は出さない。末尾のタグは #スプラトゥーン3 #Splatoon3 #SpLabo で固定。
 """
 from __future__ import annotations
@@ -12,9 +12,8 @@ import re
 import sys
 import unicodedata
 
-DOWNLOAD_URL = "https://splaboon.pages.dev/"
+DOWNLOAD_PAGE = "https://splaboon.pages.dev/"
 HASHTAGS = "#スプラトゥーン3 #Splatoon3 #SpLabo"
-TCO_LEN = 23
 MAX_WEIGHT = 280
 MAX_BULLETS = 3
 QUERY_NAME_RE = re.compile(
@@ -26,12 +25,12 @@ URL_RE = re.compile(r"https?://[^\s]+")
 
 
 def tweet_weight(text: str) -> int:
-    """X の加重文字数。URL は t.co 23 固定。"""
+    """X の加重文字数。本文に URL は入れない前提。残っていれば t.co 23。"""
     n = 0
     pos = 0
     for m in URL_RE.finditer(text):
         n += _run_weight(text[pos:m.start()])
-        n += TCO_LEN
+        n += 23
         pos = m.end()
     n += _run_weight(text[pos:])
     return n
@@ -69,6 +68,7 @@ def extract_bullets(changelog: str, version: str) -> list[str]:
 
 def shorten_bullet(raw: str) -> str:
     s = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", raw)
+    s = URL_RE.sub("", s)
     s = QUERY_NAME_RE.sub("", s)
     s = re.sub(r"\b\w+Query\b", "", s)
     s = s.replace("**", "")
@@ -89,7 +89,7 @@ def build_post(version: str, bullets: list[str]) -> str:
         if items:
             parts.extend(f"・{b}" for b in items)
             parts.append("")
-        parts.extend(["ダウンロード", DOWNLOAD_URL, "", HASHTAGS])
+        parts.extend([HASHTAGS])
         return "\n".join(parts)
 
     text = compose(chosen)
@@ -131,7 +131,8 @@ def self_test() -> None:
     text = render(sample, "0.10.4")
     assert "0.10.3" not in text
     assert "SpLabo v0.10.4 をリリースしました。" in text
-    assert DOWNLOAD_URL in text
+    assert DOWNLOAD_PAGE not in text
+    assert "http" not in text
     assert HASHTAGS in text
     assert "**" not in text
     assert tweet_weight(text) <= MAX_WEIGHT, tweet_weight(text)
