@@ -281,7 +281,7 @@ export function CalendarHeatmapChart({
   const legendRight  = group === 'rate' ? '100%' : fmtLegend(maxVal, metric)
 
   return (
-    <div ref={scrollRef} className="chart-hover-area" style={{ position: 'relative', overflow: 'auto' }}>
+    <div ref={scrollRef} className="chart-hover-area chart-hover-area--scroll" style={{ position: 'relative' }}>
       <svg width={width} height={height} role="img" aria-label="カレンダーヒートマップ">
         <defs><SparseHatchPattern id={sparseId} /></defs>
         {/* .cal-cell スタイルは App.css に定義(凡例バーの SVG rect と共有) */}

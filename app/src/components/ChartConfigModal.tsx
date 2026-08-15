@@ -6,8 +6,10 @@ import {
   scatterDotUnitLabel, canScatterUseImages, SCATTER_IMAGE_SIZE_LABELS,
   BATTLE_NUMERIC_METRIC_LABELS, BATTLE_NUMERIC_DEFAULT_BIN, axisGroupOf, AXIS_GROUP_LABELS, chartMetrics,
   LOCAL_METRIC_KEYS, officialMetricsForGroup, isOfficialRateMetric, OFFICIAL_METRICS,
+  isWeaponGroupBy,
 } from '../types'
 import { SCATTER_CATEGORY_COLOR_KEYS } from '../utils/scatterCategoryColors'
+import { CHART_BAR_TOP_N } from '../utils/chartSort'
 
 /**
  * 比率メトリクスか (#381)。**ログスケールを無効化する判定**に使う。
@@ -75,7 +77,9 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   const [lineMetrics,  setLineMetrics]  = useState<MetricKey[]>(
     initial?.shape === 'line' ? chartMetrics(initial) : ['win_rate']
   )
-  const [topN,         setTopN]         = useState<number>(initial?.topN ?? 20)
+  const [topN,         setTopN]         = useState<number>(
+    initial?.topN ?? (initial?.shape === 'heatmap' ? 20 : CHART_BAR_TOP_N)
+  )
   // ヒートマップの数値メトリクス bin 軸 (#134)。null/undefined ならカテゴリ軸。
   const [xNumericMetric, setXNumericMetric] = useState<BattleNumericMetric | null>(initial?.xNumericMetric ?? null)
   const [yNumericMetric, setYNumericMetric] = useState<BattleNumericMetric | null>(initial?.yNumericMetric ?? null)
@@ -191,6 +195,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
     })
   }
 
+  const showWeaponTopN =
+    (shape === 'heatmap' && (isWeaponGroupBy(groupBy) || isWeaponGroupBy(groupBy2))) ||
+    (shape === 'bar' && isWeaponGroupBy(groupBy))
+
   function handleSave() {
     const chart: CustomChart = {
       id:           initial?.id ?? '',  // 保存側で空ならカスタム ID 生成
@@ -201,7 +209,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       metric:       shape !== 'line' && yComposition === 'single_metric' ? metric : undefined,
       metrics:      shape === 'line' ? lineMetrics : undefined,
       groupBy2:     shape === 'heatmap' ? groupBy2 : undefined,
-      topN:         shape === 'heatmap' ? topN : undefined,
+      topN:         showWeaponTopN ? topN : undefined,
       dotUnit:      shape === 'scatter' ? dotUnit : undefined,
       xMetric:      shape === 'scatter' ? xMetric : undefined,
       yMetric:      shape === 'scatter' ? yMetric : undefined,
@@ -362,22 +370,22 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             </div>
           )}
 
-          {shape === 'heatmap' && (
-            groupBy === 'weapon' || groupBy2 === 'weapon' ||
-            groupBy === 'ally_weapon' || groupBy2 === 'ally_weapon' ||
-            groupBy === 'enemy_weapon' || groupBy2 === 'enemy_weapon'
-          ) && (
+          {showWeaponTopN && (
             <div className="form-field">
-              <label className="form-label">ブキ軸の上位 N</label>
+              <label className="form-label">表示するブキの数</label>
               <input
                 type="number"
                 className="form-input"
                 min={5}
                 max={200}
                 value={topN}
-                onChange={e => setTopN(Math.max(1, Math.min(200, Number(e.target.value) || 20)))}
+                onChange={e => setTopN(Math.max(1, Math.min(200, Number(e.target.value) || (shape === 'heatmap' ? 20 : CHART_BAR_TOP_N))))}
               />
-              <p className="form-hint">バトル数の多いブキを上位 N 種に絞ります(デフォルト 20)。</p>
+              <p className="form-hint">
+                {shape === 'heatmap'
+                  ? `バトル数の多いブキに絞ります（未指定時は 20）。`
+                  : `いまの並びの上から N 種です（未指定時は ${CHART_BAR_TOP_N}）。`}
+              </p>
             </div>
           )}
 
