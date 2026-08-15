@@ -2444,8 +2444,32 @@ pub async fn update_weapon_sub_special_images(
     Ok(())
 }
 
-/// バトル詳細の my_team / other_teams JSON を全件返す（画像キャッシュ用）。新スキーマから読む。
-pub async fn get_battles_team_json(pool: &DbPool) -> Result<Vec<(Option<String>, Option<String>)>, String> {
+/// バトル詳細の my_team / other_teams JSON を返す（画像キャッシュ用）。
+///
+/// `battle_ids` が `None` なら全件。`Some` ならその ID だけ（空ならクエリしない）。#682
+pub async fn get_battles_team_json(
+    pool: &DbPool,
+    battle_ids: Option<&[String]>,
+) -> Result<Vec<(Option<String>, Option<String>)>, String> {
+    if let Some(ids) = battle_ids {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let json = serde_json::to_string(ids).map_err(|e| e.to_string())?;
+        let rows = sqlx::query(
+            "SELECT my_team, other_teams FROM battle
+             WHERE (my_team IS NOT NULL OR other_teams IS NOT NULL)
+               AND id IN (SELECT value FROM json_each(?))",
+        )
+        .bind(json)
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+        return Ok(rows
+            .into_iter()
+            .map(|r| (r.try_get("my_team").ok().flatten(), r.try_get("other_teams").ok().flatten()))
+            .collect());
+    }
     let rows = sqlx::query(
         "SELECT my_team, other_teams FROM battle
          WHERE my_team IS NOT NULL OR other_teams IS NOT NULL",

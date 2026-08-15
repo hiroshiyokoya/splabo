@@ -429,17 +429,19 @@ async fn run_fetch_full_inner(app: &AppHandle, db: &db::DbPool) -> Result<(usize
         db, &result.bullet_token, &result.country, &result.language, &client, app,
     ).await?;
 
-    let details = splatnet3::fetch_and_update_details(
+    let detail_ids = splatnet3::fetch_and_update_details(
         db, &result.bullet_token, &result.country, &result.language, &client,
     ).await?;
+    let details = detail_ids.len();
 
     db::populate_weapons_from_battles(db).await?;
-    splatnet3::cache_sub_special_images(db, app, &client).await?;
-    splatnet3::cache_ability_images(db, app, &client).await?;
+    // 新しい詳細があるバトルだけ走査する。0 件なら全件 JSON を読まない（#682）。
+    let scan = Some(detail_ids.as_slice());
+    splatnet3::cache_sub_special_images(db, app, &client, scan).await?;
+    splatnet3::cache_ability_images(db, app, &client, scan).await?;
     // 全ギアパワーを登場依存なしで先回りキャッシュ（viewer の全スキル表示のアイコン欠け対策・#360）
     splatnet3::cache_all_ability_images(app, &client).await?;
-    // 全プレイヤー（味方・相手）のメインブキ画像もキャッシュ（#136）
-    splatnet3::cache_all_weapon_images(db, app, &client).await?;
+    splatnet3::cache_all_weapon_images(db, app, &client, scan).await?;
 
     maybe_fetch_official_records(
         app, db, &client, &result.bullet_token, &result.country, &result.language,
@@ -567,10 +569,10 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
     .await?;
     db::backfill_battle_players_inner(&db).await?;
     db::populate_weapons_from_battles(&db).await?;
-    splatnet3::cache_sub_special_images(&db, &app, &client).await?;
-    splatnet3::cache_ability_images(&db, &app, &client).await?;
+    splatnet3::cache_sub_special_images(&db, &app, &client, None).await?;
+    splatnet3::cache_ability_images(&db, &app, &client, None).await?;
     splatnet3::cache_all_ability_images(&app, &client).await?;
-    splatnet3::cache_all_weapon_images(&db, &app, &client).await?;
+    splatnet3::cache_all_weapon_images(&db, &app, &client, None).await?;
 
     maybe_fetch_official_records(
         &app, &db, &client, &result.bullet_token, &result.country, &result.language,
