@@ -3,7 +3,7 @@
 
 GitHub リリース Publish 後に Slack へ流す文面。280 加重字に収める。
 URL は t.co 換算 23、非 ASCII は 2、ASCII は 1。
-Query 名は出さない。末尾に #スプラトゥーン3 #Splatoon3 を付ける。
+Query 名は出さない。末尾のタグは #スプラトゥーン3 #Splatoon3 #SpLabo で固定。
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import sys
 import unicodedata
 
 DOWNLOAD_URL = "https://splaboon.pages.dev/"
-HASHTAGS = "#スプラトゥーン3 #Splatoon3"
+HASHTAGS = "#スプラトゥーン3 #Splatoon3 #SpLabo"
 TCO_LEN = 23
 MAX_WEIGHT = 280
 MAX_BULLETS = 3
