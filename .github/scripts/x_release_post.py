@@ -2,7 +2,9 @@
 """CHANGELOG から X 告知文を組む (#648)。
 
 GitHub リリース Publish 後に Slack へ流す文面。280 加重字に収める。
-URL は t.co 換算 23、非 ASCII は 2、ASCII は 1。
+非 ASCII は 2、ASCII は 1。投稿本文に URL は入れない（自動投稿のコスト）。
+誘導は「ダウンロードはプロフィールからどうぞ。」。箇条書きの上は「更新内容」。
+Query 名は出さない。末尾のタグは #スプラトゥーン3 #Splatoon3 #SpLabo で固定。
 """
 from __future__ import annotations
 
@@ -11,22 +13,27 @@ import re
 import sys
 import unicodedata
 
-DOWNLOAD_URL = "https://splaboon.pages.dev/"
-TCO_LEN = 23
+DOWNLOAD_PAGE = "https://splaboon.pages.dev/"
+HASHTAGS = "#スプラトゥーン3 #Splatoon3 #SpLabo"
+PROFILE_CTA = "ダウンロードはプロフィールからどうぞ。"
+CHANGES_HEADING = "更新内容"
 MAX_WEIGHT = 280
 MAX_BULLETS = 3
+QUERY_NAME_RE = re.compile(
+    r"、?現行の\s*(?:\*\*)?\w+Query(?:\*\*)?(?:\s*/\s*(?:\*\*)?\w+Query(?:\*\*)?)*\s*で"
+)
 
 VERSION_RE = re.compile(r"^## \[([^\]]+)\]")
 URL_RE = re.compile(r"https?://[^\s]+")
 
 
 def tweet_weight(text: str) -> int:
-    """X の加重文字数。URL は t.co 23 固定。"""
+    """X の加重文字数。本文に URL は入れない前提。残っていれば t.co 23。"""
     n = 0
     pos = 0
     for m in URL_RE.finditer(text):
         n += _run_weight(text[pos:m.start()])
-        n += TCO_LEN
+        n += 23
         pos = m.end()
     n += _run_weight(text[pos:])
     return n
@@ -63,8 +70,13 @@ def extract_bullets(changelog: str, version: str) -> list[str]:
 
 
 def shorten_bullet(raw: str) -> str:
-    s = raw.replace("**", "")
-    s = re.sub(r"\s*[（(][^）)]*[）)]\s*$", "", s)
+    s = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", raw)
+    s = URL_RE.sub("", s)
+    s = QUERY_NAME_RE.sub("", s)
+    s = re.sub(r"\b\w+Query\b", "", s)
+    s = s.replace("**", "")
+    s = re.sub(r"[（(][^）)]*[）)]", "", s)
+    s = re.sub(r"\s{2,}", " ", s)
     s = re.sub(r"ようにしました。?$", "", s)
     s = re.sub(r"しました。?$", "", s)
     s = s.rstrip("。").strip()
@@ -78,9 +90,10 @@ def build_post(version: str, bullets: list[str]) -> str:
     def compose(items: list[str]) -> str:
         parts = [f"SpLabo v{version} をリリースしました。", ""]
         if items:
+            parts.append(CHANGES_HEADING)
             parts.extend(f"・{b}" for b in items)
             parts.append("")
-        parts.extend(["ダウンロード", DOWNLOAD_URL])
+        parts.extend([PROFILE_CTA, "", HASHTAGS])
         return "\n".join(parts)
 
     text = compose(chosen)
@@ -122,10 +135,25 @@ def self_test() -> None:
     text = render(sample, "0.10.4")
     assert "0.10.3" not in text
     assert "SpLabo v0.10.4 をリリースしました。" in text
-    assert DOWNLOAD_URL in text
+    assert PROFILE_CTA in text
+    assert CHANGES_HEADING in text
+    assert DOWNLOAD_PAGE not in text
+    assert "http" not in text
+    assert HASHTAGS in text
     assert "**" not in text
     assert tweet_weight(text) <= MAX_WEIGHT, tweet_weight(text)
     assert "散布図" in text
+    queryish = """# Changelog
+
+## [0.10.5] — 2026-08-15
+
+- 公式アプリのブキ記録を、現行の **WeaponQuery** / **StageRecordQuery** で取れるようにしました（設定から）
+- ダッシュボードの棒グラフで公式の熟練度を軸に選べるようにしました
+"""
+    qtext = render(queryish, "0.10.5")
+    assert "Query" not in qtext
+    assert "ブキ記録を取れる" in qtext
+    assert HASHTAGS in qtext
     empty = render("# Changelog\n\n## [1.0.0]\n\n### Changed\n\n", "1.0.0")
     assert empty.startswith("SpLabo v1.0.0")
     assert tweet_weight(empty) <= MAX_WEIGHT
