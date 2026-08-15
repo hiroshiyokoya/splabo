@@ -95,8 +95,9 @@
   box-shadow: 0 1px 4px color-mix(in srgb, #000 25%, transparent);
 }
 
-/* 散布図の端マーカー（選択ハロー含む）が SVG clip で欠けないようにする。 */
-.chart-hover-area,
+/* 散布図の端マーカー（選択ハロー含む）が SVG clip で欠けないようにする。
+   ヒートマップ／カレンダーは横に長い固定幅 SVG なので、親は overflow: auto のままにする。
+   `.chart-hover-area` ごと visible にすると、ブキ軸を増やしたヒートマップが枠からはみ出す(#678)。 */
 .chart-hover-area .recharts-responsive-container,
 .chart-hover-area .recharts-wrapper,
 .chart-hover-area .recharts-surface {
@@ -663,6 +664,10 @@ body {
    Tooltip はプロット領域内ホバーにしか反応しないので、X 軸アイコンの
    ホバー時にも出すために独立に描く。 */
 .chart-hover-area { width: 100%; }
+.chart-hover-area--scroll {
+  overflow: auto;
+  max-width: 100%;
+}
 
 /* 散布図のサイズ・色の凡例（#420）。
    円の直径は ScatterChart が実データから算出してインラインで渡すので、ここでは

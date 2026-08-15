@@ -26,7 +26,7 @@ import {
 import { weaponAxisTip } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
-import { rankRowsForBarChart, type ChartSortDir } from '../utils/chartSort'
+import { rankRowsForBarChart, CHART_BAR_TOP_N, type ChartSortDir } from '../utils/chartSort'
 
 /** 1 バトル単位の散布図メトリクス値を BattleRow から計算する。 */
 function getBattleMetric(b: BattleRow, k: BattleMetricKey): number | null {
@@ -362,13 +362,15 @@ function sortAndSlice(
   rows: GroupedStatsRow[],
   sortKey: BarSortKey | null,
   dir: ChartSortDir,
+  topN: number = CHART_BAR_TOP_N,
 ): GroupedStatsRow[] {
-  if (!sortKey) return rows.slice(0, 14)
+  if (!sortKey) return rows.slice(0, topN)
   return rankRowsForBarChart(rows, {
     getSortValue: row => barSortValue(row, sortKey),
     getTotal: row => row.total,
     sortByWinRate: sortKey === 'win_rate',
     dir,
+    topN,
   })
 }
 
@@ -455,7 +457,7 @@ export function CustomChartCard({
   // 線・カレンダー・散布図・ヒートマップは全データが必要なので slice しない。
   const sliced = (chart.shape === 'line' || chart.shape === 'calendar_heatmap' || chart.shape === 'scatter' || chart.shape === 'heatmap')
     ? data
-    : sortAndSlice(data, sortKey, sortDir)
+    : sortAndSlice(data, sortKey, sortDir, chart.topN ?? CHART_BAR_TOP_N)
 
   function handleSortClick(key: BarSortKey) {
     if (sortKey === key) {

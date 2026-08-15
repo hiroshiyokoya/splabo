@@ -245,7 +245,7 @@ export function HeatmapChart({
   }
 
   return (
-    <div className="chart-hover-area" style={{ position: 'relative', overflow: 'auto' }}>
+    <div className="chart-hover-area chart-hover-area--scroll" style={{ position: 'relative' }}>
       <svg width={width} height={height} role="img" aria-label="ヒートマップ">
         <defs>
           <SparseHatchPattern id={sparseId} />

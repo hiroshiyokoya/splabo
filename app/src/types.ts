@@ -692,7 +692,8 @@ export interface CustomChart {
   metrics?:     MetricKey[]
   /** shape='heatmap' のときの Y 軸。groupBy が X 軸となる。 */
   groupBy2?:    GroupByKey
-  /** shape='heatmap' でブキ軸を選んだときに表示する上位 N。デフォルト 20。 */
+  /** ブキ軸（ヒートマップ）／ブキの X 軸（棒グラフ）で表示する件数。
+   *  ヒートマップ未指定時 20、棒グラフ未指定時 14。 */
   topN?:        number
   /** shape='heatmap' で X 軸を「数値メトリクス bin」にする場合のメトリクス。
    *  指定があれば groupBy を無視して battle 単位の数値ヒストグラム軸を使う (#134)。 */
@@ -1150,6 +1151,11 @@ export const GROUP_BY_LABELS: Record<GroupByKey, string> = {
   three_day:       '3 日',
   week:            '週',
   month:           '月',
+}
+
+/** ブキ名・味方ブキ・相手ブキ。件数の上位 N を切る対象。 */
+export function isWeaponGroupBy(g: string | undefined): boolean {
+  return g === 'weapon' || g === 'ally_weapon' || g === 'enemy_weapon'
 }
 
 /** scatter のドット単位ラベル(GROUP_BY_LABELS と battle のみ例外)。 */
