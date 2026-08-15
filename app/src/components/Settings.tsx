@@ -588,7 +588,8 @@ async function handleUploadStatink() {
         <h3>マスターデータ</h3>
         <div className="settings-help" style={{ marginBottom: 12 }}>
           ブキ・サブ・SP・カテゴリと、公式アプリの熟練度・通算勝利・通算塗りP・最終使用日・ブキチャレパワー、
-          ステージの通算勝率、全ブキの画像を SplatNet 3 から取得します。起動時に 24 時間ごとに自動取得しますが、手動でも実行できます。
+          ステージの通算勝率、全ブキの画像を SplatNet 3 から取得します。
+          起動時は 24 時間ごと。バトル自動取得では、新しいバトルがあり前回から 6 時間以上空いているときだけ取ります。手動でも実行できます。
         </div>
         <button
           className="btn-primary"

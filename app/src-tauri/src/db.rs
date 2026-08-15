@@ -2314,6 +2314,24 @@ pub async fn upsert_weapon_record(
     Ok(())
 }
 
+/// 公式ブキ／ステージ記録を最後に取った時刻（UNIX 秒）。未取得なら None（#680）。
+pub async fn latest_official_records_fetched_at(pool: &DbPool) -> Option<i64> {
+    let w: Option<i64> = sqlx::query_scalar("SELECT MAX(last_fetched_at) FROM weapon_records")
+        .fetch_one(pool.as_ref())
+        .await
+        .ok()
+        .flatten();
+    let s: Option<i64> = sqlx::query_scalar("SELECT MAX(last_fetched_at) FROM stage_records")
+        .fetch_one(pool.as_ref())
+        .await
+        .ok()
+        .flatten();
+    match (w, s) {
+        (Some(a), Some(b)) => Some(a.max(b)),
+        (a, b) => a.or(b),
+    }
+}
+
 pub async fn ensure_stage_records_table(pool: &DbPool) -> Result<(), String> {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS stage_records (
