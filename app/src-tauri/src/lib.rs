@@ -342,12 +342,9 @@ pub(crate) async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(
     flag.0.store(false, Ordering::SeqCst);
     let _ = app.emit("fetch_finish", ());
 
-    // stat.ink 自動アップロードは best-effort な後処理。失敗しても取得結果は成功のまま返す。
-    let uploaded = if result.is_ok() {
-        upload_to_statink_best_effort(app, db).await
-    } else {
-        0
-    };
+    // Nintendo 取得が失敗しても、未投稿があれば stat.ink へ送る（#680）。
+    // 自動アップロードは best-effort。失敗しても取得結果は変えない。
+    let uploaded = upload_to_statink_best_effort(app, db).await;
 
     result.map(|(battles, details, _)| (battles, details, uploaded))
 }
@@ -357,7 +354,7 @@ pub(crate) async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(
 /// 取得完了（フラグ解放）後に呼ばれる後処理。設定が有効かつ API キーがあるときだけ送信する。
 /// 失敗は握りつぶさず、`statink_upload_failed` イベントで**分類付きのエラー文字列**を
 /// フロントへ伝える（#399 の `UPSTREAM_UNAVAILABLE` / `AUTH_EXPIRED` / `NETWORK` プリフィクス）。
-/// 未送信バトルは DB に残るため、次回取得時に自動で再送される（取りこぼしは無い）。
+/// 未送信バトルは DB に残る。SplatNet 側が 0 件でも失敗しても、ここに来れば再送する（#680）。
 async fn upload_to_statink_best_effort(app: &AppHandle, db: &db::DbPool) -> usize {
     let Some(sc) = app.try_state::<StatinkConfig>() else { return 0 };
     let (auto_upload, api_key) = {
@@ -444,17 +441,10 @@ async fn run_fetch_full_inner(app: &AppHandle, db: &db::DbPool) -> Result<(usize
     // 全プレイヤー（味方・相手）のメインブキ画像もキャッシュ（#136）
     splatnet3::cache_all_weapon_images(db, app, &client).await?;
 
-    // 全ブキの熟練度・画像（#674）。失敗してもバトル取得は止めない。
-    if let Err(e) = splatnet3::fetch_and_store_weapon_records(
-        db, &client, app, &result.bullet_token, &result.country, &result.language,
-    ).await {
-        log_weapon_records_skip(&e);
-    }
-    if let Err(e) = splatnet3::fetch_and_store_stage_records(
-        db, &client, &result.bullet_token, &result.country, &result.language,
-    ).await {
-        log::warn!("[stage_records] 取得スキップ: {e}");
-    }
+    maybe_fetch_official_records(
+        app, db, &client, &result.bullet_token, &result.country, &result.language,
+        battles, false,
+    ).await;
 
     // 「取得完了」はアップロードを待たずここで通知する（lastFetchedAt 更新用）。
     // uploaded は後段の best-effort アップロードで確定するため、ここでは 0 を載せる。
@@ -582,20 +572,63 @@ async fn fetch_weapons(app: AppHandle, db: State<'_, db::DbPool>) -> Result<usiz
     splatnet3::cache_all_ability_images(&app, &client).await?;
     splatnet3::cache_all_weapon_images(&db, &app, &client).await?;
 
-    // WeaponRecordQuery (#49 / #674) も同じ「ブキデータを更新」フローで取得する。
-    // ユーザー固有統計（熟練度・勝利数・塗りポイント）と全ブキ画像。失敗しても本流は止めない。
+    maybe_fetch_official_records(
+        &app, &db, &client, &result.bullet_token, &result.country, &result.language,
+        1, true,
+    ).await;
+
+    Ok(count)
+}
+
+/// 公式ブキ・ステージ記録を取るか（#680）。
+///
+/// - 手動（`force`）は常に取る
+/// - バトル自動取得では、新しいバトルが 1 件以上 **かつ** 前回から 6 時間以上
+const OFFICIAL_RECORDS_THROTTLE_SECS: i64 = 6 * 60 * 60;
+
+fn should_fetch_official_records(new_battles: usize, last_fetched_at: Option<i64>, now: i64, force: bool) -> bool {
+    if force {
+        return true;
+    }
+    if new_battles == 0 {
+        return false;
+    }
+    match last_fetched_at {
+        None => true,
+        Some(t) => now.saturating_sub(t) >= OFFICIAL_RECORDS_THROTTLE_SECS,
+    }
+}
+
+async fn maybe_fetch_official_records(
+    app: &AppHandle,
+    db: &db::DbPool,
+    client: &reqwest::Client,
+    bullet_token: &str,
+    country: &str,
+    language: &str,
+    new_battles: usize,
+    force: bool,
+) {
+    if !force {
+        let last = db::latest_official_records_fetched_at(db).await;
+        let now = chrono::Utc::now().timestamp();
+        if !should_fetch_official_records(new_battles, last, now, false) {
+            log::info!(
+                "[official_records] スキップ (new_battles={new_battles}, last={last:?})"
+            );
+            return;
+        }
+    }
     if let Err(e) = splatnet3::fetch_and_store_weapon_records(
-        &db, &client, &app, &result.bullet_token, &result.country, &result.language,
+        db, client, app, bullet_token, country, language,
     ).await {
         log_weapon_records_skip(&e);
     }
     if let Err(e) = splatnet3::fetch_and_store_stage_records(
-        &db, &client, &result.bullet_token, &result.country, &result.language,
+        db, client, bullet_token, country, language,
     ).await {
         log::warn!("[stage_records] 取得スキップ: {e}");
     }
-
-    Ok(count)
 }
 
 fn log_weapon_records_skip(e: &str) {
@@ -781,5 +814,26 @@ mod tests {
         let now = chrono::Local.with_ymd_and_hms(2026, 8, 14, 9, 40, 0).unwrap();
         let body = fetch_error_notification_body(now);
         assert_eq!(body, "バトルデータの取得に失敗しました（08/14 09:40）");
+    }
+
+    #[test]
+    fn 公式記録は新しいバトルが無いと取らない() {
+        let now = 1_000_000;
+        assert!(!should_fetch_official_records(0, None, now, false));
+        assert!(!should_fetch_official_records(0, Some(now - OFFICIAL_RECORDS_THROTTLE_SECS * 2), now, false));
+    }
+
+    #[test]
+    fn 公式記録は6時間以内なら新しいバトルでも取らない() {
+        let now = 1_000_000;
+        assert!(!should_fetch_official_records(3, Some(now - 60), now, false));
+        assert!(should_fetch_official_records(3, Some(now - OFFICIAL_RECORDS_THROTTLE_SECS), now, false));
+        assert!(should_fetch_official_records(1, None, now, false));
+    }
+
+    #[test]
+    fn 公式記録の手動はスロットルしない() {
+        let now = 1_000_000;
+        assert!(should_fetch_official_records(0, Some(now), now, true));
     }
 }
