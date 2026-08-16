@@ -623,16 +623,16 @@ async fn graphql_detail_request(
 }
 
 /// detail_fetched=0 のバトルに VsHistoryDetailQuery を発行して K/D/A を更新する。
-/// 更新件数を返す。
+/// 新規に詳細を書き込んだバトル ID を返す（件数は `len()`）。#682
 pub async fn fetch_and_update_details(
     pool: &DbPool,
     bullet_token: &str,
     country: &str,
     language: &str,
     client: &reqwest::Client,
-) -> Result<usize, String> {
+) -> Result<Vec<String>, String> {
     let ids = crate::db::get_battles_without_detail(pool).await?;
-    let mut updated = 0usize;
+    let mut updated_ids: Vec<String> = Vec::new();
 
     for id in &ids {
         let resp = match graphql_detail_request(client, bullet_token, country, language, id).await {
@@ -756,10 +756,10 @@ pub async fn fetch_and_update_details(
             log::warn!("battle_players 保存失敗 ({id}): {e}");
         }
 
-        updated += 1;
+        updated_ids.push(id.clone());
     }
 
-    Ok(updated)
+    Ok(updated_ids)
 }
 
 /// HistoryRecordQuery から全ブキマスター（名前・カテゴリ・画像）を取得し DB に保存する。
@@ -1086,14 +1086,20 @@ async fn cache_weapon_kit_images(
 /// それだけだと味方ブキ / 相手ブキを集計軸に取った時に「自分が使ったことのないブキ」が
 /// アイコン無しになり、テキストフォールバックが混ざる（#118 で発覚）。
 ///
-/// このため、全バトル詳細の my_team + other_teams の `weapon.{name, image.url}` を走査して
-/// download_and_cache する。既にキャッシュ済みのファイルがあれば短絡されるので何度呼んでも安い。
+/// このため、指定したバトル（または全件）の my_team + other_teams の `weapon.{name, image.url}` を走査して
+/// download_and_cache する。既にキャッシュ済みのファイルがあれば短絡される。
+/// バトル自動取得では今取った詳細だけ渡す（#682）。全件走査は「ブキデータを更新」側。
 pub async fn cache_all_weapon_images(
     pool: &crate::db::DbPool,
     app: &tauri::AppHandle,
     client: &reqwest::Client,
+    battle_ids: Option<&[String]>,
 ) -> Result<(), String> {
-    let team_data = crate::db::get_battles_team_json(pool).await?;
+    let team_data = crate::db::get_battles_team_json(pool, battle_ids).await?;
+    if team_data.is_empty() {
+        log::info!("[weapon-image] 走査対象なし");
+        return Ok(());
+    }
 
     // 同じブキ（name）はバトル間で重複するので HashMap で 1 URL に集約する。
     let mut seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
@@ -1147,8 +1153,13 @@ pub async fn cache_sub_special_images(
     pool: &crate::db::DbPool,
     app: &tauri::AppHandle,
     client: &reqwest::Client,
+    battle_ids: Option<&[String]>,
 ) -> Result<(), String> {
-    let team_data = crate::db::get_battles_team_json(pool).await?;
+    let team_data = crate::db::get_battles_team_json(pool, battle_ids).await?;
+    if team_data.is_empty() {
+        log::info!("[sub-special-image] 走査対象なし");
+        return Ok(());
+    }
 
     // weapon_name -> (sub_name, sub_url, special_name, special_url)
     let mut seen: std::collections::HashMap<String, (Option<String>, Option<String>, Option<String>, Option<String>)> =
@@ -1219,8 +1230,13 @@ pub async fn cache_ability_images(
     pool: &crate::db::DbPool,
     app: &tauri::AppHandle,
     client: &reqwest::Client,
+    battle_ids: Option<&[String]>,
 ) -> Result<(), String> {
-    let team_data = crate::db::get_battles_team_json(pool).await?;
+    let team_data = crate::db::get_battles_team_json(pool, battle_ids).await?;
+    if team_data.is_empty() {
+        log::info!("[ability-image] 走査対象なし");
+        return Ok(());
+    }
 
     // ability_key -> url （重複排除）
     let mut seen: std::collections::HashMap<&'static str, String> = std::collections::HashMap::new();
