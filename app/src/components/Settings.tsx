@@ -75,10 +75,6 @@ interface CompanionDiagnostics {
   has_lan_ip: boolean
 }
 
-/** ファイアウォール / プロファイルのトラブルシュート手順(README の該当節)。 */
-const FIREWALL_HELP_URL =
-  'https://github.com/hiroshiyokoya/splabo/blob/develop/README.md#モバイル同期がつながらないとき'
-
 /**
  * ペアリング QR に載せるペイロード(viewer と共有する契約)。
  * viewer は hosts を順に /ping して到達可能なホストを採用する。
@@ -536,15 +532,6 @@ async function handleUploadStatink() {
               <code>wf.msc</code> →「受信の規則」→ <strong>splabo</strong> → プロパティ → 詳細設定タブ →
               プロファイルで<strong>プライベートにチェック</strong>してください。
               <strong>splabo の規則は通常 2 つ(TCP / UDP)あるので、すべて確認</strong>します。
-            </p>
-            <p style={{ fontSize: 12, margin: '8px 0 0' }}>
-              <a
-                href={FIREWALL_HELP_URL}
-                onClick={e => { e.preventDefault(); openUrl(FIREWALL_HELP_URL).catch(console.error) }}
-                style={{ color: 'var(--accent)', cursor: 'pointer' }}
-              >
-                つながらないときは(ファイアウォール / ネットワークの確認・詳しい手順)
-              </a>
             </p>
           </div>
         )}
