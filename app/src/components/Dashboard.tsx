@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import {
@@ -75,6 +76,7 @@ interface Props {
 }
 
 export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }: Props) {
+  const { t } = useTranslation()
   const [summary, setSummary] = useState<Summary | null>(null)
   const [stats, setStats]     = useState<BattleStats | null>(null)
   // #86 PR B: ユーザーが追加したカスタムグラフ。localStorage に永続化。
@@ -323,7 +325,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
   return (
     <div className="dashboard">
       {loading ? (
-        <div className="loading">読み込み中...</div>
+        <div className="loading">{t('common.loading')}</div>
       ) : !summary || totalBattles === 0 ? (
         <DashboardEmptyState
           onFetchRequest={onFetchRequest}
@@ -333,34 +335,34 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
       ) : (
         <>
           <div className="stat-cards">
-            <StatCard label="総バトル数" value={totalBattles.toLocaleString()} />
-            <StatCard label="Win / Lose (Draw)" value={`${totalWins} / ${totalLosses} (${totalDraws})`} />
+            <StatCard label={t('dashboard.totalBattles')} value={totalBattles.toLocaleString()} />
+            <StatCard label={t('dashboard.winLoseDraw')} value={`${totalWins} / ${totalLosses} (${totalDraws})`} />
             <StatCard
-              label="全体勝率"
+              label={t('dashboard.overallWinRate')}
               value={overallWinRate !== null ? `${(overallWinRate * 100).toFixed(1)}%` : '-'}
               valueColor={overallWinRate !== null ? winRateColor(overallWinRate) : undefined}
             />
             {/* カッコ内が何かはラベルで示す(#561)。「Win / Lose (Draw)」と同じ書き方。 */}
-            <StatCard label="平均キル (アシスト)" value={fmtKillWithAssist(stats?.avg_kill, stats?.avg_assist)} />
-            <StatCard label="平均デス" value={stats?.avg_death != null ? stats.avg_death.toFixed(2) : '-'} />
-            <StatCard label="キルレ (貢献)" value={fmtKillRatioWithContrib(stats?.avg_kill, stats?.avg_assist, stats?.avg_death)} />
+            <StatCard label={t('dashboard.avgKillAssist')} value={fmtKillWithAssist(stats?.avg_kill, stats?.avg_assist)} />
+            <StatCard label={t('dashboard.avgDeath')} value={stats?.avg_death != null ? stats.avg_death.toFixed(2) : '-'} />
+            <StatCard label={t('dashboard.kdContrib')} value={fmtKillRatioWithContrib(stats?.avg_kill, stats?.avg_assist, stats?.avg_death)} />
           </div>
 
           <div className="chart-grid">
-            <ChartCard title="ブキ別 バトル数 & 勝率" sortBy={weaponSort} onSortChange={setWeaponSort} filterSummary={filterSummary}>
+            <ChartCard title={t('dashboard.byWeapon')} sortBy={weaponSort} onSortChange={setWeaponSort} filterSummary={filterSummary}>
               <WinRateChart data={rankedWeapons(summary.by_weapon, weaponSort)} height={260} images={weaponImages} hoverImageSize={64} />
             </ChartCard>
 
-            <ChartCard title="ステージ別 バトル数 & 勝率" sortBy={stageSort} onSortChange={setStageSort} filterSummary={filterSummary}>
+            <ChartCard title={t('dashboard.byStage')} sortBy={stageSort} onSortChange={setStageSort} filterSummary={filterSummary}>
               {/* ステージは現状 25 種程度で全件表示が望ましい(ブキのような大量マスターと違い slice 不要)。 */}
               <WinRateChart data={sorted(summary.by_stage, stageSort)} height={260} images={new Map()} nameTransform={stageAbbr} tickAngle={30} />
             </ChartCard>
 
-            <ChartCard title="ルール別 バトル数 & 勝率" sortBy={ruleSort} onSortChange={setRuleSort} filterSummary={filterSummary}>
+            <ChartCard title={t('dashboard.byRule')} sortBy={ruleSort} onSortChange={setRuleSort} filterSummary={filterSummary}>
               <WinRateChart data={sorted(summary.by_rule, ruleSort)} height={220} images={new Map()} nameTransform={ruleLabel} />
             </ChartCard>
 
-            <ChartCard title="ロビー別 バトル数 & 勝率" sortBy={modeSort} onSortChange={setModeSort} filterSummary={filterSummary}>
+            <ChartCard title={t('dashboard.byLobby')} sortBy={modeSort} onSortChange={setModeSort} filterSummary={filterSummary}>
               <WinRateChart data={sorted(summary.by_mode, modeSort)} height={220} images={new Map()} nameTransform={modeLabel} />
             </ChartCard>
 
@@ -406,7 +408,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
 
           <div className="dashboard-add-row">
             <button className="btn-secondary dashboard-add-btn" onClick={handleAdd}>
-              + グラフを追加
+              {t('dashboard.addChart')}
             </button>
           </div>
         </>
@@ -432,26 +434,25 @@ function DashboardEmptyState({ onFetchRequest, onOpenSettings, fetching }: {
   onOpenSettings?: () => void
   fetching?: boolean
 }) {
+  const { t } = useTranslation()
   return (
     <div className="dashboard-empty">
       <div className="dashboard-empty-icon" aria-hidden="true">📊</div>
-      <h3 className="dashboard-empty-title">まだバトルデータがありません</h3>
-      <p className="dashboard-empty-desc">
-        SplatNet 3 から最新のバトル・ギアデータを取得すると、ここに勝率グラフ・ブキ/ステージ別の集計が表示されます。
-      </p>
+      <h3 className="dashboard-empty-title">{t('dashboard.emptyTitle')}</h3>
+      <p className="dashboard-empty-desc">{t('dashboard.emptyDesc')}</p>
       <ol className="dashboard-empty-steps">
-        <li>初回は <strong>設定</strong> から Nintendo アカウントでログイン</li>
-        <li><strong>最新データを取得</strong> ボタンを押す</li>
+        <li>{t('dashboard.emptyStep1', { settings: t('nav.settings') })}</li>
+        <li>{t('dashboard.emptyStep2', { fetch: t('nav.fetch') })}</li>
       </ol>
       <div className="dashboard-empty-actions">
         {onFetchRequest && (
           <button className="btn-primary" onClick={onFetchRequest} disabled={fetching}>
-            {fetching ? '取得中…' : '最新データを取得'}
+            {fetching ? t('nav.fetching') : t('nav.fetch')}
           </button>
         )}
         {onOpenSettings && (
           <button className="btn-secondary" onClick={onOpenSettings}>
-            設定を開く
+            {t('common.openSettings')}
           </button>
         )}
       </div>
@@ -536,6 +537,7 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
   nameTransform?: (name: string) => string
   tickAngle?: number
 }) {
+  const { t } = useTranslation()
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const hasImages = data.some(d => images.has(d.name))
   const tickHeight = hasImages ? 40 : tickAngle ? 36 : 16
@@ -641,11 +643,11 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
         return (
           <>
             <div className="hover-tt-title">{displayLabel}</div>
-            <div className="hover-tt-row">バトル数: {entry.total}</div>
-            <div className="hover-tt-row" style={{ color: COLOR_WIN }}>勝ち: {entry.wins}</div>
-            <div className="hover-tt-row" style={{ color: COLOR_LOSE }}>負け: {entry.total - entry.wins - entry.draws}</div>
-            {entry.draws > 0 && <div className="hover-tt-row" style={{ color: COLOR_DRAW }}>引き分け: {entry.draws}</div>}
-            <div className="hover-tt-row">勝率: {(entry.win_rate * 100).toFixed(1)}%</div>
+            <div className="hover-tt-row">{t('dashboard.ttTotal', { n: entry.total })}</div>
+            <div className="hover-tt-row" style={{ color: COLOR_WIN }}>{t('dashboard.ttWins', { n: entry.wins })}</div>
+            <div className="hover-tt-row" style={{ color: COLOR_LOSE }}>{t('dashboard.ttLosses', { n: entry.total - entry.wins - entry.draws })}</div>
+            {entry.draws > 0 && <div className="hover-tt-row" style={{ color: COLOR_DRAW }}>{t('dashboard.ttDraws', { n: entry.draws })}</div>}
+            <div className="hover-tt-row">{t('dashboard.ttWinRate', { pct: (entry.win_rate * 100).toFixed(1) })}</div>
           </>
         )
       })()}
@@ -677,6 +679,7 @@ function ChartCard({
   /** 画像保存時に焼き込む絞り込み条件(#500)。 */
   filterSummary: string
 }) {
+  const { t } = useTranslation()
   const cardRef = useRef<HTMLDivElement>(null)
   return (
     <div className="chart-card" ref={cardRef}>
@@ -689,18 +692,18 @@ function ChartCard({
               <button
                 className={`chart-sort-btn${sortBy === 'total' ? ' active' : ''}`}
                 onClick={() => onSortChange('total')}
-              >バトル数</button>
+              >{t('metrics.total')}</button>
               <button
                 className={`chart-sort-btn${sortBy === 'wins' ? ' active' : ''}`}
                 onClick={() => onSortChange('wins')}
-              >勝数</button>
+              >{t('metrics.wins')}</button>
               <button
                 className={`chart-sort-btn${sortBy === 'win_rate' ? ' active' : ''}`}
                 onClick={() => onSortChange('win_rate')}
-              >勝率</button>
+              >{t('metrics.win_rate')}</button>
             </div>
           )}
-          <PanelExportButton targetRef={cardRef} screen="ダッシュボード" panel={title} />
+          <PanelExportButton targetRef={cardRef} screen={t('chart.screenDashboard')} panel={title} />
         </div>
       </div>
       <PanelExportCaption conditions={filterSummary} />
