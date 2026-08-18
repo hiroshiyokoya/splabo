@@ -45,7 +45,7 @@ function LineTooltipContent({ active, payload, metrics }: {
   return (
     <div className="line-tooltip">
       <div className="hover-tt-title">{point.label}</div>
-      {displayMetrics.map((m, i) => (
+      {displayMetrics.map(m => (
         <div key={m} className="hover-tt-row" style={{ color: LINE_COLORS[metrics.indexOf(m) % LINE_COLORS.length] }}>
           {METRIC_LABELS[m]}: {formatMetric(point.values[m], m)}
         </div>
