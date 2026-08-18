@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>スプラボ (splabo) — Splatoon 3 戦績可視化・分析とギアコーデ</title>
-  <meta name="description" content="Splatoon 3 の戦績とギアを取得して可視化・分析する、非公式の OSS PC アプリ。勝率、カスタムグラフ、環境分析、ギアコーデ。Windows / macOS。任天堂とは無関係です。">
-  <meta name="keywords" content="Splatoon 3, スプラトゥーン3, バトル可視化, 勝率, ダッシュボード, stat.ink, nxapi, OSS, デスクトップアプリ, Tauri">
-  <link rel="canonical" href="https://splaboon.pages.dev/">
+  <title>splabo — Splatoon 3 battle stats, analysis, and gear loadouts</title>
+  <meta name="description" content="An unofficial open-source Windows / macOS app that fetches Splatoon 3 battles and gear, then visualizes and analyzes them. Win rates, custom charts, meta analysis, gear loadouts. Not affiliated with Nintendo.">
+  <meta name="keywords" content="Splatoon 3, battle stats, win rate, dashboard, stat.ink, nxapi, OSS, desktop app, Tauri">
+  <link rel="canonical" href="https://splaboon.pages.dev/en/">
   <link rel="alternate" hreflang="ja" href="https://splaboon.pages.dev/">
   <link rel="alternate" hreflang="en" href="https://splaboon.pages.dev/en/">
   <link rel="alternate" hreflang="x-default" href="https://splaboon.pages.dev/">
@@ -15,17 +15,17 @@
   <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="splabo">
-  <meta property="og:title" content="スプラボ (splabo) — Splatoon 3 戦績可視化・分析とギアコーデ">
-  <meta property="og:description" content="Splatoon 3 の戦績とギアを取得して可視化・分析する、非公式の OSS PC アプリ。任天堂とは無関係です。">
-  <meta property="og:url" content="https://splaboon.pages.dev/">
-  <meta property="og:locale" content="ja_JP">
-  <meta property="og:locale:alternate" content="en_US">
+  <meta property="og:title" content="splabo — Splatoon 3 battle stats, analysis, and gear loadouts">
+  <meta property="og:description" content="An unofficial open-source Windows / macOS app that fetches Splatoon 3 battles and gear, then visualizes and analyzes them. Not affiliated with Nintendo.">
+  <meta property="og:url" content="https://splaboon.pages.dev/en/">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="ja_JP">
   <meta property="og:image" content="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-logo.png">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="スプラボ (splabo) — Splatoon 3 戦績可視化・分析とギアコーデ">
-  <meta name="twitter:description" content="Splatoon 3 の戦績とギアを取得して可視化・分析する、非公式の OSS PC アプリ。任天堂とは無関係です。">
+  <meta name="twitter:title" content="splabo — Splatoon 3 battle stats, analysis, and gear loadouts">
+  <meta name="twitter:description" content="An unofficial open-source Windows / macOS app that fetches Splatoon 3 battles and gear, then visualizes and analyzes them. Not affiliated with Nintendo.">
   <meta name="twitter:image" content="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-logo.png">
 
   <style>
@@ -364,9 +364,9 @@
 <body>
 
   <p class="lang-switch">
-    <a href="https://splaboon.pages.dev/" lang="ja" class="is-current">日本語</a>
+    <a href="https://splaboon.pages.dev/" lang="ja">日本語</a>
     <span aria-hidden="true"> · </span>
-    <a href="https://splaboon.pages.dev/en/" lang="en">English</a>
+    <a href="https://splaboon.pages.dev/en/" lang="en" class="is-current">English</a>
   </p>
 
   <!-- Hero -->
@@ -374,12 +374,12 @@
     <img class="hero-logo"
       src="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-logo.png"
       alt="splabo logo">
-    <h1>スプラボ (splabo)</h1>
-    <p class="hero-tagline">Splatoon 3 の戦績可視化・分析とギアコーデ</p>
+    <h1>splabo</h1>
+    <p class="hero-tagline">Splatoon 3 battle stats, analysis, and gear loadouts</p>
     <p class="hero-desc">
-      Nintendo アカウントから非公式 API 経由で Splatoon 3 の戦績とギアを取得し、可視化・分析する OSS の PC アプリです。任天堂株式会社とは無関係です。<br>
-      ブキ・ステージ・ルール別の勝率、線・棒・散布図・ヒートマップのカスタムグラフ、stat.ink 公開データによる環境分析、ギアコーデができます。<br>
-      パネルは PNG や HTML に保存できます。旧 chartoon / geartoon の後継です。
+      An open-source Windows / macOS app that fetches Splatoon 3 battles and gear from a Nintendo Account via an unofficial API, then visualizes and analyzes them. Not affiliated with Nintendo Co., Ltd.<br>
+      Win rates by weapon, stage, and mode; custom line, bar, scatter, and heatmap charts; meta analysis from public stat.ink data; and gear loadouts.<br>
+      Save panels as PNG or HTML. Successor to chartoon / geartoon.
     </p>
     <div class="hero-download">
       <a class="btn-download" id="btn-win" href="https://github.com/hiroshiyokoya/splabo/releases/latest">
@@ -389,27 +389,27 @@
         macOS
       </a>
     </div>
-    <p class="hero-note"><span id="btn-version"></span><span id="btn-version-sep" style="display:none"> &nbsp;·&nbsp; </span>無料 &nbsp;·&nbsp; オープンソース</p>
+    <p class="hero-note"><span id="btn-version"></span><span id="btn-version-sep" style="display:none"> &nbsp;·&nbsp; </span>Free &nbsp;·&nbsp; Open source</p>
     <p class="hero-release-link">
-      <a href="https://github.com/hiroshiyokoya/splabo/releases/latest">リリースノートを見る →</a>
+      <a href="https://github.com/hiroshiyokoya/splabo/releases/latest">Release notes →</a>
     </p>
   </section>
 
   <!-- Screenshots -->
   <section class="screenshots">
-    <h2 class="section-title">スクリーンショット</h2>
+    <h2 class="section-title">Screenshots</h2>
     <div class="screenshot-grid">
       <div class="screenshot-item">
-        <img src="screenshots/dashboard.png" alt="ダッシュボード" onclick="openLightbox(this)">
-        <p>ダッシュボードでバトル結果を分析</p>
+        <img src="../screenshots/dashboard.png" alt="Dashboard" onclick="openLightbox(this)">
+        <p>Analyze battles on the dashboard</p>
       </div>
       <div class="screenshot-item">
-        <img src="screenshots/gear-code.png" alt="ギアコーデ生成" onclick="openLightbox(this)">
-        <p>目標スキルからギアコーデを自動生成</p>
+        <img src="../screenshots/gear-code.png" alt="Gear loadout generation" onclick="openLightbox(this)">
+        <p>Build loadouts from target abilities</p>
       </div>
       <div class="screenshot-item">
-        <img src="screenshots/env-analysis.png" alt="環境分析" onclick="openLightbox(this)">
-        <p>stat.ink の公開データで環境を分析</p>
+        <img src="../screenshots/env-analysis.png" alt="Meta analysis" onclick="openLightbox(this)">
+        <p>Analyze the meta from public stat.ink data</p>
       </div>
     </div>
   </section>
@@ -417,47 +417,47 @@
   <!-- Features -->
   <section class="features">
     <div class="features-inner">
-      <h2 class="section-title">できること</h2>
+      <h2 class="section-title">What you can do</h2>
       <div class="features-grid">
         <div class="feature-card">
-          <h3>バトル・ダッシュボード</h3>
+          <h3>Battles and dashboard</h3>
           <ul>
-            <li>バトル履歴を一覧（検索・フィルター・ソート）。詳細で編成・ギア・ランク変動を確認</li>
-            <li>期間・ロビー・ルール・結果で絞り込める</li>
-            <li>勝率・キル/デス・キルレシオなど主要指標を、ブキ・ステージ・ルール・ロビー別に集計</li>
-            <li>カスタムグラフ: 線・棒・散布図・ヒートマップ・カレンダー。散布図はブキ画像にもできる</li>
-            <li>パネルは PNG / HTML で保存可能</li>
+            <li>Browse battle history (search, filter, sort). Details show team composition, gear, and rank changes</li>
+            <li>Filter by period, lobby, mode, and result</li>
+            <li>Win rate, K/D, kill ratio, and more by weapon, stage, mode, and lobby</li>
+            <li>Custom charts: line, bar, scatter, heatmap, calendar. Scatter plots can use weapon images</li>
+            <li>Save panels as PNG or HTML</li>
           </ul>
         </div>
         <div class="feature-stack">
           <div class="feature-card">
-            <h3>自動取得・連携</h3>
+            <h3>Auto-fetch and integrations</h3>
             <ul>
-              <li>15 分〜24 時間ごとの自動取得（既定は 1 時間。バトル＋ギア・トレイ常駐・完了通知）</li>
-              <li>stat.ink への自動アップロード（s3s 互換、UUID v5 で重複排除）</li>
+              <li>Auto-fetch every 15 minutes–24 hours (default 1 hour; battles + gear, tray icon, completion notification)</li>
+              <li>Auto-upload to stat.ink (s3s-compatible, UUID v5 dedup)</li>
             </ul>
           </div>
           <div class="feature-card">
-            <h3>AI 分析</h3>
+            <h3>AI analysis</h3>
             <ul>
-              <li>自然言語で聞くと SQL を書かせ、集計はこの PC の中だけで実行して表・グラフで表示</li>
-              <li>OpenAI / Gemini / Claude / Grok に対応</li>
+              <li>Ask in natural language; SQL is generated and aggregated only on this PC, then shown as tables and charts</li>
+              <li>OpenAI / Gemini / Claude / Grok</li>
             </ul>
           </div>
         </div>
         <div class="feature-card">
-          <h3>ブキ・ステージ・ギア</h3>
+          <h3>Weapons, stages, and gear</h3>
           <ul>
-            <li>ブキ・ステージ: 勝率や戦績。カテゴリ / サブ / スペシャルで絞り込み、列クリックで並び替え</li>
-            <li>ギア: 所持ギアの取得・一覧。ギアパワーを組み合わせてコーデを作成</li>
+            <li>Weapons and stages: win rates and records. Filter by category / sub / special; sort by column click</li>
+            <li>Gear: fetch owned gear and combine abilities into loadouts</li>
           </ul>
         </div>
         <div class="feature-card">
-          <h3>環境分析</h3>
+          <h3>Meta analysis</h3>
           <ul>
-            <li>stat.ink の公開バトルデータからコミュニティ全体の環境を分析</li>
-            <li>ブキ・ステージ別の散布図、マトリクスヒートマップ</li>
-            <li>ロビー・ルール・ブキ・ステージ・バージョン・ウデマエ帯・期間で絞り込み</li>
+            <li>Analyze the community meta from public stat.ink battles</li>
+            <li>Scatter plots and matrix heatmaps by weapon and stage</li>
+            <li>Filter by lobby, mode, weapon, stage, version, rank band, and period</li>
           </ul>
         </div>
       </div>
@@ -466,14 +466,14 @@
 
   <!-- Warning -->
   <section class="warning">
-    <h2 class="section-title">インストール時の注意</h2>
+    <h2 class="section-title">Install notes</h2>
     <div class="warning-box">
-      <h3>Windows — SmartScreen 警告が出た場合</h3>
-      <p>「Windows によって PC が保護されました」と表示されたら、<strong>「詳細情報」→「実行」</strong>をクリックしてください。</p>
+      <h3>Windows — if SmartScreen warns you</h3>
+      <p>If you see “Windows protected your PC”, click <strong>More info → Run anyway</strong>.</p>
     </div>
     <div class="warning-box">
-      <h3>macOS — 「壊れているため開けません」と表示された場合</h3>
-      <p>ターミナルで以下を実行してください：<br>
+      <h3>macOS — if it says the app is damaged</h3>
+      <p>Run this in Terminal:<br>
         <code>xattr -cr /Applications/splabo.app</code>
       </p>
     </div>
@@ -482,32 +482,32 @@
   <!-- Notes -->
   <section class="notes">
     <div class="notes-inner">
-      <h2 class="section-title">注意事項</h2>
+      <h2 class="section-title">Notes</h2>
       <ul>
-        <li>本アプリは任天堂株式会社とは無関係の非公式 OSS アプリです。</li>
-        <li>SplatNet 3 は任天堂が公式に公開している API ではありません。任天堂側の仕様変更により、予告なく動作しなくなる可能性があります。</li>
-        <li>ブキ・ステージ画像の著作権は任天堂株式会社に帰属します。個人利用の範囲内でのみ使用してください。</li>
-        <li>認証情報・バトルデータはお使いの PC 内にのみ保存されます。stat.ink へのアップロードは設定で有効化したときのみ行われます。</li>
+        <li>This is an unofficial open-source app, not affiliated with Nintendo Co., Ltd.</li>
+        <li>SplatNet 3 is not a public Nintendo API. Nintendo may change it without notice and the app may stop working.</li>
+        <li>Weapon and stage image copyrights belong to Nintendo Co., Ltd. Use them for personal use only.</li>
+        <li>Auth tokens and battle data stay on your PC. Uploads to stat.ink happen only when you enable them in Settings.</li>
       </ul>
     </div>
   </section>
 
   <!-- Privacy -->
   <section class="privacy">
-    <h2 class="section-title">プライバシーについて</h2>
-    <p>本ツールが外部に送信するのは、Nintendo 認証に必要な情報（nxapi の仕様に基づく f-token 生成）と、設定で有効にした場合の stat.ink へのバトルデータのみです。氏名・メールアドレス等の個人情報を収集・記録することはありません。</p>
-    <p>AI 分析機能を使用する場合は、選択したプロバイダ（OpenAI / Gemini / Anthropic / Grok）へバトル集計データが送信されます。</p>
-    <p>詳細は <a href="https://github.com/hiroshiyokoya/splabo#プライバシーポリシー">プライバシーポリシー（README）</a> を参照してください。</p>
+    <h2 class="section-title">Privacy</h2>
+    <p>The only data this tool sends off your PC is what Nintendo auth needs (f-token generation per the nxapi flow) and, if you enable it, battle data to stat.ink. It does not collect or store names, email addresses, or other personal information.</p>
+    <p>If you use AI analysis, battle aggregates are sent to the provider you chose (OpenAI / Gemini / Anthropic / Grok).</p>
+    <p>See the <a href="https://github.com/hiroshiyokoya/splabo/blob/develop/README_en.md#privacy-policy">privacy policy in README_en.md</a> for details.</p>
   </section>
 
   <!-- Feedback -->
   <section class="feedback">
     <div class="feedback-inner">
-      <h2 class="section-title">フィードバック・ご意見</h2>
-      <p>バグ報告・機能要望・感想など、どんなフィードバックも歓迎します。<br>
-         匿名で送信できます。返信希望の場合はメールアドレスをご記入ください。</p>
+      <h2 class="section-title">Feedback</h2>
+      <p>Bug reports, feature requests, and comments are welcome.<br>
+         You can submit anonymously. Add an email if you want a reply.</p>
       <a class="btn-discuss" href="https://docs.google.com/forms/d/e/1FAIpQLSd2m8eNn4HwTjOY1PMnecJvSH95QCJxNi0Lyy1w4zxhIdndrQ/viewform" target="_blank" rel="noopener">
-        フィードバックフォームを開く
+        Open the feedback form
       </a>
     </div>
   </section>
@@ -556,7 +556,7 @@
 
   <!-- Footer -->
   <footer>
-    <p>splabo は任天堂株式会社と無関係の非公式 OSS アプリです。Splatoon™ は任天堂株式会社の商標です。</p>
+    <p>splabo is an unofficial open-source app, not affiliated with Nintendo Co., Ltd. Splatoon™ is a trademark of Nintendo.</p>
     <p style="margin-top: 0.4rem;">
       <a href="https://github.com/hiroshiyokoya/splabo">GitHub</a>
       &nbsp;·&nbsp;
