@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, MetricKey, BattleMetricKey } from '../types'
@@ -10,6 +11,9 @@ import {
   SCATTER_WIN_COUNT_METRICS, winCountTooltipText, type GroupByKey,
   SCATTER_IMAGE_PX, isScatterImageMode, isOfficialRateMetric,
 } from '../types'
+import {
+  groupedRowNameTransform, heatmap2dLabelTransform,
+} from '../i18n/displayName'
 import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
 import { StackedWinrateChart } from './charts/StackedWinrateChart'
@@ -29,6 +33,7 @@ import { weaponAxisTip } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import { rankRowsForBarChart, CHART_BAR_TOP_N, type ChartSortDir } from '../utils/chartSort'
+import i18n from '../i18n'
 
 /** 1 バトル単位の散布図メトリクス値を BattleRow から計算する。 */
 function getBattleMetric(b: BattleRow, k: BattleMetricKey): number | null {
@@ -46,7 +51,7 @@ function getBattleMetric(b: BattleRow, k: BattleMetricKey): number | null {
 
 /** メトリクスキーから表示ラベル取得。バトル系・集計系の両方を扱う。 */
 function metricLabelOf(k: string): string {
-  if (k === 'win_lose')                  return '勝敗'
+  if (k === 'win_lose')                  return i18n.t('chart.winLose')
   if (k in GROUP_BY_LABELS)             return GROUP_BY_LABELS[k as GroupByKey]
   if (k in BATTLE_METRIC_LABELS)         return BATTLE_METRIC_LABELS[k as BattleMetricKey]
   if (k === 'losses' || k in METRIC_LABELS) return scatterAggMetricLabel(k)
@@ -290,7 +295,7 @@ function buildBattleScatterPoints(
         { key: sizeKey, row: () => ({ label: metricLabelOf(sizeKey!), value: fmtBattle(size), muted: true }) },
         colorKey === 'win_lose'
           // 勝敗はメトリクスではないので、サイズ等と衝突しない専用キーで持つ
-          ? { key: 'win_lose', row: () => ({ label: '勝敗', value: b.result, muted: true }) }
+          ? { key: 'win_lose', row: () => ({ label: i18n.t('chart.winLose'), value: b.result, muted: true }) }
           : isCatColor
             ? { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: catVal!, muted: true }) }
             : { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: fmtBattle(getBattleMetric(b, colorKey as BattleMetricKey)), muted: true }) },
@@ -303,10 +308,10 @@ function buildBattleScatterPoints(
       ? buildSizeLegend(metricLabelOf(sizeKey), points.map(p => p.size), fmtBattle)
       : null,
     colorLegend: colorKey === 'win_lose'
-      ? { label: '勝敗', layout: 'chips', items: [
-          { label: '勝', color: 'var(--win)' },
-          { label: '負', color: 'var(--lose)' },
-          { label: '分', color: 'var(--draw)' },
+      ? { label: i18n.t('chart.winLose'), layout: 'chips', items: [
+          { label: i18n.t('chart.win'), color: 'var(--win)' },
+          { label: i18n.t('chart.lose'), color: 'var(--lose)' },
+          { label: i18n.t('chart.draw'), color: 'var(--draw)' },
         ] }
       : isCatColor
         ? buildCategoryColorLegend(metricLabelOf(colorKey!), categories)
@@ -320,20 +325,24 @@ function buildBattleScatterPoints(
  *  - single_metric:   バトル数 + 選択中メトリクス */
 type BarSortKey = MetricKey | 'losses'
 type SortOption = { key: BarSortKey; label: string }
-const SORT_OPTIONS_STACKED_WINRATE: SortOption[] = [
-  { key: 'total',    label: 'バトル数' },
-  { key: 'wins',     label: '勝数' },
-  { key: 'losses',   label: '負数' },
-  { key: 'win_rate', label: '勝率' },
-]
+function sortOptionsStackedWinrate(): SortOption[] {
+  return [
+    { key: 'total',    label: METRIC_LABELS.total },
+    { key: 'wins',     label: METRIC_LABELS.wins },
+    { key: 'losses',   label: i18n.t('metrics.losses') },
+    { key: 'win_rate', label: METRIC_LABELS.win_rate },
+  ]
+}
 /** キル vs デス(attack_defense)用。 */
-const SORT_OPTIONS_ATTACK_DEFENSE: SortOption[] = [
-  { key: 'avg_kill',         label: 'キル' },
-  { key: 'avg_death',        label: 'デス' },
-  { key: 'avg_kd',           label: 'キルレ' },
-  { key: 'avg_contrib_kill', label: '貢献キル' },
-  { key: 'avg_contrib_kd',   label: '貢献キルレ' },
-]
+function sortOptionsAttackDefense(): SortOption[] {
+  return [
+    { key: 'avg_kill',         label: i18n.t('chart.killShort') },
+    { key: 'avg_death',        label: i18n.t('chart.deathShort') },
+    { key: 'avg_kd',           label: METRIC_LABELS.avg_kd },
+    { key: 'avg_contrib_kill', label: i18n.t('chart.contribKill') },
+    { key: 'avg_contrib_kd',   label: METRIC_LABELS.avg_contrib_kd },
+  ]
+}
 
 function barSortValue(row: GroupedStatsRow, key: BarSortKey): number | null {
   return scatterAggMetric(row, key)
@@ -461,6 +470,7 @@ export function CustomChartCard({
   /** 画像保存時に焼き込む絞り込み条件(#500)。 */
   filterSummary?: string
 }) {
+  const { t } = useTranslation()
   const sortable = useSortable({ id: chart.id })
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable
 
@@ -473,13 +483,13 @@ export function CustomChartCard({
   // 並び替えは棒グラフだけ(#509)。heatmap / calendar / line / scatter には出さない。
   const sortOptions: SortOption[] =
     chart.shape !== 'bar' ? [] :
-    chart.yComposition === 'stacked_winrate' ? SORT_OPTIONS_STACKED_WINRATE :
-    chart.yComposition === 'attack_defense'  ? SORT_OPTIONS_ATTACK_DEFENSE  :
+    chart.yComposition === 'stacked_winrate' ? sortOptionsStackedWinrate() :
+    chart.yComposition === 'attack_defense'  ? sortOptionsAttackDefense()  :
     chart.yComposition === 'single_metric' && chart.metric
       ? (chart.metric === 'total'
-        ? [{ key: 'total' as MetricKey, label: 'バトル数' }]
+        ? [{ key: 'total' as MetricKey, label: METRIC_LABELS.total }]
         : [
-            { key: 'total' as MetricKey, label: 'バトル数' },
+            { key: 'total' as MetricKey, label: METRIC_LABELS.total },
             { key: chart.metric, label: METRIC_LABELS[chart.metric] ?? chart.metric },
           ])
       : []
@@ -494,8 +504,10 @@ export function CustomChartCard({
   }, [chart.id, chart.yComposition, chart.metric, defaultSortKey])
 
   // 軸キーに応じた表示整形(ステージは斜め)
+  const groupedTransform = groupedRowNameTransform(data, chart.groupBy)
   const nameTransform =
-    chart.groupBy === 'stage' ? stageAbbr :
+    chart.groupBy === 'stage' ? groupedTransform ?? stageAbbr :
+    chart.groupBy === 'weapon' ? groupedTransform :
     chart.groupBy === 'mode'  ? modeLabel :
     chart.groupBy === 'rule'  ? ruleLabel :
                                 undefined
@@ -538,12 +550,12 @@ export function CustomChartCard({
           className="custom-chart-handle"
           {...attributes}
           {...listeners}
-          aria-label="並び替え"
-          title="ドラッグで並び替え"
+          aria-label={t('common.sort')}
+          title={t('common.sortDrag')}
         >⋮⋮</button>
-        <PanelExportButton targetRef={cardRef} screen="ダッシュボード" panel={title} />
-        <button className="custom-chart-btn" onClick={onEdit}   aria-label="設定" title="設定">⚙</button>
-        <button className="custom-chart-btn" onClick={onDelete} aria-label="削除" title="削除">✕</button>
+        <PanelExportButton targetRef={cardRef} screen={t('chart.screenDashboard')} panel={title} />
+        <button className="custom-chart-btn" onClick={onEdit}   aria-label={t('common.settingsGear')} title={t('common.settingsGear')}>⚙</button>
+        <button className="custom-chart-btn" onClick={onDelete} aria-label={t('common.delete')} title={t('common.delete')}>✕</button>
       </div>
       <div className="chart-card-header">
         <h3 className="chart-title">{title}</h3>
@@ -559,10 +571,10 @@ export function CustomChartCard({
                   className={`chart-sort-btn${active ? ' active' : ''}`}
                   onClick={() => handleSortClick(o.key)}
                   title={active
-                    ? `クリックで${sortDir === 'desc' ? '昇順' : '降順'}に切替`
-                    : `${o.label}で並べ替え`}
+                    ? t(sortDir === 'desc' ? 'chart.sortToggleAsc' : 'chart.sortToggleDesc')
+                    : t('chart.sortBy', { label: o.label })}
                   aria-pressed={active}
-                  aria-label={`${o.label}${active ? (sortDir === 'asc' ? '(昇順)' : '(降順)') : ''}`}
+                  aria-label={`${o.label}${active ? t(sortDir === 'asc' ? 'chart.sortAsc' : 'chart.sortDesc') : ''}`}
                 >{o.label}{dirMark}</button>
               )
             })}
@@ -612,7 +624,7 @@ function renderChartBody(
     }
     return (
       <div className="chart-not-implemented">
-        メトリクスを 1 つ以上選んでください。
+        {i18n.t('chartConfig.pickOne')}
       </div>
     )
   }
@@ -624,7 +636,7 @@ function renderChartBody(
     }
     return (
       <div className="chart-not-implemented">
-        カレンダーヒートマップは「単一メトリクス」を選んでください。
+        {i18n.t('chart.needSingleMetric')}
       </div>
     )
   }
@@ -633,7 +645,7 @@ function renderChartBody(
   // カテゴリ集計単位 = data (GroupedStatsRow[])。
   if (chart.shape === 'scatter') {
     if (!chart.xMetric || !chart.yMetric) {
-      return <div className="chart-not-implemented">散布図には X 軸 / Y 軸 を選んでください。</div>
+      return <div className="chart-not-implemented">{i18n.t('chart.needXY')}</div>
     }
     const isBattle = chart.dotUnit === 'battle'
     // 点をブキ画像で描くか(#627)。ブキ軸のときだけ。
@@ -677,13 +689,17 @@ function renderChartBody(
   // heatmap: 2 軸クロス集計。X 軸 = chart.groupBy / Y 軸 = chart.groupBy2。
   if (chart.shape === 'heatmap') {
     if (!chart.groupBy2) {
-      return <div className="chart-not-implemented">Y 軸 (groupBy2) を選んでください。</div>
+      return <div className="chart-not-implemented">{i18n.t('chart.needY')}</div>
     }
     if (chart.yComposition !== 'single_metric' || !chart.metric) {
-      return <div className="chart-not-implemented">ヒートマップは「単一メトリクス」を選んでください。</div>
+      return <div className="chart-not-implemented">{i18n.t('chart.needSingleMetric')}</div>
     }
-    const xT = chart.groupBy  === 'stage' ? stageAbbr : chart.groupBy  === 'mode' ? modeLabel : chart.groupBy  === 'rule' ? ruleLabel : undefined
-    const yT = chart.groupBy2 === 'stage' ? stageAbbr : chart.groupBy2 === 'mode' ? modeLabel : chart.groupBy2 === 'rule' ? ruleLabel : undefined
+    const xT = chart.groupBy  === 'stage' ? (heatmap2dLabelTransform(data2d ?? [], 'x', chart.groupBy) ?? stageAbbr)
+      : chart.groupBy  === 'weapon' ? heatmap2dLabelTransform(data2d ?? [], 'x', chart.groupBy)
+      : chart.groupBy  === 'mode' ? modeLabel : chart.groupBy  === 'rule' ? ruleLabel : undefined
+    const yT = chart.groupBy2 === 'stage' ? (heatmap2dLabelTransform(data2d ?? [], 'y', chart.groupBy2 ?? '') ?? stageAbbr)
+      : chart.groupBy2 === 'weapon' ? heatmap2dLabelTransform(data2d ?? [], 'y', chart.groupBy2 ?? '')
+      : chart.groupBy2 === 'mode' ? modeLabel : chart.groupBy2 === 'rule' ? ruleLabel : undefined
     // 軸タイトル(#145)：数値メトリクス bin 軸はメトリクス名 (bin 幅併記)、カテゴリ軸は GroupBy ラベル
     const xTitle = chart.xNumericMetric
       ? `${BATTLE_NUMERIC_METRIC_LABELS[chart.xNumericMetric]} (bin ${chart.xBinWidth ?? '?'})`
@@ -711,8 +727,8 @@ function renderChartBody(
   if (chart.shape !== 'bar') {
     return (
       <div className="chart-not-implemented">
-        この形({chart.shape})はまだ未実装です。<br />
-        後続 PR で対応予定です。
+        {i18n.t('chart.notImplemented', { shape: chart.shape })}<br />
+        {i18n.t('chart.notImplementedLater')}
       </div>
     )
   }

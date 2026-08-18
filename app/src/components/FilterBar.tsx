@@ -6,6 +6,7 @@ import { resultLabel } from '../types'
 import { MultiSelect } from './MultiSelect'
 import { SeasonSelect } from './SeasonSelect'
 import { LOBBY_OPTIONS, RULE_OPTIONS, PERIOD_OPTIONS } from '../utils/filterSummary'
+import { stageInfoDisplayName, weaponRecordDisplayName } from '../i18n/displayName'
 
 // #190: モード/ルールは複数選択（OR）。モードのキーは lobby.key に一致させ、
 // バンカラ/フェスは オープン/チャレンジ を個別に選べるようにする（循環ボタン廃止）。
@@ -14,7 +15,7 @@ import { LOBBY_OPTIONS, RULE_OPTIONS, PERIOD_OPTIONS } from '../utils/filterSumm
 const MODE_OPTIONS = LOBBY_OPTIONS
 const RESULTS = ['win', 'lose', 'draw']
 
-interface StageInfo { id: string; name: string }
+interface StageInfo { id: string; name: string; name_ja?: string | null; name_en?: string | null }
 const PERIODS = PERIOD_OPTIONS
 
 interface Props {
@@ -274,7 +275,7 @@ function WeaponPicker({
                   >
                     <span className="stage-check">{selected.includes(w.name) ? '✓' : ' '}</span>
                     {weaponImages.get(w.name) && <img src={weaponImages.get(w.name)} alt="" className="weapon-icon" />}
-                    {w.name}
+                    {weaponRecordDisplayName(w)}
                   </button>
                 ))}
               </div>
@@ -288,7 +289,7 @@ function WeaponPicker({
             >
               <span className="stage-check">{selected.includes(w.name) ? '✓' : ' '}</span>
               {weaponImages.get(w.name) && <img src={weaponImages.get(w.name)} alt="" className="weapon-icon" />}
-              {w.name}
+              {weaponRecordDisplayName(w)}
             </button>
           ))}
         </div>
@@ -333,7 +334,7 @@ function StagePicker({
               onClick={() => onToggleStage(s.id)}
             >
               <span className="stage-check">{selected.includes(s.id) ? '✓' : ' '}</span>
-              {s.name}
+              {stageInfoDisplayName(s)}
             </button>
           ))}
         </div>

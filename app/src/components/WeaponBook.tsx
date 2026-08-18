@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { invoke } from '@tauri-apps/api/core'
 import type { GroupedStatsRow, WeaponRecord, BookView, Filters } from '../types'
-import { filtersToBookArgs, avgKillRatio, fmtOfficialDate } from '../types'
+import { filtersToBookArgs, avgKillRatio, fmtOfficialDate, METRIC_LABELS } from '../types'
 import { WeaponDetailModal } from './WeaponDetailModal'
-import { ViewToggle, BOOK_VIEWS } from './ViewToggle'
+import { ViewToggle, getBookViews } from './ViewToggle'
 import { SortHeader } from './SortHeader'
 import { loadViewPrefs, saveViewPrefs } from '../utils/viewPrefs'
 import { winRateColor } from '../utils/heatmapColors'
+import { weaponRecordDisplayName } from '../i18n/displayName'
 
 // 大きい数値を「12.3万」短縮表示。
 /** 平均統計(K/D/A/SP/inked/duration)用の小行。
@@ -36,25 +39,27 @@ type SortKey =
   | 'weapon_power_max' // ブキチャレパワー最大(公式)
   | 'name'            // 名前(あいうえお)
 
-const SORT_LABELS: Record<SortKey, string> = {
-  total:             'バトル数',
-  wins:              '勝ち(W)',
-  loses:             '負け(L)',
-  draws:             '引分(D)',
-  win_rate:          '勝率',
-  avg_kill:          '平均キル',
-  avg_assist:        '平均アシスト',
-  avg_death:         '平均デス',
-  kd:                'キルレ',
-  contrib_kd:        '貢献キルレ',
-  avg_inked:         '平均塗り',
-  weapon_level:      '熟練度',
-  win_count_total:   '通算勝利',
-  paint_point_total: '通算塗りP',
-  last_used_at:      '最終使用日',
-  weapon_power:      'ブキチャレパワー',
-  weapon_power_max:  '(最大)',
-  name:              '名前',
+function weaponSortLabels(t: TFunction): Record<SortKey, string> {
+  return {
+    total:             METRIC_LABELS.total,
+    wins:              t('books.winsW'),
+    loses:             t('books.losesL'),
+    draws:             t('books.drawsD'),
+    win_rate:          METRIC_LABELS.win_rate,
+    avg_kill:          t('books.avgKill'),
+    avg_assist:        t('books.avgAssist'),
+    avg_death:         t('books.avgDeath'),
+    kd:                METRIC_LABELS.avg_kd,
+    contrib_kd:        METRIC_LABELS.avg_contrib_kd,
+    avg_inked:         t('books.avgInked'),
+    weapon_level:      METRIC_LABELS.official_weapon_level,
+    win_count_total:   METRIC_LABELS.official_win_count,
+    paint_point_total: METRIC_LABELS.official_paint,
+    last_used_at:      METRIC_LABELS.official_last_used_at,
+    weapon_power:      METRIC_LABELS.official_weapon_power,
+    weapon_power_max:  t('books.maxParen'),
+    name:              t('books.name'),
+  }
 }
 
 const OFFICIAL_SORT: SortKey[] = [
@@ -71,6 +76,8 @@ function fmtPower(n: number | null | undefined): string {
 const ASC_SORT_KEYS: ReadonlySet<SortKey> = new Set<SortKey>(['name', 'avg_death'])
 
 export function WeaponBook({ filters }: { filters: Filters }) {
+  const { t } = useTranslation()
+  const sortLabels = weaponSortLabels(t)
   const [weapons,        setWeapons]        = useState<WeaponRecord[]>([])
   const [weaponImages,   setWeaponImages]   = useState<Map<string, string>>(new Map())
   const [subImages,      setSubImages]      = useState<Map<string, string>>(new Map())
@@ -227,7 +234,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
         case 'last_used_at':      return cmpNum(a.last_used_at,      b.last_used_at)
         case 'weapon_power':      return cmpNum(a.weapon_power,      b.weapon_power)
         case 'weapon_power_max':  return cmpNum(a.weapon_power_max,  b.weapon_power_max)
-        case 'name':              return a.name.localeCompare(b.name, 'ja')
+        case 'name':              return weaponRecordDisplayName(a).localeCompare(weaponRecordDisplayName(b))
       }
     })
     // 各キーの「自然な向き」を基準に、一覧ビューのヘッダ再クリックで反転する(#297)。
@@ -266,28 +273,28 @@ export function WeaponBook({ filters }: { filters: Filters }) {
   return (
     <div className={`weapon-book${view === 'list' ? ' book--fill' : ''}`}>
       <div className="weapon-book-header">
-        <h2>ブキ</h2>
-        <span className="total-count">{filtered.length} 種</span>
+        <h2>{t('nav.weapons')}</h2>
+        <span className="total-count">{t('common.speciesCount', { count: filtered.length })}</span>
         {hasFilter && (
-          <button className="filter-reset-btn" onClick={reset} style={{ marginLeft: 8 }}>✕ リセット</button>
+          <button className="filter-reset-btn" onClick={reset} style={{ marginLeft: 8 }}>{t('filter.reset')}</button>
         )}
         <ViewToggle
-          options={BOOK_VIEWS}
+          options={getBookViews(t)}
           value={view}
           onChange={setView}
-          ariaLabel="ブキの表示切替"
+          ariaLabel={t('books.weaponViewAria')}
         />
         {view === 'panel' && (
           <div className="weapon-book-sort">
-            <label htmlFor="weapon-sort">並び替え</label>
+            <label htmlFor="weapon-sort">{t('books.sort')}</label>
             <select
               id="weapon-sort"
               value={sortKey}
               onChange={e => setSortKey(e.target.value as SortKey)}
             >
-              {(Object.keys(SORT_LABELS) as SortKey[]).map(k => {
+              {(Object.keys(sortLabels) as SortKey[]).map(k => {
                 if (OFFICIAL_SORT.includes(k) && !hasOfficialStats) return null
-                return <option key={k} value={k}>{SORT_LABELS[k]}</option>
+                return <option key={k} value={k}>{sortLabels[k]}</option>
               })}
             </select>
           </div>
@@ -306,7 +313,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
 
       {subWeapons.length > 0 && (
         <div className="weapon-filter-row">
-          <span className="weapon-filter-label">サブ</span>
+          <span className="weapon-filter-label">{t('books.sub')}</span>
           <div className="weapon-filter-btns">
             {subWeapons.map(s => (
               <button
@@ -326,7 +333,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
 
       {specialWeapons.length > 0 && (
         <div className="weapon-filter-row">
-          <span className="weapon-filter-label">SP</span>
+          <span className="weapon-filter-label">{t('books.special')}</span>
           <div className="weapon-filter-btns">
             {specialWeapons.map(s => (
               <button
@@ -345,14 +352,14 @@ export function WeaponBook({ filters }: { filters: Filters }) {
       )}
 
       {loading ? (
-        <div className="loading">読み込み中...</div>
+        <div className="loading">{t('common.loading')}</div>
       ) : weapons.length === 0 ? (
         <div className="empty">
-          ブキデータがありません。<br />
-          設定 › マスターデータ › 「ブキデータを更新」を実行してください。
+          {t('books.noMaster')}<br />
+          {t('books.updateMasterHint')}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="empty">条件に一致するブキがありません。</div>
+        <div className="empty">{t('books.noWeapons')}</div>
       ) : view === 'list' ? (
         <WeaponTable
           rows={filtered}
@@ -414,26 +421,27 @@ function WeaponTable({ rows, statsByWeapon, subImages, spImages, sortKey, ascend
   onSort:        (k: SortKey) => void
   onSelect:      (w: WeaponRecord) => void
 }) {
+  const { t } = useTranslation()
   return (
     <div className="book-table-wrap">
       <table className="book-table">
         <thead>
           <tr>
-            <SortHeader label="ブキ"     sortKey="name"          activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
-            <SortHeader label="カテゴリ"                         activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
-            <SortHeader label="サブ"                             activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
-            <SortHeader label="スペシャル"                       activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
-            <SortHeader label="バトル数" sortKey="total"         activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label={t('books.weapon')}     sortKey="name"          activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
+            <SortHeader label={t('books.category')}                         activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
+            <SortHeader label={t('books.sub')}                             activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
+            <SortHeader label={t('books.special')}                       activeKey={sortKey} ascending={ascending} onSort={onSort} align="left" />
+            <SortHeader label={METRIC_LABELS.total} sortKey="total"         activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="W"        sortKey="wins"          activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="L"        sortKey="loses"         activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label="D"        sortKey="draws"         activeKey={sortKey} ascending={ascending} onSort={onSort} />
-            <SortHeader label="勝率"     sortKey="win_rate"      activeKey={sortKey} ascending={ascending} onSort={onSort} />
-            <SortHeader label="平均K"    sortKey="avg_kill"      activeKey={sortKey} ascending={ascending} onSort={onSort} />
-            <SortHeader label="平均A"    sortKey="avg_assist"    activeKey={sortKey} ascending={ascending} onSort={onSort} />
-            <SortHeader label="平均D"    sortKey="avg_death"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
-            <SortHeader label="キルレ"     sortKey="kd"            activeKey={sortKey} ascending={ascending} onSort={onSort} />
-            <SortHeader label="貢献キルレ" sortKey="contrib_kd"    activeKey={sortKey} ascending={ascending} onSort={onSort} />
-            <SortHeader label="平均塗り"  sortKey="avg_inked"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label={METRIC_LABELS.win_rate}     sortKey="win_rate"      activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label={t('books.avgK')}    sortKey="avg_kill"      activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label={t('books.avgA')}    sortKey="avg_assist"    activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label={t('books.avgD')}    sortKey="avg_death"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label={METRIC_LABELS.avg_kd}     sortKey="kd"            activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label={METRIC_LABELS.avg_contrib_kd} sortKey="contrib_kd"    activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label={t('books.avgInked')}  sortKey="avg_inked"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
           </tr>
         </thead>
         <tbody>
@@ -451,7 +459,7 @@ function WeaponTable({ rows, statsByWeapon, subImages, spImages, sortKey, ascend
             const spImg    = w.special_weapon ? (spImages.get(w.special_weapon) ?? null) : null
             return (
               <tr key={w.name} className="book-tr clickable-row" onClick={() => onSelect(w)}>
-                <td className="book-td book-td--left">{w.name}</td>
+                <td className="book-td book-td--left">{weaponRecordDisplayName(w)}</td>
                 <td className="book-td book-td--left">{w.category}</td>
                 <td className="book-td book-td--left">
                   <BookIcon src={subImg} name={w.sub_weapon} />
@@ -492,6 +500,8 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
   spImage:  string | null
   onClick:  () => void
 }) {
+  const { t } = useTranslation()
+  const winRateLabel = METRIC_LABELS.win_rate
   // 試合数・勝率はフィルタ済みの db_grouped_stats 由来(#298)。
   // WeaponRecord.total/wins/draws は全期間固定なので使わない。
   const total    = avgStats?.total ?? 0
@@ -514,35 +524,35 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
     weapon.weapon_power_max != null
 
   const officialRows = hasOfficial ? [
-    statLine('熟練度', weapon.weapon_level != null ? String(weapon.weapon_level) : '-'),
-    statLine('通算勝利', weapon.win_count_total != null ? weapon.win_count_total.toLocaleString() : '-'),
-    statLine('通算塗りP', weapon.paint_point_total != null ? weapon.paint_point_total.toLocaleString() : '-'),
-    statLine('ブキチャレパワー', fmtPower(weapon.weapon_power)),
-    statLine('(最大)', fmtPower(weapon.weapon_power_max)),
-    statLine('最終使用日', fmtOfficialDate(weapon.last_used_at)),
+    statLine(METRIC_LABELS.official_weapon_level, weapon.weapon_level != null ? String(weapon.weapon_level) : '-'),
+    statLine(METRIC_LABELS.official_win_count, weapon.win_count_total != null ? weapon.win_count_total.toLocaleString() : '-'),
+    statLine(METRIC_LABELS.official_paint, weapon.paint_point_total != null ? weapon.paint_point_total.toLocaleString() : '-'),
+    statLine(METRIC_LABELS.official_weapon_power, fmtPower(weapon.weapon_power)),
+    statLine(t('books.maxParen'), fmtPower(weapon.weapon_power_max)),
+    statLine(METRIC_LABELS.official_last_used_at, fmtOfficialDate(weapon.last_used_at)),
   ] : []
 
   const localLeft = total > 0 && avgStats ? [
     statLine(
-      '勝ち',
+      t('books.win'),
       `${avgStats.wins.toLocaleString()} (${avgStats.knockout_win.toLocaleString()})`,
-      `勝ち ${avgStats.wins.toLocaleString()} 戦(うち KO 勝ち ${avgStats.knockout_win.toLocaleString()} 戦)`,
+      t('books.winKo', { wins: avgStats.wins.toLocaleString(), ko: avgStats.knockout_win.toLocaleString() }),
     ),
     statLine(
-      '負け',
+      t('books.lose'),
       `${(avgStats.total - avgStats.wins - avgStats.draws).toLocaleString()} (${avgStats.knockout_lose.toLocaleString()})`,
-      `負け ${(avgStats.total - avgStats.wins - avgStats.draws).toLocaleString()} 戦(うち KO 負け ${avgStats.knockout_lose.toLocaleString()} 戦)`,
+      t('books.loseKo', { losses: (avgStats.total - avgStats.wins - avgStats.draws).toLocaleString(), ko: avgStats.knockout_lose.toLocaleString() }),
     ),
-    statLine('勝率', winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '-'),
-    statLine('平均塗', avgStats.avg_inked !== null ? Math.round(avgStats.avg_inked).toLocaleString() : '-'),
-    statLine('合計塗', avgStats.sum_inked !== null ? avgStats.sum_inked.toLocaleString() : '-'),
+    statLine(winRateLabel, winRate !== null ? `${(winRate * 100).toFixed(1)}%` : '-'),
+    statLine(t('books.avgPaintShort'), avgStats.avg_inked !== null ? Math.round(avgStats.avg_inked).toLocaleString() : '-'),
+    statLine(t('books.sumInked'), avgStats.sum_inked !== null ? avgStats.sum_inked.toLocaleString() : '-'),
   ] : []
   const localRight = (total > 0 && avgStats) ? [
     statLine('K',   avgStats.avg_kill    !== null ? avgStats.avg_kill.toFixed(1)    : '-'),
     statLine('A',   avgStats.avg_assist  !== null ? avgStats.avg_assist.toFixed(1)  : '-'),
     statLine('D',   avgStats.avg_death   !== null ? avgStats.avg_death.toFixed(1)   : '-'),
-    statLine('キルレ', kdStr),
-    statLine('貢献キルレ', avgKillRatio(
+    statLine(winRateLabel, kdStr),
+    statLine(METRIC_LABELS.avg_contrib_kd, avgKillRatio(
       avgStats.avg_kill != null && avgStats.avg_assist != null
         ? avgStats.avg_kill + avgStats.avg_assist
         : null,
@@ -557,7 +567,7 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
     >
       <div className="weapon-card-icon-wrap">
         {image
-          ? <img src={image} alt={weapon.name} className="weapon-card-icon" />
+          ? <img src={image} alt={weaponRecordDisplayName(weapon)} className="weapon-card-icon" />
           : <div className="weapon-card-icon weapon-card-icon--placeholder" />
         }
       </div>
@@ -567,7 +577,7 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
           {subImage && <img src={subImage} alt={weapon.sub_weapon ?? ''} className="weapon-sub-sp-icon" title={weapon.sub_weapon ?? ''} />}
         </div>
       )}
-      <div className="weapon-card-name" title={weapon.name}>{weapon.name}</div>
+      <div className="weapon-card-name" title={weaponRecordDisplayName(weapon)}>{weaponRecordDisplayName(weapon)}</div>
       {hasOfficial && (
         <div className="weapon-card-official-grid">
           {officialRows.map(r => (
@@ -587,7 +597,7 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
                   <span className="weapon-card-mini-label">{r.label}</span>
                   <span
                     className="weapon-card-mini-value"
-                    style={r.label === '勝率' && winRate !== null ? { color: winRateColor(winRate) } : undefined}
+                    style={r.label === winRateLabel && winRate !== null ? { color: winRateColor(winRate) } : undefined}
                   >{r.value}</span>
                 </div>
               ))}
@@ -604,7 +614,7 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
         </div>
       ) : (
         <div className="weapon-card-stats weapon-card-stats--unused">
-          {hasOfficial ? 'このアプリでは未使用' : '未使用'}
+          {hasOfficial ? t('books.unusedHere') : t('books.unused')}
         </div>
       )}
     </div>

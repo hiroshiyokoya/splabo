@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -9,6 +10,7 @@ import {
 } from '../types'
 import { ABILITY_LABELS, abilityKeyFromUrl, colorToHex, loadAbilityImages } from '../utils/abilities'
 import { winRateColor } from '../utils/heatmapColors'
+import { battleStageDisplayName, battleWeaponDisplayName } from '../i18n/displayName'
 
 const PAGE_SIZE = 50
 
@@ -41,7 +43,12 @@ function openExternal(url: string) {
   openUrl(url).catch(console.error)
 }
 
+function dateLocale(lang: string): string {
+  return lang.startsWith('en') ? 'en-US' : 'ja-JP'
+}
+
 export function BattleLog({ filters, statinkScreenName }: Props) {
+  const { t, i18n } = useTranslation()
   const [battles, setBattles]                 = useState<BattleRow[]>([])
   const [total, setTotal]                     = useState(0)
   const [loading, setLoading]                 = useState(true)
@@ -134,22 +141,22 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
     <div className="battle-log book--fill">
       {stats && (
         <div className="stat-cards" style={{ marginBottom: 12 }}>
-          <LogStatCard label="総バトル数"        value={stats.total.toLocaleString()} />
-          <LogStatCard label="Win / Lose (Draw)"
+          <LogStatCard label={t('dashboard.totalBattles')}        value={stats.total.toLocaleString()} />
+          <LogStatCard label={t('dashboard.winLoseDraw')}
             value={`${stats.wins} / ${stats.total - stats.wins - stats.draws} (${stats.draws})`} />
-          <LogStatCard label="全体勝率"          value={stats.total > 0 ? `${(stats.win_rate * 100).toFixed(1)}%` : '-'}
+          <LogStatCard label={t('dashboard.overallWinRate')}          value={stats.total > 0 ? `${(stats.win_rate * 100).toFixed(1)}%` : '-'}
             valueColor={stats.total > 0 ? winRateColor(stats.win_rate) : undefined} />
           {/* カッコ内が何かはラベルで示す(#561)。「Win / Lose (Draw)」と同じ書き方。 */}
-          <LogStatCard label="平均キル (アシスト)" value={fmtKillWithAssist(stats.avg_kill, stats.avg_assist)} />
-          <LogStatCard label="平均デス"           value={stats.avg_death !== null ? stats.avg_death.toFixed(2) : '-'} />
-          <LogStatCard label="キルレ (貢献)"       value={fmtKillRatioWithContrib(stats.avg_kill, stats.avg_assist, stats.avg_death)} />
+          <LogStatCard label={t('dashboard.avgKillAssist')} value={fmtKillWithAssist(stats.avg_kill, stats.avg_assist)} />
+          <LogStatCard label={t('dashboard.avgDeath')}           value={stats.avg_death !== null ? stats.avg_death.toFixed(2) : '-'} />
+          <LogStatCard label={t('dashboard.kdContrib')}       value={fmtKillRatioWithContrib(stats.avg_kill, stats.avg_assist, stats.avg_death)} />
         </div>
       )}
 
       {loading ? (
-        <div className="loading">読み込み中...</div>
+        <div className="loading">{t('common.loading')}</div>
       ) : battles.length === 0 ? (
-        <div className="empty">該当するバトルデータがありません。</div>
+        <div className="empty">{t('battles.empty')}</div>
       ) : (
         <>
           <div className="book-table-wrap">
@@ -157,19 +164,19 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
             <thead>
               <tr>
                 <th className="team-color-th"></th>
-                <SortTh col="played_at" label="日時"   orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
-                <th>ロビー</th>
-                <th>ルール</th>
-                <th>ステージ</th>
-                <th>ブキ</th>
-                <th>結果</th>
+                <SortTh col="played_at" label={t('battles.datetime')}   orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <th>{t('battles.lobby')}</th>
+                <th>{t('battles.rule')}</th>
+                <th>{t('battles.stage')}</th>
+                <th>{t('battles.weapon')}</th>
+                <th>{t('battles.result')}</th>
                 <SortTh col="kill"       label="K"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
                 <SortTh col="assist"     label="A"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
                 <SortTh col="death"      label="D"     orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
-                <SortTh col="kill_ratio" label="キルレ" orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <SortTh col="kill_ratio" label={t('battles.killRatio')} orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
                 <SortTh col="special"    label="SP"    orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
-                <SortTh col="inked"      label="塗り"  orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
-                <th className="statink-col-th" title="stat.ink アップロード済み">stat</th>
+                <SortTh col="inked"      label={t('battles.inked')}  orderBy={orderBy} orderAsc={orderAsc} onSort={handleSort} />
+                <th className="statink-col-th" title={t('battles.statUploaded')}>stat</th>
               </tr>
             </thead>
             <tbody>
@@ -178,14 +185,14 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
                 return (
                   <tr key={b.id} className={`result-${b.result} clickable-row`} onClick={() => setSelectedIdx(idx)}>
                     <td className={`team-color-cell result-stripe--${b.result.toLowerCase()}`} />
-                    <td>{new Date(b.played_at).toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                    <td>{new Date(b.played_at).toLocaleString(dateLocale(i18n.language), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                     <td>{modeLabel(b.mode)}</td>
                     <td>{ruleLabel(b.rule)}</td>
-                    <td>{b.stage_name ?? b.stage}</td>
+                    <td>{battleStageDisplayName(b)}</td>
                     <td>
                       <span className="weapon-cell">
                         {weaponImages.get(b.weapon) && <img src={weaponImages.get(b.weapon)} alt="" className="weapon-icon" />}
-                        {b.weapon}
+                        {battleWeaponDisplayName(b)}
                       </span>
                     </td>
                     <td className={`result-cell ${b.result.toLowerCase()}`}>
@@ -202,7 +209,7 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
                       {b.statink_uuid && (
                         <button
                           className="statink-mark"
-                          title="stat.ink で開く"
+                          title={t('battles.openStatink')}
                           onClick={e => {
                             e.stopPropagation()
                             openExternal(statinkBattleUrl(b.statink_uuid!, statinkScreenName))
@@ -218,9 +225,9 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
           </div>
 
           <div className="pagination">
-            <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>前へ</button>
+            <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>{t('battles.prevPage')}</button>
             <span>{offset + 1}–{Math.min(offset + PAGE_SIZE, total)} / {total}</span>
-            <button disabled={offset + PAGE_SIZE >= total} onClick={() => setOffset(offset + PAGE_SIZE)}>次へ</button>
+            <button disabled={offset + PAGE_SIZE >= total} onClick={() => setOffset(offset + PAGE_SIZE)}>{t('battles.nextPage')}</button>
           </div>
         </>
       )}
@@ -287,6 +294,7 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
   onPrev?: () => void  // 前のバトル(先頭なら undefined)
   onNext?: () => void  // 次のバトル(末尾なら undefined)
 }) {
+  const { t, i18n } = useTranslation()
   const [showRaw, setShowRaw] = useState(false)
 
   // ESC で閉じる、←/→ で前後移動
@@ -327,28 +335,28 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
           <span className={`result-badge ${battle.result.toLowerCase()}`}>{resultLabel(battle.result)}</span>
           {isKo && <span className="ko-badge">KO</span>}
           <span className="modal-title-text">{modeLabel(battle.mode)} / {ruleLabel(battle.rule)}</span>
-          <span className="modal-stage">{battle.stage_name ?? battle.stage}</span>
+          <span className="modal-stage">{battleStageDisplayName(battle)}</span>
           <span className="modal-meta">
-            {new Date(battle.played_at).toLocaleString('ja-JP')}
+            {new Date(battle.played_at).toLocaleString(dateLocale(i18n.language))}
             {battle.duration > 0 && <> · {durationMin}:{String(durationSec).padStart(2, '0')}</>}
             {battle.statink_uuid && (
               <button
                 className="statink-badge"
-                title={`stat.ink で開く (ID: ${battle.statink_uuid})`}
+                title={t('battles.openStatinkId', { id: battle.statink_uuid })}
                 onClick={() => openExternal(statinkBattleUrl(battle.statink_uuid!, statinkScreenName))}
               >stat.ink ✓</button>
             )}
           </span>
           <div className="modal-nav">
-            <button className="modal-nav-btn" onClick={onPrev} disabled={!onPrev} title="前のバトル (←)">‹ 前</button>
-            <button className="modal-nav-btn" onClick={onNext} disabled={!onNext} title="次のバトル (→)">次 ›</button>
+            <button className="modal-nav-btn" onClick={onPrev} disabled={!onPrev} title={t('battles.prevTitle')}>{t('battles.prev')}</button>
+            <button className="modal-nav-btn" onClick={onNext} disabled={!onNext} title={t('battles.nextTitle')}>{t('battles.next')}</button>
           </div>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose} aria-label={t('common.close')}>✕</button>
         </div>
 
         <div className="modal-body">
           {!hasDetail && (
-            <div className="detail-notice">詳細データ未取得 - 「最新データを取得」を実行すると詳細が表示されます</div>
+            <div className="detail-notice">{t('battles.noDetail')}</div>
           )}
 
           {hasDetail && (myTeam || otherTeams.length > 0) && (
@@ -357,7 +365,7 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
 
           {awards.length > 0 && (
             <section className="modal-section">
-              <h3 className="modal-section-title">アワード</h3>
+              <h3 className="modal-section-title">{t('battles.awards')}</h3>
               <div className="awards-list">
                 {awards.map((a, i) => (
                   <span key={i} className={`award-badge ${(a.rank ?? '').toLowerCase()}`}>{a.name}</span>
@@ -370,12 +378,12 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
 
           {hasDetail && (myTeam || otherTeams.length > 0) && (
             <section className="modal-section">
-              <h3 className="modal-section-title">スコアボード</h3>
+              <h3 className="modal-section-title">{t('battles.scoreboard')}</h3>
               <div className="teams-stack">
                 {myTeam && (
                   <TeamPanel
                     team={myTeam}
-                    label="自チーム"
+                    label={t('battles.myTeam')}
                     highlight
                     showSignal={isTricolor}
                     weaponImages={weaponImages}
@@ -386,7 +394,7 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
                   <TeamPanel
                     key={i}
                     team={team}
-                    label={otherTeams.length > 1 ? `相手チーム${i + 1}` : '相手チーム'}
+                    label={otherTeams.length > 1 ? t('battles.enemyTeamN', { n: i + 1 }) : t('battles.enemyTeam')}
                     showSignal={isTricolor}
                     weaponImages={weaponImages}
                     abilityImages={abilityImages}
@@ -417,8 +425,9 @@ function ScoreSummary({ myTeam, otherTeams }: {
   otherTeams: Team[]
   rule: string
 }) {
+  const { t } = useTranslation()
   const myColor = colorToHex(myTeam?.color)
-  const teams   = [{ team: myTeam, color: myColor }, ...otherTeams.map(t => ({ team: t, color: colorToHex(t.color) }))]
+  const teams   = [{ team: myTeam, color: myColor }, ...otherTeams.map(team => ({ team, color: colorToHex(team.color) }))]
 
   // ルール文字列に依存せず、result の値で何を表示するか決める：
   // paintRatio が数値なら 塗り%、なければ score を数値表示。result 自体が null(中断・切断バトル等)なら '-'。
@@ -433,10 +442,10 @@ function ScoreSummary({ myTeam, otherTeams }: {
   return (
     <section className="modal-section score-summary">
       <div className="score-summary-row">
-        {teams.map((t, i) => (
-          <div key={i} className="score-summary-team" style={{ '--team-color': t.color ?? '#6066aa' } as React.CSSProperties}>
-            <div className="score-summary-label">{i === 0 ? '自' : (teams.length > 2 ? `相手${i}` : '相手')}</div>
-            <div className="score-summary-value">{renderScore(t.team)}</div>
+        {teams.map((entry, i) => (
+          <div key={i} className="score-summary-team" style={{ '--team-color': entry.color ?? '#6066aa' } as React.CSSProperties}>
+            <div className="score-summary-label">{i === 0 ? t('battles.meShort') : (teams.length > 2 ? t('battles.enemyShortN', { n: i }) : t('battles.enemyShort'))}</div>
+            <div className="score-summary-value">{renderScore(entry.team)}</div>
           </div>
         ))}
       </div>
@@ -452,24 +461,25 @@ function MyStatsCard({ battle, weaponImages }: {
   battle: BattleRow
   weaponImages: Map<string, string>
 }) {
+  const { t } = useTranslation()
   return (
     <section className="modal-section my-stats-card">
-      <h3 className="modal-section-title">自分の戦績</h3>
+      <h3 className="modal-section-title">{t('battles.myStats')}</h3>
       <div className="my-stats-grid">
         <div className="my-stats-weapon">
           {weaponImages.get(battle.weapon) && <img src={weaponImages.get(battle.weapon)} alt="" className="weapon-icon-lg" />}
           <div className="my-stats-weapon-names">
-            <div className="weapon-main">{battle.weapon}</div>
-            {battle.sub_weapon     && <div className="weapon-sub">サブ: {battle.sub_weapon}</div>}
+            <div className="weapon-main">{battleWeaponDisplayName(battle)}</div>
+            {battle.sub_weapon     && <div className="weapon-sub">{t('battles.subPrefix', { name: battle.sub_weapon })}</div>}
             {battle.special_weapon && <div className="weapon-sp">SP: {battle.special_weapon}</div>}
           </div>
         </div>
         <div className="my-stats-numbers">
-          <StatItem label="キル"       value={battle.kill} />
-          <StatItem label="アシスト"   value={battle.assist} />
-          <StatItem label="デス"       value={battle.death} />
-          <StatItem label="スペシャル" value={battle.special} />
-          <StatItem label="塗り"       value={battle.inked.toLocaleString()} />
+          <StatItem label={t('battles.kill')}       value={battle.kill} />
+          <StatItem label={t('battles.assist')}   value={battle.assist} />
+          <StatItem label={t('battles.death')}       value={battle.death} />
+          <StatItem label={t('battles.special')} value={battle.special} />
+          <StatItem label={t('battles.inked')}       value={battle.inked.toLocaleString()} />
         </div>
       </div>
       <RankChangeRow battle={battle} />
@@ -483,6 +493,7 @@ function MyStatsCard({ battle, weaponImages }: {
 // ---------------------------------------------------------------------------
 
 function RankChangeRow({ battle }: { battle: BattleRow }) {
+  const { t } = useTranslation()
   if (!battle.parent_json) return null
   const parent = tryParse(battle.parent_json) as ParentJson | null
   if (!parent) return null
@@ -511,7 +522,7 @@ function RankChangeRow({ battle }: { battle: BattleRow }) {
     <div className="rank-change">
       {showRank && (
         <div className="rank-change-line">
-          <span className="rank-change-label">ランク</span>
+          <span className="rank-change-label">{t('battles.rank')}</span>
           <span className="rank-change-value">
             {udemaeBefore ?? '?'}
             {udemaeAfter && udemaeAfter !== udemaeBefore && (
@@ -519,7 +530,7 @@ function RankChangeRow({ battle }: { battle: BattleRow }) {
             )}
             {isPromo && (
               <span className={`promo-tag ${isPromoSuccess ? 'promo-success' : 'promo-attempt'}`}>
-                {isPromoSuccess ? '昇格！' : '昇格戦'}
+                {isPromoSuccess ? t('battles.promoSuccess') : t('battles.promo')}
               </span>
             )}
           </span>
@@ -527,7 +538,7 @@ function RankChangeRow({ battle }: { battle: BattleRow }) {
       )}
       {showXPower && (
         <div className="rank-change-line">
-          <span className="rank-change-label">X パワー</span>
+          <span className="rank-change-label">{t('battles.xPower')}</span>
           <span className="rank-change-value">
             {xPowerBefore !== null ? xPowerBefore.toFixed(1) : '?'}
             {xPowerAfter !== null && (
@@ -538,11 +549,11 @@ function RankChangeRow({ battle }: { battle: BattleRow }) {
       )}
       {hasSet && (
         <div className="rank-change-line">
-          <span className="rank-change-label">セット</span>
+          <span className="rank-change-label">{t('battles.set')}</span>
           <span className="rank-change-value">
-            <span style={{ color: 'var(--win)' }}>{setWin}勝</span>
+            <span style={{ color: 'var(--win)' }}>{t('battles.setWin', { n: setWin })}</span>
             {' '}
-            <span style={{ color: 'var(--lose)' }}>{setLose}敗</span>
+            <span style={{ color: 'var(--lose)' }}>{t('battles.setLose', { n: setLose })}</span>
           </span>
         </div>
       )}
@@ -562,6 +573,7 @@ function TeamPanel({ team, label, highlight, showSignal, weaponImages, abilityIm
   weaponImages: Map<string, string>
   abilityImages: Map<string, string>
 }) {
+  const { t } = useTranslation()
   const color   = colorToHex(team.color)
   const players = team.players ?? []
   // Nintendo の result.kill は kill+assist なので、純粋K に補正して合計を計算する。
@@ -580,22 +592,22 @@ function TeamPanel({ team, label, highlight, showSignal, weaponImages, abilityIm
         {typeof score === 'number' && <span className="team-panel-score">{score}</span>}
         {typeof paint === 'number' && <span className="team-panel-score">{(paint * 100).toFixed(1)}%</span>}
         <span className="team-panel-totals">
-          {totalK}K / {totalA}A / {totalD}D / SP {totalSp} / 塗り {totalP.toLocaleString()}p
+          {t('battles.teamTotals', { k: totalK, a: totalA, d: totalD, sp: totalSp, p: totalP.toLocaleString() })}
         </span>
       </div>
       <table className="team-table">
         <thead>
           <tr>
             <th></th>
-            <th>ネームプレート</th>
-            <th>ブキ</th>
-            <th>ギア</th>
+            <th>{t('books.nameplate')}</th>
+            <th>{t('books.weapon')}</th>
+            <th>{t('books.gear')}</th>
             <th>K</th>
             <th>A</th>
             <th>D</th>
             <th>SP</th>
-            <th>塗り</th>
-            {showSignal && <th>信号</th>}
+            <th>{t('battles.inked')}</th>
+            {showSignal && <th>{t('books.signal')}</th>}
           </tr>
         </thead>
         <tbody>
@@ -702,10 +714,11 @@ function GearSlot({ ability, abilityImages, primary, isLocked }: {
   primary?: boolean
   isLocked?: boolean
 }) {
+  const { t } = useTranslation()
   const url    = ability?.image?.url
   const key    = abilityKeyFromUrl(url)
   const imgUrl = key ? abilityImages.get(key) : undefined
-  const label  = isLocked ? '未解放' : ((key && ABILITY_LABELS[key]) ?? ability?.name ?? '')
+  const label  = isLocked ? t('battles.locked') : ((key && ABILITY_LABELS[key]) ?? ability?.name ?? '')
   return (
     <span
       className={`gear-slot${primary ? ' primary' : ''}${isLocked ? ' locked' : ''}`}

@@ -9,9 +9,11 @@
  * UI の FilterBar 表示は触らない。
  */
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { invoke } from '@tauri-apps/api/core'
 import type { Filters, Period } from '../types'
 import { filtersToRange, resultLabel } from '../types'
+import { stageInfoDisplayName } from '../i18n/displayName'
 
 /** FilterBar と表示を揃えるための選択肢定義。UI とキャプションで文言をぶらさない。 */
 export const PERIOD_OPTIONS: { id: Period; label: string }[] = [
@@ -145,24 +147,32 @@ export function describeFilters(f: Filters, stageNames?: Map<string, string>): s
   ])
 }
 
-interface StageInfo { id: string; name: string }
+interface StageInfo { id: string; name: string; name_ja?: string | null; name_en?: string | null }
 
 // ステージ名は取得済みバトルから引くだけで変化が遅いので、モジュール内で使い回す。
-let stageNameCache: Map<string, string> | null = null
+let stageListCache: StageInfo[] | null = null
 
 /** ステージ ID → 表示名。条件テキストで ID がそのまま出るのを防ぐ。 */
 export function useStageNames(): Map<string, string> {
-  const [names, setNames] = useState<Map<string, string>>(() => stageNameCache ?? new Map())
+  const { i18n } = useTranslation()
+  const [names, setNames] = useState<Map<string, string>>(() => {
+    if (!stageListCache) return new Map()
+    return new Map(stageListCache.map(s => [s.id, stageInfoDisplayName(s)]))
+  })
   useEffect(() => {
-    if (stageNameCache) return
+    if (stageListCache) {
+      setNames(new Map(stageListCache.map(s => [s.id, stageInfoDisplayName(s)])))
+      return
+    }
     let alive = true
     invoke<StageInfo[]>('db_stages_used')
       .then(list => {
-        stageNameCache = new Map(list.map(s => [s.id, s.name]))
-        if (alive) setNames(stageNameCache)
+        stageListCache = list
+        const mapped = new Map(list.map(s => [s.id, stageInfoDisplayName(s)]))
+        if (alive) setNames(mapped)
       })
       .catch(() => { /* 名前が引けなければ ID のまま出す */ })
     return () => { alive = false }
-  }, [])
+  }, [i18n.language])
   return names
 }

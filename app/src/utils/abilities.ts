@@ -1,11 +1,12 @@
 import { invoke } from '@tauri-apps/api/core'
+import i18n from '../i18n'
 
 /**
  * ギアパワー（アビリティ）キーと日本語表示名のマッピング。
  * キーは stat.ink のアビリティキー（Rust 側の `abilities.rs::ABILITY_HASHES` と整合）。
  * `empty` は空スロット用画像のキー。
  */
-export const ABILITY_LABELS: Record<string, string> = {
+const ABILITY_LABELS_JA: Record<string, string> = {
   ink_saver_main:    'インク効率(メイン)',
   ink_saver_sub:     'インク効率(サブ)',
   ink_recovery_up:   'インク回復力',
@@ -35,7 +36,21 @@ export const ABILITY_LABELS: Record<string, string> = {
   empty:             '未付与',
 }
 
-export const ABILITY_KEYS: string[] = Object.keys(ABILITY_LABELS)
+/** 読み取り時に i18n で解決する Proxy（バトルログのギアツールチップ等）。 */
+export const ABILITY_LABELS: Record<string, string> = new Proxy(ABILITY_LABELS_JA, {
+  get(target, prop: string) {
+    if (typeof prop !== 'string' || !(prop in target)) return undefined
+    return i18n.t(`gear.ability.${prop}`, { defaultValue: target[prop] })
+  },
+  ownKeys(target) {
+    return Reflect.ownKeys(target)
+  },
+  getOwnPropertyDescriptor(target, prop) {
+    return Reflect.getOwnPropertyDescriptor(target, prop)
+  },
+})
+
+export const ABILITY_KEYS: string[] = Object.keys(ABILITY_LABELS_JA)
 
 /**
  * キャッシュ済みアビリティ画像を全件ロードして Map を返す。

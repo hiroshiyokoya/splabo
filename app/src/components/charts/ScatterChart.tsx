@@ -4,6 +4,8 @@ import {
   ScatterChart as RScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts'
 import { PANEL_EXPORT_HTML_PREPARE_EVENT, PANEL_EXPORT_PREPARE_EVENT } from '../../utils/panelExport'
+import { useTranslation } from 'react-i18next'
+import i18n from '../../i18n'
 
 /**
  * 散布図 (presentational)。
@@ -190,7 +192,7 @@ function buildScatterTipPayload(
   if (sibs && sibs.length > 1) {
     return {
       kind: 'group',
-      groupTitle: `${point.tooltipRows.slice(0, 2).map(r => `${r.label} ${r.value}`).join(' / ')} (${sibs.length} 件)`,
+      groupTitle: `${point.tooltipRows.slice(0, 2).map(r => `${r.label} ${r.value}`).join(' / ')} (${i18n.t('chart.nItems', { count: sibs.length })})`,
       members: sibs.slice(0, SCATTER_TIP_ROW_LIMIT).map(p => p.rowText ?? p.name),
       more: Math.max(0, sibs.length - SCATTER_TIP_ROW_LIMIT),
     }
@@ -1173,6 +1175,7 @@ export function buildColorLegend(
 }
 
 function ScatterLegends({ sizeLegend, colorLegend }: { sizeLegend?: SizeLegend | null; colorLegend?: ColorLegend | null }) {
+  const { t } = useTranslation()
   if (!sizeLegend && !colorLegend) return null
   // 一番大きい円に合わせて行の高さを取る(円が上下で切れないように)。
   const maxR = sizeLegend ? areaToRadius(Math.max(...sizeLegend.items.map(i => i.area))) : 0
@@ -1203,7 +1206,7 @@ function ScatterLegends({ sizeLegend, colorLegend }: { sizeLegend?: SizeLegend |
       {colorLegend && (
         <div className="scatter-legend-group">
           <span className="scatter-legend-title">
-            {colorLegend.encoding === 'color_shape' ? '色・形' : '色'}: {colorLegend.label}
+            {colorLegend.encoding === 'color_shape' ? t('chart.colorShape') : t('chart.color')}: {colorLegend.label}
           </span>
           <span className="scatter-legend-items">
             {colorLegend.layout === 'chips' ? (
