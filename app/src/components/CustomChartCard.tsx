@@ -5,7 +5,7 @@ import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, Metric
 import {
   stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric, chartMetrics,
   METRIC_LABELS, BATTLE_METRIC_LABELS, BATTLE_NUMERIC_METRIC_LABELS,
-  GROUP_BY_LABELS, formatMetric, winLoseBreakdown, type GroupByKey,
+  GROUP_BY_LABELS, formatMetric, type GroupByKey,
   SCATTER_IMAGE_PX, isScatterImageMode, isOfficialRateMetric,
 } from '../types'
 import { SimpleBarChart } from './charts/SimpleBarChart'
@@ -86,15 +86,32 @@ function dedupeRows(entries: { key: string | undefined; row: () => TooltipRow }[
 }
 
 /**
- * 集計散布図のツールチップ 1 行の値(#562)。
- *
- * バトル数のときだけ勝敗内訳を添える。書き方はヒートマップのツールチップと共通
- * (`winLoseBreakdown`)。X / Y / サイズ / 色のどれに割り当てられていても効く。
+ * バトル数・勝数・負数はセットで見せる。どれか 1 つが軸・サイズ・色に
+ * 割り当てられていれば、3 行まとめて出す(#562 拡張)。
  */
-function fmtScatterMetric(d: GroupedStatsRow, value: number | null, key: string): string {
-  const text = formatMetric(value, key as MetricKey)
-  if (key !== 'total' || d.total <= 0) return text
-  return `${text} (${winLoseBreakdown(d.total, d.wins, d.draws)})`
+const WIN_COUNT_METRICS = new Set<string>(['total', 'wins'])
+
+function winCountTooltipEntries(d: GroupedStatsRow): { key: string; row: () => TooltipRow }[] {
+  if (d.total <= 0) return []
+  const losses = d.total - d.wins - d.draws
+  const entries: { key: string; row: () => TooltipRow }[] = [
+    { key: 'total', row: () => ({ label: 'バトル数', value: formatMetric(d.total, 'total') }) },
+    { key: 'wins', row: () => ({ label: '勝数', value: formatMetric(d.wins, 'wins') }) },
+    { key: 'losses', row: () => ({ label: '負数', value: formatMetric(losses, 'total') }) },
+  ]
+  if (d.draws > 0) {
+    entries.push({ key: 'draws', row: () => ({ label: '引分', value: formatMetric(d.draws, 'total') }) })
+  }
+  return entries
+}
+
+function usesWinCountBlock(keys: (string | undefined)[]): boolean {
+  return keys.some(k => k != null && WIN_COUNT_METRICS.has(k))
+}
+
+/** 集計散布図のツールチップ 1 行の値。 */
+function fmtScatterMetric(value: number | null, key: string): string {
+  return formatMetric(value, key as MetricKey)
 }
 
 /** 散布図の描画データ一式。凡例はポイントと同じ min/max・同じ色関数から作るので、
@@ -148,12 +165,13 @@ function buildAggScatterPoints(
       iconUrl: weaponImages?.get(d.name) ?? null,
       ...kitIconsForWeapon(d.name, weaponMeta, subImages, spImages),
       tooltipRows: dedupeRows([
-        { key: xKey, row: () => ({ label: metricLabelOf(xKey), value: fmtScatterMetric(d, x, xKey) }) },
-        { key: yKey, row: () => ({ label: metricLabelOf(yKey), value: fmtScatterMetric(d, y, yKey) }) },
-        { key: sizeKey, row: () => ({ label: metricLabelOf(sizeKey!), value: fmtScatterMetric(d, size, sizeKey!), muted: true }) },
+        ...(usesWinCountBlock([xKey, yKey, sizeKey, colorKey]) ? winCountTooltipEntries(d) : []),
+        { key: xKey, row: () => ({ label: metricLabelOf(xKey), value: fmtScatterMetric(x, xKey) }) },
+        { key: yKey, row: () => ({ label: metricLabelOf(yKey), value: fmtScatterMetric(y, yKey) }) },
+        { key: sizeKey, row: () => ({ label: metricLabelOf(sizeKey!), value: fmtScatterMetric(size, sizeKey!), muted: true }) },
         isCatColor
           ? { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: catVal!, muted: true }) }
-          : { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: fmtScatterMetric(d, colorVal, colorKey!), muted: true }) },
+          : { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: fmtScatterMetric(colorVal, colorKey!), muted: true }) },
       ]),
     }
   })
