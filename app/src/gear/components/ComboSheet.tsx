@@ -1,8 +1,10 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
-import type { GearCategory, GearItem, GearDB } from '../types'
+import { useTranslation } from 'react-i18next'
+import type { GearCategory, GearItem, GearDB, Skill } from '../types'
 import { findCombo, MAIN_AP, SUB_AP, getComboSortKey, comboBestBadgeKeysEqual } from '../utils/findCombo'
 import type { ComboResult, ComboSortKey } from '../utils/findCombo'
 import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from '../constants/gearPowerMeta'
+import { skillDisplayName } from '../utils/skillDisplayName'
 
 export type ComboSlots = {
   head:     GearItem | null
@@ -63,7 +65,10 @@ function calcTotalAp(slots: ComboSlots): Map<number, { name: string; ap: number;
 }
 
 const CAT_ICON: Record<GearCategory, string> = { head: '🪖', clothing: '👕', shoes: '👟' }
-const CAT_LABEL: Record<GearCategory, string> = { head: '頭', clothing: '服', shoes: '靴' }
+
+function catLabel(t: (key: string) => string, cat: GearCategory): string {
+  return t(`gear.cat.${cat}`)
+}
 
 interface Props {
   data:             GearDB
@@ -82,6 +87,8 @@ interface Props {
 }
 
 export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '', comboLimit = 50, nearLimit = 10 }: Props) {
+  const { t } = useTranslation()
+  const emptyLabel = t('gear.empty')
   const [isOpen, setIsOpen]             = useState(false)
   const [snapExpanded, setSnapExpanded] = useState(false)
   const [skillPoints, setSkillPoints]   = useState<Map<number, number>>(new Map())
@@ -437,6 +444,8 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
     const maxPts = pts + remainingPool
     const next = stepUp(pts, aAvail, maxPts)
     const canStepUp = next !== pts
+    const skill: Pick<Skill, 'id' | 'name'> = { id: s.id, name: s.name }
+    const displayName = skillDisplayName(skill, t)
 
     const stepDownOnce = (e: React.MouseEvent<HTMLButtonElement>) => {
       if (stepperIgnoreClickRef.current) {
@@ -474,8 +483,8 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
 
     return (
       <div key={s.id} className={`combo-skill-row ${isActive ? 'combo-skill-row--active' : ''}`}>
-        <img className="combo-skill-row__icon" src={s.image} alt={s.name} />
-        <span className="combo-skill-row__name">{s.name}</span>
+        <img className="combo-skill-row__icon" src={s.image} alt={displayName} />
+        <span className="combo-skill-row__name">{displayName}</span>
         <div className="stepper">
           <button
             type="button"
@@ -486,9 +495,9 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
             onPointerCancel={clearStepperHold}
             onLostPointerCapture={clearStepperHold}
             disabled={pts === 0}
-            aria-label={`${s.name} を下げる`}
+            aria-label={t('gear.decreaseSkill', { name: displayName })}
           >−</button>
-          <span className="stepper__value">{pts === 0 ? '−' : `${pts}pt`}</span>
+          <span className="stepper__value">{pts === 0 ? '−' : t('gear.combo.points', { count: pts })}</span>
           <button
             type="button"
             className="stepper__btn"
@@ -498,7 +507,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
             onPointerCancel={clearStepperHold}
             onLostPointerCapture={clearStepperHold}
             disabled={!canStepUp}
-            aria-label={`${s.name} を上げる`}
+            aria-label={t('gear.increaseSkill', { name: displayName })}
           >＋</button>
         </div>
       </div>
@@ -516,7 +525,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         role="button"
-        aria-label={isOpen ? (snapExpanded ? '縮小' : 'コーデを閉じる') : 'コーデを開く'}
+        aria-label={isOpen ? (snapExpanded ? t('gear.combo.collapse') : t('gear.combo.close')) : t('gear.combo.open')}
         style={{ touchAction: 'none' }}
       >
         <div className="combo-sheet__handle" />
@@ -527,12 +536,12 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
         ref={sheetRef}
         className={`combo-sheet${isOpen ? ' combo-sheet--open' : ''}${snapExpanded ? ' combo-sheet--expanded' : ''}`}
         role="dialog"
-        aria-label="コーデ"
+        aria-label={t('gear.combo.aria')}
         aria-modal="false"
       >
         {/* ヘッダー */}
         <div className="combo-sheet__header">
-          <span className="combo-sheet__title">🎮 コーデ</span>
+          <span className="combo-sheet__title">{t('gear.combo.title')}</span>
           {anyFilled && (
             <button
               type="button"
@@ -545,7 +554,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                 setSlotUndo(emptySlots())
               }}
             >
-              クリア
+              {t('gear.combo.clear')}
             </button>
           )}
         </div>
@@ -561,15 +570,17 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
             const canUndo = !gear && undoGear !== null
             const showUndoBtn = canUndo && undoBtnFlash[cat]
             const emptyInteractive = canUndo
+            const catName = catLabel(t, cat)
 
             if (gear) {
+              const mainName = skillDisplayName(gear.primary_skill, t)
               return (
                 <div key={cat} className="combo-slot combo-slot--filled" title={gear.name}>
                   <button
                     type="button"
                     className="combo-slot__icon-btn combo-slot__icon-btn--remove"
-                    aria-label={`${CAT_LABEL[cat]}スロットから「${gear.name}」を外す`}
-                    title="スロットから外す"
+                    aria-label={t('gear.combo.removeFromSlot', { cat: catName, name: gear.name })}
+                    title={t('gear.combo.removeSlotTitle')}
                     onClick={e => { e.stopPropagation(); handleRemoveSlot(cat) }}
                   >
                     <span className="combo-slot__icon-btn-mark" aria-hidden>×</span>
@@ -581,14 +592,17 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                       <span className="combo-slot__name">{gear.name}</span>
                     </div>
                     <div className="combo-slot__skills">
-                      <div className="combo-slot__skill combo-slot__skill--main" title={gear.primary_skill.name}>
-                        <img src={gear.primary_skill.image} alt={gear.primary_skill.name} />
+                      <div className="combo-slot__skill combo-slot__skill--main" title={mainName}>
+                        <img src={gear.primary_skill.image} alt={mainName} />
                       </div>
-                      {gear.additional_skills.map((s, i) => (
-                        <div key={i} className="combo-slot__skill combo-slot__skill--sub" title={s.name}>
-                          <img src={s.image} alt={s.name} />
+                      {gear.additional_skills.map((s, i) => {
+                        const subName = skillDisplayName(s, t)
+                        return (
+                        <div key={i} className="combo-slot__skill combo-slot__skill--sub" title={subName}>
+                          <img src={s.image} alt={subName} />
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -610,16 +624,16 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                 tabIndex={emptyInteractive ? 0 : undefined}
                 title={canUndo && undoGear
                   ? showUndoBtn
-                    ? `「${undoGear.name}」を戻す(↩ またはこの枠をタップ)`
-                    : `「${undoGear.name}」を戻す(この枠をタップ)`
-                  : `リストから${CAT_LABEL[cat]}ギアを選択`}
+                    ? t('gear.combo.restoreHint', { name: undoGear.name })
+                    : t('gear.combo.restoreHintTap', { name: undoGear.name })
+                  : t('gear.combo.selectFromList', { cat: catName })}
               >
                 {showUndoBtn && undoGear && (
                   <button
                     type="button"
                     className="combo-slot__icon-btn combo-slot__icon-btn--undo"
-                    aria-label={`「${undoGear.name}」を戻す`}
-                    title="元に戻す"
+                    aria-label={t('gear.combo.restore', { name: undoGear.name })}
+                    title={t('gear.combo.undoTitle')}
                     onClick={e => { e.stopPropagation(); handleRestoreFromUndo(cat) }}
                   >
                     <span className="combo-slot__icon-btn-mark combo-slot__icon-btn-mark--undo" aria-hidden>↩</span>
@@ -628,7 +642,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                 <div className="combo-slot__empty-inner">
                   <span className="combo-slot__empty-icon">{CAT_ICON[cat]}</span>
                   {canUndo && undoGear && !showUndoBtn && (
-                    <span className="combo-slot__undo-hint">タップで戻す</span>
+                    <span className="combo-slot__undo-hint">{t('gear.combo.tapToRestore')}</span>
                   )}
                 </div>
               </div>
@@ -640,7 +654,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
         <div className="combo-ap-bar">
           {totalAp.size > 0 ? (
             <>
-              <span className="combo-ap-bar__label">合計 AP</span>
+              <span className="combo-ap-bar__label">{t('gear.combo.totalAp')}</span>
               <div className="combo-ap-chips">
                 {[...totalAp.entries()]
                   .sort(([aId, a], [bId, b]) => {
@@ -650,20 +664,23 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                     if (!aMain && bMain) return 1
                     return b.ap - a.ap
                   })
-                  .map(([id, { name, ap, image }]) => (
+                  .map(([id, { name, ap, image }]) => {
+                    const displayName = skillDisplayName({ id, name }, t)
+                    return (
                     <div
                       key={id}
                       className={`combo-ap-chip${isMainOnly(id) ? ' combo-ap-chip--main-only' : ''}`}
-                      title={isMainOnly(id) ? name : `${name}: ${ap}pt`}
+                      title={isMainOnly(id) ? displayName : `${displayName}: ${t('gear.combo.points', { count: ap })}`}
                     >
-                      <img className="combo-ap-chip__icon" src={image} alt={name} />
-                      {!isMainOnly(id) && <span className="combo-ap-chip__val">{ap}pt</span>}
+                      <img className="combo-ap-chip__icon" src={image} alt={displayName} />
+                      {!isMainOnly(id) && <span className="combo-ap-chip__val">{t('gear.combo.points', { count: ap })}</span>}
                     </div>
-                  ))}
+                    )
+                  })}
               </div>
             </>
           ) : (
-            <span className="combo-ap-bar__empty">ギアを選ぶと合計 AP が表示されます</span>
+            <span className="combo-ap-bar__empty">{t('gear.combo.totalApEmpty')}</span>
           )}
         </div>
         </div>
@@ -677,10 +694,10 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
           >
             <div className="combo-skill-section">
               <div className="combo-skill-section__label">
-                目標スキル
+                {t('gear.combo.targetSkills')}
                 {activeRequirements > 0 && (
                   <button className="combo-skill-section__clear" onClick={handleClearRequirements}>
-                    クリア
+                    {t('gear.combo.clear')}
                   </button>
                 )}
               </div>
@@ -691,23 +708,22 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                 if (mainSkills.length === 0) return null
                 return (
                   <div key={cat} className="combo-main-only-row">
-                    <span className="combo-main-only-row__label">{CAT_LABEL[cat]}ギア:</span>
+                    <span className="combo-main-only-row__label">{t('gear.combo.catGear', { cat: catLabel(t, cat) })}</span>
                     <div className="combo-main-only-chips">
                       {mainSkills.map(s => {
                         const isSelected = mainOnlySel[cat] === s.id
-                        // 未選択カテゴリへの新規追加は残りプール10以上が必要
-                        // 選択済み(デセレクト or 同カテゴリ切替)は常に可
                         const isDisabled = !isSelected && mainOnlySel[cat] === null && !canSelectMainOnly
+                        const displayName = skillDisplayName(s, t)
                         return (
                           <button
                             key={s.id}
                             className={`combo-main-only-chip ${isSelected ? 'combo-main-only-chip--active' : ''}`}
                             onClick={() => !isDisabled && toggleMainOnly(cat, s.id)}
                             disabled={isDisabled}
-                            title={isDisabled ? `残りAP不足(あと${10 - remainingPool}pt必要)` : s.name}
+                            title={isDisabled ? t('gear.combo.insufficientAp', { pts: 10 - remainingPool }) : displayName}
                           >
-                            <img src={s.image} alt={s.name} />
-                            <span>{s.name}</span>
+                            <img src={s.image} alt={displayName} />
+                            <span>{displayName}</span>
                           </button>
                         )
                       })}
@@ -720,15 +736,15 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
               <div className="combo-stackable-grid">
                 {stackableSkills.map(s => renderStackableRow(s))}
                 <div className={`combo-skill-row ${akiTarget > 0 ? 'combo-skill-row--active' : ''}`}>
-                  <img className="combo-skill-row__icon" src={emptySkillImage} alt="アキ枠" />
-                  <span className="combo-skill-row__name">アキ</span>
+                  <img className="combo-skill-row__icon" src={emptySkillImage} alt={emptyLabel} />
+                  <span className="combo-skill-row__name">{emptyLabel}</span>
                   <div className="stepper">
                     <button
                       type="button"
                       className="stepper__btn"
                       onClick={e => { setAkiTarget(e.shiftKey ? 0 : Math.max(0, akiTarget - 1)); setComboResults(null) }}
                       disabled={akiTarget === 0}
-                      aria-label="アキ枠を減らす"
+                      aria-label={t('gear.decreaseEmptySlot')}
                     >−</button>
                     <span className="stepper__value">{akiTarget === 0 ? '−' : akiTarget}</span>
                     <button
@@ -736,7 +752,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                       className="stepper__btn"
                       onClick={e => { setAkiTarget(e.shiftKey ? 9 : Math.min(9, akiTarget + 1)); setComboResults(null) }}
                       disabled={akiTarget >= 9}
-                      aria-label="アキ枠を増やす"
+                      aria-label={t('gear.increaseEmptySlot')}
                     >＋</button>
                   </div>
                 </div>
@@ -750,10 +766,10 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                 onClick={handleGenerate}
                 disabled={activeRequirements === 0 || searching}
               >
-                {searching ? '🔍 探索中...' : '⚡ コーデ生成'}
+                {searching ? t('gear.combo.searching') : t('gear.combo.generate')}
               </button>
               {activeRequirements === 0 && (
-                <span className="combo-gen-hint">目標スキルを指定してください</span>
+                <span className="combo-gen-hint">{t('gear.combo.specifyTarget')}</span>
               )}
             </div>
 
@@ -762,14 +778,14 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
               <div className="combo-results">
                 <div className="combo-results__count">
                   {comboResults.length === 0
-                    ? '条件に合う組み合わせが見つかりませんでした'
+                    ? t('gear.combo.noResults')
                     : (() => {
                         const total = comboResults.length
                         const nearN = comboResults.filter(c => c.matchKind === 'near').length
                         const perfectN = total - nearN
                         return nearN > 0
-                          ? `${total} 件(条件を満たす ${perfectN} / 惜しい ${nearN})- タップで適用`
-                          : `${total} 件の候補(タップで適用)`
+                          ? t('gear.combo.resultsMixed', { total, perfect: perfectN, near: nearN })
+                          : t('gear.combo.resultsPerfect', { total })
                       })()}
                 </div>
                 <div className="combo-results__list">
@@ -790,8 +806,8 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                         onApplyCombo(combo)
                       }}
                     >
-                      {isBest && <span className="combo-result-row__badge">ベスト</span>}
-                      {isNear && <span className="combo-result-row__badge combo-result-row__badge--near">惜しい</span>}
+                      {isBest && <span className="combo-result-row__badge">{t('gear.combo.best')}</span>}
+                      {isNear && <span className="combo-result-row__badge combo-result-row__badge--near">{t('gear.combo.near')}</span>}
                       <div className="combo-result-row__gears">
                         <img src={combo.head.image}     alt={combo.head.name}     title={combo.head.name} />
                         <span className="combo-result-row__plus">+</span>
@@ -812,15 +828,16 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                             const sid = Number(skillIdStr)
                             const mainOnly = isMainOnly(sid)
                             const info = skillInfoById.get(sid)
+                            const displayName = info ? skillDisplayName({ id: sid, name: info.name }, t) : null
                             return info ? (
                               <div key={skillIdStr} className="combo-result-ap-chip">
-                                <img src={info.image} alt={info.name} title={info.name} />
-                                {!mainOnly && <span>{ap}pt</span>}
+                                <img src={info.image} alt={displayName ?? ''} title={displayName ?? ''} />
+                                {!mainOnly && <span>{t('gear.combo.points', { count: ap })}</span>}
                               </div>
                             ) : (
                               <div key={skillIdStr} className="combo-result-ap-chip combo-result-ap-chip--unknown" title={`id=${sid}`}>
                                 <span className="combo-result-ap-chip__id">{sid}</span>
-                                {!mainOnly && <span>{ap}pt</span>}
+                                {!mainOnly && <span>{t('gear.combo.points', { count: ap })}</span>}
                               </div>
                             )
                           })}
