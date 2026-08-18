@@ -3843,6 +3843,50 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         log::info!("migrate v23: env_battles のスロットブキ ID に索引を追加");
     }
 
+    // version 24: ブキ・ステージの英語名を静的マスターで backfill（#712）。
+    //             #693 で db_summary 等が weapon.name_en / map.name_en を参照するように
+    //             なったが列自体は #712 で追加しただけで中身は空。stat.ink API 由来の
+    //             静的データ（weapon_static::WEAPON_NAME_EN / stage_static::STAGE_NAME_EN）
+    //             で埋める。v20 の category backfill と同じ statink_key / key 照合。
+    if current_version < 24 {
+        let mut filled_weapon = 0u64;
+        for (slug, en) in crate::weapon_static::WEAPON_NAME_EN {
+            let res = sqlx::query(
+                "UPDATE weapon SET name_en = ?
+                  WHERE (statink_key = ? OR key = ?) AND (name_en IS NULL OR name_en = '')",
+            )
+            .bind(en)
+            .bind(slug)
+            .bind(slug)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+            filled_weapon += res.rows_affected();
+        }
+        let mut filled_map = 0u64;
+        for (slug, en) in crate::stage_static::STAGE_NAME_EN {
+            let res = sqlx::query(
+                "UPDATE map SET name_en = ?
+                  WHERE (statink_key = ? OR key = ?) AND (name_en IS NULL OR name_en = '')",
+            )
+            .bind(en)
+            .bind(slug)
+            .bind(slug)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+            filled_map += res.rows_affected();
+        }
+
+        sqlx::query("PRAGMA user_version = 24")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!(
+            "migrate v24: ブキ・ステージの英語名を静的マスターで backfill（weapon {filled_weapon} 件・map {filled_map} 件）"
+        );
+    }
+
     Ok(updated)
 }
 

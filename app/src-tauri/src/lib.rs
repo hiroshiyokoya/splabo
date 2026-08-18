@@ -27,6 +27,7 @@ pub mod migration;
 pub mod nxapi;
 pub mod splatnet3;
 pub mod sql_functions;
+pub mod stage_static;
 pub mod statink;
 pub mod statink_import;
 pub mod weapon_static;
