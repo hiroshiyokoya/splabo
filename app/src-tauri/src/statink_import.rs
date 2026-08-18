@@ -285,7 +285,7 @@ pub async fn import_all_battles(
     api_key: &str,
 ) -> Result<ImportResult, String> {
     if api_key.is_empty() {
-        return Err("stat.ink API キーが設定されていません".to_string());
+        return Err("STATINK_NO_API_KEY: stat.ink API キーが設定されていません".to_string());
     }
 
     // screen_name 取得（アップロード済みバトルが 1 件以上必要）。

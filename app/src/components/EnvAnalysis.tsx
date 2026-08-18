@@ -42,6 +42,7 @@ import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import {
   joinValues, formatAbsolutePeriodRange,
 } from '../utils/filterSummary'
+import { formatInvokeError } from '../utils/notify'
 
 function lobbyOptions(t: TFunction) {
   return [
@@ -748,7 +749,7 @@ export function EnvAnalysis() {
       }
     } catch (e) {
       if (seq !== loadSeqRef.current) return
-      setError(String(e))
+      setError(formatInvokeError(e))
     } finally {
       // 最新リクエストだけ loading を落とす(古い完了で「最新です」にしない)
       if (seq === loadSeqRef.current) setLoading(false)
@@ -870,7 +871,7 @@ export function EnvAnalysis() {
     try {
       await invoke<number>('import_env_full', { since })
       await loadStatus()
-    } catch (e) { setError(String(e)) }
+    } catch (e) { setError(formatInvokeError(e)) }
     finally { setImporting(false); setProgress(null) }
   }
 
@@ -881,7 +882,7 @@ export function EnvAnalysis() {
     try {
       await invoke<number>('import_env_delta')
       await loadStatus()
-    } catch (e) { setError(String(e)) }
+    } catch (e) { setError(formatInvokeError(e)) }
     finally { setImporting(false); setProgress(null) }
   }
 

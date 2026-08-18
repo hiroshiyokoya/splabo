@@ -12,6 +12,7 @@ import type { GearCategory, GearItem, Skill } from './types'
 import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from './constants/gearPowerMeta'
 import { initAppSettings, loadComboLimit, loadNearLimit } from './utils/appSettings'
 import type { ComboLimitValue, NearLimitValue } from './utils/appSettings'
+import { formatInvokeError } from '../utils/notify'
 import './gear.css'
 
 // ── 空状態 CTA 用のギア取得ステート ─────────────────────────
@@ -206,7 +207,7 @@ export function GearSection() {
 
       if (!loggedIn) {
         // ログインは設定タブに委譲。ここでは案内のみ。
-        setUpdateError(t('gear.notLoggedIn'))
+        setUpdateError(t('errors.gearNotLoggedInMessage'))
         setUpdatePhase('error')
         return
       }
@@ -219,7 +220,7 @@ export function GearSection() {
       //    行う（サイドバーの一括取得など取得元を問わず同じ経路で反映するため）。
       setUpdatePhase('idle')
     } catch (e) {
-      setUpdateError(String(e))
+      setUpdateError(formatInvokeError(e))
       setUpdatePhase('error')
     }
   }, [updatePhase, isCoolingDown, t])

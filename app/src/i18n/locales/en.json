@@ -150,7 +150,16 @@
     "authExpiredMessage": "{{detail}}\n\nSign in again with your Nintendo Account from Settings.",
     "networkTitle": "Network error",
     "networkMessage": "{{detail}}\n\nCheck your internet connection and try again.",
-    "unknownTitle": "An unexpected error occurred"
+    "unknownTitle": "An unexpected error occurred",
+    "fetchInProgressTitle": "Battle fetch already in progress",
+    "fetchInProgressMessage": "Battle data is being fetched. Try again when it finishes.",
+    "gearFetchInProgressTitle": "Gear fetch already in progress",
+    "gearFetchInProgressMessage": "Gear data is being fetched. Try again when it finishes.",
+    "statinkNoApiKeyTitle": "stat.ink API key is not set",
+    "statinkNoApiKeyMessage": "Enter your stat.ink API key in Settings.",
+    "rateLimitedTitle": "Auth rate limit reached",
+    "rateLimitedMessage": "{{detail}}\n\nWait a while and retry (you do not need to sign in again).",
+    "gearNotLoggedInMessage": "Not signed in with a Nintendo Account. Sign in from the Settings tab."
   },
   "notify": {
     "statinkAuthTitle": "Check your stat.ink API key",
