@@ -5,6 +5,7 @@
  *  `group` 付きオプションがあるときはカテゴリ見出しで一括選択できる（#523）。 */
 
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 
 export interface MultiSelectOption {
   key: string
@@ -45,6 +46,7 @@ export function MultiSelect({ label, allLabel, options, selected, onChange, load
    */
   loading?: boolean
 }) {
+  const { t } = useTranslation()
   const detailsRef = useRef<HTMLDetailsElement>(null)
 
   useEffect(() => {
@@ -75,7 +77,7 @@ export function MultiSelect({ label, allLabel, options, selected, onChange, load
     selected.length === 1 ? (options.find(o => o.key === selected[0])?.short
                              ?? options.find(o => o.key === selected[0])?.label
                              ?? selected[0]) :
-    `${selected.length} 件選択`
+    t('filter.selectedCount', { count: selected.length })
 
   const hasGroups = options.some(o => o.group)
   const blocks = hasGroups ? groupOptions(options) : null
@@ -87,13 +89,13 @@ export function MultiSelect({ label, allLabel, options, selected, onChange, load
         <div className="env-multiselect-menu">
           {options.length === 0 ? (
             <span className="env-multiselect-empty">
-              {loading ? '読み込み中...' : '選択肢がありません'}
+              {loading ? t('common.loading') : t('filter.noOptions')}
             </span>
           ) : (
             <>
               {selected.length > 0 && (
                 <button type="button" className="env-multiselect-clear"
-                        onClick={() => onChange([])}>選択をクリア</button>
+                        onClick={() => onChange([])}>{t('filter.clearSelection')}</button>
               )}
               {blocks ? blocks.map((block, i) => {
                 const keys = block.items.map(o => o.key)

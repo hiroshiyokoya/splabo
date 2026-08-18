@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import i18n from '../i18n'
 
 export type NotifyKind = 'error' | 'info' | 'success' | 'warning'
 
@@ -110,8 +111,8 @@ export function parseFetchError(raw: unknown): FetchError {
   if (code === 'NOT_LOGGED_IN' || text.startsWith('NOT_LOGGED_IN')) {
     return {
       kind:    'not_logged_in',
-      title:   'Nintendo アカウントでログインしてください',
-      message: '設定画面の「Nintendo アカウントでログイン」からログインすると、最新データを取得できます。',
+      title:   i18n.t('errors.notLoggedInTitle'),
+      message: i18n.t('errors.notLoggedInMessage'),
       hint:    'settings',
     }
   }
@@ -120,8 +121,8 @@ export function parseFetchError(raw: unknown): FetchError {
   if (code === 'UPSTREAM_UNAVAILABLE') {
     return {
       kind:    'upstream_unavailable',
-      title:   '外部サービスが一時的に不調です',
-      message: detail + '\n\n認証に使う外部サービスが一時的に応答していません。しばらく待ってから再試行してください（ログインし直す必要はありません）。',
+      title:   i18n.t('errors.upstreamTitle'),
+      message: i18n.t('errors.upstreamMessage', { detail }),
       hint:    'retry',
     }
   }
@@ -130,8 +131,8 @@ export function parseFetchError(raw: unknown): FetchError {
   if (code === 'AUTH_EXPIRED') {
     return {
       kind:    'auth_expired',
-      title:   '認証の有効期限が切れました',
-      message: detail + '\n\n設定から Nintendo アカウントでログインし直してください。',
+      title:   i18n.t('errors.authExpiredTitle'),
+      message: i18n.t('errors.authExpiredMessage', { detail }),
       hint:    'retry_or_login',
     }
   }
@@ -139,8 +140,8 @@ export function parseFetchError(raw: unknown): FetchError {
   if (code === 'NETWORK') {
     return {
       kind:    'network',
-      title:   'ネットワークエラー',
-      message: detail + '\n\nインターネット接続を確認のうえ、もう一度お試しください。',
+      title:   i18n.t('errors.networkTitle'),
+      message: i18n.t('errors.networkMessage', { detail }),
       hint:    'retry',
     }
   }
@@ -149,15 +150,15 @@ export function parseFetchError(raw: unknown): FetchError {
   if (/timed?\s*out|connection|dns|reqwest|tls|certificate|sendrequest|HTTP\s*client/i.test(detail)) {
     return {
       kind:    'network',
-      title:   'ネットワークエラー',
-      message: detail + '\n\nインターネット接続を確認のうえ、もう一度お試しください。',
+      title:   i18n.t('errors.networkTitle'),
+      message: i18n.t('errors.networkMessage', { detail }),
       hint:    'retry',
     }
   }
 
   return {
     kind:    'unknown',
-    title:   '予期しないエラーが発生しました',
+    title:   i18n.t('errors.unknownTitle'),
     message: detail,
   }
 }

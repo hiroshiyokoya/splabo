@@ -1,10 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import "./i18n";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { NotifyProvider } from "./utils/notify";
 import { Toaster } from "./components/Toast";
-import "./i18n";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
