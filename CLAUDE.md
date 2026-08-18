@@ -84,7 +84,7 @@ git tag splabo-vX.Y.Z
 git push origin splabo-vX.Y.Z
 ```
 
-ビルドが終わったら GitHub でドラフトを **Publish** する。Publish すると Slack に X 用の告知文が届く（#648）。プレリリースでは飛ばない。
+ビルドが終わったら GitHub でドラフトを **Publish** する。Publish すると Slack に X 用の告知文が届く（#648）。2 通目のコードブロックをコピーして X に貼る（改行付き、#704）。プレリリースでは飛ばない。タグ push や CI 完了だけでは飛ばない。
 
 ---
 
