@@ -38,6 +38,7 @@ import {
 } from '../utils/scatterCategoryColors'
 import {
   scatterCategoryValueDisplayName, weaponCategoryDisplayName, subWeaponDisplayName, specialWeaponDisplayName,
+  stageDimDisplayName,
 } from '../i18n/displayName'
 import { loadSubSpImageMaps, loadWeaponImageMap, weaponAxisTip } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo, PanelExportNote } from './PanelExport'
@@ -255,7 +256,7 @@ function dimKeyLabeller(t: TFunction, dim: string): (k: string) => string {
   const rules = ruleLabelMap(t)
   if (dim === 'rule')  return (k) => rules[k]  ?? k
   if (dim === 'lobby') return (k) => lobbies[k] ?? k
-  if (dim === 'stage') return (k) => shortStage(k)
+  if (dim === 'stage') return (k) => stageDimDisplayName(k, shortStage)
   if (dim === 'weapon_category') return weaponCategoryDisplayName
   if (dim === 'sub_weapon')      return subWeaponDisplayName
   if (dim === 'special_weapon')  return specialWeaponDisplayName
@@ -1146,8 +1147,8 @@ export function EnvAnalysis() {
               onChange={setStageKeys}
               options={stageOptions.map(s => ({
                 key:   s.key,
-                label: `${shortStage(s.label)}(${s.n.toLocaleString()})`,
-                short: shortStage(s.label),
+                label: `${stageDimDisplayName(s.label, shortStage)}(${s.n.toLocaleString()})`,
+                short: stageDimDisplayName(s.label, shortStage),
               }))}
             />
             <MultiSelect

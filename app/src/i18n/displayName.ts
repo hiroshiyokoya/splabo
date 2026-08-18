@@ -82,6 +82,42 @@ export function specialWeaponDisplayName(ja: string): string {
   return localizedName(ja, SPECIAL_WEAPON_NAME_EN[ja], ja)
 }
 
+/** ステージの公式英語フルネーム（stat.ink /api/v3/stage の name.en_US、26種）。日本語の正式名がキー。 */
+const STAGE_FULL_NAME_EN: Record<string, string> = {
+  'ユノハナ大渓谷': 'Scorch Gorge',
+  'ゴンズイ地区': 'Eeltail Alley',
+  'キンメダイ美術館': "Museum d'Alfonsino",
+  'マテガイ放水路': 'Undertow Spillway',
+  'ナメロウ金属': 'Mincemeat Metalworks',
+  'ヤガラ市場': 'Hagglefish Market',
+  'マサバ海峡大橋': 'Hammerhead Bridge',
+  'マヒマヒリゾート＆スパ': 'Mahi-Mahi Resort',
+  'ザトウマーケット': 'MakoMart',
+  'チョウザメ造船': 'Sturgeon Shipyard',
+  '海女美術大学': 'Inkblot Art Academy',
+  'スメーシーワールド': 'Wahoo World',
+  'ヒラメが丘団地': 'Flounder Heights',
+  'クサヤ温泉': 'Brinewater Springs',
+  'マンタマリア号': 'Manta Maria',
+  'ナンプラー遺跡': "Um'ami Ruins",
+  'タラポートショッピングパーク': 'Barnacle & Dime',
+  'コンブトラック': 'Humpback Pump Track',
+  'タカアシ経済特区': 'Crableg Capital',
+  'オヒョウ海運': 'Shipshape Cargo Co.',
+  'ネギトロ炭鉱': 'Bluefin Depot',
+  'バイガイ亭': 'Robo ROM-en',
+  'カジキ空港': 'Marlin Airport',
+  'リュウグウターミナル': 'Lemuria Hub',
+  'グランドバンカラアリーナ': 'Grand Splatlands Bowl',
+  'デカライン高架下': 'Urchin Underpass',
+}
+
+/** ステージの表示ラベル。英語表示ではフルネーム（略さない）、日本語表示では呼び出し元の短縮関数を使う。 */
+export function stageDimDisplayName(ja: string, jaShorten: (ja: string) => string): string {
+  if (i18n.language.startsWith('en')) return STAGE_FULL_NAME_EN[ja] ?? ja
+  return jaShorten(ja)
+}
+
 /** 散布図・凡例の色分けキー（weapon_category/sub_weapon/special_weapon）に応じた表示名変換。 */
 export function scatterCategoryValueDisplayName(colorKey: ScatterCategoryColorKey, value: string): string {
   switch (colorKey) {
