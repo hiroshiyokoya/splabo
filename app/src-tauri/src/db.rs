@@ -4118,6 +4118,8 @@ fn bind_env_filters<'q>(
 #[derive(Debug, Serialize)]
 pub struct EnvScatterStat {
     pub key:        String,      // ブキキー or ステージキー
+    /// 公式英語名（weapon/map の `name_en`・#726）。無ければ None → フロントで `key` にフォールバック。
+    pub key_en:     Option<String>,
     /// アイコン画像を引くための正式名（= ローカルマスターの `name_ja`・#412）。
     ///
     /// 画像キャッシュは SplatNet3 の**表示名**をキーにして保存されている（`images::read_image`）ため、
@@ -4213,6 +4215,7 @@ pub async fn env_scatter_stats(
             r#"
             SELECT eb.map_id AS mid,
                    COALESCE(m.name_ja, m.key) AS key,
+                   m.name_en AS key_en,
                    m.name_ja AS icon_name,
                    COUNT(*) AS n,
                    AVG(eb.alpha_ink_percent) AS avg_ink_self,
@@ -4297,6 +4300,7 @@ pub async fn env_scatter_stats(
                 weapon_stats.get(&mid).copied().unwrap_or((None, None, None, None, None));
             result.push(EnvScatterStat {
                 key:          row.get("key"),
+                key_en:       row.try_get::<Option<String>, _>("key_en").unwrap_or(None),
                 icon_name:    row.try_get::<Option<String>, _>("icon_name").unwrap_or(None),
                 n:            row.get("n"),
                 pick_rate:    None,
@@ -4339,6 +4343,7 @@ pub async fn env_scatter_stats(
         ),
         tb AS (SELECT COUNT(*) AS c FROM env_battles eb {where})
         SELECT w.key      AS key,
+               w.name_en  AS key_en,
                w.name_ja  AS icon_name,
                w.category_key AS category_key,
                w.sub_key      AS sub_key,
@@ -4379,6 +4384,7 @@ pub async fn env_scatter_stats(
         };
         result.push(EnvScatterStat {
             key:          row.get("key"),
+            key_en:       row.try_get::<Option<String>, _>("key_en").unwrap_or(None),
             icon_name:    row.try_get::<Option<String>, _>("icon_name").unwrap_or(None),
             n,
             pick_rate,
@@ -5126,6 +5132,8 @@ pub async fn env_ranks(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvRank>, Str
 pub struct EnvFilterOption {
     pub key:   String,
     pub label: String,
+    /// 公式英語名（weapon/map の name_en・#726）。無ければ None → フロントで label にフォールバック。
+    pub label_en: Option<String>,
     pub n:     i64,
     /// ブキカテゴリ（公式準拠）。ステージでは空文字（#523）。
     #[serde(default)]
@@ -5146,6 +5154,7 @@ pub async fn env_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOp
         .map(|row| EnvFilterOption {
             key:      row.get("key"),
             label:    row.get("label"),
+            label_en: row.try_get::<Option<String>, _>("label_en").unwrap_or(None),
             n:        row.get("n"),
             category: row.get("category"),
         })
@@ -5182,6 +5191,7 @@ pub(crate) const ENV_WEAPONS_SQL: &str = r#"
         )
         SELECT w.key AS key,
                COALESCE(NULLIF(w.name_ja, ''), w.key) AS label,
+               w.name_en AS label_en,
                CASE
                  WHEN w.category_key = 'リールガン' THEN 'シューター'
                  ELSE COALESCE(w.category_key, '')
@@ -5203,6 +5213,7 @@ pub async fn env_stages(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOpt
         r#"
         SELECT m.key AS key,
                COALESCE(NULLIF(m.name_ja, ''), m.key) AS label,
+               m.name_en AS label_en,
                COUNT(*) AS n
         FROM env_battles eb
         JOIN map m ON m.id = eb.map_id
@@ -5219,6 +5230,7 @@ pub async fn env_stages(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvFilterOpt
         .map(|row| EnvFilterOption {
             key:      row.get("key"),
             label:    row.get("label"),
+            label_en: row.try_get::<Option<String>, _>("label_en").unwrap_or(None),
             n:        row.get("n"),
             category: String::new(),
         })

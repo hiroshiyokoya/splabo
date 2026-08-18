@@ -492,6 +492,8 @@
     "pickStartDate": "設定 → データで開始日を選んでください",
     "logToggleAllowed": "{{metric}}を対数軸にする。0 以下の点は描けないため除外されます。",
     "logToggleDisallowed": "{{metric}}は狭い範囲に収まるためログスケールは使えません。",
+    "unclassifiedCategory": "(未分類)",
+    "unknownWeaponPart": "(不明)",
     "groupBy": {
       "weapon": "ブキ",
       "weapon_category": "ブキカテゴリ",
@@ -681,6 +683,9 @@
     "nItems": "{{count}} 件",
     "heatmapAria": "ヒートマップ",
     "calendarAria": "カレンダーヒートマップ",
+    "sparseText": "サンプル不足",
+    "sparseTooltip": "サンプル不足 (< {{n}})",
+    "droppedByLog": "{{count}} 件を非表示(ログ軸に載らない 0 以下・∞)",
     "dow": {
       "mon": "月",
       "tue": "火",

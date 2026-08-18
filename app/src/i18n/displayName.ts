@@ -1,7 +1,7 @@
 import i18n from './index'
 import { stageAbbr } from '../types'
 import type { BattleRow, GroupedStatsRow, GroupedStatsRow2D, SummaryEntry, WeaponRecord } from '../types'
-import type { ScatterCategoryColorKey } from '../utils/scatterCategoryColors'
+import { UNCLASSIFIED_CATEGORY, UNKNOWN_WEAPON_PART, type ScatterCategoryColorKey } from '../utils/scatterCategoryColors'
 
 /** Prefer `name_en` when UI language is English; else `name_ja`; then fallback/key. */
 export function localizedName(ja?: string | null, en?: string | null, fallback?: string): string {
@@ -118,8 +118,11 @@ export function stageDimDisplayName(ja: string, jaShorten: (ja: string) => strin
   return jaShorten(ja)
 }
 
-/** 散布図・凡例の色分けキー（weapon_category/sub_weapon/special_weapon）に応じた表示名変換。 */
+/** 散布図・凡例の色分けキー（weapon_category/sub_weapon/special_weapon）に応じた表示名変換。
+ *  未分類・不明のフォールバック値（内部値としては言語に関わらず固定）はここで先に i18n 化する。 */
 export function scatterCategoryValueDisplayName(colorKey: ScatterCategoryColorKey, value: string): string {
+  if (value === UNCLASSIFIED_CATEGORY) return i18n.t('env.unclassifiedCategory')
+  if (value === UNKNOWN_WEAPON_PART) return i18n.t('env.unknownWeaponPart')
   switch (colorKey) {
     case 'weapon_category': return weaponCategoryDisplayName(value)
     case 'sub_weapon':      return subWeaponDisplayName(value)

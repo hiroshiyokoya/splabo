@@ -464,6 +464,8 @@ export interface EnvStatus {
  *  集計軸(ブキ/ステージ)によって埋まる指標が異なり、該当しないものは null。 */
 export interface EnvScatterStat {
   key:          string
+  /** 公式英語名(weapon/map の name_en・#726)。無ければ key(日本語)にフォールバックする。 */
+  key_en?:      string | null
   /** アイコン画像を引くための正式名(ローカルマスターの name_ja・#412)。
    *  `read_image` は表示名でキャッシュされているため `key` では当たらないことがある。
    *  ローカルマスターに無いブキはスラッグのままで、画像は見つからない(アイコンなしで名前だけ)。 */
@@ -536,6 +538,8 @@ export interface EnvRank {
 export interface EnvFilterOption {
   key:   string
   label: string
+  /** 公式英語名(weapon/map の name_en・#726)。無ければ label にフォールバックする。 */
+  label_en?: string | null
   n:     number
   /** ブキカテゴリ（公式準拠）。ステージでは空(#523)。 */
   category?: string
