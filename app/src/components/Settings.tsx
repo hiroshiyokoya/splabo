@@ -13,6 +13,7 @@ import { THEMES, saveTheme, getThemeId } from '../utils/appSettings'
 import { AI_MODELS, PROVIDER_LABELS, modelDisplayLabel, defaultModelFor, type AiProvider } from '../utils/aiModels'
 import { clearCustomCharts } from '../utils/customCharts'
 import { mirrorToStore } from '../utils/settingsStore'
+import { formatInvokeError } from '../utils/notify'
 import {
   ImportSincePicker,
   loadEnvImportPrefs,
@@ -91,7 +92,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   const failPrefix = t('common.error')
   const isFailText = (text: string) =>
     text.startsWith(failPrefix) || text === t('settings.envPickStart')
-  const failText = (e: unknown) => t('common.errorWithDetail', { detail: String(e) })
+  const failText = (e: unknown) => t('common.errorWithDetail', { detail: formatInvokeError(e) })
   const numLocale = i18n.language.startsWith('en') ? 'en-US' : 'ja-JP'
   // サブタブ(#428)。前回選択を復元し、focus 指定(遷移時の着地)が来たら上書きする。
   const [subTab, setSubTab] = useState<SettingsTab>(() => loadViewPrefs().settings)
@@ -346,7 +347,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
         setCompanionInfo(null)
       }
     } catch (e) {
-      setCompanionError(String(e))
+      setCompanionError(formatInvokeError(e))
     } finally {
       setCompanionBusy(false)
     }

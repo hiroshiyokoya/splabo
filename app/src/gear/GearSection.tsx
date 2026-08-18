@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { GearCard } from './components/GearCard'
 import { FilterDrawer, emptyFilter, countActiveFilters } from './components/FilterDrawer'
 import { ComboSheet, emptySlots } from './components/ComboSheet'
@@ -11,6 +12,7 @@ import type { GearCategory, GearItem, Skill } from './types'
 import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from './constants/gearPowerMeta'
 import { initAppSettings, loadComboLimit, loadNearLimit } from './utils/appSettings'
 import type { ComboLimitValue, NearLimitValue } from './utils/appSettings'
+import { formatInvokeError } from '../utils/notify'
 import './gear.css'
 
 // ── 空状態 CTA 用のギア取得ステート ─────────────────────────
@@ -137,6 +139,7 @@ function applyFilter(items: GearItem[], filter: FilterState): GearItem[] {
  * `check_auth_status` を使う。未ログイン・データ無しでもクラッシュせず空状態を描画する。
  */
 export function GearSection() {
+  const { t } = useTranslation()
   const { data, loading, error, lastFetchedAt, reload } = useGearDB()
   const [activeTab, setActiveTab]   = useState<GearCategory>('head')
 
@@ -198,7 +201,7 @@ export function GearSection() {
 
       if (!loggedIn) {
         // ログインは設定タブに委譲。ここでは案内のみ。
-        setUpdateError('Nintendo アカウントにログインしていません。「設定」タブからログインしてください。')
+        setUpdateError(t('errors.gearNotLoggedInMessage'))
         setUpdatePhase('error')
         return
       }
@@ -211,10 +214,10 @@ export function GearSection() {
       //    行う（サイドバーの一括取得など取得元を問わず同じ経路で反映するため）。
       setUpdatePhase('idle')
     } catch (e) {
-      setUpdateError(String(e))
+      setUpdateError(formatInvokeError(e))
       setUpdatePhase('error')
     }
-  }, [updatePhase, isCoolingDown])
+  }, [updatePhase, isCoolingDown, t])
   const [sortKey, setSortKey]       = useState<SortKey>('brand')
   const [drawerOpen, setDrawerOpen]       = useState(false)
   const [comboLimit] = useState<ComboLimitValue>(loadComboLimit)

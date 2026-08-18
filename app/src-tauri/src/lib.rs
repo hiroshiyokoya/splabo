@@ -22,6 +22,7 @@ pub mod http;
 pub mod icon_manifest;
 pub mod image_export;
 pub mod images;
+pub mod locale;
 pub mod migration;
 pub mod nxapi;
 pub mod splatnet3;
@@ -497,7 +498,7 @@ async fn delete_statink_all(
 ) -> Result<usize, String> {
     let api_key = config.0.lock().unwrap().1.clone();
     if api_key.is_empty() {
-        return Err("stat.ink API キーが設定されていません".to_string());
+        return Err("STATINK_NO_API_KEY: stat.ink API キーが設定されていません".to_string());
     }
     let client = crate::http::build_client()?;
     statink::delete_all_uploaded_battles(&db, &client, &api_key).await
@@ -512,7 +513,7 @@ async fn upload_to_statink(
 ) -> Result<usize, String> {
     let api_key = config.0.lock().unwrap().1.clone();
     if api_key.is_empty() {
-        return Err("stat.ink API キーが設定されていません".to_string());
+        return Err("STATINK_NO_API_KEY: stat.ink API キーが設定されていません".to_string());
     }
     let client = crate::http::build_client()?;
     statink::upload_pending_battles(&db, &client, &api_key, None, Some(&app)).await
@@ -527,7 +528,7 @@ async fn upload_to_statink_one(
 ) -> Result<usize, String> {
     let api_key = config.0.lock().unwrap().1.clone();
     if api_key.is_empty() {
-        return Err("stat.ink API キーが設定されていません".to_string());
+        return Err("STATINK_NO_API_KEY: stat.ink API キーが設定されていません".to_string());
     }
     let client = crate::http::build_client()?;
     statink::upload_pending_battles(&db, &client, &api_key, Some(1), Some(&app)).await
@@ -543,7 +544,7 @@ async fn import_from_statink(
 ) -> Result<statink_import::ImportResult, String> {
     let api_key = config.0.lock().unwrap().1.clone();
     if api_key.is_empty() {
-        return Err("stat.ink API キーが設定されていません".to_string());
+        return Err("STATINK_NO_API_KEY: stat.ink API キーが設定されていません".to_string());
     }
     let client = crate::http::build_client()?;
     statink_import::import_all_battles(&db, &client, &api_key).await
@@ -710,10 +711,11 @@ fn send_notification(app: &AppHandle, battles: usize) {
     if battles == 0 {
         return;
     }
+    let body = locale::app_locale(app).fetch_success_body(battles);
     let _ = app.notification()
         .builder()
         .title("splabo")
-        .body(format!("バトル +{}件取得しました", battles))
+        .body(body)
         .show();
 }
 
@@ -737,19 +739,20 @@ fn log_fetch_failure(what: &str, err: &str) {
 }
 
 /// 自動取得失敗の通知本文。何度も溜まるので**いつ失敗したか**を入れる（#637）。
-fn fetch_error_notification_body(now: chrono::DateTime<chrono::Local>) -> String {
-    format!(
-        "バトルデータの取得に失敗しました（{}）",
-        now.format("%m/%d %H:%M")
-    )
+fn fetch_error_notification_body(
+    now: chrono::DateTime<chrono::Local>,
+    locale: locale::AppLocale,
+) -> String {
+    locale.fetch_error_body(now)
 }
 
 fn send_notification_error(app: &AppHandle) {
     use tauri_plugin_notification::NotificationExt;
+    let locale = locale::app_locale(app);
     let _ = app.notification()
         .builder()
         .title("splabo")
-        .body(fetch_error_notification_body(chrono::Local::now()))
+        .body(fetch_error_notification_body(chrono::Local::now(), locale))
         .show();
 }
 
@@ -814,8 +817,16 @@ mod tests {
     fn 失敗通知の本文に時刻が入る() {
         use chrono::TimeZone;
         let now = chrono::Local.with_ymd_and_hms(2026, 8, 14, 9, 40, 0).unwrap();
-        let body = fetch_error_notification_body(now);
+        let body = fetch_error_notification_body(now, locale::AppLocale::Ja);
         assert_eq!(body, "バトルデータの取得に失敗しました（08/14 09:40）");
+    }
+
+    #[test]
+    fn fetch_error_notification_body_en() {
+        use chrono::TimeZone;
+        let now = chrono::Local.with_ymd_and_hms(2026, 8, 14, 9, 40, 0).unwrap();
+        let body = fetch_error_notification_body(now, locale::AppLocale::En);
+        assert_eq!(body, "Failed to fetch battle data (08/14 09:40)");
     }
 
     #[test]

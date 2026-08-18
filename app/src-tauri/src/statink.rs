@@ -779,7 +779,7 @@ pub async fn delete_all_uploaded_battles(
     api_key: &str,
 ) -> Result<usize, String> {
     if api_key.is_empty() {
-        return Err("stat.ink API キーが設定されていません".to_string());
+        return Err("STATINK_NO_API_KEY: stat.ink API キーが設定されていません".to_string());
     }
 
     let battles = crate::db::get_battles_uploaded(pool).await?;

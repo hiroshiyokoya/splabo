@@ -421,9 +421,10 @@ fn handle_update_command(mut request: tiny_http::Request, ctx: &ServerCtx) {
 
     // 未ログインなら任天堂 API を一切叩かずに返す（viewer は「デスクトップでログインして」を表示）。
     if !crate::auth::is_logged_in(&ctx.app) {
+        let loc = crate::locale::app_locale(&ctx.app);
         let status = UpdateStatus::failed(
             "NOT_LOGGED_IN",
-            "Nintendo アカウントでログインしていません。デスクトップの設定からログインしてください。",
+            loc.companion_not_logged_in(),
             None,
         );
         if let Ok(mut s) = ctx.job.lock() {
@@ -435,9 +436,10 @@ fn handle_update_command(mut request: tiny_http::Request, ctx: &ServerCtx) {
 
     // デスクトップ側で取得が走っているなら並走させない（既存 FetchInProgress を尊重）。
     if desktop_fetch_in_progress(&ctx.app) {
+        let loc = crate::locale::app_locale(&ctx.app);
         let status = UpdateStatus::failed(
             "FETCH_IN_PROGRESS",
-            "デスクトップ側でバトル取得が進行中です。完了後に再試行してください。",
+            loc.companion_fetch_in_progress(),
             None,
         );
         respond_json(request, 409, &status);

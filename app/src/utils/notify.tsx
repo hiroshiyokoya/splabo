@@ -79,6 +79,10 @@ export type FetchErrorKind =
   | 'upstream_unavailable'
   | 'network'
   | 'auth_expired'
+  | 'fetch_in_progress'
+  | 'gear_fetch_in_progress'
+  | 'statink_no_api_key'
+  | 'rate_limited'
   | 'unknown'
 
 export interface FetchError {
@@ -90,7 +94,7 @@ export interface FetchError {
 }
 
 /** バックエンドが付ける機械可読プリフィクス（`app/src-tauri/src/nxapi.rs` の `FailureKind::code`）。 */
-const ERROR_CODE_PREFIX = /^(NOT_LOGGED_IN|UPSTREAM_UNAVAILABLE|AUTH_EXPIRED|NETWORK|FETCH_IN_PROGRESS)\s*:\s*/
+const ERROR_CODE_PREFIX = /^(NOT_LOGGED_IN|UPSTREAM_UNAVAILABLE|AUTH_EXPIRED|NETWORK|FETCH_IN_PROGRESS|GEAR_FETCH_IN_PROGRESS|STATINK_NO_API_KEY|RATE_LIMITED)\s*:\s*/
 
 /**
  * Rust 側のエラー文字列をフロント向けに分類する。
@@ -114,6 +118,39 @@ export function parseFetchError(raw: unknown): FetchError {
       title:   i18n.t('errors.notLoggedInTitle'),
       message: i18n.t('errors.notLoggedInMessage'),
       hint:    'settings',
+    }
+  }
+
+  if (code === 'FETCH_IN_PROGRESS') {
+    return {
+      kind:    'fetch_in_progress',
+      title:   i18n.t('errors.fetchInProgressTitle'),
+      message: i18n.t('errors.fetchInProgressMessage'),
+    }
+  }
+
+  if (code === 'GEAR_FETCH_IN_PROGRESS') {
+    return {
+      kind:    'gear_fetch_in_progress',
+      title:   i18n.t('errors.gearFetchInProgressTitle'),
+      message: i18n.t('errors.gearFetchInProgressMessage'),
+    }
+  }
+
+  if (code === 'STATINK_NO_API_KEY' || text.includes('stat.ink API キーが設定されていません')) {
+    return {
+      kind:    'statink_no_api_key',
+      title:   i18n.t('errors.statinkNoApiKeyTitle'),
+      message: i18n.t('errors.statinkNoApiKeyMessage'),
+    }
+  }
+
+  if (code === 'RATE_LIMITED') {
+    return {
+      kind:    'rate_limited',
+      title:   i18n.t('errors.rateLimitedTitle'),
+      message: i18n.t('errors.rateLimitedMessage', { detail }),
+      hint:    'retry',
     }
   }
 
@@ -161,4 +198,16 @@ export function parseFetchError(raw: unknown): FetchError {
     title:   i18n.t('errors.unknownTitle'),
     message: detail,
   }
+}
+
+/**
+ * Rust `invoke()` の失敗をインライン表示用の 1 行文字列に変換する（Settings 等）。
+ * 機械可読プリフィクス付きエラーは `errors.*` の文言に置き換える。
+ */
+export function formatInvokeError(raw: unknown): string {
+  const fe = parseFetchError(raw)
+  if (fe.kind === 'unknown') {
+    return fe.message || fe.title
+  }
+  return fe.message || fe.title
 }

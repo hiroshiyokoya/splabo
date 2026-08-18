@@ -97,7 +97,16 @@
     "authExpiredMessage": "{{detail}}\n\n設定から Nintendo アカウントでログインし直してください。",
     "networkTitle": "ネットワークエラー",
     "networkMessage": "{{detail}}\n\nインターネット接続を確認のうえ、もう一度お試しください。",
-    "unknownTitle": "予期しないエラーが発生しました"
+    "unknownTitle": "予期しないエラーが発生しました",
+    "fetchInProgressTitle": "バトル取得が進行中です",
+    "fetchInProgressMessage": "現在バトルデータを取得しています。完了してからもう一度お試しください。",
+    "gearFetchInProgressTitle": "ギア取得が進行中です",
+    "gearFetchInProgressMessage": "現在ギアデータを取得しています。完了してからもう一度お試しください。",
+    "statinkNoApiKeyTitle": "stat.ink の API キーが未設定です",
+    "statinkNoApiKeyMessage": "設定画面で stat.ink の API キーを入力してください。",
+    "rateLimitedTitle": "認証の回数制限に達しました",
+    "rateLimitedMessage": "{{detail}}\n\nしばらく待ってから再試行してください（再ログインは不要です）。",
+    "gearNotLoggedInMessage": "Nintendo アカウントにログインしていません。「設定」タブからログインしてください。"
   },
   "notify": {
     "statinkAuthTitle": "stat.ink の API キーを確認してください",
