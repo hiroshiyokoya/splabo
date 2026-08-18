@@ -2,6 +2,7 @@
  * 環境データの取得開始日。再取得は設定 → データに置き、誤操作しにくくする（#669）。
  * 環境分析タブの初回取得は、ここに保存した開始日を使う。
  */
+import { useTranslation } from 'react-i18next'
 import { lsGet, lsSet, mirrorToStore } from '../utils/settingsStore'
 
 export const ENV_IMPORT_KEY = 'splabo:envImport'
@@ -77,14 +78,15 @@ export function ImportSincePicker({
   onKind: (k: ImportSinceKind) => void
   onCustom: (v: string) => void
 }) {
+  const { t } = useTranslation()
   const kinds: { key: ImportSinceKind; label: string }[] = [
-    { key: 'all', label: '全期間' },
-    { key: 'current_season', label: '今シーズン' },
-    { key: 'from_2025', label: '2025.1.1〜' },
-    { key: 'custom', label: 'カスタム' },
+    { key: 'all', label: t('filter.allPeriod') },
+    { key: 'current_season', label: t('filter.currentSeason') },
+    { key: 'from_2025', label: t('settings.from2025') },
+    { key: 'custom', label: t('filter.custom') },
   ]
   return (
-    <label className="env-import-since">いつから取得
+    <label className="env-import-since">{t('settings.importSince')}
       <span className="env-period-btns">
         {kinds.map(k => (
           <button

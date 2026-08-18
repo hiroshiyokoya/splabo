@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useNotify, type Notice } from '../utils/notify'
 
 /**
@@ -8,12 +9,13 @@ import { useNotify, type Notice } from '../utils/notify'
  * （「設定を開く」「再試行」など、ユーザーが次にすべき動作を一発で起こせる）。
  */
 export function Toaster() {
+  const { t } = useTranslation()
   const { notices, dismiss } = useNotify()
 
   if (notices.length === 0) return null
 
   return (
-    <div className="toaster" role="region" aria-live="polite" aria-label="通知">
+    <div className="toaster" role="region" aria-live="polite" aria-label={t('toast.region')}>
       {notices.map(n => (
         <ToastItem key={n.id} notice={n} onDismiss={() => dismiss(n.id)} />
       ))}
@@ -22,6 +24,7 @@ export function Toaster() {
 }
 
 function ToastItem({ notice, onDismiss }: { notice: Notice; onDismiss: () => void }) {
+  const { t } = useTranslation()
   const { kind, title, message, action } = notice
   const icon =
     kind === 'error'   ? '⚠️' :
@@ -41,7 +44,7 @@ function ToastItem({ notice, onDismiss }: { notice: Notice; onDismiss: () => voi
           </button>
         )}
       </div>
-      <button className="toast-close" onClick={onDismiss} aria-label="閉じる">✕</button>
+      <button className="toast-close" onClick={onDismiss} aria-label={t('common.close')}>✕</button>
     </div>
   )
 }

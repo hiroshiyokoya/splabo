@@ -7,6 +7,7 @@
  * （`list_seasons`）。ここは受け取った一覧を並べて、選ばれたものを返すだけ。
  * 同じ計算をフロントにも書くと、片方だけ直したときに画面と AI 分析でシーズンがずれる。
  */
+import { useTranslation } from 'react-i18next'
 import type { Season } from '../types'
 
 interface Props {
@@ -37,6 +38,7 @@ function shortName(name: string): string {
 }
 
 export function SeasonSelect({ seasons, value, isCurrent, onSelect, disabled }: Props) {
+  const { t } = useTranslation()
   // データが無ければ選択肢も無いので出さない（空のプルダウンを置かない）。
   if (seasons.length === 0) return null
 
@@ -55,13 +57,13 @@ export function SeasonSelect({ seasons, value, isCurrent, onSelect, disabled }: 
         const v = e.target.value
         onSelect(v === CURRENT ? null : seasons.find(s => s.name === v) ?? null)
       }}
-      title="シーズンで絞り込む"
+      title={t('filter.seasonTitle')}
     >
       {/* 何も効いていないときだけ出る見出し。選び直せる項目ではない。 */}
-      {!selected && <option value="" disabled>シーズン</option>}
+      {!selected && <option value="" disabled>{t('filter.season')}</option>}
       {/* 「今シーズン」は自動追従。一覧の最新と同じ期間を指すので、最新には印を付けない
           （同じものが 2 つ並んでいるように見える）。 */}
-      <option value={CURRENT}>今シーズン</option>
+      <option value={CURRENT}>{t('filter.currentSeason')}</option>
       {seasons.map(s => (
         <option key={s.name} value={s.name}>{shortName(s.name)}</option>
       ))}

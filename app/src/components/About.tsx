@@ -1,8 +1,8 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getVersion } from '@tauri-apps/api/app'
 import { displayVersion } from '../utils/version'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { useState } from 'react'
 
 const FEEDBACK_FORM_URL =
   'https://docs.google.com/forms/d/e/1FAIpQLSd2m8eNn4HwTjOY1PMnecJvSH95QCJxNi0Lyy1w4zxhIdndrQ/viewform'
@@ -12,6 +12,7 @@ interface Props {
 }
 
 export function About({ onClose }: Props) {
+  const { t } = useTranslation()
   const [version, setVersion] = useState('')
 
   useEffect(() => {
@@ -28,14 +29,14 @@ export function About({ onClose }: Props) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-panel about-panel" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <div className="modal-title">splabo について</div>
+          <div className="modal-title">{t('about.title')}</div>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body about-body">
           <img className="about-logo" src="/splabo-logo.png" alt="splabo" />
           {version && <div className="about-version">v{displayVersion(version)}</div>}
           <p className="about-desc">
-            Splatoon 3 のバトルデータを記録・分析するデスクトップアプリです。
+            {t('about.desc')}
           </p>
           <div className="about-links">
             <a
@@ -57,11 +58,11 @@ export function About({ onClose }: Props) {
               href={FEEDBACK_FORM_URL}
               onClick={e => { e.preventDefault(); openUrl(FEEDBACK_FORM_URL).catch(console.error) }}
             >
-              フィードバック
+              {t('about.feedback')}
             </a>
           </div>
           <div className="about-notice">
-            本アプリは非公式ツールです。Nintendo / スプラトゥーンとは無関係です。
+            {t('about.notice')}
           </div>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import i18n from '../i18n'
 
 interface Props {
   children: ReactNode
@@ -47,13 +48,12 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="error-boundary">
           <div className="error-boundary-card">
             <div className="error-boundary-icon">⚠️</div>
-            <h2 className="error-boundary-title">予期しないエラーが発生しました</h2>
+            <h2 className="error-boundary-title">{i18n.t('errorBoundary.title')}</h2>
             <p className="error-boundary-desc">
-              アプリ画面の描画中にエラーが起きました。下のボタンで復帰を試せます。
-              再現する場合は GitHub Issues にエラー内容を添えて報告してください。
+              {i18n.t('errorBoundary.desc')}
             </p>
             <details className="error-boundary-details">
-              <summary>エラー詳細</summary>
+              <summary>{i18n.t('errorBoundary.details')}</summary>
               <pre className="error-boundary-trace">
                 {this.state.error.message}
                 {this.state.error.stack && '\n\n' + this.state.error.stack}
@@ -61,10 +61,10 @@ export class ErrorBoundary extends Component<Props, State> {
             </details>
             <div className="error-boundary-actions">
               <button className="btn-primary" onClick={this.handleReset}>
-                エラー画面を閉じる
+                {i18n.t('errorBoundary.dismiss')}
               </button>
               <button className="btn-secondary" onClick={this.handleHardReload}>
-                アプリを再読み込み
+                {i18n.t('errorBoundary.reload')}
               </button>
             </div>
           </div>

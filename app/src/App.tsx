@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { Dashboard } from './components/Dashboard'
@@ -57,10 +58,16 @@ const DEFAULT_SETTINGS: AppSettings = {
 const WEAPONS_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000
 
 /** 「バトル」タブ内のビュー切替(#296)。 */
-const BATTLES_VIEWS: readonly ViewToggleOption<BattlesView>[] = [
-  { key: 'dashboard', label: 'ダッシュボード', icon: '📊' },
-  { key: 'list',      label: '一覧',           icon: '📋' },
-]
+
+function formatLastFetched(raw: string, lang: string): string {
+  const ms = Date.parse(raw)
+  const d = Number.isFinite(ms) ? new Date(ms) : null
+  const locale = lang.startsWith('en') ? 'en-US' : 'ja-JP'
+  if (d) {
+    return d.toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+  return raw
+}
 
 function loadSettings(): AppSettings {
   try {
@@ -78,6 +85,11 @@ function loadSettings(): AppSettings {
 }
 
 export default function App() {
+  const { t, i18n } = useTranslation()
+  const battlesViews: readonly ViewToggleOption<BattlesView>[] = [
+    { key: 'dashboard', label: t('battles.dashboard'), icon: '📊' },
+    { key: 'list',      label: t('battles.list'),      icon: '📋' },
+  ]
   const [tab, setTab] = useState<Tab>('battles')
   // 設定タブへ飛ばすときに開くサブタブの指定(#428)。nonce を毎回上げることで、
   // 既に設定タブにいても・同じサブタブでも Settings 側の useEffect が発火する。
@@ -164,8 +176,8 @@ export default function App() {
   function reportFetchError(err: unknown, retry?: () => void) {
     const fe = parseFetchError(err)
     const action =
-      fe.hint === 'settings' ? { label: '設定を開く', onClick: () => openSettings('link') } :
-      retry                  ? { label: '再試行',     onClick: retry } :
+      fe.hint === 'settings' ? { label: t('common.openSettings'), onClick: () => openSettings('link') } :
+      retry                  ? { label: t('common.retry'),     onClick: retry } :
       undefined
     // 未ログイン・外部サービスの一時障害は「アプリが壊れた」ではないので warning 止まり(#399)。
     const soft = fe.kind === 'not_logged_in' || fe.kind === 'upstream_unavailable'
@@ -187,9 +199,9 @@ export default function App() {
 
   useEffect(() => {
     const unlistenPromise = listen('fetch_complete', () => {
-      const now = new Date().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-      setLastFetchedAt(now)
-      localStorage.setItem(LAST_FETCHED_KEY, now)
+      const nowIso = new Date().toISOString()
+      setLastFetchedAt(nowIso)
+      localStorage.setItem(LAST_FETCHED_KEY, nowIso)
       void mirrorToStore()
     })
     return () => { unlistenPromise.then(fn => fn()) }
@@ -228,10 +240,10 @@ export default function App() {
       const isAuth = fe.kind === 'auth_expired'
       notify({
         kind:    'warning',
-        title:   isAuth ? 'stat.ink の API キーを確認してください' : 'stat.ink へ送信できませんでした',
+        title:   isAuth ? t('notify.statinkAuthTitle') : t('notify.statinkFailTitle'),
         message: isAuth
-          ? 'stat.ink の API キーが無効なため送信できませんでした。設定を確認してください。未送信分は次回自動で送られます(データは失われません)。'
-          : 'stat.ink が不調のため送信できませんでした。未送信分は次回自動で送られます(データは失われません)。',
+          ? t('notify.statinkAuthMessage')
+          : t('notify.statinkFailMessage'),
         durationMs: 8000,
       })
     })
@@ -304,8 +316,8 @@ export default function App() {
     const unlistenPromise = listen('migration_completed', () => {
       notify({
         kind: 'info',
-        title: 'データを引き継ぎました',
-        message: '旧バージョン(chartoon / geartoon)のデータを splabo に移行しました。旧アプリが残っている場合はアンインストールをおすすめします(旧版と同時に起動してしまうのを防げます)。',
+        title: t('notify.migrationTitle'),
+        message: t('notify.migrationMessage'),
         durationMs: 0,
       })
     })
@@ -338,7 +350,7 @@ export default function App() {
         await invoke('fetch_gear_full')
       } catch (gearErr) {
         console.error('gear fetch failed:', gearErr)
-        notify({ kind: 'warning', title: 'ギアの取得に失敗しました', message: 'バトルは取得できました。ギアは時間をおいて「最新データを取得」からもう一度取得してください。', durationMs: 6000 })
+        notify({ kind: 'warning', title: t('notify.gearFailTitle'), message: t('notify.gearFailMessage'), durationMs: 6000 })
       }
     } catch (e) {
       reportFetchError(e, handleFetchFull)
@@ -350,29 +362,31 @@ export default function App() {
   return (
     <div className="app">
       <nav className="sidebar">
-        <button className="logo" onClick={() => setShowAbout(true)} aria-label="splabo について">
+        <button className="logo" onClick={() => setShowAbout(true)} aria-label={t('nav.aboutAria')}>
           <img src="/splabo-logo.png" alt="splabo" />
         </button>
         {/* 並び順: バトル → ブキ → ステージ → ギア → 環境分析 → AI分析 → 設定
             扱う対象をそのまま名前にする。旧アプリ由来の 2 つ(バトル / ギア)は
             メニューでだけ旧名を併記する(#419)。 */}
-        <NavItem id="battles"   icon="⚔️" label="バトル" legacyName="chartoon" active={tab} onClick={setTab} />
-        <NavItem id="weapons"   icon="🔫" label="ブキ"           active={tab} onClick={setTab} />
-        <NavItem id="stages"    icon="🗺️" label="ステージ"       active={tab} onClick={setTab} />
-        <NavItem id="gear"      icon="👕" label="ギア" legacyName="geartoon" active={tab} onClick={setTab} />
-        <NavItem id="env"       icon="🌍" label="環境分析"       active={tab} onClick={setTab} />
-        <NavItem id="ai"        icon="🧙" label="AI分析"         active={tab} onClick={setTab} />
-        <NavItem id="settings"  icon="⚙️" label="設定"           active={tab} onClick={setTab} />
+        <NavItem id="battles"   icon="⚔️" label={t('nav.battles')} legacyName="chartoon" active={tab} onClick={setTab} />
+        <NavItem id="weapons"   icon="🔫" label={t('nav.weapons')}           active={tab} onClick={setTab} />
+        <NavItem id="stages"    icon="🗺️" label={t('nav.stages')}       active={tab} onClick={setTab} />
+        <NavItem id="gear"      icon="👕" label={t('nav.gear')} legacyName="geartoon" active={tab} onClick={setTab} />
+        <NavItem id="env"       icon="🌍" label={t('nav.env')}       active={tab} onClick={setTab} />
+        <NavItem id="ai"        icon="🧙" label={t('nav.ai')}         active={tab} onClick={setTab} />
+        <NavItem id="settings"  icon="⚙️" label={t('nav.settings')}           active={tab} onClick={setTab} />
         <button
           className="btn-primary sidebar-fetch-btn"
           onClick={handleFetchFull}
           disabled={fetching}
-          title="SplatNet3 から最新のバトル結果・ギアデータを取得"
+          title={t('nav.fetchTitle')}
         >
-          {fetching ? '取得中...' : '最新データを取得'}
+          {fetching ? t('nav.fetching') : t('nav.fetch')}
         </button>
         <div className="sidebar-last-fetched">
-          {lastFetchedAt ? `データ最終更新日時: ${lastFetchedAt}` : '未取得'}
+          {lastFetchedAt
+            ? t('nav.lastFetched', { time: formatLastFetched(lastFetchedAt, i18n.language) })
+            : t('nav.neverFetched')}
         </div>
       </nav>
 
@@ -386,12 +400,12 @@ export default function App() {
             <div className="content-sticky-chrome" ref={stickyChromeRef}>
               <FilterBar filters={filters} onChange={setFilters} />
               <div className="battles-header">
-                <h2>バトル</h2>
+                <h2>{t('battles.title')}</h2>
                 <ViewToggle
-                  options={BATTLES_VIEWS}
+                  options={battlesViews}
                   value={battlesView}
                   onChange={setBattlesView}
-                  ariaLabel="バトルの表示切替"
+                  ariaLabel={t('battles.viewAria')}
                 />
               </div>
             </div>

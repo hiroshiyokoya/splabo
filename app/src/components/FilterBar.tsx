@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { invoke } from '@tauri-apps/api/core'
-import type { Filters, Season, WeaponRecord } from '../types'
+import type { Filters, Period, Season, WeaponRecord } from '../types'
 import { resultLabel } from '../types'
 import { MultiSelect } from './MultiSelect'
 import { SeasonSelect } from './SeasonSelect'
@@ -8,8 +9,8 @@ import { LOBBY_OPTIONS, RULE_OPTIONS, PERIOD_OPTIONS } from '../utils/filterSumm
 
 // #190: モード/ルールは複数選択（OR）。モードのキーは lobby.key に一致させ、
 // バンカラ/フェスは オープン/チャレンジ を個別に選べるようにする（循環ボタン廃止）。
-// 選択肢の定義は画像保存の条件キャプション（#500）と共用する。文言がぶれると
-// 「画面と保存画像で条件表記が違う」ことになるため、片方だけ直せない場所に置いてある。
+// 選択肢のキーは画像保存の条件キャプション（#500）と共用する。
+// 画面上のラベルは locale JSON（#689）。キャプション側の日本語ラベルは #695 で揃える。
 const MODE_OPTIONS = LOBBY_OPTIONS
 const RESULTS = ['win', 'lose', 'draw']
 
@@ -24,7 +25,12 @@ interface Props {
   hideTargetFilters?: boolean
 }
 
+function periodLabelKey(id: Period): string {
+  return id === 'all' ? 'filter.allPeriod' : `filter.${id}`
+}
+
 export function FilterBar({ filters, onChange, hideTargetFilters = false }: Props) {
+  const { t } = useTranslation()
   const [weaponList,      setWeaponList]      = useState<WeaponRecord[]>([])
   const [weaponImages,    setWeaponImages]    = useState<Map<string, string>>(new Map())
   const [pickerOpen,      setPickerOpen]      = useState(false)
@@ -76,7 +82,7 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
   return (
     <div className="filter-bar">
       <div className="filter-row">
-        <FilterGroup label="期間">
+        <FilterGroup label={t('filter.period')}>
           {/* シーズンは期間の**先頭**（#585）。既定が「今シーズン」なのでボタンより前に置く。
               新しい順。過去のシーズンを名指しで選ぶと、解決済みの日付範囲が絞り込みに入る。 */}
           <SeasonSelect
@@ -97,7 +103,7 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
               key={p.id}
               className={`filter-btn${filters.period === p.id ? ' active' : ''}`}
               onClick={() => patch('period', p.id)}
-            >{p.label}</button>
+            >{t(periodLabelKey(p.id))}</button>
           ))}
           {filters.period === 'custom' && (
             <span className="custom-date-range">
@@ -117,18 +123,20 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
             </span>
           )}
         </FilterGroup>
-        <FilterGroup label="ロビー">
-          <MultiSelect label="" allLabel="すべてのロビー" options={MODE_OPTIONS}
+        <FilterGroup label={t('filter.lobby')}>
+          <MultiSelect label="" allLabel={t('filter.allLobbies')}
+                       options={MODE_OPTIONS.map(o => ({ ...o, label: t(`filter.lobby_${o.key}`) }))}
                        selected={filters.mode} onChange={v => patch('mode', v)} />
         </FilterGroup>
-        <FilterGroup label="ルール">
-          <MultiSelect label="" allLabel="全ルール" options={RULE_OPTIONS}
+        <FilterGroup label={t('filter.rule')}>
+          <MultiSelect label="" allLabel={t('filter.allRules')}
+                       options={RULE_OPTIONS.map(o => ({ ...o, label: t(`filter.rule_${o.key}`) }))}
                        selected={filters.rule} onChange={v => patch('rule', v)} />
         </FilterGroup>
       </div>
       <div className="filter-row">
         {!hideTargetFilters && (
-        <FilterGroup label="ブキ">
+        <FilterGroup label={t('filter.weapon')}>
           <WeaponPicker
             weaponList={weaponList}
             weaponImages={weaponImages}
@@ -154,7 +162,7 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
         </FilterGroup>
         )}
         {!hideTargetFilters && (
-        <FilterGroup label="ステージ">
+        <FilterGroup label={t('filter.stage')}>
           <StagePicker
             stageList={stageList}
             selected={filters.stage}
@@ -171,7 +179,7 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
           />
         </FilterGroup>
         )}
-        <FilterGroup label="結果">
+        <FilterGroup label={t('filter.result')}>
           {RESULTS.map(r => (
             <button
               key={r}
@@ -181,7 +189,7 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
           ))}
         </FilterGroup>
         {hasFilter && (
-          <button className="filter-reset-btn" onClick={reset}>✕ リセット</button>
+          <button className="filter-reset-btn" onClick={reset}>{t('filter.reset')}</button>
         )}
       </div>
     </div>
@@ -223,12 +231,15 @@ function WeaponPicker({
   onToggleCategory: (catWeapons: string[]) => void
   onClear: () => void
 }) {
+  const { t } = useTranslation()
   const wrapRef = useOutsideClose(open, onClose)
 
   const categories = [...new Set(weaponList.map(w => w.category).filter(Boolean))]
   const uncategorized = weaponList.filter(w => !w.category)
 
-  const label = selected.length === 0 ? '全ブキ ▼' : `${selected.length}件選択 ▼`
+  const label = selected.length === 0
+    ? `${t('filter.allWeapons')} ▼`
+    : `${t('filter.selectedCount', { count: selected.length })} ▼`
 
   return (
     <div className="weapon-picker-wrap" ref={wrapRef}>
@@ -238,7 +249,7 @@ function WeaponPicker({
       {open && (
         <div className="weapon-picker-dropdown">
           <button className={`weapon-picker-item${selected.length === 0 ? ' active' : ''}`} onClick={onClear}>
-            全ブキ
+            {t('filter.allWeapons')}
           </button>
           <div className="weapon-picker-divider" />
           {categories.map(cat => {
@@ -297,9 +308,12 @@ function StagePicker({
   onToggleStage: (id: string) => void
   onClear: () => void
 }) {
+  const { t } = useTranslation()
   const wrapRef = useOutsideClose(open, onClose)
 
-  const label = selected.length === 0 ? '全ステージ ▼' : `${selected.length}件選択 ▼`
+  const label = selected.length === 0
+    ? `${t('filter.allStages')} ▼`
+    : `${t('filter.selectedCount', { count: selected.length })} ▼`
 
   return (
     <div className="weapon-picker-wrap" ref={wrapRef}>
@@ -309,7 +323,7 @@ function StagePicker({
       {open && (
         <div className="weapon-picker-dropdown">
           <button className={`weapon-picker-item${selected.length === 0 ? ' active' : ''}`} onClick={onClear}>
-            全ステージ
+            {t('filter.allStages')}
           </button>
           <div className="weapon-picker-divider" />
           {stageList.map(s => (
