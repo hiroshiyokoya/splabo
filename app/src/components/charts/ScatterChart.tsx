@@ -1802,7 +1802,7 @@ export function ScatterChart({
             )}
             {active.tooltipRows.map((r, i) => (
               <div key={i} className={r.muted ? 'hover-tt-row hover-tt-row--muted' : 'hover-tt-row'}>
-                {r.label}: {r.value}
+                {r.label ? `${r.label}: ${r.value}` : r.value}
               </div>
             ))}
           </>

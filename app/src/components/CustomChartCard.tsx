@@ -5,7 +5,7 @@ import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, Metric
 import {
   stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric, chartMetrics,
   METRIC_LABELS, BATTLE_METRIC_LABELS, BATTLE_NUMERIC_METRIC_LABELS,
-  GROUP_BY_LABELS, formatMetric, winCountRecord, type GroupByKey,
+  GROUP_BY_LABELS, formatMetric, winLoseBreakdown, type GroupByKey,
   SCATTER_IMAGE_PX, isScatterImageMode, isOfficialRateMetric,
 } from '../types'
 import { SimpleBarChart } from './charts/SimpleBarChart'
@@ -87,29 +87,25 @@ function dedupeRows(entries: { key: string | undefined; row: () => TooltipRow | 
 }
 
 /**
- * バトル数・勝数はセットで見せる。どれか 1 つが軸・サイズ・色に
- * 割り当てられていれば、1 行のコンパクト戦績を出す(#449 / #562 拡張)。
+ * バトル数・勝数はヒートマップのチップと同じ勝敗表記で添える(#388 / #562)。
+ * 軸にバトル数があるときは内訳だけ、勝数だけのときはバトル数＋内訳。
  */
 const WIN_COUNT_METRICS = new Set<string>(['total', 'wins'])
 
-function winCountTooltipEntry(d: GroupedStatsRow): TooltipRow | null {
-  if (d.total <= 0) return null
-  return { label: '戦績', value: winCountRecord(d.total, d.wins, d.draws) }
-}
-
-function usesWinCountBlock(keys: (string | undefined)[]): boolean {
-  return keys.some(k => k != null && WIN_COUNT_METRICS.has(k))
-}
-
-function scatterMetricRow(
-  winBlock: boolean,
-  key: string | undefined,
-  label: string,
-  value: string,
-  muted?: boolean,
+function heatmapStyleWinCountSupplement(
+  d: GroupedStatsRow,
+  assignedKeys: (string | undefined)[],
 ): TooltipRow | null {
-  if (!key || (winBlock && WIN_COUNT_METRICS.has(key))) return null
-  return { label, value, muted }
+  if (d.total <= 0 || !assignedKeys.some(k => k != null && WIN_COUNT_METRICS.has(k))) return null
+  const showTotal = !assignedKeys.includes('total')
+  const breakdown = winLoseBreakdown(d.total, d.wins, d.draws)
+  let text = ''
+  if (showTotal) text = `バトル数: ${d.total}`
+  if (d.total > 0) {
+    if (showTotal) text += ' '
+    text += `(${breakdown})`
+  }
+  return text ? { label: '', value: text, muted: true } : null
 }
 
 /** 集計散布図のツールチップ 1 行の値。 */
@@ -147,7 +143,6 @@ function buildAggScatterPoints(
   const categories = isCatColor
     ? filtered.map(d => categoryValueForWeaponName(d.name, colorKey, weaponMeta))
     : []
-  const winBlock = usesWinCountBlock([xKey, yKey, sizeKey, colorKey])
   const points = filtered.map(d => {
     const x = getMetric(d, xKey as MetricKey)
     const y = getMetric(d, yKey as MetricKey)
@@ -169,13 +164,13 @@ function buildAggScatterPoints(
       iconUrl: weaponImages?.get(d.name) ?? null,
       ...kitIconsForWeapon(d.name, weaponMeta, subImages, spImages),
       tooltipRows: dedupeRows([
-        { key: '__win_count__', row: () => (winBlock ? winCountTooltipEntry(d) : null) },
-        { key: xKey, row: () => scatterMetricRow(winBlock, xKey, metricLabelOf(xKey), fmtScatterMetric(x, xKey)) },
-        { key: yKey, row: () => scatterMetricRow(winBlock, yKey, metricLabelOf(yKey), fmtScatterMetric(y, yKey)) },
-        { key: sizeKey, row: () => scatterMetricRow(winBlock, sizeKey, metricLabelOf(sizeKey!), fmtScatterMetric(size, sizeKey!), true) },
+        { key: xKey, row: () => (xKey ? { label: metricLabelOf(xKey), value: fmtScatterMetric(x, xKey) } : null) },
+        { key: yKey, row: () => (yKey ? { label: metricLabelOf(yKey), value: fmtScatterMetric(y, yKey) } : null) },
+        { key: sizeKey, row: () => (sizeKey ? { label: metricLabelOf(sizeKey), value: fmtScatterMetric(size, sizeKey), muted: true } : null) },
         isCatColor
-          ? { key: colorKey, row: () => scatterMetricRow(winBlock, colorKey, metricLabelOf(colorKey!), catVal!, true) }
-          : { key: colorKey, row: () => scatterMetricRow(winBlock, colorKey, metricLabelOf(colorKey!), fmtScatterMetric(colorVal, colorKey!), true) },
+          ? { key: colorKey, row: () => (colorKey ? { label: metricLabelOf(colorKey), value: catVal!, muted: true } : null) }
+          : { key: colorKey, row: () => (colorKey ? { label: metricLabelOf(colorKey), value: fmtScatterMetric(colorVal, colorKey), muted: true } : null) },
+        { key: '__win_supp__', row: () => heatmapStyleWinCountSupplement(d, [xKey, yKey, sizeKey, colorKey]) },
       ]),
     }
   })
