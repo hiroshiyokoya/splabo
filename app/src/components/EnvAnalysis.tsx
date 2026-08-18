@@ -38,7 +38,7 @@ import {
 } from '../utils/scatterCategoryColors'
 import {
   scatterCategoryValueDisplayName, weaponCategoryDisplayName, subWeaponDisplayName, specialWeaponDisplayName,
-  stageDimDisplayName,
+  stageDimDisplayName, localizedName,
 } from '../i18n/displayName'
 import { loadSubSpImageMaps, loadWeaponImageMap, weaponAxisTip } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo, PanelExportNote } from './PanelExport'
@@ -669,8 +669,10 @@ export function EnvAnalysis() {
 
   // 画像に焼き込む条件(#500 / #506)。期間はクエリと同じ since/until を絶対日付で。
   const envFilterSummary = useMemo(() => {
-    const optLabel = (opts: { key: string; label: string }[], k: string) =>
-      opts.find(o => o.key === k)?.label ?? k
+    const optLabel = (opts: { key: string; label: string; label_en?: string | null }[], k: string) => {
+      const opt = opts.find(o => o.key === k)
+      return opt ? localizedName(opt.label, opt.label_en, opt.label) : k
+    }
     // データ未取得で相対期間が解けないときだけ、UI と同じラベルにフォールバックする。
     const periodCaption = (() => {
       if (period === 'all') return t('filter.allPeriod')
@@ -802,16 +804,21 @@ export function EnvAnalysis() {
     () => new Map(weaponOptions.map(w => [w.key, w.label])),
     [weaponOptions],
   )
+  const weaponEnByKey = useMemo(
+    () => new Map(weaponOptions.map(w => [w.key, w.label_en])),
+    [weaponOptions],
+  )
   const heatmapWeaponTip = useCallback((key: string) => {
     const name = weaponJaByKey.get(key) ?? key
     const tip = weaponAxisTip(name, weaponMeta, weaponImages, subImages, spImages)
     if (!tip) return undefined
-    if (!tip.iconUrl) {
+    const displayTip = { ...tip, name: localizedName(name, weaponEnByKey.get(key), name) }
+    if (!displayTip.iconUrl) {
       const byKey = weaponImages.get(key)
-      if (byKey) return { ...tip, iconUrl: byKey }
+      if (byKey) return { ...displayTip, iconUrl: byKey }
     }
-    return tip
-  }, [weaponJaByKey, weaponMeta, weaponImages, subImages, spImages])
+    return displayTip
+  }, [weaponJaByKey, weaponEnByKey, weaponMeta, weaponImages, subImages, spImages])
 
   useEffect(() => {
     invoke<WeaponRecord[]>('db_list_weapons').then(list => {
@@ -961,7 +968,7 @@ export function EnvAnalysis() {
       ...(isCatColor ? [{ key: colorKey, row: { label: groupByLabel(t, colorKey as GroupByKey), value: scatterCategoryValueDisplayName(colorKey as ScatterCategoryColorKey, catVal!), muted: true } }] : []),
     ])
     return {
-      name: s.key,
+      name: localizedName(s.key, s.key_en, s.key),
       x, y,
       size: sv,
       color: catStyle ? catStyle.color : pointColor(cv),
@@ -1132,12 +1139,15 @@ export function EnvAnalysis() {
               loading={optionsLoading}
               selected={weaponKeys}
               onChange={setWeaponKeys}
-              options={weaponOptions.map(w => ({
-                key:   w.key,
-                label: `${w.label}(${w.n.toLocaleString()})`,
-                short: w.label,
-                group: w.category || undefined,
-              }))}
+              options={weaponOptions.map(w => {
+                const name = localizedName(w.label, w.label_en, w.label)
+                return {
+                  key:   w.key,
+                  label: `${name}(${w.n.toLocaleString()})`,
+                  short: name,
+                  group: w.category || undefined,
+                }
+              })}
             />
             <MultiSelect
               label={t('filter.stage')}

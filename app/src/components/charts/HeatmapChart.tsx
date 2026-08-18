@@ -405,7 +405,7 @@ export function HeatmapChart({
               className="cal-legend-swatch cal-legend-swatch--sparse"
               style={{ backgroundColor: legendColors[Math.floor(legendColors.length / 2)] }}
             />
-            <span className="cal-legend-sparse-text">サンプル不足</span>
+            <span className="cal-legend-sparse-text">{t('chart.sparseText')}</span>
           </span>
         )}
       </div>
@@ -439,7 +439,7 @@ export function HeatmapChart({
             )}
           </div>
           {(group === 'rate' || group === 'average') && hover.value !== null && hover.total < minSampleSize && (
-            <div className="hover-tt-row hover-tt-row--muted">サンプル不足 (&lt; {minSampleSize})</div>
+            <div className="hover-tt-row hover-tt-row--muted">{t('chart.sparseTooltip', { n: minSampleSize })}</div>
           )}
         </div>
       )}

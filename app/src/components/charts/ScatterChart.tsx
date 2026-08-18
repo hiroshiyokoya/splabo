@@ -1278,6 +1278,7 @@ export function ScatterChart({
    *  画像を持たない点は従来の図形にフォールバックする。 */
   imagePx?:     number
 }) {
+  const { t } = useTranslation()
   const [hover, setHover] = useState<ScatterPoint | null>(null)
   // クリックでピン留め。保存ボタンへマウスを移してもツールチップが消えないようにする。
   const [pinned, setPinned] = useState<ScatterPoint | null>(null)
@@ -1749,7 +1750,7 @@ export function ScatterChart({
           pointerEvents: 'none',
         }}
       >
-        {droppedByLog} 件を非表示(ログ軸に載らない 0 以下・∞)
+        {t('chart.droppedByLog', { count: droppedByLog })}
       </div>
     )}
     {active && (() => {

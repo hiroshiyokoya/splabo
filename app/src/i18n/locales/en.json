@@ -492,6 +492,8 @@
     "pickStartDate": "Choose a start date in Settings → Data",
     "logToggleAllowed": "Use a log scale for {{metric}}. Points ≤ 0 are omitted.",
     "logToggleDisallowed": "{{metric}} spans a narrow range; log scale is unavailable.",
+    "unclassifiedCategory": "(Unclassified)",
+    "unknownWeaponPart": "(Unknown)",
     "groupBy": {
       "weapon": "Weapon",
       "weapon_category": "Category",
@@ -681,6 +683,9 @@
     "nItems": "{{count}} items",
     "heatmapAria": "Heatmap",
     "calendarAria": "Calendar heatmap",
+    "sparseText": "Low sample",
+    "sparseTooltip": "Low sample (< {{n}})",
+    "droppedByLog": "{{count}} hidden (≤ 0 or ∞, not shown on log axis)",
     "dow": {
       "mon": "Mon",
       "tue": "Tue",

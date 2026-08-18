@@ -390,7 +390,7 @@ export function CalendarHeatmapChart({
               className="cal-legend-swatch cal-legend-swatch--sparse"
               style={{ backgroundColor: legendColors[Math.floor(legendColors.length / 2)] }}
             />
-            <span className="cal-legend-sparse-text">サンプル不足</span>
+            <span className="cal-legend-sparse-text">{t('chart.sparseText')}</span>
           </span>
         )}
       </div>
