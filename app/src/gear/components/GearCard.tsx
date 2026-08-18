@@ -1,4 +1,6 @@
-import type { GearItem } from '../types'
+import { useTranslation } from 'react-i18next'
+import type { GearItem, Skill } from '../types'
+import { skillDisplayName } from '../utils/skillDisplayName'
 
 interface Props {
   gear:      GearItem
@@ -20,8 +22,10 @@ function Stars({ rarity }: { rarity: number }) {
   )
 }
 
-function SkillIcon({ image, name, size }: { image: string; name: string; size: 'main' | 'sub' }) {
-  const isUnknown = name === 'はてな'
+function SkillIcon({ image, skill, size }: { image: string; skill: Skill; size: 'main' | 'sub' }) {
+  const { t } = useTranslation()
+  const isUnknown = skill.name === 'はてな'
+  const name = isUnknown ? t('gear.unknownSkill') : skillDisplayName(skill, t)
   return (
     <div className={`skill-icon skill-icon--${size} ${isUnknown ? 'skill-icon--unknown' : ''}`} title={name}>
       <img src={image} alt={name} />
@@ -30,6 +34,7 @@ function SkillIcon({ image, name, size }: { image: string; name: string; size: '
 }
 
 export function GearCard({ gear, selected, onSelect }: Props) {
+  const { t } = useTranslation()
   const subSlots = Array.from({ length: 3 }, (_, i) => gear.additional_skills[i] ?? null)
 
   return (
@@ -66,14 +71,14 @@ export function GearCard({ gear, selected, onSelect }: Props) {
       <div className="gear-card__name" title={gear.name}>{gear.name}</div>
 
       {/* ケイケン値（右寄り） */}
-      <div className="gear-card__exp">ケイケン値 {gear.exp.toLocaleString()}</div>
+      <div className="gear-card__exp">{t('gear.exp', { value: gear.exp.toLocaleString() })}</div>
 
       {/* スキル: メイン + サブ3つ（横幅いっぱい） */}
       <div className="gear-card__skills">
-        <SkillIcon image={gear.primary_skill.image} name={gear.primary_skill.name} size="main" />
+        <SkillIcon image={gear.primary_skill.image} skill={gear.primary_skill} size="main" />
         {subSlots.map((skill, i) =>
           skill ? (
-            <SkillIcon key={i} image={skill.image} name={skill.name} size="sub" />
+            <SkillIcon key={i} image={skill.image} skill={skill} size="sub" />
           ) : (
             <div key={i} className="skill-icon skill-icon--sub skill-icon--empty" />
           )

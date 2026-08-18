@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { GearCategory, Skill } from '../types'
 import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from '../constants/gearPowerMeta'
+import { skillDisplayName } from '../utils/skillDisplayName'
 
 // スタック型のスナップ値（スプラ仕様: サブ3pt × 最大3 + メイン10pt）
 const STEP_VALUES = [0, 3, 6, 9, 10, 13, 16, 19] as const
@@ -81,6 +83,9 @@ export function FilterDrawer({
   onReset,
   emptySkillImage = '',
 }: Props) {
+  const { t } = useTranslation()
+  const emptyLabel = t('gear.empty')
+
   // 現在のタブに対応する発動型スキルのみ表示
   const mainOnlySkills = useMemo(
     () => allSkills
@@ -127,19 +132,19 @@ export function FilterDrawer({
       <div
         className={`drawer ${open ? 'drawer--open' : ''}`}
         role="dialog"
-        aria-label="絞り込み設定"
+        aria-label={t('gear.filterSettings')}
         aria-modal="true"
       >
         {/* ヘッダー */}
         <div className="drawer-header">
-          <span className="drawer-title">絞り込み</span>
+          <span className="drawer-title">{t('gear.filterBtn')}</span>
           <div className="drawer-header__actions">
             {activeCount > 0 && (
               <button className="drawer-reset" onClick={onReset}>
-                リセット
+                {t('gear.filterReset')}
               </button>
             )}
-            <button className="drawer-close" onClick={onClose} aria-label="閉じる">
+            <button className="drawer-close" onClick={onClose} aria-label={t('common.close')}>
               ✕
             </button>
           </div>
@@ -151,23 +156,24 @@ export function FilterDrawer({
           {/* 発動型 */}
           <section className="drawer-section">
             <div className="drawer-section__label">
-              発動型
-              <span className="drawer-section__note">1つだけ選択</span>
+              {t('gear.filterMainOnly')}
+              <span className="drawer-section__note">{t('gear.filterMainOnlyNote')}</span>
             </div>
             <div className="skill-chips">
               {mainOnlySkills.map(s => {
                 const isActive = filter.mainOnlyIds.has(s.id)
                 const isDisabled = !isActive && mainSlotUsedByStack
+                const name = skillDisplayName(s, t)
                 return (
                   <button
                     key={s.id}
                     className={`skill-chip ${isActive ? 'skill-chip--active' : ''} ${isDisabled ? 'skill-chip--disabled' : ''}`}
                     onClick={() => !isDisabled && onToggleMainOnly(s.id)}
                     disabled={isDisabled}
-                    title={s.name}
+                    title={name}
                   >
                     <img src={s.image} alt="" aria-hidden="true" />
-                    <span>{s.name}</span>
+                    <span>{name}</span>
                   </button>
                 )
               })}
@@ -177,8 +183,8 @@ export function FilterDrawer({
           {/* スタック型 */}
           <section className="drawer-section">
             <div className="drawer-section__label">
-              スタック型
-              <span className="drawer-section__note">メイン 10pt / サブ 3pt</span>
+              {t('gear.filterStackable')}
+              <span className="drawer-section__note">{t('gear.filterStackableNote')}</span>
             </div>
             <div className="skill-chips">
               {stackableSkills.map(s => {
@@ -186,30 +192,31 @@ export function FilterDrawer({
                 const isActive = pts > 0
                 const nextPts = stepUp(pts)
                 const disableIncrease = nextPts === pts || (stackTotalPts - pts + nextPts) > ptsBudget
+                const name = skillDisplayName(s, t)
                 return (
                   <div
                     key={s.id}
                     className={`skill-chip skill-chip--stepper ${isActive ? 'skill-chip--active' : ''}`}
                   >
                     <img src={s.image} alt="" aria-hidden="true" />
-                    <span className="skill-chip__name">{s.name}</span>
+                    <span className="skill-chip__name">{name}</span>
                     <div className="stepper">
                       <button
                         className="stepper__btn"
                         onClick={e => onSetSkillPoints(s.id, e.shiftKey ? 0 : stepDown(pts))}
                         disabled={pts === 0}
-                        aria-label={`${s.name} を下げる`}
+                        aria-label={t('gear.decreaseSkill', { name })}
                       >
                         −
                       </button>
                       <span className="stepper__value">
-                        {pts === 0 ? '−' : `${pts}pt`}
+                        {pts === 0 ? '−' : t('gear.combo.points', { count: pts })}
                       </span>
                       <button
                         className="stepper__btn"
                         onClick={e => onSetSkillPoints(s.id, e.shiftKey ? stepMax(ptsBudget - (stackTotalPts - pts)) : stepUp(pts))}
                         disabled={disableIncrease}
-                        aria-label={`${s.name} を上げる`}
+                        aria-label={t('gear.increaseSkill', { name })}
                       >
                         ＋
                       </button>
@@ -220,20 +227,20 @@ export function FilterDrawer({
               {/* アキ枠（スタック型と同列） */}
               <div className={`skill-chip skill-chip--stepper ${filter.akiMin > 0 ? 'skill-chip--active' : ''}`}>
                 <img src={emptySkillImage} alt="" aria-hidden="true" />
-                <span className="skill-chip__name">アキ</span>
+                <span className="skill-chip__name">{emptyLabel}</span>
                 <div className="stepper">
                   <button
                     className="stepper__btn"
                     onClick={e => onSetAkiMin(e.shiftKey ? 0 : Math.max(0, filter.akiMin - 1))}
                     disabled={filter.akiMin === 0}
-                    aria-label="アキ枠を減らす"
+                    aria-label={t('gear.decreaseEmptySlot')}
                   >−</button>
                   <span className="stepper__value">{filter.akiMin === 0 ? '−' : filter.akiMin}</span>
                   <button
                     className="stepper__btn"
                     onClick={e => onSetAkiMin(e.shiftKey ? 3 : Math.min(3, filter.akiMin + 1))}
                     disabled={filter.akiMin >= 3 || ptsBudget - 3 < 0}
-                    aria-label="アキ枠を増やす"
+                    aria-label={t('gear.increaseEmptySlot')}
                   >＋</button>
                 </div>
               </div>
@@ -243,13 +250,13 @@ export function FilterDrawer({
           {/* ブランド */}
           <section className="drawer-section">
             <div className="drawer-section__label">
-              ブランド
+              {t('gear.filterBrand')}
               {filter.brands.size > 0 && (
                 <button
                   className="drawer-section__clear"
                   onClick={onClearBrands}
                 >
-                  クリア
+                  {t('gear.filterClear')}
                 </button>
               )}
             </div>

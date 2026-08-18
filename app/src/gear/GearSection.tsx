@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { GearCard } from './components/GearCard'
 import { FilterDrawer, emptyFilter, countActiveFilters } from './components/FilterDrawer'
 import { ComboSheet, emptySlots } from './components/ComboSheet'
@@ -25,21 +26,25 @@ const UPDATE_COOLDOWN_MS = 5 * 60 * 1000
 const SCROLL_TOP_THRESHOLD = 600
 const SCROLL_TOP_HIDE_AFTER_MS = 1000
 
-const TABS: { key: GearCategory; label: string; icon: string }[] = [
-  { key: 'head',     label: '頭ギア',  icon: '🪖' },
-  { key: 'clothing', label: '服ギア',  icon: '👕' },
-  { key: 'shoes',    label: '靴ギア',  icon: '👟' },
-]
-
 type SortKey = 'name' | 'rarity' | 'exp' | 'brand' | 'skill'
 
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: 'brand',  label: 'ブランド' },
-  { key: 'skill',  label: 'ギアパワー' },
-  { key: 'name',   label: '名前' },
-  { key: 'rarity', label: 'レア度' },
-  { key: 'exp',    label: 'ケイケン値' },
-]
+function gearTabs(t: (key: string) => string): { key: GearCategory; label: string; icon: string }[] {
+  return [
+    { key: 'head',     label: t('gear.tab.head'),     icon: '🪖' },
+    { key: 'clothing', label: t('gear.tab.clothing'), icon: '👕' },
+    { key: 'shoes',    label: t('gear.tab.shoes'),    icon: '👟' },
+  ]
+}
+
+function sortOptions(t: (key: string) => string): { key: SortKey; label: string }[] {
+  return [
+    { key: 'brand',  label: t('gear.sort.brand') },
+    { key: 'skill',  label: t('gear.sort.skill') },
+    { key: 'name',   label: t('gear.sort.name') },
+    { key: 'rarity', label: t('gear.sort.rarity') },
+    { key: 'exp',    label: t('gear.sort.exp') },
+  ]
+}
 
 function sortItems(items: GearItem[], key: SortKey, category: GearCategory): GearItem[] {
   return [...items].sort((a, b) => {
@@ -137,7 +142,10 @@ function applyFilter(items: GearItem[], filter: FilterState): GearItem[] {
  * `check_auth_status` を使う。未ログイン・データ無しでもクラッシュせず空状態を描画する。
  */
 export function GearSection() {
+  const { t } = useTranslation()
   const { data, loading, error, lastFetchedAt, reload } = useGearDB()
+  const tabs = useMemo(() => gearTabs(t), [t])
+  const sortOpts = useMemo(() => sortOptions(t), [t])
   const [activeTab, setActiveTab]   = useState<GearCategory>('head')
 
   // マウント後に保存済みテーマ・密度を `.gear-root` に適用（chartoon の :root は汚さない）
@@ -198,7 +206,7 @@ export function GearSection() {
 
       if (!loggedIn) {
         // ログインは設定タブに委譲。ここでは案内のみ。
-        setUpdateError('Nintendo アカウントにログインしていません。「設定」タブからログインしてください。')
+        setUpdateError(t('gear.notLoggedIn'))
         setUpdatePhase('error')
         return
       }
@@ -214,7 +222,7 @@ export function GearSection() {
       setUpdateError(String(e))
       setUpdatePhase('error')
     }
-  }, [updatePhase, isCoolingDown])
+  }, [updatePhase, isCoolingDown, t])
   const [sortKey, setSortKey]       = useState<SortKey>('brand')
   const [drawerOpen, setDrawerOpen]       = useState(false)
   const [comboLimit] = useState<ComboLimitValue>(loadComboLimit)
@@ -382,18 +390,18 @@ export function GearSection() {
 
   const activeFilterCount = countActiveFilters(filter)
 
-  if (loading) return <div className="gear-root"><div className="status">ギアデータを読み込み中...</div></div>
+  if (loading) return <div className="gear-root"><div className="status">{t('gear.loading')}</div></div>
   if (error || !data) {
     return (
       <div className="gear-root">
         <div className="empty-state">
           <div className="empty-state__icon">{error ? '⚠️' : '📭'}</div>
           <p className="empty-state__title">
-            {error ? 'データの読み込みに失敗しました' : 'ギアデータがありません'}
+            {error ? t('gear.loadFailed') : t('gear.noData')}
           </p>
           <p className="empty-state__body">
             {error && <><span className="empty-state__detail">{error}</span><br /></>}
-            サイドバーの「最新データを取得」または下のボタンから SplatNet3 のギアデータを取得してください。
+            {t('gear.emptyHint')}
           </p>
           {isTauri() && (
             <button
@@ -402,9 +410,9 @@ export function GearSection() {
               onClick={handleDataUpdate}
               disabled={(updatePhase !== 'idle' && updatePhase !== 'error') || isCoolingDown}
             >
-              {updatePhase === 'checking' ? '確認中...' :
-               updatePhase === 'fetching' ? 'データ取得中...' :
-               '認証・データ取得'}
+              {updatePhase === 'checking' ? t('gear.fetchChecking') :
+               updatePhase === 'fetching' ? t('gear.fetchFetching') :
+               t('gear.fetchCta')}
             </button>
           )}
           {updateError && (
@@ -415,7 +423,7 @@ export function GearSection() {
                 type="button"
                 className="app-update-error__dismiss"
                 onClick={() => { setUpdateError(null); setUpdatePhase('idle') }}
-                aria-label="エラーを閉じる"
+                aria-label={t('gear.dismissError')}
               >✕</button>
             </p>
           )}
@@ -432,7 +440,7 @@ export function GearSection() {
               中身だった総数カウンターは、各タブのバッジ（頭/服/靴それぞれの件数）と
               重複するので出さない。 */}
           <nav className="tabs">
-            {TABS.map(({ key, label, icon }) => (
+            {tabs.map(({ key, label, icon }) => (
               <button
                 key={key}
                 className={`tab ${activeTab === key ? 'tab--active' : ''}`}
@@ -456,7 +464,7 @@ export function GearSection() {
             <button
               className={`gear-filter-btn ${activeFilterCount > 0 ? 'gear-filter-btn--active' : ''}`}
               onClick={() => setDrawerOpen(true)}
-              aria-label="絞り込み"
+              aria-label={t('gear.filterBtn')}
             >
               <svg
                 width="16"
@@ -471,7 +479,7 @@ export function GearSection() {
                   fill="currentColor"
                 />
               </svg>
-              絞り込み
+              {t('gear.filterBtn')}
               {activeFilterCount > 0 && (
                 <span className="gear-filter-btn__badge">{activeFilterCount}</span>
               )}
@@ -481,9 +489,9 @@ export function GearSection() {
               className="sort-select"
               value={sortKey}
               onChange={e => setSortKey(e.target.value as SortKey)}
-              aria-label="並び替え"
+              aria-label={t('gear.sort.aria')}
             >
-              {SORT_OPTIONS.map(({ key, label }) => (
+              {sortOpts.map(({ key, label }) => (
                 <option key={key} value={key}>{label}</option>
               ))}
             </select>
@@ -493,7 +501,7 @@ export function GearSection() {
         {/* 絞り込み結果カウント */}
         {activeFilterCount > 0 && (
           <div className="filter-result">
-            {items.length} 件 / {data[activeTab].length} 件
+            {t('gear.filterResult', { shown: items.length, total: data[activeTab].length })}
           </div>
         )}
 
@@ -507,7 +515,7 @@ export function GearSection() {
             />
           ))}
           {items.length === 0 && (
-            <div className="status">該当するギアがありません</div>
+            <div className="status">{t('gear.noMatch')}</div>
           )}
         </div>
 
@@ -531,8 +539,8 @@ export function GearSection() {
                 }, SCROLL_TOP_HIDE_AFTER_MS)
               }
             }}
-            aria-label="一番上に戻る"
-            title="一番上に戻る"
+            aria-label={t('gear.scrollTop')}
+            title={t('gear.scrollTop')}
           >
             <svg
               width="18"
