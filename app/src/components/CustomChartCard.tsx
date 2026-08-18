@@ -3,9 +3,11 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, MetricKey, BattleMetricKey } from '../types'
 import {
-  stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric, chartMetrics,
+  stageAbbr, modeLabel, ruleLabel, autoChartTitle, chartMetrics,
   METRIC_LABELS, BATTLE_METRIC_LABELS, BATTLE_NUMERIC_METRIC_LABELS,
-  GROUP_BY_LABELS, formatMetric, winLoseBreakdown, type GroupByKey,
+  GROUP_BY_LABELS, formatMetric, winLoseBreakdown,
+  scatterAggMetric, scatterAggMetricLabel, scatterAggColorMetric,
+  SCATTER_WIN_COUNT_METRICS, type GroupByKey,
   SCATTER_IMAGE_PX, isScatterImageMode, isOfficialRateMetric,
 } from '../types'
 import { SimpleBarChart } from './charts/SimpleBarChart'
@@ -47,7 +49,7 @@ function metricLabelOf(k: string): string {
   if (k === 'win_lose')                  return '勝敗'
   if (k in GROUP_BY_LABELS)             return GROUP_BY_LABELS[k as GroupByKey]
   if (k in BATTLE_METRIC_LABELS)         return BATTLE_METRIC_LABELS[k as BattleMetricKey]
-  if (k in METRIC_LABELS)                return METRIC_LABELS[k as MetricKey]
+  if (k === 'losses' || k in METRIC_LABELS) return scatterAggMetricLabel(k)
   return k
 }
 
@@ -87,13 +89,11 @@ function dedupeRows(entries: { key: string | undefined; row: () => TooltipRow | 
 }
 
 /**
- * バトル数・勝数が軸などに割り当てられているとき、個別行の代わりに
+ * バトル数・勝数・負数が軸などに割り当てられているとき、個別行の代わりに
  * ヒートマップと同じ `バトル数: N (x 勝 y 敗)` を 1 行で出す(#388 / #562)。
  */
-const WIN_COUNT_METRICS = new Set<string>(['total', 'wins'])
-
 function usesWinCountBlock(keys: (string | undefined)[]): boolean {
-  return keys.some(k => k != null && WIN_COUNT_METRICS.has(k))
+  return keys.some(k => k != null && SCATTER_WIN_COUNT_METRICS.has(k))
 }
 
 function winCountTooltipRow(d: GroupedStatsRow, muted?: boolean): TooltipRow | null {
@@ -107,6 +107,7 @@ function winCountTooltipRow(d: GroupedStatsRow, muted?: boolean): TooltipRow | n
 
 /** 集計散布図のツールチップ 1 行の値。 */
 function fmtScatterMetric(value: number | null, key: string): string {
+  if (key === 'losses') return formatMetric(value, 'total')
   return formatMetric(value, key as MetricKey)
 }
 
@@ -132,7 +133,7 @@ function scatterTooltipEntries(
     muted?: boolean,
   ): TooltipRow | null => {
     if (!key) return null
-    if (winBlock && WIN_COUNT_METRICS.has(key)) {
+    if (winBlock && SCATTER_WIN_COUNT_METRICS.has(key)) {
       if (winCountShown) return null
       winCountShown = true
       return winCountTooltipRow(d, muted)
@@ -171,7 +172,7 @@ function buildAggScatterPoints(
   let cmin = Infinity, cmax = -Infinity
   if (colorKey && !isCatColor) {
     for (const d of filtered) {
-      const v = getMetric(d, colorKey as MetricKey)
+      const v = scatterAggMetric(d, colorKey)
       if (v === null) continue
       if (v < cmin) cmin = v
       if (v > cmax) cmax = v
@@ -181,10 +182,10 @@ function buildAggScatterPoints(
     ? filtered.map(d => categoryValueForWeaponName(d.name, colorKey, weaponMeta))
     : []
   const points = filtered.map(d => {
-    const x = getMetric(d, xKey as MetricKey)
-    const y = getMetric(d, yKey as MetricKey)
-    const size = sizeKey ? getMetric(d, sizeKey as MetricKey) : null
-    const colorVal = colorKey && !isCatColor ? getMetric(d, colorKey as MetricKey) : null
+    const x = scatterAggMetric(d, xKey)
+    const y = scatterAggMetric(d, yKey)
+    const size = sizeKey ? scatterAggMetric(d, sizeKey) : null
+    const colorVal = colorKey && !isCatColor ? scatterAggMetric(d, colorKey) : null
     const catVal = isCatColor ? categoryValueForWeaponName(d.name, colorKey, weaponMeta) : null
     const catStyle = isCatColor && catVal ? categoryStyleOf(catVal, categories) : null
     return {
@@ -195,7 +196,7 @@ function buildAggScatterPoints(
       color: catStyle
         ? catStyle.color
         : colorKey
-          ? colorOfValue(colorVal, colorIsRate, cmin, cmax, colorKey as MetricKey)
+          ? colorOfValue(colorVal, colorIsRate, cmin, cmax, scatterAggColorMetric(colorKey))
           : 'var(--accent)',
       markerShape: catStyle?.shape,
       iconUrl: weaponImages?.get(d.name) ?? null,
@@ -208,16 +209,16 @@ function buildAggScatterPoints(
   return {
     points,
     sizeLegend: sizeKey
-      ? buildSizeLegend(metricLabelOf(sizeKey), points.map(p => p.size), v => formatMetric(v, sizeKey as MetricKey))
+      ? buildSizeLegend(metricLabelOf(sizeKey), points.map(p => p.size), v => formatMetric(v, scatterAggColorMetric(sizeKey)))
       : null,
     colorLegend: isCatColor
       ? buildCategoryColorLegend(metricLabelOf(colorKey!), categories)
       : colorKey
         ? buildColorLegend(
             metricLabelOf(colorKey),
-            filtered.map(d => getMetric(d, colorKey as MetricKey)),
-            v => formatMetric(v, colorKey as MetricKey),
-            v => colorOfValue(v, colorIsRate, cmin, cmax, colorKey as MetricKey),
+            filtered.map(d => scatterAggMetric(d, colorKey)),
+            v => formatMetric(v, scatterAggColorMetric(colorKey)),
+            v => colorOfValue(v, colorIsRate, cmin, cmax, scatterAggColorMetric(colorKey)),
           )
         : null,
   }
@@ -335,8 +336,7 @@ const SORT_OPTIONS_ATTACK_DEFENSE: SortOption[] = [
 ]
 
 function barSortValue(row: GroupedStatsRow, key: BarSortKey): number | null {
-  if (key === 'losses') return row.total - row.wins - row.draws
-  return getMetric(row, key)
+  return scatterAggMetric(row, key)
 }
 
 // ---------------------------------------------------------------------------
