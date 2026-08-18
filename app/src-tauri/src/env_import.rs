@@ -131,14 +131,16 @@ pub async fn resolve_weapon_id(conn: &mut SqliteConnection, statink_key: &str) -
         return Ok(Some(r.get("id")));
     }
     // 無ければ key=statink_key で新規作成し statink_key を付ける。
-    // カテゴリ / サブ / スペシャルは同梱の静的マスターから埋める（#492）。
+    // カテゴリ / サブ / スペシャル・英語名は同梱の静的マスターから埋める（#492・#712）。
     let attrs = crate::weapon_static::lookup(statink_key);
+    let name_en = crate::weapon_static::lookup_name_en(statink_key);
     sqlx::query(
-        "INSERT OR IGNORE INTO weapon (key, name_ja, statink_key, category_key, sub_key, special_key)
-         VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO weapon (key, name_ja, name_en, statink_key, category_key, sub_key, special_key)
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(statink_key)
     .bind(statink_key) // name_ja は後でマスター API から上書きされる
+    .bind(name_en)
     .bind(statink_key)
     .bind(attrs.map(|(cat, _, _)| cat))
     .bind(attrs.map(|(_, sub, _)| sub))
@@ -167,11 +169,13 @@ async fn resolve_map_id(conn: &mut SqliteConnection, statink_key: &str) -> Resul
     if let Some(r) = row {
         return Ok(Some(r.get("id")));
     }
+    let name_en = crate::stage_static::lookup_name_en(statink_key);
     sqlx::query(
-        "INSERT OR IGNORE INTO map (key, name_ja, statink_key) VALUES (?, ?, ?)",
+        "INSERT OR IGNORE INTO map (key, name_ja, name_en, statink_key) VALUES (?, ?, ?, ?)",
     )
     .bind(statink_key)
     .bind(statink_key)
+    .bind(name_en)
     .bind(statink_key)
     .execute(&mut *conn)
     .await
