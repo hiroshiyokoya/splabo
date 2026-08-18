@@ -94,6 +94,7 @@ pub(crate) const LEGACY_ALTERS: &[&str] = &[
     "ALTER TABLE weapons ADD COLUMN sub_weapon_image     TEXT",
     "ALTER TABLE weapons ADD COLUMN special_weapon_image TEXT",
     "ALTER TABLE weapon_records ADD COLUMN last_used_at INTEGER",
+    "ALTER TABLE weapon ADD COLUMN name_en TEXT",
     "CREATE TABLE IF NOT EXISTS stage_records (
         stage_id        TEXT PRIMARY KEY,
         vs_stage_id     INTEGER,
@@ -223,6 +224,7 @@ pub(crate) const SCHEMA_V6: &str = r#"
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
         key          TEXT    NOT NULL UNIQUE,
         name_ja      TEXT,
+        name_en      TEXT,
         category_key TEXT,
         sub_key      TEXT,
         special_key  TEXT,
