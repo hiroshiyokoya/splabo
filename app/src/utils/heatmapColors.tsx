@@ -280,7 +280,7 @@ export function axisLabelColor(cellColor: string, intensity: number): string | u
  */
 const HATCH_PITCH = 6
 /** サンプル不足の斜線太さ。Empty は控えめのまま（#697）。 */
-const SPARSE_HATCH_LINE = 2.5
+const SPARSE_HATCH_LINE = 4
 const EMPTY_HATCH_LINE = 1.5
 
 function HatchPattern({ id, bg, line, opacity, lineWidth }: {
