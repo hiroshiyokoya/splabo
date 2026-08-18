@@ -30,13 +30,11 @@
 
   /* 欠損は「値」ではないので色スケール上の色を持たせず、斜線ハッチで示す（#351）。
        - データなし  : ほぼ透明の地にハッチ用グレーの線（線だけ・控えめ）
-       - サンプル不足: くすみ黄緑とハッチ用グレーの中間（明るさ・彩度）の地に背景色の線
-     「データはあるが足りない」方が「そもそも無い」より地がはっきりしている、という順序づけ。
-     サンプル不足の地は r6（50% 勝率）より明るく低彩度なので、引き分け帯とは別物に見える。 */
+       - サンプル不足: 指標色の上に背景色の斜線（#697）
+     「データはあるが足りない」は色で値を見せ、斜線で信頼度を示す。 */
   --cell-empty:       color-mix(in srgb, var(--text) 6%, transparent);  /* データなしの地 */
   --cell-hatch:       #d0d3d8;
   --cell-empty-line:  var(--cell-hatch);
-  --cell-sparse-bg:   #caccb4;  /* ハッチ灰と r6 くすみ黄緑の OKLCH 中間 */
   --cell-sparse-line: var(--bg);
   /* 勝数・平均系 sequential のベース色（#351）。
      棒グラフの勝敗色を流用し、意味で色を割り当てる（割り当ては utils/heatmapColors.tsx）:
@@ -147,19 +145,16 @@
   border-radius: 2px;
   box-shadow: 0 0 0 0.5px var(--surface);
 }
-/* サンプル不足は色ではなくハッチ（斜線）で示す（#351）。中立色の地に背景色の線（#383）。
-   SVG 側は <pattern> で同じ見た目を作っており、こちらは凡例スウォッチ用の CSS 版。 */
+/* サンプル不足は指標色の上に斜線（#697）。スウォッチの地は inline の background-color。 */
 .cal-legend-swatch--sparse {
   /* 角度は -45deg。CSS のグラデーション角度は「軸」の向きで、縞はそれと直交するため、
-     45deg だと縞が SVG 側の rotate(45) と逆向き（\ と /）になってしまう。
-     線は背景色なので透過させると地との差が消える。SVG 側の opacity=1 に合わせてベタで置く。 */
-  background:
+     45deg だと縞が SVG 側の rotate(45) と逆向き（\ と /）になってしまう。 */
+  background-image:
     repeating-linear-gradient(
       -45deg,
       transparent 0 3px,
       var(--cell-sparse-line) 3px 4.5px
-    ),
-    var(--cell-sparse-bg);
+    );
 }
 .cal-legend-end { color: var(--text); font-weight: 600; }
 .cal-legend-sparse {

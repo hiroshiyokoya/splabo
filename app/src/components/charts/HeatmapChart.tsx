@@ -15,7 +15,7 @@ import { WeaponKitTipBody, weaponKitTipStyle, type WeaponKitTipData } from './We
  *   - count   → 相対 5 段階
  *   - rate    → 固定 0–100% divergent
  *   - average → 相対 min-max 5 段階
- * - サンプル不足 (率・平均で N 未満) はグレーアウト
+ * - サンプル不足 (率・平均で N 未満) は指標色の上に斜線（#697）
  * - 0 サンプルセルは薄いグレー
  * - X / Y の表示順は バトル数合計の多い順
  * - X / Y の軸ラベルは、その軸に射影した値の強さで色を付ける。
@@ -67,14 +67,17 @@ function scaleIntensity(value: number, group: Group, min: number, max: number): 
   return max > min ? (value - min) / (max - min) : 0
 }
 
-function cellColor(value: number | null, group: Group, min: number, max: number, total: number, minSampleSize: number, sparseId: string, emptyId: string, metric: MetricKey): string {
-  // 値が無いセルは色ではなくハッチで示す(中央のくすみ黄緑と紛れさせないため・#351)。
-  // データなしはサンプル不足より強い(詰まった)ハッチ。
-  if (value === null || total === 0) return hatchFill(emptyId)
+function cellPaint(
+  value: number | null, group: Group, min: number, max: number, total: number,
+  minSampleSize: number, sparseId: string, emptyId: string, metric: MetricKey,
+): { fill: string; overlay?: string } {
+  // データなしは中立ハッチのまま。サンプル不足は指標色の上に斜線（#697）。
+  if (value === null || total === 0) return { fill: hatchFill(emptyId) }
+  const fill = scaleColor(value, group, min, max, metric) ?? hatchFill(emptyId)
   if ((group === 'rate' || group === 'average') && total < minSampleSize) {
-    return hatchFill(sparseId)
+    return { fill, overlay: hatchFill(sparseId) }
   }
-  return scaleColor(value, group, min, max, metric) ?? hatchFill(emptyId)
+  return { fill }
 }
 
 export function HeatmapChart({
@@ -343,27 +346,43 @@ export function HeatmapChart({
             const row = cells.get(`${xk}|${yk}`)
             const v = row ? getMetric2D(row, metric) : null
             const total = row?.total ?? 0
-            const fill = cellColor(v, group, minVal, maxVal, total, minSampleSize, sparseId, emptyId, metric)
+            const { fill, overlay } = cellPaint(v, group, minVal, maxVal, total, minSampleSize, sparseId, emptyId, metric)
             const x = PAD_LEFT + xi * (CELL_W + GAP)
             const y = PAD_TOP  + yi * (CELL_H + GAP)
             return (
-              <rect
+              <g
                 key={`${xk}|${yk}`}
-                x={x}
-                y={y}
-                width={CELL_W}
-                height={CELL_H}
-                rx={2}
-                fill={fill}
-                stroke="var(--surface)"
-                strokeWidth={0.5}
                 onMouseEnter={(e) => setHover({
                   mx: e.clientX, my: e.clientY, xKey: xk, yKey: yk, value: v,
                   total, wins: row?.wins ?? 0, draws: row?.draws ?? 0,
                 })}
                 onMouseMove={(e) => setHover(prev => prev ? { ...prev, mx: e.clientX, my: e.clientY } : prev)}
                 onMouseLeave={() => setHover(null)}
-              />
+              >
+                <rect
+                  x={x}
+                  y={y}
+                  width={CELL_W}
+                  height={CELL_H}
+                  rx={2}
+                  fill={fill}
+                  stroke={overlay ? undefined : 'var(--surface)'}
+                  strokeWidth={overlay ? undefined : 0.5}
+                />
+                {overlay && (
+                  <rect
+                    x={x}
+                    y={y}
+                    width={CELL_W}
+                    height={CELL_H}
+                    rx={2}
+                    fill={overlay}
+                    stroke="var(--surface)"
+                    strokeWidth={0.5}
+                    pointerEvents="none"
+                  />
+                )}
+              </g>
             )
           })
         )}
@@ -380,7 +399,10 @@ export function HeatmapChart({
         <span className="cal-legend-end">{legendRight}</span>
         {(group === 'rate' || group === 'average') && (
           <span className="cal-legend-sparse">
-            <span className="cal-legend-swatch cal-legend-swatch--sparse" />
+            <span
+              className="cal-legend-swatch cal-legend-swatch--sparse"
+              style={{ backgroundColor: legendColors[Math.floor(legendColors.length / 2)] }}
+            />
             <span className="cal-legend-sparse-text">サンプル不足</span>
           </span>
         )}
