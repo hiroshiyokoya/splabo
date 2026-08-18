@@ -279,27 +279,30 @@ export function axisLabelColor(cellColor: string, intensity: number): string | u
  * `id` は useId() などで要素ごとに一意にすること（同一ページに複数チャートが載るため）。
  */
 const HATCH_PITCH = 6
+/** サンプル不足の斜線太さ。Empty は控えめのまま（#697）。 */
+const SPARSE_HATCH_LINE = 2.5
+const EMPTY_HATCH_LINE = 1.5
 
-function HatchPattern({ id, bg, line, opacity }: {
-  id: string; bg: string; line: string; opacity: number
+function HatchPattern({ id, bg, line, opacity, lineWidth }: {
+  id: string; bg: string; line: string; opacity: number; lineWidth: number
 }) {
   const p = HATCH_PITCH
   return (
     <pattern id={id} width={p} height={p} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
       <rect width={p} height={p} fill={bg} />
-      <line x1={0} y1={0} x2={0} y2={p} stroke={line} strokeWidth={1.5} opacity={opacity} />
+      <line x1={0} y1={0} x2={0} y2={p} stroke={line} strokeWidth={lineWidth} opacity={opacity} />
     </pattern>
   )
 }
 
 /** サンプル不足の斜線。地は透明（下の指標色を見せる・#697）。線は背景色で 1（#383）。 */
 export function SparseHatchPattern({ id }: { id: string }) {
-  return <HatchPattern id={id} bg="transparent" line="var(--cell-sparse-line)" opacity={1} />
+  return <HatchPattern id={id} bg="transparent" line="var(--cell-sparse-line)" opacity={1} lineWidth={SPARSE_HATCH_LINE} />
 }
 
 /** データなし（バトルが無い）。薄い地に薄い線で控えめに。 */
 export function EmptyHatchPattern({ id }: { id: string }) {
-  return <HatchPattern id={id} bg="var(--cell-empty)" line="var(--cell-empty-line)" opacity={0.55} />
+  return <HatchPattern id={id} bg="var(--cell-empty)" line="var(--cell-empty-line)" opacity={0.55} lineWidth={EMPTY_HATCH_LINE} />
 }
 
 /** ハッチセルの fill 値。対応する Pattern に渡した id と同じものを渡す。 */

@@ -152,8 +152,8 @@
   background-image:
     repeating-linear-gradient(
       -45deg,
-      transparent 0 3px,
-      var(--cell-sparse-line) 3px 4.5px
+      transparent 0 3.5px,
+      var(--cell-sparse-line) 3.5px 6px
     );
 }
 .cal-legend-end { color: var(--text); font-weight: 600; }
