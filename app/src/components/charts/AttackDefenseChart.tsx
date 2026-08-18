@@ -2,7 +2,7 @@ import { useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, Legend,
 } from 'recharts'
-import type { GroupedStatsRow } from '../../types'
+import { METRIC_LABELS, type GroupedStatsRow } from '../../types'
 import { categoryTick } from './CategoryTick'
 import { HoverTooltip } from './HoverTooltip'
 
@@ -109,9 +109,9 @@ export function AttackDefenseChart({
           content={() => (
             <div style={{ display: 'flex', justifyContent: 'center', gap: 14, fontSize: 11, paddingTop: 4 }}>
               {[
-                { color: '#22c55e', label: '平均キル' },
-                { color: '#9ca3af', label: '平均アシスト' },
-                { color: '#ef4444', label: '平均デス' },
+                { color: '#22c55e', label: METRIC_LABELS.avg_kill },
+                { color: '#9ca3af', label: METRIC_LABELS.avg_assist },
+                { color: '#ef4444', label: METRIC_LABELS.avg_death },
               ].map(item => (
                 <span key={item.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <span
@@ -132,20 +132,20 @@ export function AttackDefenseChart({
         />
         {/* 攻撃バー: K の上に A を積み上げ。shape でスタック最上段だけ角丸にして D バーと見た目を揃える。
             Bar の fill は実際の描画では Cell が上書きするが、Legend のアイコン色はここから取られる。 */}
-        <Bar dataKey="kill"   name="平均キル"    fill="#22c55e" stackId="attack" maxBarSize={24} activeBar={false}
+        <Bar dataKey="kill"   name={METRIC_LABELS.avg_kill}    fill="#22c55e" stackId="attack" maxBarSize={24} activeBar={false}
           shape={attackStackTopRoundedShape}
           onMouseEnter={(_: any, i: number) => setActiveIndex(i)}
         >
           {chartData.map((_, i) => <Cell key={i} fill="url(#grad-kill)"   fillOpacity={cellOpacity(i)} />)}
         </Bar>
-        <Bar dataKey="assist" name="平均アシスト" fill="#9ca3af" stackId="attack" maxBarSize={24} activeBar={false}
+        <Bar dataKey="assist" name={METRIC_LABELS.avg_assist} fill="#9ca3af" stackId="attack" maxBarSize={24} activeBar={false}
           shape={attackStackTopRoundedShape}
           onMouseEnter={(_: any, i: number) => setActiveIndex(i)}
         >
           {chartData.map((_, i) => <Cell key={i} fill="url(#grad-assist)" fillOpacity={cellOpacity(i)} />)}
         </Bar>
         {/* デスバー: 別 stackId なので横に並ぶ */}
-        <Bar dataKey="death"  name="平均デス"    fill="#ef4444" stackId="defense" maxBarSize={24} activeBar={false} radius={[4, 4, 0, 0]}
+        <Bar dataKey="death"  name={METRIC_LABELS.avg_death}    fill="#ef4444" stackId="defense" maxBarSize={24} activeBar={false} radius={[4, 4, 0, 0]}
           onMouseEnter={(_: any, i: number) => setActiveIndex(i)}
         >
           {chartData.map((_, i) => <Cell key={i} fill="url(#grad-death)"  fillOpacity={cellOpacity(i)} />)}

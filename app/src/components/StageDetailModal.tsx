@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { invoke } from '@tauri-apps/api/core'
 import type { GroupedStatsRow, Filters, StageRecord } from '../types'
 import { groupedStatsDisplayName } from '../i18n/displayName'
-import { RULE_LABELS, ruleLabel, filtersToBookDetailArgs, fmtKillRatioWithContrib, fmtOfficialWinRate } from '../types'
+import { RULE_LABELS, ruleLabel, filtersToBookDetailArgs, fmtKillRatioWithContrib, fmtOfficialWinRate, METRIC_LABELS } from '../types'
 import { winRateColor } from '../utils/heatmapColors'
 
 /** コンパクト戦績「12戦 7勝5敗」。引き分けは 0 でないときだけ「2分」を付ける(#449)。
  *  WeaponBook.fmtRecord / WeaponDetailModal.fmtRecord と同期。 */
-function fmtRecord(total: number, wins: number, draws: number): string {
+function fmtRecord(t: TFunction, total: number, wins: number, draws: number): string {
   const losses = total - wins - draws
-  return `${total}戦 ${wins}勝${losses}敗${draws > 0 ? `${draws}分` : ''}`
+  return draws > 0
+    ? t('books.recordDraw', { total, wins, losses, draws })
+    : t('books.record', { total, wins, losses })
 }
 
 function fmtAvg(n: number | null | undefined): string {
@@ -42,7 +45,7 @@ export function StageDetailModal({
   filters:  Filters
   onClose:  () => void
 }) {
-  useTranslation()
+  const { t } = useTranslation()
   const [ruleRows,   setRuleRows]   = useState<GroupedStatsRow[] | null>(null)
   const [weaponRows, setWeaponRows] = useState<GroupedStatsRow[] | null>(null)
   const [weaponIcons, setWeaponIcons] = useState<Map<string, string>>(new Map())
@@ -121,8 +124,8 @@ export function StageDetailModal({
       <div className="modal-panel stage-detail-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <span className="modal-title-text">{groupedStatsDisplayName(row)}</span>
-          <span className="modal-meta">{row.total} 戦</span>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <span className="modal-meta">{t('common.battlesCount', { count: row.total })}</span>
+          <button className="modal-close" onClick={onClose} aria-label={t('common.close')}>✕</button>
         </div>
 
         <div className="modal-body">
@@ -137,33 +140,33 @@ export function StageDetailModal({
 
           {official && (
             <section className="modal-section">
-              <h3 className="modal-section-title">公式アプリ</h3>
+              <h3 className="modal-section-title">{t('books.official')}</h3>
               <div className="weapon-modal-stats-grid weapon-modal-stats-grid--official">
-                <StatPanel label="ナワバリバトル" value={fmtOfficialWinRate(official.win_rate_tw)} color={rateColor(official.win_rate_tw)} />
-                <StatPanel label="ガチエリア" value={fmtOfficialWinRate(official.win_rate_ar)} color={rateColor(official.win_rate_ar)} />
-                <StatPanel label="ガチヤグラ" value={fmtOfficialWinRate(official.win_rate_lf)} color={rateColor(official.win_rate_lf)} />
-                <StatPanel label="ガチホコバトル" value={fmtOfficialWinRate(official.win_rate_gl)} color={rateColor(official.win_rate_gl)} />
-                <StatPanel label="ガチアサリ" value={fmtOfficialWinRate(official.win_rate_cl)} color={rateColor(official.win_rate_cl)} />
+                <StatPanel label={t('labels.rule.turf_war')} value={fmtOfficialWinRate(official.win_rate_tw)} color={rateColor(official.win_rate_tw)} />
+                <StatPanel label={t('labels.rule.area')} value={fmtOfficialWinRate(official.win_rate_ar)} color={rateColor(official.win_rate_ar)} />
+                <StatPanel label={t('labels.rule.yagura')} value={fmtOfficialWinRate(official.win_rate_lf)} color={rateColor(official.win_rate_lf)} />
+                <StatPanel label={t('labels.rule.hoko')} value={fmtOfficialWinRate(official.win_rate_gl)} color={rateColor(official.win_rate_gl)} />
+                <StatPanel label={t('labels.rule.asari')} value={fmtOfficialWinRate(official.win_rate_cl)} color={rateColor(official.win_rate_cl)} />
               </div>
             </section>
           )}
 
           {/* ルール別統計 */}
           <section className="modal-section">
-            <h3 className="modal-section-title">ルール別統計</h3>
-            {loading && <div className="loading">読み込み中...</div>}
-            {!loading && error && <div className="empty">読み込み失敗: {error}</div>}
+            <h3 className="modal-section-title">{t('books.ruleStats')}</h3>
+            {loading && <div className="loading">{t('common.loading')}</div>}
+            {!loading && error && <div className="empty">{t('books.loadFail', { error })}</div>}
             {!loading && !error && (
               <div className="stage-modal-rule-list">
                 <div className="stage-modal-rule-row stage-modal-rule-head">
-                  <span>ルール</span>
+                  <span>{t('battles.rule')}</span>
                   <span />
-                  <span className="num">戦績</span>
-                  <span className="num">勝率</span>
-                  <span className="num">平均K</span>
-                  <span className="num">平均A</span>
-                  <span className="num">平均D</span>
-                  <span className="num">キルレ (貢献)</span>
+                  <span className="num">{t('books.recordCol')}</span>
+                  <span className="num">{METRIC_LABELS.win_rate}</span>
+                  <span className="num">{t('books.avgK')}</span>
+                  <span className="num">{t('books.avgA')}</span>
+                  <span className="num">{t('books.avgD')}</span>
+                  <span className="num">{t('books.kdContrib')}</span>
                 </div>
                 {ruleOrder.map(rk => {
                   const r = ruleMap.get(rk)
@@ -187,7 +190,7 @@ export function StageDetailModal({
                           />
                         )}
                       </div>
-                      <span className="num stage-modal-rule-record">{fmtRecord(total, wins, draws)}</span>
+                      <span className="num stage-modal-rule-record">{fmtRecord(t, total, wins, draws)}</span>
                       <span
                         className="num stage-modal-rule-rate"
                         style={{ color: wr !== null ? winRateColor(wr) : undefined }}
@@ -205,21 +208,21 @@ export function StageDetailModal({
 
           {/* ブキ TOP：勝利数 / 勝率 */}
           <section className="modal-section">
-            <h3 className="modal-section-title">このステージでのブキ TOP</h3>
-            {loading && <div className="loading">読み込み中...</div>}
+            <h3 className="modal-section-title">{t('books.weaponTop')}</h3>
+            {loading && <div className="loading">{t('common.loading')}</div>}
             {!loading && !error && (weaponRows ?? []).length === 0 && (
-              <div className="empty">このステージでのブキ記録がありません。</div>
+              <div className="empty">{t('books.noStageWeapons')}</div>
             )}
             {!loading && !error && (weaponRows ?? []).length > 0 && (
               <div className="stage-modal-weapon-cols">
                 <div className="stage-modal-weapon-col">
-                  <div className="stage-modal-weapon-col-title">勝利数 TOP {WEAPON_TOP_N}</div>
+                  <div className="stage-modal-weapon-col-title">{t('books.winsTop', { n: WEAPON_TOP_N })}</div>
                   {topByWins.length === 0
-                    ? <div className="empty">勝利記録なし</div>
+                    ? <div className="empty">{t('books.noWins')}</div>
                     : (
                       <div className="stage-modal-weapon-list">
                         {topByWins.map(w => (
-                          <WeaponRow key={w.key} row={w} icon={weaponIcons.get(w.key) ?? null} primary={`${w.wins} 勝`} />
+                          <WeaponRow key={w.key} row={w} icon={weaponIcons.get(w.key) ?? null} primary={t('common.winsCount', { count: w.wins })} />
                         ))}
                       </div>
                     )
@@ -227,11 +230,11 @@ export function StageDetailModal({
                 </div>
                 <div className="stage-modal-weapon-col">
                   <div className="stage-modal-weapon-col-title">
-                    勝率 TOP {WEAPON_TOP_N}
-                    <span className="stage-modal-weapon-col-note"> ({WEAPON_MIN_BATTLES} 戦以上)</span>
+                    {t('books.winRateTop', { n: WEAPON_TOP_N })}
+                    <span className="stage-modal-weapon-col-note">{t('books.minBattlesNote', { n: WEAPON_MIN_BATTLES })}</span>
                   </div>
                   {topByWinRate.length === 0
-                    ? <div className="empty">{WEAPON_MIN_BATTLES} 戦以上のブキなし</div>
+                    ? <div className="empty">{t('books.noMinWeapons', { n: WEAPON_MIN_BATTLES })}</div>
                     : (
                       <div className="stage-modal-weapon-list">
                         {topByWinRate.map(w => (
@@ -262,6 +265,7 @@ function WeaponRow({ row, icon, primary, primaryColor }: {
   primary:      string
   primaryColor?: string
 }) {
+  const { t } = useTranslation()
   return (
     <div className="stage-modal-weapon-row">
       <div className="stage-modal-weapon-icon-wrap">
@@ -271,7 +275,7 @@ function WeaponRow({ row, icon, primary, primaryColor }: {
         }
       </div>
       <span className="stage-modal-weapon-name" title={groupedStatsDisplayName(row)}>{groupedStatsDisplayName(row)}</span>
-      <span className="stage-modal-weapon-count">{fmtRecord(row.total, row.wins, row.draws)}</span>
+      <span className="stage-modal-weapon-count">{fmtRecord(t, row.total, row.wins, row.draws)}</span>
       <span
         className="stage-modal-weapon-primary"
         style={primaryColor ? { color: primaryColor } : undefined}

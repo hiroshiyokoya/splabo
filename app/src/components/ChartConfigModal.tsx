@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey, BattleNumericMetric, ScatterDotUnit, ScatterPointStyle, ScatterImageSize } from '../types'
 import {
   GROUP_BY_LABELS, METRIC_LABELS, HEATMAP_METRICS, SUM_METRICS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
@@ -19,37 +20,6 @@ import { CHART_BAR_TOP_N } from '../utils/chartSort'
  */
 const isRateMetric = (metric: string) => isOfficialRateMetric(metric)
 
-/** ログスケールのチェックボックスに添える説明 (#381)。 */
-function logScaleHint(metric: string): string {
-  if (isRateMetric(metric)) return '勝率は 0-100% に収まるのでログスケールは使えません。'
-  return 'ロングテールや比率(キルレ)を読みやすくします。0 以下・∞ の点は除外されます。'
-}
-
-function scatterMetricSelectOptions(dotUnit: ScatterDotUnit) {
-  const official = officialMetricsForGroup(dotUnit)
-  return (
-    <>
-      {scatterMetricOptions(dotUnit).map(o => (
-        <option key={o.key} value={o.key}>{o.label}</option>
-      ))}
-      {official.length > 0 && (
-        <optgroup label="公式アプリ（全期間）">
-          {official.map(m => (
-            <option key={m} value={m}>{METRIC_LABELS[m]}</option>
-          ))}
-        </optgroup>
-      )}
-    </>
-  )
-}
-
-/** 各 yComposition のヒント説明。 */
-const Y_COMPOSITION_DESCRIPTIONS: Record<YComposition, string> = {
-  single_metric:   'Y 軸に好きな 1 メトリクス(勝率・バトル数・キルレ など)を取る。',
-  stacked_winrate: '勝/負/分 を積み上げた棒に、勝率を線で重ねる。既存 4 グラフと同じ形。',
-  attack_defense:  'カテゴリごとに「平均キル(灰色アシスト積み)」「平均デス」を 2 本セットで横並びに表示。',
-}
-
 interface Props {
   /** 編集対象。null なら新規作成モード。 */
   initial: CustomChart | null
@@ -67,6 +37,30 @@ interface Props {
  * UI 上、未実装の shape も選択肢に出すが disabled にして「(未実装)」ラベルを付ける。
  */
 export function ChartConfigModal({ initial, onSave, onClose }: Props) {
+  const { t } = useTranslation()
+
+  function logScaleHint(metric: string): string {
+    return isRateMetric(metric) ? t('chartConfig.logHintRate') : t('chartConfig.logHint')
+  }
+
+  function scatterMetricSelectOptions(dotUnit: ScatterDotUnit) {
+    const official = officialMetricsForGroup(dotUnit)
+    return (
+      <>
+        {scatterMetricOptions(dotUnit).map(o => (
+          <option key={o.key} value={o.key}>{o.label}</option>
+        ))}
+        {official.length > 0 && (
+          <optgroup label={t('chartConfig.officialGroup')}>
+            {official.map(m => (
+              <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+            ))}
+          </optgroup>
+        )}
+      </>
+    )
+  }
+
   // タイトルは保存しない方針(軸から常に autoChartTitle で算出して表示する)。
   const [shape,        setShape]        = useState<ChartShape>(initial?.shape        ?? 'bar')
   const [yComposition, setYComposition] = useState<YComposition>(initial?.yComposition ?? 'single_metric')
@@ -237,26 +231,26 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-panel chart-config-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <span className="modal-title-text">{initial ? 'グラフを編集' : 'グラフを追加'}</span>
-          <button className="modal-close" onClick={onClose} aria-label="閉じる">✕</button>
+          <span className="modal-title-text">{initial ? t('chartConfig.editTitle') : t('chartConfig.addTitle')}</span>
+          <button className="modal-close" onClick={onClose} aria-label={t('common.close')}>✕</button>
         </div>
 
         <div className="modal-body chart-config-body">
           <div className="form-field">
-            <label className="form-label">形(グラフの種類)</label>
+            <label className="form-label">{t('chartConfig.shape')}</label>
             <select className="form-input" value={shape} onChange={e => setShape(e.target.value as ChartShape)}>
               {(Object.keys(CHART_SHAPE_LABELS) as ChartShape[]).map(s => {
                 const implemented = IMPLEMENTED_SHAPES.includes(s)
                 return (
                   <option key={s} value={s} disabled={!implemented}>
-                    {CHART_SHAPE_LABELS[s]}{implemented ? '' : '(未実装)'}
+                    {CHART_SHAPE_LABELS[s]}{implemented ? '' : t('chart.unimplemented')}
                   </option>
                 )
               })}
             </select>
             {!shapeIsImplemented && (
               <p className="form-hint form-hint--warn">
-                この形は v1.0.0 では未実装です。v1.1+ で対応予定。
+                {t('chartConfig.unimplementedHint')}
               </p>
             )}
           </div>
@@ -266,7 +260,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               選択肢が 1 つしかない select を灰色で出しても選べないだけなので、項目ごと出さない。 */}
           {shape !== 'scatter' && shape !== 'calendar_heatmap' && (
             <div className="form-field">
-              <label className="form-label">X 軸(集計キー)</label>
+              <label className="form-label">{t('chartConfig.xAxisKey')}</label>
               <select
                 className="form-input"
                 value={xNumericMetric ? `numeric:${xNumericMetric}` : groupBy}
@@ -282,7 +276,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                   }
                 }}
               >
-                <optgroup label="カテゴリ">
+                <optgroup label={t('chartConfig.category')}>
                   {(Object.keys(GROUP_BY_LABELS) as GroupByKey[])
                     .filter(g => shape === 'line' ? isTimeBucketGroupBy(g) : !isTimeBucketGroupBy(g))
                     .map(g => (
@@ -291,7 +285,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 </optgroup>
                 {/* ヒートマップでのみ「数値ヒストグラム」軸が選べる (#134) */}
                 {shape === 'heatmap' && (
-                  <optgroup label="数値ヒストグラム (bin)">
+                  <optgroup label={t('chartConfig.numericBin')}>
                     {(Object.keys(BATTLE_NUMERIC_METRIC_LABELS) as BattleNumericMetric[]).map(m => (
                       <option key={m} value={`numeric:${m}`}>{BATTLE_NUMERIC_METRIC_LABELS[m]}</option>
                     ))}
@@ -299,11 +293,11 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 )}
               </select>
               {shape === 'line' && (
-                <p className="form-hint">線グラフは時系列のみ。粒度は {TIME_BUCKET_GROUP_BYS.map(k => GROUP_BY_LABELS[k]).join(' / ')} から選びます。</p>
+                <p className="form-hint">{t('chartConfig.lineTimeHint', { buckets: TIME_BUCKET_GROUP_BYS.map(k => GROUP_BY_LABELS[k]).join(' / ') })}</p>
               )}
               {shape === 'heatmap' && xNumericMetric && (
                 <div className="form-field" style={{ marginTop: 8 }}>
-                  <label className="form-label">X 軸の bin 幅</label>
+                  <label className="form-label">{t('chartConfig.xBinWidth')}</label>
                   <input
                     type="number"
                     className="form-input"
@@ -312,7 +306,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                     value={xBinWidth}
                     onChange={e => setXBinWidth(Math.max(1, Math.floor(Number(e.target.value)) || 1))}
                   />
-                  <p className="form-hint">{BATTLE_NUMERIC_METRIC_LABELS[xNumericMetric]} を {xBinWidth} 刻みで bin 集計します。</p>
+                  <p className="form-hint">{t('chartConfig.binHint', { metric: BATTLE_NUMERIC_METRIC_LABELS[xNumericMetric], width: xBinWidth })}</p>
                 </div>
               )}
             </div>
@@ -320,7 +314,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
 
           {shape === 'heatmap' && (
             <div className="form-field">
-              <label className="form-label">Y 軸(集計キー 2)</label>
+              <label className="form-label">{t('chartConfig.yAxisKey')}</label>
               <select
                 className="form-input"
                 value={yNumericMetric ? `numeric:${yNumericMetric}` : groupBy2}
@@ -336,14 +330,14 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                   }
                 }}
               >
-                <optgroup label="カテゴリ">
+                <optgroup label={t('chartConfig.category')}>
                   {(Object.keys(GROUP_BY_LABELS) as GroupByKey[])
                     .filter(g => !isTimeBucketGroupBy(g) && g !== groupBy)
                     .map(g => (
                       <option key={g} value={g}>{GROUP_BY_LABELS[g]}</option>
                     ))}
                 </optgroup>
-                <optgroup label="数値ヒストグラム (bin)">
+                <optgroup label={t('chartConfig.numericBin')}>
                   {(Object.keys(BATTLE_NUMERIC_METRIC_LABELS) as BattleNumericMetric[])
                     .filter(m => m !== xNumericMetric)  // 同じ数値メトリクスは X と被らせない
                     .map(m => (
@@ -353,7 +347,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               </select>
               {yNumericMetric ? (
                 <div className="form-field" style={{ marginTop: 8 }}>
-                  <label className="form-label">Y 軸の bin 幅</label>
+                  <label className="form-label">{t('chartConfig.yBinWidth')}</label>
                   <input
                     type="number"
                     className="form-input"
@@ -362,17 +356,17 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                     value={yBinWidth}
                     onChange={e => setYBinWidth(Math.max(1, Math.floor(Number(e.target.value)) || 1))}
                   />
-                  <p className="form-hint">{BATTLE_NUMERIC_METRIC_LABELS[yNumericMetric]} を {yBinWidth} 刻みで bin 集計します。</p>
+                  <p className="form-hint">{t('chartConfig.binHint', { metric: BATTLE_NUMERIC_METRIC_LABELS[yNumericMetric], width: yBinWidth })}</p>
                 </div>
               ) : (
-                <p className="form-hint">X 軸と異なる軸を選んでください。</p>
+                <p className="form-hint">{t('chartConfig.yDiffHint')}</p>
               )}
             </div>
           )}
 
           {showWeaponTopN && (
             <div className="form-field">
-              <label className="form-label">表示するブキの数</label>
+              <label className="form-label">{t('chartConfig.weaponCount')}</label>
               <input
                 type="number"
                 className="form-input"
@@ -383,8 +377,8 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               />
               <p className="form-hint">
                 {shape === 'heatmap'
-                  ? `バトル数の多いブキに絞ります（未指定時は 20）。`
-                  : `いまの並びの上から N 種です（未指定時は ${CHART_BAR_TOP_N}）。`}
+                  ? t('chartConfig.topNHeatmap')
+                  : t('chartConfig.topNBar', { n: CHART_BAR_TOP_N })}
               </p>
             </div>
           )}
@@ -398,7 +392,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             const isComposite = yComposition !== 'single_metric'
             return (
               <div className="form-field">
-                <label className="form-label">Y 軸</label>
+                <label className="form-label">{t('chartConfig.yAxis')}</label>
                 <select
                   className="form-input"
                   value={barYAxisValue}
@@ -412,17 +406,17 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                     }
                   }}
                 >
-                  <optgroup label="複合">
+                  <optgroup label={t('chartConfig.composite')}>
                     <option value="stacked_winrate">{Y_COMPOSITION_LABELS.stacked_winrate}</option>
                     <option value="attack_defense">{Y_COMPOSITION_LABELS.attack_defense}</option>
                   </optgroup>
-                  <optgroup label="単一メトリクス">
+                  <optgroup label={t('chartConfig.singleMetric')}>
                     {LOCAL_METRIC_KEYS.map(m => (
                       <option key={m} value={m}>{METRIC_LABELS[m]}</option>
                     ))}
                   </optgroup>
                   {officialMetricsForGroup(groupBy).length > 0 && (
-                    <optgroup label="公式アプリ（全期間）">
+                    <optgroup label={t('chartConfig.officialGroup')}>
                       {officialMetricsForGroup(groupBy).map(m => (
                         <option key={m} value={m}>{METRIC_LABELS[m]}</option>
                       ))}
@@ -431,10 +425,14 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 </select>
                 <p className="form-hint">
                   {isComposite
-                    ? Y_COMPOSITION_DESCRIPTIONS[yComposition]
+                    ? (yComposition === 'stacked_winrate'
+                      ? t('chartConfig.yCompStacked')
+                      : yComposition === 'attack_defense'
+                        ? t('chartConfig.yCompAttack')
+                        : t('chartConfig.yCompSingle'))
                     : OFFICIAL_METRICS.includes(metric)
-                      ? '公式アプリの全期間の値です。上のフィルターには追従しません。'
-                      : '単一メトリクスの棒グラフ。'}
+                      ? t('chartConfig.officialHint')
+                      : t('chartConfig.singleBarHint')}
                 </p>
               </div>
             )
@@ -444,7 +442,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               これらは yComposition が常に single_metric に固定されている。line は下の複数選択 UI を使う。 */}
           {shape !== 'scatter' && shape !== 'bar' && shape !== 'line' && yComposition === 'single_metric' && (
             <div className="form-field">
-              <label className="form-label">メトリクス</label>
+              <label className="form-label">{t('chartConfig.metric')}</label>
               {/* ヒートマップは合計系を出さない。2D クロス集計に列が無く、
                   選んでも全セルが空になるため(#351)。 */}
               <select className="form-input" value={metric} onChange={e => setMetric(e.target.value as MetricKey)}>
@@ -460,7 +458,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               軸の左右は自動割当(最初に選んだ系列のグループ = 左軸、2 つ目のグループ = 右軸)。 */}
           {shape === 'line' && (
             <div className="form-field">
-              <label className="form-label">メトリクス(複数選択可)</label>
+              <label className="form-label">{t('chartConfig.metricsMulti')}</label>
               <div className="metric-checkbox-group">
                 {(LOCAL_METRIC_KEYS).map(m => {
                   const group = axisGroupOf(m)
@@ -481,11 +479,11 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               </div>
               {lineUsedGroups.size >= 2 && (
                 <p className="form-hint">
-                  軸は 2 種類までです({[...lineUsedGroups].map(g => AXIS_GROUP_LABELS[g]).join('・')} を使用中)。
+                  {t('chartConfig.axisLimitHint', { groups: [...lineUsedGroups].map(g => AXIS_GROUP_LABELS[g]).join('・') })}
                 </p>
               )}
               {lineMetrics.length === 0 && (
-                <p className="form-hint form-hint--warn">少なくとも 1 つ選んでください。</p>
+                <p className="form-hint form-hint--warn">{t('chartConfig.pickOne')}</p>
               )}
             </div>
           )}
@@ -493,28 +491,28 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
           {shape === 'scatter' && (
             <>
               <div className="form-field">
-                <label className="form-label">ドット単位</label>
+                <label className="form-label">{t('chartConfig.dotUnit')}</label>
                 <select className="form-input" value={dotUnit} onChange={e => setDotUnit(e.target.value as ScatterDotUnit)}>
                   {SCATTER_DOT_UNITS.map(u => (
                     <option key={u} value={u}>{scatterDotUnitLabel(u)}</option>
                   ))}
                 </select>
-                <p className="form-hint">1 ドット = 1 {scatterDotUnitLabel(dotUnit)}。</p>
+                <p className="form-hint">{t('chartConfig.dotUnitHint', { unit: scatterDotUnitLabel(dotUnit) })}</p>
               </div>
               {canScatterUseImages(dotUnit) && (
                 <div className="form-field">
-                  <label className="form-label">点の見た目</label>
+                  <label className="form-label">{t('chartConfig.pointStyle')}</label>
                   <select
                     className="form-input"
                     value={pointStyle}
                     onChange={e => setPointStyle(e.target.value as ScatterPointStyle)}
                   >
-                    <option value="dot">丸・記号</option>
-                    <option value="image">ブキ画像</option>
+                    <option value="dot">{t('chartConfig.pointDot')}</option>
+                    <option value="image">{t('chartConfig.pointImage')}</option>
                   </select>
                   {pointStyle === 'image' && (
                     <>
-                      <label className="form-label" style={{ marginTop: 8 }}>画像の大きさ</label>
+                      <label className="form-label" style={{ marginTop: 8 }}>{t('chartConfig.imageSize')}</label>
                       <select
                         className="form-input"
                         value={imageSize}
@@ -528,13 +526,13 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                   )}
                   <p className="form-hint">
                     {pointStyle === 'image'
-                      ? 'サイズ・色は使えません(画像で塗りが埋まるため)。密集して重なるときは小さくしてください。'
-                      : 'ブキ軸では点をブキ画像にできます。'}
+                      ? t('chartConfig.imageHint')
+                      : t('chartConfig.imageAvailableHint')}
                   </p>
                 </div>
               )}
               <div className="form-field">
-                <label className="form-label">X 軸</label>
+                <label className="form-label">{t('chartConfig.xAxis')}</label>
                 <select className="form-input" value={xMetric} onChange={e => setXMetric(e.target.value)}>
                   {scatterMetricSelectOptions(dotUnit)}
                 </select>
@@ -545,13 +543,13 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                       checked={xLogScale}
                       onChange={e => setXLogScale(e.target.checked)}
                     />
-                    ログスケール
+                    {t('chartConfig.logScale')}
                   </label>
                 )}
                 <p className="form-hint">{logScaleHint(xMetric)}</p>
               </div>
               <div className="form-field">
-                <label className="form-label">Y 軸</label>
+                <label className="form-label">{t('chartConfig.yAxis')}</label>
                 <select className="form-input" value={yMetric} onChange={e => setYMetric(e.target.value)}>
                   {scatterMetricSelectOptions(dotUnit)}
                 </select>
@@ -562,7 +560,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                       checked={yLogScale}
                       onChange={e => setYLogScale(e.target.checked)}
                     />
-                    ログスケール
+                    {t('chartConfig.logScale')}
                   </label>
                 )}
                 <p className="form-hint">{logScaleHint(yMetric)}</p>
@@ -571,20 +569,20 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                   理由は「点の見た目」のヒントに書いてある。 */}
               {!imageMode && (
               <div className="form-field">
-                <label className="form-label">サイズ(任意)</label>
+                <label className="form-label">{t('chartConfig.sizeOptional')}</label>
                 <select className="form-input" value={sizeMetric} onChange={e => setSizeMetric(e.target.value)}>
-                  <option value="">(一定サイズ)</option>
+                  <option value="">{t('chartConfig.fixedSize')}</option>
                   {scatterMetricSelectOptions(dotUnit)}
                 </select>
-                <p className="form-hint">値が大きいほど大きく見える(sqrt スケール)。</p>
+                <p className="form-hint">{t('chartConfig.sizeHint')}</p>
               </div>
               )}
               {!imageMode && (
               <div className="form-field">
-                <label className="form-label">色・形(任意)</label>
+                <label className="form-label">{t('chartConfig.colorOptional')}</label>
                 <select className="form-input" value={colorMetric} onChange={e => setColorMetric(e.target.value)}>
-                  <option value="">(単色 = アクセント)</option>
-                  {dotUnit === 'battle' && <option value="win_lose">勝敗</option>}
+                  <option value="">{t('chartConfig.solidColor')}</option>
+                  {dotUnit === 'battle' && <option value="win_lose">{t('chart.winLose')}</option>}
                   {scatterMetricSelectOptions(dotUnit)}
                   {(dotUnit === 'weapon' || dotUnit === 'battle') && SCATTER_CATEGORY_COLOR_KEYS.map(k => (
                     <option key={k} value={k}>{GROUP_BY_LABELS[k]}</option>
@@ -592,10 +590,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                 </select>
                 <p className="form-hint">
                   {dotUnit === 'battle'
-                    ? '勝敗、またはブキカテゴリ・サブ・スペシャルを色×形で区別できます。'
+                    ? t('chartConfig.colorHintBattle')
                     : dotUnit === 'weapon'
-                      ? '数値指標のほか、ブキカテゴリ・サブ・スペシャルを色×形で区別できます。'
-                      : '勝率は divergent (くすみ珊瑚↔くすみ黄緑↔くすみティール)、それ以外は accent の濃淡。'}
+                      ? t('chartConfig.colorHintWeapon')
+                      : t('chartConfig.colorHintOther')}
                 </p>
               </div>
               )}
@@ -605,13 +603,13 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
           {/* bar の「Y 軸の構成 + メトリクス」は上の統合 Y 軸 select に集約済み。 */}
 
           <div className="modal-actions">
-            <button className="btn-secondary" onClick={onClose}>キャンセル</button>
+            <button className="btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
             <button
               className="btn-primary"
               onClick={handleSave}
               disabled={!shapeIsImplemented || (shape === 'line' && lineMetrics.length === 0)}
             >
-              {initial ? '更新' : '追加'}
+              {initial ? t('common.update') : t('common.add')}
             </button>
           </div>
         </div>
