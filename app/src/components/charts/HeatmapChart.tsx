@@ -1,4 +1,5 @@
 import { useId, useMemo, useState, type MouseEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { GroupedStatsRow2D, MetricKey } from '../../types'
 import { METRIC_LABELS, getMetric2D, formatMetric, metricGroup, winLoseBreakdown } from '../../types'
 import {
@@ -100,6 +101,7 @@ export function HeatmapChart({
   xWeaponTip?:      (name: string) => WeaponKitTipData | undefined
   yWeaponTip?:      (name: string) => WeaponKitTipData | undefined
 }) {
+  const { t } = useTranslation()
   // 軸タイトルがある場合は、tick ラベルスペースに追加で TITLE_PAD ぶん確保する。
   const PAD_LEFT = PAD_LEFT_BASE + (yTitle ? TITLE_PAD : 0)
   const PAD_TOP  = PAD_TOP_BASE  + (xTitle ? TITLE_PAD : 0)
@@ -249,7 +251,7 @@ export function HeatmapChart({
 
   return (
     <div className="chart-hover-area chart-hover-area--scroll" style={{ position: 'relative' }}>
-      <svg width={width} height={height} role="img" aria-label="ヒートマップ">
+      <svg width={width} height={height} role="img" aria-label={t('chart.heatmapAria')}>
         <defs>
           <SparseHatchPattern id={sparseId} />
           <EmptyHatchPattern id={emptyId} />

@@ -1,3 +1,17 @@
+import i18n from './i18n'
+
+/** 表示言語に追従するラベル表。キーが無いときは日本語フォールバック。 */
+function liveLabels<T extends Record<string, string>>(prefix: string, fallback: T): T {
+  return new Proxy(fallback, {
+    get(target, prop, receiver) {
+      if (typeof prop !== 'string' || !(prop in target)) {
+        return Reflect.get(target, prop, receiver)
+      }
+      return i18n.t(`${prefix}.${prop}`, { defaultValue: target[prop as keyof T] as string })
+    },
+  }) as T
+}
+
 export type Tab = 'battles' | 'weapons' | 'stages' | 'ai' | 'env' | 'gear' | 'settings'
 
 /** 「バトル」タブ内のビュー(#296: 旧ダッシュボードタブ + 旧バトルログタブの統合)。 */
@@ -378,7 +392,7 @@ export function stageAbbr(name: string): string {
   return m ? m[0] : name
 }
 
-const MODE_LABELS: Record<string, string> = {
+const MODE_LABELS: Record<string, string> = liveLabels('labels.mode', {
   // 新形式(stat.ink ID)
   'regular':           'レギュラー',
   'bankara':           'バンカラ',           // フィルター・ダッシュボード用
@@ -395,15 +409,15 @@ const MODE_LABELS: Record<string, string> = {
   'XMATCH':   'Xマッチ',
   'LEAGUE':   'リーグ',
   'PRIVATE':  'プライベート',
-}
+})
 
-export const RULE_LABELS: Record<string, string> = {
+export const RULE_LABELS: Record<string, string> = liveLabels('labels.rule', {
   'turf_war': 'ナワバリバトル',
   'area':     'ガチエリア',
   'yagura':   'ガチヤグラ',
   'hoko':     'ガチホコバトル',
   'asari':    'ガチアサリ',
-}
+})
 
 export function modeLabel(mode: string): string {
   return MODE_LABELS[mode] ?? mode
@@ -414,9 +428,10 @@ export function ruleLabel(rule: string): string {
 }
 
 export function resultLabel(result: string): string {
-  if (result === 'win'  || result === 'WIN')  return 'Win'
-  if (result === 'lose' || result === 'LOSE') return 'Lose'
-  if (result === 'draw' || result === 'DRAW') return 'Draw'
+  const k = result.toLowerCase()
+  if (k === 'win')  return i18n.t('filter.result_win', { defaultValue: 'Win' })
+  if (k === 'lose') return i18n.t('filter.result_lose', { defaultValue: 'Lose' })
+  if (k === 'draw') return i18n.t('filter.result_draw', { defaultValue: 'Draw' })
   return result
 }
 
@@ -589,12 +604,17 @@ export function fmtOfficialWinRate(n: number | null | undefined): string {
  */
 export function winLoseBreakdown(total: number, wins: number, draws: number): string {
   const losses = total - wins - draws
-  return `${wins} 勝 ${losses} 敗${draws > 0 ? ` ${draws} 分` : ''}`
+  return draws > 0
+    ? i18n.t('metrics.winLoseBreakdownDraw', { wins, losses, draws })
+    : i18n.t('metrics.winLoseBreakdown', { wins, losses })
 }
 
 /** チップ用の勝敗 1 行 `バトル数: 42 (15 勝 27 敗)`。ヒートマップ・散布図・カレンダーで共用。 */
 export function winCountTooltipText(total: number, wins: number, draws: number): string {
-  return `バトル数: ${total} (${winLoseBreakdown(total, wins, draws)})`
+  return i18n.t('metrics.winCountTooltip', {
+    total,
+    breakdown: winLoseBreakdown(total, wins, draws),
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -758,11 +778,11 @@ export const SCATTER_IMAGE_PX: Record<ScatterImageSize, number> = {
   large:  44,
 }
 
-export const SCATTER_IMAGE_SIZE_LABELS: Record<ScatterImageSize, string> = {
+export const SCATTER_IMAGE_SIZE_LABELS: Record<ScatterImageSize, string> = liveLabels('scatterSize', {
   small:  '小',
   medium: '中',
   large:  '大',
-}
+})
 
 /** 点をブキ画像で描けるドット単位か (#627)。
  *
@@ -800,7 +820,7 @@ export type BattleNumericMetric =
   | 'inked'
   | 'duration'
 
-export const BATTLE_NUMERIC_METRIC_LABELS: Record<BattleNumericMetric, string> = {
+export const BATTLE_NUMERIC_METRIC_LABELS: Record<BattleNumericMetric, string> = liveLabels('battleNumeric', {
   kill:            'キル数',
   death:           'デス数',
   assist:          'アシスト数',
@@ -808,7 +828,7 @@ export const BATTLE_NUMERIC_METRIC_LABELS: Record<BattleNumericMetric, string> =
   special:         'スペシャル',
   inked:           '塗り',
   duration:        'バトル時間',
-}
+})
 
 /** メトリクスごとの推奨 bin 幅(既定値)。 */
 export const BATTLE_NUMERIC_DEFAULT_BIN: Record<BattleNumericMetric, number> = {
@@ -833,7 +853,7 @@ export type BattleMetricKey =
   | 'inked'
   | 'special'
 
-export const BATTLE_METRIC_LABELS: Record<BattleMetricKey, string> = {
+export const BATTLE_METRIC_LABELS: Record<BattleMetricKey, string> = liveLabels('battleMetric', {
   kill:          'キル数',
   assist:        'アシスト数',
   contrib_kill:  '貢献キル',
@@ -842,7 +862,7 @@ export const BATTLE_METRIC_LABELS: Record<BattleMetricKey, string> = {
   contrib_kd:    '貢献キルレ',
   inked:         '塗り',
   special:       'スペシャル',
-}
+})
 
 /** scatter の 1 ドット単位。'battle' 以外は db_grouped_stats の groupBy と同じキー。 */
 export type ScatterDotUnit =
@@ -872,7 +892,7 @@ export const SCATTER_AGG_METRIC_KEYS: ScatterAggMetricKey[] = [
 export const SCATTER_WIN_COUNT_METRICS = new Set<string>(['total', 'wins', 'losses'])
 
 export function scatterAggMetricLabel(key: string): string {
-  if (key === 'losses') return '負数'
+  if (key === 'losses') return i18n.t('metrics.losses', { defaultValue: '負数' })
   return METRIC_LABELS[key as MetricKey] ?? key
 }
 
@@ -983,19 +1003,19 @@ export function getMetric2D(row: GroupedStatsRow2D, metric: MetricKey): number |
 }
 
 /** UI ラベル。 */
-export const CHART_SHAPE_LABELS: Record<ChartShape, string> = {
+export const CHART_SHAPE_LABELS: Record<ChartShape, string> = liveLabels('chartShape', {
   bar:              '棒グラフ',
   line:             '線グラフ',
   scatter:          '散布図',
   heatmap:          'ヒートマップ',
   calendar_heatmap: 'カレンダー',
-}
+})
 
-export const Y_COMPOSITION_LABELS: Record<YComposition, string> = {
+export const Y_COMPOSITION_LABELS: Record<YComposition, string> = liveLabels('yComposition', {
   single_metric:   '単一メトリクス',
   stacked_winrate: 'バトル数 & 勝率',
   attack_defense:  'キル vs デス',
-}
+})
 
 /** 実装済みの shape。それ以外は UI で disabled。
  *  v1.0.0: bar / line / calendar_heatmap / heatmap / scatter。 */
@@ -1032,12 +1052,12 @@ export function metricGroup(metric: MetricKey): MetricGroup {
  * 値域が per_battle と同オーダーなので同居させる。貢献キルも同様。
  */
 export type AxisGroup = 'per_battle' | 'win_rate' | 'count' | 'paint'
-export const AXIS_GROUP_LABELS: Record<AxisGroup, string> = {
+export const AXIS_GROUP_LABELS: Record<AxisGroup, string> = liveLabels('axisGroup', {
   per_battle: '回/バトル',
   win_rate:   '勝率',
   count:      'カウント',
   paint:      '塗り',
-}
+})
 export function axisGroupOf(metric: MetricKey): AxisGroup {
   if (metric === 'win_rate' || metric.startsWith('official_win_rate_')) return 'win_rate'
   if (metric === 'avg_inked' || metric === 'sum_inked' || metric === 'official_paint') return 'paint'
@@ -1078,49 +1098,52 @@ export function autoChartTitle(spec: {
   xBinWidth?:       number
   yBinWidth?:       number
 }): string {
-  const metricLabel = spec.metric ? METRIC_LABELS[spec.metric] : 'メトリクス'
+  const metricLabel = spec.metric ? METRIC_LABELS[spec.metric] : i18n.t('chart.metric', { defaultValue: 'メトリクス' })
 
   if (spec.shape === 'calendar_heatmap') {
-    return `${metricLabel} カレンダー`
+    return i18n.t('chart.titleCalendar', { metric: metricLabel })
   }
   if (spec.shape === 'heatmap') {
     // 数値メトリクス bin 軸(#134)はラベルを置換。bin 幅を併記する。
+    const binOf = (m: BattleNumericMetric, width?: number) =>
+      i18n.t('chart.binLabel', {
+        metric: BATTLE_NUMERIC_METRIC_LABELS[m],
+        width: width ?? BATTLE_NUMERIC_DEFAULT_BIN[m],
+      })
     const x = spec.xNumericMetric
-      ? `${BATTLE_NUMERIC_METRIC_LABELS[spec.xNumericMetric]} (bin ${spec.xBinWidth ?? BATTLE_NUMERIC_DEFAULT_BIN[spec.xNumericMetric]})`
+      ? binOf(spec.xNumericMetric, spec.xBinWidth)
       : GROUP_BY_LABELS[spec.groupBy]
     const y = spec.yNumericMetric
-      ? `${BATTLE_NUMERIC_METRIC_LABELS[spec.yNumericMetric]} (bin ${spec.yBinWidth ?? BATTLE_NUMERIC_DEFAULT_BIN[spec.yNumericMetric]})`
+      ? binOf(spec.yNumericMetric, spec.yBinWidth)
       : spec.groupBy2 ? GROUP_BY_LABELS[spec.groupBy2] : '?'
-    return `${x} × ${y}: ${metricLabel}`
+    return i18n.t('chart.titleHeatmap', { x, y, metric: metricLabel })
   }
   if (spec.shape === 'scatter') {
-    const unit = spec.dotUnit === 'battle'
-      ? 'バトル'
-      : spec.dotUnit
-        ? GROUP_BY_LABELS[spec.dotUnit]
-        : GROUP_BY_LABELS.weapon
+    const unit = spec.dotUnit
+      ? scatterDotUnitLabel(spec.dotUnit)
+      : GROUP_BY_LABELS.weapon
     const labelOf = (k?: string): string => {
       if (!k) return '?'
       if (k in BATTLE_METRIC_LABELS) return BATTLE_METRIC_LABELS[k as BattleMetricKey]
       if (k in METRIC_LABELS) return METRIC_LABELS[k as MetricKey]
       return k
     }
-    return `${unit}別 ${labelOf(spec.yMetric)} × ${labelOf(spec.xMetric)}`
+    return i18n.t('chart.titleScatter', { unit, y: labelOf(spec.yMetric), x: labelOf(spec.xMetric) })
   }
   if (spec.shape === 'line') {
     const bucket = GROUP_BY_LABELS[spec.groupBy]
     const list = spec.metrics && spec.metrics.length ? spec.metrics : (spec.metric ? [spec.metric] : [])
     const label = list.length ? list.map(m => METRIC_LABELS[m]).join('・') : metricLabel
-    return `${label} の推移 (${bucket})`
+    return i18n.t('chart.titleLine', { metrics: label, bucket })
   }
 
   // bar (デフォルト)
   const xLabel = GROUP_BY_LABELS[spec.groupBy]
   const yLabel =
     spec.yComposition === 'single_metric'   ? metricLabel
-    : spec.yComposition === 'stacked_winrate' ? 'バトル数 & 勝率'
-    :                                            'キル vs デス'
-  return `${xLabel}別 ${yLabel}`
+    : spec.yComposition === 'stacked_winrate' ? Y_COMPOSITION_LABELS.stacked_winrate
+    :                                            Y_COMPOSITION_LABELS.attack_defense
+  return i18n.t('chart.titleBar', { x: xLabel, y: yLabel })
 }
 
 /** db_grouped_stats の返却 1 行分。
@@ -1162,7 +1185,7 @@ export interface GroupedStatsRow {
 }
 
 /** UI 表示用のラベル。 */
-export const GROUP_BY_LABELS: Record<GroupByKey, string> = {
+export const GROUP_BY_LABELS: Record<GroupByKey, string> = liveLabels('groupBy', {
   weapon:          'ブキ',
   stage:           'ステージ',
   rule:            'ルール',
@@ -1177,7 +1200,7 @@ export const GROUP_BY_LABELS: Record<GroupByKey, string> = {
   three_day:       '3 日',
   week:            '週',
   month:           '月',
-}
+})
 
 /** ブキ名・味方ブキ・相手ブキ。件数の上位 N を切る対象。 */
 export function isWeaponGroupBy(g: string | undefined): boolean {
@@ -1186,10 +1209,12 @@ export function isWeaponGroupBy(g: string | undefined): boolean {
 
 /** scatter のドット単位ラベル(GROUP_BY_LABELS と battle のみ例外)。 */
 export function scatterDotUnitLabel(dotUnit: ScatterDotUnit): string {
-  return dotUnit === 'battle' ? 'バトル' : GROUP_BY_LABELS[dotUnit]
+  return dotUnit === 'battle'
+    ? i18n.t('groupBy.battle', { defaultValue: 'バトル' })
+    : GROUP_BY_LABELS[dotUnit]
 }
 
-export const METRIC_LABELS: Record<MetricKey, string> = {
+export const METRIC_LABELS: Record<MetricKey, string> = liveLabels('metrics', {
   total:             'バトル数',
   wins:              '勝数',
   win_rate:          '勝率',
@@ -1217,7 +1242,7 @@ export const METRIC_LABELS: Record<MetricKey, string> = {
   official_win_rate_lf:       '公式勝率 ヤグラ',
   official_win_rate_gl:       '公式勝率 ホコ',
   official_win_rate_cl:       '公式勝率 アサリ',
-}
+})
 
 /** 折れ線・ヒートマップ・カレンダーなど、公式値を出さないセレクト用。 */
 export const LOCAL_METRIC_KEYS: MetricKey[] =
