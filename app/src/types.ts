@@ -267,7 +267,12 @@ export interface BattleRow {
   rule: string
   stage: string
   stage_name: string | null
+  /** map.name_en (#693). */
+  stage_name_en?: string | null
   weapon: string
+  /** weapon.name_ja / name_en (#693). Display only; `weapon` stays the image/filter key. */
+  weapon_name_ja?: string | null
+  weapon_name_en?: string | null
   result: 'win' | 'lose' | 'draw'
   kill: number
   death: number
@@ -294,6 +299,9 @@ export interface BattleRow {
 
 export interface SummaryEntry {
   name: string
+  /** weapon / stage 軸のみ (#693)。 */
+  name_ja?: string | null
+  name_en?: string | null
   total: number
   wins: number
   draws: number
@@ -308,7 +316,10 @@ export interface Summary {
 }
 
 export interface WeaponRecord {
+  /** Join / image / filter key (= weapon.key). */
   name: string
+  name_ja?: string | null
+  name_en?: string | null
   category: string
   sub_weapon: string | null
   special_weapon: string | null
@@ -927,6 +938,8 @@ export interface GroupedStatsRow2D {
   key_y:        string
   name_x:       string
   name_y:       string
+  name_en_x?:   string | null
+  name_en_y?:   string | null
   total:        number
   wins:         number
   draws:        number
@@ -1131,6 +1144,9 @@ export function autoChartTitle(spec: {
 export interface GroupedStatsRow {
   key:           string
   name:          string
+  /** weapon / stage 軸 (#693)。`name` は従来どおり日本語表示名。 */
+  name_ja?:      string | null
+  name_en?:      string | null
   total:         number
   wins:          number
   draws:         number

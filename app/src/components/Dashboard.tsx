@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import {
@@ -16,9 +17,10 @@ import {
 import type { Summary, SummaryEntry, Filters, BattleStats, BattleRow, GroupedStatsRow, GroupedStatsRow2D, CustomChart, GroupByKey, WeaponRecord } from '../types'
 import { BATTLE_NUMERIC_DEFAULT_BIN } from '../types'
 import {
-  filtersToRange, stageAbbr, modeLabel, ruleLabel, modeFilterArg, ruleFilterArg,
+  filtersToRange, modeLabel, ruleLabel, modeFilterArg, ruleFilterArg,
   fmtKillWithAssist, fmtKillRatioWithContrib,
 } from '../types'
+import { stageSummaryTickLabel, summaryEntryDisplayName } from '../i18n/displayName'
 import { CustomChartCard } from './CustomChartCard'
 import { ChartConfigModal } from './ChartConfigModal'
 import { loadCustomCharts, saveCustomCharts, generateChartId } from '../utils/customCharts'
@@ -75,6 +77,7 @@ interface Props {
 }
 
 export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }: Props) {
+  const { i18n } = useTranslation()
   const [summary, setSummary] = useState<Summary | null>(null)
   const [stats, setStats]     = useState<BattleStats | null>(null)
   // #86 PR B: ユーザーが追加したカスタムグラフ。localStorage に永続化。
@@ -320,6 +323,17 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
     persist(arrayMove(customCharts, oldIdx, newIdx))
   }
 
+  const weaponLabelByKey = useMemo(() => {
+    if (!summary) return new Map<string, string>()
+    return new Map(summary.by_weapon.map(e => [e.name, summaryEntryDisplayName(e)]))
+  }, [summary, i18n.language])
+
+  const stageNameTransform = useMemo(() => {
+    if (!summary) return (n: string) => n
+    const m = new Map(summary.by_stage.map(e => [e.name, stageSummaryTickLabel(e)]))
+    return (n: string) => m.get(n) ?? n
+  }, [summary, i18n.language])
+
   return (
     <div className="dashboard">
       {loading ? (
@@ -348,12 +362,12 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
 
           <div className="chart-grid">
             <ChartCard title="ブキ別 バトル数 & 勝率" sortBy={weaponSort} onSortChange={setWeaponSort} filterSummary={filterSummary}>
-              <WinRateChart data={rankedWeapons(summary.by_weapon, weaponSort)} height={260} images={weaponImages} hoverImageSize={64} />
+              <WinRateChart data={rankedWeapons(summary.by_weapon, weaponSort)} height={260} images={weaponImages} hoverImageSize={64} labelLookup={weaponLabelByKey} />
             </ChartCard>
 
             <ChartCard title="ステージ別 バトル数 & 勝率" sortBy={stageSort} onSortChange={setStageSort} filterSummary={filterSummary}>
               {/* ステージは現状 25 種程度で全件表示が望ましい(ブキのような大量マスターと違い slice 不要)。 */}
-              <WinRateChart data={sorted(summary.by_stage, stageSort)} height={260} images={new Map()} nameTransform={stageAbbr} tickAngle={30} />
+              <WinRateChart data={sorted(summary.by_stage, stageSort)} height={260} images={new Map()} nameTransform={stageNameTransform} tickAngle={30} />
             </ChartCard>
 
             <ChartCard title="ルール別 バトル数 & 勝率" sortBy={ruleSort} onSortChange={setRuleSort} filterSummary={filterSummary}>
@@ -528,13 +542,15 @@ function ImageTick(props: {
 // WinRateChart - activeIndex shared between tick icons and bars
 // ---------------------------------------------------------------------------
 
-function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform, tickAngle }: {
+function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform, tickAngle, labelLookup }: {
   data: SummaryEntry[]
   height: number
   images: Map<string, string>
   hoverImageSize?: number
   nameTransform?: (name: string) => string
   tickAngle?: number
+  /** Slug/key → localized display label (weapon chart tooltip). */
+  labelLookup?: Map<string, string>
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const hasImages = data.some(d => images.has(d.name))
@@ -637,7 +653,9 @@ function WinRateChart({ data, height, images, hoverImageSize = 64, nameTransform
     <HoverTooltip activeIndex={activeIndex} dataLength={chartData.length} leftPad={leftPad} rightPad={rightPad}>
       {activeIndex != null && (() => {
         const entry = chartData[activeIndex]
-        const displayLabel = nameTransform ? nameTransform(entry.name) : entry.name
+        const displayLabel = nameTransform
+          ? nameTransform(entry.name)
+          : (labelLookup?.get(entry.name) ?? entry.name)
         return (
           <>
             <div className="hover-tt-title">{displayLabel}</div>
