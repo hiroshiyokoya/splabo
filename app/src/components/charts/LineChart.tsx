@@ -2,7 +2,7 @@ import {
   LineChart as RLineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip,
 } from 'recharts'
 import type { GroupedStatsRow, MetricKey, GroupByKey, AxisGroup } from '../../types'
-import { METRIC_LABELS, AXIS_GROUP_LABELS, getMetric, formatMetric, axisGroupOf } from '../../types'
+import { METRIC_LABELS, AXIS_GROUP_LABELS, getMetric, formatMetric, axisGroupOf, winCountTooltipText, SCATTER_WIN_COUNT_METRICS } from '../../types'
 import { buildTimeSeries, formatTickDate, formatBucketLabel } from '../../utils/timeBuckets'
 
 /** 系列の自動配色（#436）。1 系列目は既存の単一メトリクス折れ線と同じ accent を使う。 */
@@ -38,15 +38,21 @@ function LineTooltipContent({ active, payload, metrics }: {
   const point = payload[0]?.payload
   // 欠測バケット（row=null）の上ではツールチップ本体を出さない。
   if (!point || !point.row) return null
+  const row = point.row
+  const hasWinCountMetric = metrics.some(m => SCATTER_WIN_COUNT_METRICS.has(m))
+  const displayMetrics = metrics.filter(m => !(hasWinCountMetric && SCATTER_WIN_COUNT_METRICS.has(m)))
+  const winCountLine = row.total > 0 ? winCountTooltipText(row.total, row.wins, row.draws) : null
   return (
     <div className="line-tooltip">
       <div className="hover-tt-title">{point.label}</div>
-      {metrics.map((m, i) => (
-        <div key={m} className="hover-tt-row" style={{ color: LINE_COLORS[i % LINE_COLORS.length] }}>
+      {displayMetrics.map((m, i) => (
+        <div key={m} className="hover-tt-row" style={{ color: LINE_COLORS[metrics.indexOf(m) % LINE_COLORS.length] }}>
           {METRIC_LABELS[m]}: {formatMetric(point.values[m], m)}
         </div>
       ))}
-      <div className="hover-tt-row hover-tt-row--muted">バトル数: {point.row.total}</div>
+      {winCountLine && (
+        <div className={`hover-tt-row${displayMetrics.length > 0 ? ' hover-tt-row--muted' : ''}`}>{winCountLine}</div>
+      )}
     </div>
   )
 }
