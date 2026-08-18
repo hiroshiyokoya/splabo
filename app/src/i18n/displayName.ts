@@ -1,12 +1,94 @@
 import i18n from './index'
 import { stageAbbr } from '../types'
 import type { BattleRow, GroupedStatsRow, GroupedStatsRow2D, SummaryEntry, WeaponRecord } from '../types'
+import type { ScatterCategoryColorKey } from '../utils/scatterCategoryColors'
 
 /** Prefer `name_en` when UI language is English; else `name_ja`; then fallback/key. */
 export function localizedName(ja?: string | null, en?: string | null, fallback?: string): string {
   const useEn = i18n.language.startsWith('en')
   const pick = useEn ? (en || ja) : (ja || en)
   return (pick && pick.length ? pick : fallback) ?? ''
+}
+
+/** ブキカテゴリの公式英語名（stat.ink /api/v3/weapon の type.name.en_US、2026-08 時点、12種）。 */
+const WEAPON_CATEGORY_NAME_EN: Record<string, string> = {
+  'シューター': 'Shooters',
+  'ブラスター': 'Blasters',
+  'リールガン': 'Nozzlenoses',
+  'マニューバー': 'Dualies',
+  'ローラー': 'Rollers',
+  'フデ': 'Brushes',
+  'ワイパー': 'Splatanas',
+  'チャージャー': 'Chargers',
+  'スロッシャー': 'Sloshers',
+  'スピナー': 'Splatlings',
+  'シェルター': 'Brellas',
+  'ストリンガー': 'Stringers',
+}
+
+/** サブウェポンの公式英語名（stat.ink /api/v3/weapon の sub.name.en_US、14種）。 */
+const SUB_WEAPON_NAME_EN: Record<string, string> = {
+  'スプラッシュシールド': 'Splash Wall',
+  'カーリングボム': 'Curling Bomb',
+  'スプリンクラー': 'Sprinkler',
+  'ラインマーカー': 'Angle Shooter',
+  'ジャンプビーコン': 'Squid Beakon',
+  'ロボットボム': 'Autobomb',
+  'キューバンボム': 'Suction Bomb',
+  'クイックボム': 'Burst Bomb',
+  'ポイズンミスト': 'Toxic Mist',
+  'トーピード': 'Torpedo',
+  'スプラッシュボム': 'Splat Bomb',
+  'タンサンボム': 'Fizzy Bomb',
+  'ポイントセンサー': 'Point Sensor',
+  'トラップ': 'Ink Mine',
+}
+
+/** スペシャルウェポンの公式英語名（stat.ink /api/v3/weapon の special.name.en_US、19種）。 */
+const SPECIAL_WEAPON_NAME_EN: Record<string, string> = {
+  'メガホンレーザー5.1ch': 'Killer Wail 5.1',
+  'スミナガシート': 'Splattercolor Screen',
+  'キューインキ': 'Ink Vac',
+  'テイオウイカ': 'Kraken Royale',
+  'エナジースタンド': 'Tacticooler',
+  'ウルトラハンコ': 'Ultra Stamp',
+  'ウルトラショット': 'Trizooka',
+  'ウルトラチャクチ': 'Triple Splashdown',
+  'アメフラシ': 'Ink Storm',
+  'ホップソナー': 'Wave Breaker',
+  'デコイチラシ': 'Super Chump',
+  'トリプルトルネード': 'Triple Inkstrike',
+  'カニタンク': 'Crab Tank',
+  'ナイスダマ': 'Booyah Bomb',
+  'マルチミサイル': 'Tenta Missiles',
+  'サメライド': 'Reefslider',
+  'ジェットパック': 'Inkjet',
+  'グレートバリア': 'Big Bubbler',
+  'ショクワンダー': 'Zipcaster',
+}
+
+/** ブキカテゴリの表示名。未収録の値（表記ゆれ等）は日本語のままフォールバック。 */
+export function weaponCategoryDisplayName(ja: string): string {
+  return localizedName(ja, WEAPON_CATEGORY_NAME_EN[ja], ja)
+}
+
+/** サブウェポンの表示名。未収録の値は日本語のままフォールバック。 */
+export function subWeaponDisplayName(ja: string): string {
+  return localizedName(ja, SUB_WEAPON_NAME_EN[ja], ja)
+}
+
+/** スペシャルウェポンの表示名。未収録の値は日本語のままフォールバック。 */
+export function specialWeaponDisplayName(ja: string): string {
+  return localizedName(ja, SPECIAL_WEAPON_NAME_EN[ja], ja)
+}
+
+/** 散布図・凡例の色分けキー（weapon_category/sub_weapon/special_weapon）に応じた表示名変換。 */
+export function scatterCategoryValueDisplayName(colorKey: ScatterCategoryColorKey, value: string): string {
+  switch (colorKey) {
+    case 'weapon_category': return weaponCategoryDisplayName(value)
+    case 'sub_weapon':      return subWeaponDisplayName(value)
+    case 'special_weapon':  return specialWeaponDisplayName(value)
+  }
 }
 
 export function weaponRecordDisplayName(w: WeaponRecord): string {
@@ -64,6 +146,9 @@ export function groupedRowNameTransform(
     const m = new Map(rows.map(r => [r.name, groupedStatsDisplayName(r)]))
     return n => m.get(n) ?? n
   }
+  if (groupBy === 'weapon_category') return weaponCategoryDisplayName
+  if (groupBy === 'sub_weapon') return subWeaponDisplayName
+  if (groupBy === 'special_weapon') return specialWeaponDisplayName
   return undefined
 }
 
@@ -94,5 +179,8 @@ export function heatmap2dLabelTransform(
     }))
     return s => m.get(s) ?? s
   }
+  if (groupBy === 'weapon_category') return weaponCategoryDisplayName
+  if (groupBy === 'sub_weapon') return subWeaponDisplayName
+  if (groupBy === 'special_weapon') return specialWeaponDisplayName
   return undefined
 }

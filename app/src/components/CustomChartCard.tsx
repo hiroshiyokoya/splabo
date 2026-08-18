@@ -12,7 +12,7 @@ import {
   SCATTER_IMAGE_PX, isScatterImageMode, isOfficialRateMetric,
 } from '../types'
 import {
-  groupedRowNameTransform, heatmap2dLabelTransform,
+  groupedRowNameTransform, heatmap2dLabelTransform, scatterCategoryValueDisplayName,
 } from '../i18n/displayName'
 import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
@@ -28,6 +28,7 @@ import { rateCellColor, sequentialCellColor } from '../utils/heatmapColors'
 import {
   isScatterCategoryColorKey, categoryStyleOf, buildCategoryColorLegend,
   categoryValueForWeaponName, categoryValueForBattle, kitIconsForWeapon, type WeaponMeta,
+  type ScatterCategoryColorKey,
 } from '../utils/scatterCategoryColors'
 import { weaponAxisTip } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
@@ -151,7 +152,9 @@ function scatterTooltipEntries(
     { key: yKey, row: () => axisRow(yKey, y) },
     { key: sizeKey, row: () => axisRow(sizeKey, size, true) },
     isCatColor
-      ? { key: colorKey, row: () => (colorKey ? { label: metricLabelOf(colorKey), value: catVal!, muted: true } : null) }
+      ? { key: colorKey, row: () => (colorKey && isScatterCategoryColorKey(colorKey)
+          ? { label: metricLabelOf(colorKey), value: scatterCategoryValueDisplayName(colorKey, catVal!), muted: true }
+          : null) }
       : { key: colorKey, row: () => axisRow(colorKey, colorVal, true) },
   ]
 }
@@ -217,7 +220,7 @@ function buildAggScatterPoints(
       ? buildSizeLegend(metricLabelOf(sizeKey), points.map(p => p.size), v => formatMetric(v, scatterAggColorMetric(sizeKey)))
       : null,
     colorLegend: isCatColor
-      ? buildCategoryColorLegend(metricLabelOf(colorKey!), categories)
+      ? buildCategoryColorLegend(metricLabelOf(colorKey!), categories, cat => scatterCategoryValueDisplayName(colorKey as ScatterCategoryColorKey, cat))
       : colorKey
         ? buildColorLegend(
             metricLabelOf(colorKey),
@@ -297,7 +300,7 @@ function buildBattleScatterPoints(
           // 勝敗はメトリクスではないので、サイズ等と衝突しない専用キーで持つ
           ? { key: 'win_lose', row: () => ({ label: i18n.t('chart.winLose'), value: b.result, muted: true }) }
           : isCatColor
-            ? { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: catVal!, muted: true }) }
+            ? { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: scatterCategoryValueDisplayName(colorKey as ScatterCategoryColorKey, catVal!), muted: true }) }
             : { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: fmtBattle(getBattleMetric(b, colorKey as BattleMetricKey)), muted: true }) },
       ]),
     }
@@ -314,7 +317,7 @@ function buildBattleScatterPoints(
           { label: i18n.t('chart.draw'), color: 'var(--draw)' },
         ] }
       : isCatColor
-        ? buildCategoryColorLegend(metricLabelOf(colorKey!), categories)
+        ? buildCategoryColorLegend(metricLabelOf(colorKey!), categories, cat => scatterCategoryValueDisplayName(colorKey as ScatterCategoryColorKey, cat))
         : null,
   }
 }

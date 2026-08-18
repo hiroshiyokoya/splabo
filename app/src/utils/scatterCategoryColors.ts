@@ -120,8 +120,13 @@ export function categoryColorOf(name: string, presentCategories?: readonly strin
   return categoryStyleOf(name, presentCategories).color
 }
 
-/** 出現中カテゴリの色×形凡例。 */
-export function buildCategoryColorLegend(label: string, categories: string[]): ColorLegend {
+/** 出現中カテゴリの色×形凡例。
+ *  `displayTransform` は表示ラベルのみに適用する（色/形の割当は元の値のまま安定させるため）。 */
+export function buildCategoryColorLegend(
+  label: string,
+  categories: string[],
+  displayTransform?: (cat: string) => string,
+): ColorLegend {
   const sorted = uniqueSortedCategories(categories)
   return {
     label,
@@ -129,7 +134,7 @@ export function buildCategoryColorLegend(label: string, categories: string[]): C
     encoding: 'color_shape',
     items: sorted.map(cat => {
       const style = categoryStyleOf(cat, sorted)
-      return { label: cat, color: style.color, shape: style.shape }
+      return { label: displayTransform ? displayTransform(cat) : cat, color: style.color, shape: style.shape }
     }),
   }
 }

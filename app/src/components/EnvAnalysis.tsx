@@ -34,8 +34,11 @@ import { loadEnvImportPrefs, resolveImportSince } from './EnvImportSince'
 import {
   SCATTER_CATEGORY_COLOR_KEYS, isScatterCategoryColorKey, categoryStyleOf,
   buildCategoryColorLegend, categoryValueForEnvStat, kitIconsForWeapon,
-  type WeaponMeta,
+  type WeaponMeta, type ScatterCategoryColorKey,
 } from '../utils/scatterCategoryColors'
+import {
+  scatterCategoryValueDisplayName, weaponCategoryDisplayName, subWeaponDisplayName, specialWeaponDisplayName,
+} from '../i18n/displayName'
 import { loadSubSpImageMaps, loadWeaponImageMap, weaponAxisTip } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo, PanelExportNote } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
@@ -253,6 +256,9 @@ function dimKeyLabeller(t: TFunction, dim: string): (k: string) => string {
   if (dim === 'rule')  return (k) => rules[k]  ?? k
   if (dim === 'lobby') return (k) => lobbies[k] ?? k
   if (dim === 'stage') return (k) => shortStage(k)
+  if (dim === 'weapon_category') return weaponCategoryDisplayName
+  if (dim === 'sub_weapon')      return subWeaponDisplayName
+  if (dim === 'special_weapon')  return specialWeaponDisplayName
   return (k) => k
 }
 
@@ -951,7 +957,7 @@ export function EnvAnalysis() {
       { key: yM.key,    row: { label: yM.label, value: y == null ? '-' : yM.fmt(y) } },
       ...(sizeM  ? [{ key: sizeM.key,  row: { label: sizeM.label,  value: sv == null ? '-' : sizeM.fmt(sv),  muted: true } }] : []),
       ...(colorM ? [{ key: colorM.key, row: { label: colorM.label, value: cv == null ? '-' : colorM.fmt(cv), muted: true } }] : []),
-      ...(isCatColor ? [{ key: colorKey, row: { label: groupByLabel(t, colorKey as GroupByKey), value: catVal!, muted: true } }] : []),
+      ...(isCatColor ? [{ key: colorKey, row: { label: groupByLabel(t, colorKey as GroupByKey), value: scatterCategoryValueDisplayName(colorKey as ScatterCategoryColorKey, catVal!), muted: true } }] : []),
     ])
     return {
       name: s.key,
@@ -986,6 +992,7 @@ export function EnvAnalysis() {
       return buildCategoryColorLegend(
         groupByLabel(t, colorKey as GroupByKey),
         shownScatter.map(s => categoryValueForEnvStat(s, colorKey)),
+        cat => scatterCategoryValueDisplayName(colorKey as ScatterCategoryColorKey, cat),
       )
     }
     return colorM
