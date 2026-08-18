@@ -6,6 +6,7 @@
  * CSS グリッド + カラースケールで自前実装する。集計後データは数十×数十セルで軽量。
  */
 import { useMemo, useState, type MouseEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { EnvMatrixCell } from '../../types'
 import { AXIS_LABEL_MIN_INTENSITY, axisLabelColor, axisLabelEndColor, rateCellColorInRange } from '../../utils/heatmapColors'
 import { WeaponKitTipBody, weaponKitTipStyle, type WeaponKitTipData } from './WeaponKitTip'
@@ -113,6 +114,7 @@ export function Heatmap({
   rowValue, colValue, axisRelative = false,
   rowTip, colTip,
 }: HeatmapProps) {
+  const { t } = useTranslation()
   const [axisHover, setAxisHover] = useState<{ mx: number; my: number; tip: WeaponKitTipData } | null>(null)
 
   function axisHoverHandlers(tip: WeaponKitTipData | undefined) {
@@ -196,7 +198,7 @@ export function Heatmap({
   const colHeadColor = headColor(colValue)
 
   if (cells.length === 0) {
-    return <p className="env-no-data">条件に一致するデータがありません(しきい値未満のセルは非表示)</p>
+    return <p className="env-no-data">{t('env.heatmapUi.noData')}</p>
   }
 
   const rl = rowLabel ?? ((k: string) => k)
@@ -225,7 +227,7 @@ export function Heatmap({
                 <th key={ck}
                     className={headClass}
                     style={colHeadColor(ck) ? { color: colHeadColor(ck) } : undefined}
-                    title={kit ? undefined : (sortable ? `${cl(ck)} - クリックで行を並べ替え` : ck)}
+                    title={kit ? undefined : (sortable ? t('env.heatmapUi.sortColTitle', { label: cl(ck) }) : ck)}
                     aria-sort={sorted ? (sortDir === 'asc' ? 'ascending' : 'descending') : sortable ? 'none' : undefined}
                     onClick={sortable ? () => onColHeaderClick!(ck) : undefined}
                     {...axisHoverHandlers(kit)}>
