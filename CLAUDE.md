@@ -17,6 +17,7 @@
 
 - **Rust**: `Cargo.toml` の `[workspace.dependencies]`（tauri 2.11.1 系）に寄せる。crate 側は `{ workspace = true, features = [...] }` で参照する。
 - **フロント**: npm workspaces（ルート一本化 lockfile）。依存インストールはルートで `npm ci` を一度だけ。
+- **UI 文言**: 新規は `app/src/i18n/locales/{ja,en}.json` のキー経由（#688）。表示言語は設定の「表示言語」。
 
 ---
 

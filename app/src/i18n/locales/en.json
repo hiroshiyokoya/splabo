@@ -1,0 +1,9 @@
+{
+  "settings": {
+    "language": "Language",
+    "languageHint": "Language for the app UI. Follow system uses the OS locale.",
+    "languageSystem": "Follow system",
+    "languageJa": "日本語",
+    "languageEn": "English"
+  }
+}

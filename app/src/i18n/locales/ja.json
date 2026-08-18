@@ -1,0 +1,9 @@
+{
+  "settings": {
+    "language": "表示言語",
+    "languageHint": "アプリの表示に使う言語です。システムに合わせるは OS の言語から決めます。",
+    "languageSystem": "システムに合わせる",
+    "languageJa": "日本語",
+    "languageEn": "English"
+  }
+}
