@@ -14,7 +14,7 @@ An open-source Windows / macOS app that fetches Splatoon 3 battle history and ow
 
 Bug reports, feature requests, and feedback are welcome via the [feedback form](https://docs.google.com/forms/d/e/1FAIpQLSd2m8eNn4HwTjOY1PMnecJvSH95QCJxNi0Lyy1w4zxhIdndrQ/viewform) (anonymous OK).
 
-🌐 **Download page**: https://splaboon.pages.dev/
+🌐 **Download page**: https://splaboon.pages.dev/en/ ([日本語](https://splaboon.pages.dev/))
 
 ```
 splabo/
