@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getVersion } from '@tauri-apps/api/app'
@@ -33,6 +34,9 @@ import {
   type ComboLimitValue,
   type NearLimitValue,
 } from '../gear/utils/appSettings'
+import { saveLocalePref } from '../i18n'
+import { loadLocalePref } from '../i18n/persist'
+import type { LocalePref } from '../i18n/locale'
 
 interface Props {
   settings: AppSettings
@@ -84,6 +88,7 @@ function pairingPayload(info: CompanionInfo): string {
 }
 
 export function Settings({ settings, onSave, loginVersion, focus }: Props) {
+  const { t } = useTranslation()
   // サブタブ(#428)。前回選択を復元し、focus 指定(遷移時の着地)が来たら上書きする。
   const [subTab, setSubTab] = useState<SettingsTab>(() => loadViewPrefs().settings)
   // 選択が変わったら永続化。他のタブ内ビュー(バトル/ブキ/ステージ)と同じ shellViews に相乗り。
@@ -95,6 +100,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   const [loggedIn, setLoggedIn] = useState(false)
   const [authLoading, setAuthLoading] = useState(false)
   const [themeId, setThemeId] = useState(getThemeId)
+  const [localePref, setLocalePref] = useState<LocalePref>(loadLocalePref)
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
@@ -675,7 +681,31 @@ async function handleUploadStatink() {
       </section>
       )}
 
-      {/* ── 表示: カラーテーマ → ダッシュボード → ギア表示 ── */}
+      {/* ── 表示: 言語 → カラーテーマ → ダッシュボード → ギア表示 ── */}
+      {subTab === 'display' && (
+      <section className="settings-section">
+        <h3>{t('settings.language')}</h3>
+        <p className="settings-note" style={{ marginTop: 0, marginBottom: 12 }}>
+          {t('settings.languageHint')}
+        </p>
+        <label>
+          {t('settings.language')}
+          <select
+            value={localePref}
+            onChange={(e) => {
+              const next = e.target.value as LocalePref
+              setLocalePref(next)
+              saveLocalePref(next)
+            }}
+          >
+            <option value="system">{t('settings.languageSystem')}</option>
+            <option value="ja">{t('settings.languageJa')}</option>
+            <option value="en">{t('settings.languageEn')}</option>
+          </select>
+        </label>
+      </section>
+      )}
+
       {subTab === 'display' && (
       <section className="settings-section">
         <h3>カラーテーマ</h3>
