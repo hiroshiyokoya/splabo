@@ -2588,7 +2588,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// 適用済みマイグレーションの最新版。**新しい `if current_version < N` ブロックを足したら
 /// 必ずここを N に更新する。** 更新を忘れると `migrate_battle_ids` 冒頭の早期 return に
 /// 阻まれ、追加したマイグレーションが一度も実行されない（#206・#306 の再発防止）。
-const LATEST_MIGRATION_VERSION: i64 = 22;
+const LATEST_MIGRATION_VERSION: i64 = 25;
 
 /// version 2: mode 判定バグ修正版で全件再処理
 /// version 3: kill カウントを kill_or_assist から実キル数に修正
@@ -2611,9 +2611,13 @@ const LATEST_MIGRATION_VERSION: i64 = 22;
 /// version 20: weapon の category/sub/special 空欄を同梱の静的マスターで backfill (#492)
 /// version 21: env_battles に A2–A4 / B2–B4 の kill/death/assist/inked 列を追加 (#501)
 /// version 22: ブキカテゴリ「リールガン」を公式どおり「シューター」へ統合 (#523)
+/// version 23: env_battles の集計スロットブキ ID に索引を追加 (#602)
+/// version 24: ブキ・ステージの英語名を静的マスターで backfill (#712)
+/// version 25: v24 backfill の再実行救済（#712 の追補。v24 導入時に本コメント下の
+///             注意書きどおり LATEST_MIGRATION_VERSION の更新を怠り、三度目の #206 / #306 を踏んだ）
 ///
 /// ⚠ **マイグレーションを追加したら `LATEST_MIGRATION_VERSION` も必ず上げること。**
-///    ここが古いままだと早期 return に阻まれて新しい版が一度も走らない（#206 / #306 で 2 度踏んだ）。
+///    ここが古いままだと早期 return に阻まれて新しい版が一度も走らない（#206 / #306 / #712 で 3 度踏んだ）。
 pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
     let ver_row = sqlx::query("PRAGMA user_version")
         .fetch_one(pool.as_ref())
@@ -3884,6 +3888,53 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             .map_err(|e| e.to_string())?;
         log::info!(
             "migrate v24: ブキ・ステージの英語名を静的マスターで backfill（weapon {filled_weapon} 件・map {filled_map} 件）"
+        );
+    }
+
+    // version 25: v24 backfill の再実行救済（#712 の追補）。
+    //             v24 を追加した際に LATEST_MIGRATION_VERSION の更新を忘れ、22 のままだった。
+    //             早期 return（`current_version >= LATEST_MIGRATION_VERSION`）が
+    //             current_version=23 の環境で v23/v24 ブロックの手前で発動し、
+    //             PRAGMA user_version だけ 24 まで進んで backfill が空振りしていた
+    //             （#206 / #306 に続き三度目に踏んだ同種のバグ）。
+    //             同じ backfill をもう一度実行することで、v24 を正常に踏んだ環境・
+    //             空振りした環境の両方を等しく救済する（既に入っている行は対象外）。
+    if current_version < 25 {
+        let mut filled_weapon = 0u64;
+        for (slug, en) in crate::weapon_static::WEAPON_NAME_EN {
+            let res = sqlx::query(
+                "UPDATE weapon SET name_en = ?
+                  WHERE (statink_key = ? OR key = ?) AND (name_en IS NULL OR name_en = '')",
+            )
+            .bind(en)
+            .bind(slug)
+            .bind(slug)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+            filled_weapon += res.rows_affected();
+        }
+        let mut filled_map = 0u64;
+        for (slug, en) in crate::stage_static::STAGE_NAME_EN {
+            let res = sqlx::query(
+                "UPDATE map SET name_en = ?
+                  WHERE (statink_key = ? OR key = ?) AND (name_en IS NULL OR name_en = '')",
+            )
+            .bind(en)
+            .bind(slug)
+            .bind(slug)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+            filled_map += res.rows_affected();
+        }
+
+        sqlx::query("PRAGMA user_version = 25")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!(
+            "migrate v25: v24 backfill を再実行して救済（weapon {filled_weapon} 件・map {filled_map} 件）"
         );
     }
 
