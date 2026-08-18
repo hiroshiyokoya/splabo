@@ -36,6 +36,7 @@ export function countActiveFilters(f: FilterState): number {
 export interface BrandFilterOption {
   name: string
   image: string
+  displayName: string
 }
 
 interface Props {
@@ -261,16 +262,16 @@ export function FilterDrawer({
               )}
             </div>
             <div className="brand-chips">
-              {allBrands.map(({ name, image }) => (
+              {allBrands.map(({ name, image, displayName }) => (
                 <button
                   key={name}
                   type="button"
                   className={`brand-chip ${filter.brands.has(name) ? 'brand-chip--active' : ''}`}
                   onClick={() => onToggleBrand(name)}
-                  title={name}
+                  title={displayName}
                 >
                   <img className="brand-chip__logo" src={image} alt="" aria-hidden="true" />
-                  <span className="brand-chip__label">{name}</span>
+                  <span className="brand-chip__label">{displayName}</span>
                 </button>
               ))}
             </div>

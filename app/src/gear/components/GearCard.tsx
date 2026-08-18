@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import type { GearItem, Skill } from '../types'
 import { skillDisplayName } from '../utils/skillDisplayName'
+import { gearItemDisplayName, gearBrandDisplayName } from '../utils/gearItemDisplayName'
 
 interface Props {
   gear:      GearItem
@@ -36,6 +37,8 @@ function SkillIcon({ image, skill, size }: { image: string; skill: Skill; size: 
 export function GearCard({ gear, selected, onSelect }: Props) {
   const { t } = useTranslation()
   const subSlots = Array.from({ length: 3 }, (_, i) => gear.additional_skills[i] ?? null)
+  const name = gearItemDisplayName(gear)
+  const brand = gearBrandDisplayName(gear)
 
   return (
     <div
@@ -51,8 +54,8 @@ export function GearCard({ gear, selected, onSelect }: Props) {
         <img
           className="gear-card__brand-logo"
           src={gear.brand_image}
-          alt={gear.brand}
-          title={gear.brand}
+          alt={brand}
+          title={brand}
         />
         <Stars rarity={gear.rarity} />
       </div>
@@ -62,13 +65,13 @@ export function GearCard({ gear, selected, onSelect }: Props) {
         <img
           className="gear-card__image"
           src={gear.image}
-          alt={gear.name}
+          alt={name}
           loading="lazy"
         />
       </div>
 
       {/* ギア名（中央） */}
-      <div className="gear-card__name" title={gear.name}>{gear.name}</div>
+      <div className="gear-card__name" title={name}>{name}</div>
 
       {/* ケイケン値（右寄り） */}
       <div className="gear-card__exp">{t('gear.exp', { value: gear.exp.toLocaleString() })}</div>

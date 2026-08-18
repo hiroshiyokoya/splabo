@@ -13,6 +13,7 @@ import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY
 import { initAppSettings, loadComboLimit, loadNearLimit } from './utils/appSettings'
 import type { ComboLimitValue, NearLimitValue } from './utils/appSettings'
 import { formatInvokeError } from '../utils/notify'
+import { gearBrandDisplayName } from './utils/gearItemDisplayName'
 import './gear.css'
 
 // ── 空状態 CTA 用のギア取得ステート ─────────────────────────
@@ -312,17 +313,22 @@ export function GearSection() {
     return [...map.values()].sort((a, b) => a.id - b.id)
   }, [data])
 
-  /** 全ブランド（五十音順・重複なし、ロゴは代表ギアの brand_image） */
+  /** 全ブランド（五十音順・重複なし、ロゴは代表ギアの brand_image）。
+   *  name はフィルタの内部値（日本語のまま）、displayName は表示用（英語表示時は公式英語名）。 */
   const allBrands = useMemo(() => {
-    if (!data) return [] as { name: string; image: string }[]
+    if (!data) return [] as { name: string; image: string; displayName: string }[]
     const imageByBrand = new Map<string, string>()
+    const repByBrand = new Map<string, GearItem>()
     for (const cat of ['head', 'clothing', 'shoes'] as GearCategory[]) {
       for (const gear of data[cat]) {
-        if (!imageByBrand.has(gear.brand)) imageByBrand.set(gear.brand, gear.brand_image)
+        if (!imageByBrand.has(gear.brand)) {
+          imageByBrand.set(gear.brand, gear.brand_image)
+          repByBrand.set(gear.brand, gear)
+        }
       }
     }
     return [...imageByBrand.entries()]
-      .map(([name, image]) => ({ name, image }))
+      .map(([name, image]) => ({ name, image, displayName: gearBrandDisplayName(repByBrand.get(name)!) }))
       .sort((a, b) => a.name.localeCompare(b.name, 'ja'))
   }, [data])
 

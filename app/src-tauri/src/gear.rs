@@ -278,11 +278,18 @@ fn build_gear_db(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| format!("{section}: image.url がありません"))?;
 
+            // 英語名（#714）。splatoon3.ink 由来の静的マスターを日本語名で引く。
+            // 未収録のギア（新シーズン追加分等）は None → フロントで日本語名にフォールバック。
+            let name_en = node.get("name").and_then(|v| v.as_str()).and_then(crate::gear_static::lookup_name_en);
+            let brand_en = brand.get("name").and_then(|v| v.as_str()).and_then(crate::gear_static::lookup_brand_name_en);
+
             items.push(json!({
                 "id": node.get(id_field).cloned().unwrap_or(Value::Null),
                 "name": node.get("name").cloned().unwrap_or(Value::Null),
+                "name_en": name_en,
                 "rarity": node.get("rarity").cloned().unwrap_or(Value::Null),
                 "brand": brand.get("name").cloned().unwrap_or(Value::Null),
+                "brand_en": brand_en,
                 "brand_image": local_image(brand_url, "brand"),
                 "image": local_image(gear_url, &format!("gear/{category}")),
                 "primary_skill": primary_skill,

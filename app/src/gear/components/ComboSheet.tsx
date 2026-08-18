@@ -5,6 +5,7 @@ import { findCombo, MAIN_AP, SUB_AP, getComboSortKey, comboBestBadgeKeysEqual } 
 import type { ComboResult, ComboSortKey } from '../utils/findCombo'
 import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from '../constants/gearPowerMeta'
 import { skillDisplayName } from '../utils/skillDisplayName'
+import { gearItemDisplayName, gearBrandDisplayName } from '../utils/gearItemDisplayName'
 
 export type ComboSlots = {
   head:     GearItem | null
@@ -574,22 +575,24 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
 
             if (gear) {
               const mainName = skillDisplayName(gear.primary_skill, t)
+              const gearName = gearItemDisplayName(gear)
+              const brandName = gearBrandDisplayName(gear)
               return (
-                <div key={cat} className="combo-slot combo-slot--filled" title={gear.name}>
+                <div key={cat} className="combo-slot combo-slot--filled" title={gearName}>
                   <button
                     type="button"
                     className="combo-slot__icon-btn combo-slot__icon-btn--remove"
-                    aria-label={t('gear.combo.removeFromSlot', { cat: catName, name: gear.name })}
+                    aria-label={t('gear.combo.removeFromSlot', { cat: catName, name: gearName })}
                     title={t('gear.combo.removeSlotTitle')}
                     onClick={e => { e.stopPropagation(); handleRemoveSlot(cat) }}
                   >
                     <span className="combo-slot__icon-btn-mark" aria-hidden>×</span>
                   </button>
-                  <img className="combo-slot__img" src={gear.image} alt={gear.name} />
+                  <img className="combo-slot__img" src={gear.image} alt={gearName} />
                   <div className="combo-slot__info">
                     <div className="combo-slot__brand-row">
-                      <img className="combo-slot__brand-logo" src={gear.brand_image} alt={gear.brand} />
-                      <span className="combo-slot__name">{gear.name}</span>
+                      <img className="combo-slot__brand-logo" src={gear.brand_image} alt={brandName} />
+                      <span className="combo-slot__name">{gearName}</span>
                     </div>
                     <div className="combo-slot__skills">
                       <div className="combo-slot__skill combo-slot__skill--main" title={mainName}>
@@ -624,15 +627,15 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                 tabIndex={emptyInteractive ? 0 : undefined}
                 title={canUndo && undoGear
                   ? showUndoBtn
-                    ? t('gear.combo.restoreHint', { name: undoGear.name })
-                    : t('gear.combo.restoreHintTap', { name: undoGear.name })
+                    ? t('gear.combo.restoreHint', { name: gearItemDisplayName(undoGear) })
+                    : t('gear.combo.restoreHintTap', { name: gearItemDisplayName(undoGear) })
                   : t('gear.combo.selectFromList', { cat: catName })}
               >
                 {showUndoBtn && undoGear && (
                   <button
                     type="button"
                     className="combo-slot__icon-btn combo-slot__icon-btn--undo"
-                    aria-label={t('gear.combo.restore', { name: undoGear.name })}
+                    aria-label={t('gear.combo.restore', { name: gearItemDisplayName(undoGear) })}
                     title={t('gear.combo.undoTitle')}
                     onClick={e => { e.stopPropagation(); handleRestoreFromUndo(cat) }}
                   >
@@ -809,11 +812,11 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                       {isBest && <span className="combo-result-row__badge">{t('gear.combo.best')}</span>}
                       {isNear && <span className="combo-result-row__badge combo-result-row__badge--near">{t('gear.combo.near')}</span>}
                       <div className="combo-result-row__gears">
-                        <img src={combo.head.image}     alt={combo.head.name}     title={combo.head.name} />
+                        <img src={combo.head.image}     alt={gearItemDisplayName(combo.head)}     title={gearItemDisplayName(combo.head)} />
                         <span className="combo-result-row__plus">+</span>
-                        <img src={combo.clothing.image} alt={combo.clothing.name} title={combo.clothing.name} />
+                        <img src={combo.clothing.image} alt={gearItemDisplayName(combo.clothing)} title={gearItemDisplayName(combo.clothing)} />
                         <span className="combo-result-row__plus">+</span>
-                        <img src={combo.shoes.image}    alt={combo.shoes.name}    title={combo.shoes.name} />
+                        <img src={combo.shoes.image}    alt={gearItemDisplayName(combo.shoes)}    title={gearItemDisplayName(combo.shoes)} />
                       </div>
                       <div className="combo-result-row__ap">
                         {Object.entries(combo.allApBySkill)
