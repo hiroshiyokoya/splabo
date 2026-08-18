@@ -549,7 +549,8 @@ const HTML_EXPORT_TIP_SCRIPT = `(function () {
     }
     (payload.rows || []).forEach(function (r) {
       var cls = r.muted ? 'hover-tt-row hover-tt-row--muted' : 'hover-tt-row';
-      out += '<div class="' + cls + '">' + esc(r.label) + ': ' + esc(r.value) + '</div>';
+      var line = r.label ? esc(r.label) + ': ' + esc(r.value) : esc(r.value);
+      out += '<div class="' + cls + '">' + line + '</div>';
     });
     return out;
   }

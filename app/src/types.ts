@@ -592,6 +592,11 @@ export function winLoseBreakdown(total: number, wins: number, draws: number): st
   return `${wins} 勝 ${losses} 敗${draws > 0 ? ` ${draws} 分` : ''}`
 }
 
+/** チップ用の勝敗 1 行 `バトル数: 42 (15 勝 27 敗)`。ヒートマップ・散布図・カレンダーで共用。 */
+export function winCountTooltipText(total: number, wins: number, draws: number): string {
+  return `バトル数: ${total} (${winLoseBreakdown(total, wins, draws)})`
+}
+
 // ---------------------------------------------------------------------------
 // カスタムグラフ(#86)用の型
 // ---------------------------------------------------------------------------
@@ -853,19 +858,40 @@ export const SCATTER_DOT_UNITS: ScatterDotUnit[] = [
   'battle', 'weapon', 'stage', 'weapon_category', 'sub_weapon', 'special_weapon',
 ]
 
-/** カテゴリ集計単位の散布図で使えるメトリクス(ブキ / ステージ / サブ / スペシャル / ブキカテゴリ共通)。 */
-export const SCATTER_AGG_METRIC_KEYS: MetricKey[] = [
-  'total', 'wins', 'win_rate',
+/** カテゴリ集計単位の散布図で使えるメトリクス(ブキ / ステージ / サブ / スペシャル / ブキカテゴリ共通)。
+ *  負数は DB 列ではなく total − wins − draws。 */
+export type ScatterAggMetricKey = MetricKey | 'losses'
+
+export const SCATTER_AGG_METRIC_KEYS: ScatterAggMetricKey[] = [
+  'total', 'wins', 'losses', 'win_rate',
   'avg_kill', 'avg_assist', 'avg_contrib_kill', 'avg_death', 'avg_kd', 'avg_contrib_kd',
   'avg_inked', 'avg_special',
 ]
+
+/** 散布図でバトル数・勝数・負数の軸に共通のチップ行を使うキー。 */
+export const SCATTER_WIN_COUNT_METRICS = new Set<string>(['total', 'wins', 'losses'])
+
+export function scatterAggMetricLabel(key: string): string {
+  if (key === 'losses') return '負数'
+  return METRIC_LABELS[key as MetricKey] ?? key
+}
+
+export function scatterAggMetric(row: GroupedStatsRow, key: string): number | null {
+  if (key === 'losses') return row.total > 0 ? row.total - row.wins - row.draws : null
+  return getMetric(row, key as MetricKey)
+}
+
+/** 色スケール用。負数はバトル数と同じ count 扱い。 */
+export function scatterAggColorMetric(key: string): MetricKey {
+  return key === 'losses' ? 'total' : key as MetricKey
+}
 
 /** ドット単位ごとの「X 軸 / Y 軸 / サイズ」で選べるメトリクスキー一覧。 */
 export function scatterMetricOptions(dotUnit: ScatterDotUnit): { key: string; label: string }[] {
   if (dotUnit === 'battle') {
     return (Object.keys(BATTLE_METRIC_LABELS) as BattleMetricKey[]).map(k => ({ key: k, label: BATTLE_METRIC_LABELS[k] }))
   }
-  return SCATTER_AGG_METRIC_KEYS.map(k => ({ key: k, label: METRIC_LABELS[k] }))
+  return SCATTER_AGG_METRIC_KEYS.map(k => ({ key: k, label: scatterAggMetricLabel(k) }))
 }
 
 /** 公式アプリ由来。ブキ軸のみ。フィルター（期間・ロビー・ルール）には追従しない。 */
