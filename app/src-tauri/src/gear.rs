@@ -208,6 +208,7 @@ fn generated_at_now() -> String {
 /// 生成時刻は呼び出し側から渡す（テストで固定値を入れられるようにするため）。
 fn build_gear_db(
     equipment: &serde_json::Value,
+    equipment_en: Option<&serde_json::Value>,
     generated_at: &str,
 ) -> Result<serde_json::Value, String> {
     use serde_json::{json, Map, Value};
@@ -222,6 +223,27 @@ fn build_gear_db(
             .pointer(&format!("/data/{section}/nodes"))
             .and_then(|v| v.as_array())
             .cloned()
+            .unwrap_or_default();
+
+        // 英語版の id → (name_en, brand_name_en)（#723）。SplatNet3 の公式データを
+        // ID で日本語版と対応付ける。取得できなかった／対応が無いギアは None のまま。
+        let en_by_id: std::collections::HashMap<String, (Option<String>, Option<String>)> = equipment_en
+            .and_then(|eq| eq.pointer(&format!("/data/{section}/nodes")))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|node| {
+                        let id = node.get(id_field).map(|v| v.to_string())?;
+                        let name = node.get("name").and_then(|v| v.as_str()).map(String::from);
+                        let brand = node
+                            .get("brand")
+                            .and_then(|b| b.get("name"))
+                            .and_then(|v| v.as_str())
+                            .map(String::from);
+                        Some((id, (name, brand)))
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
 
         let mut items = Vec::with_capacity(nodes.len());
@@ -278,10 +300,28 @@ fn build_gear_db(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| format!("{section}: image.url がありません"))?;
 
-            // 英語名（#714）。splatoon3.ink 由来の静的マスターを日本語名で引く。
-            // 未収録のギア（新シーズン追加分等）は None → フロントで日本語名にフォールバック。
-            let name_en = node.get("name").and_then(|v| v.as_str()).and_then(crate::gear_static::lookup_name_en);
-            let brand_en = brand.get("name").and_then(|v| v.as_str()).and_then(crate::gear_static::lookup_brand_name_en);
+            // 英語名（#714/#723）。1st: SplatNet3 の英語版レスポンス（ID 一致、公式データ）。
+            // 2nd: wikiwiki.jp 由来の静的マスター（#712/#722、英語版取得に失敗した回のフォールバック）。
+            // どちらにも無ければ None → フロントで日本語名にフォールバック。
+            let id_key = node.get(id_field).map(|v| v.to_string());
+            let (api_name_en, api_brand_en) = id_key
+                .as_ref()
+                .and_then(|id| en_by_id.get(id))
+                .cloned()
+                .unwrap_or((None, None));
+            let name_en = api_name_en.or_else(|| {
+                node.get("name")
+                    .and_then(|v| v.as_str())
+                    .and_then(crate::gear_static::lookup_name_en)
+                    .map(String::from)
+            });
+            let brand_en = api_brand_en.or_else(|| {
+                brand
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .and_then(crate::gear_static::lookup_brand_name_en)
+                    .map(String::from)
+            });
 
             items.push(json!({
                 "id": node.get(id_field).cloned().unwrap_or(Value::Null),
@@ -484,8 +524,24 @@ async fn fetch_gear_full_inner(app: &AppHandle) -> Result<GearFetchResult, Strin
     )
     .await?;
 
+    // 英語名（#723）。同じ bullet_token で en-US ロケールでも取得し、SplatNet3 公式の
+    // 英語名を直接使う（静的マスターではカバーしきれないノベルティ・特典ギア対策）。
+    // アカウント言語が既に英語ならリクエストを増やさず equipment を再利用する。
+    // 失敗してもベストエフォート（次のギア取得時に再試行される。日本語名の表示は継続）。
+    let equipment_en = if bt.language.starts_with("en") {
+        Some(equipment.clone())
+    } else {
+        match crate::splatnet3::fetch_gear_equipment(&client, &bt.bullet_token, &bt.country, "en-US").await {
+            Ok(v) => Some(v),
+            Err(e) => {
+                log::warn!("[gear] 英語名取得に失敗（日本語名のみで継続）: {e}");
+                None
+            }
+        }
+    };
+
     let out_dir = resolve_gear_out_dir(app)?;
-    let result = build_and_write_gear_data(&client, &equipment, &out_dir).await?;
+    let result = build_and_write_gear_data(&client, &equipment, equipment_en.as_ref(), &out_dir).await?;
     log::info!(
         "[gear] 取得完了 頭 {} / 服 {} / 靴 {} / スキル {} → {}",
         result.head, result.clothing, result.shoes, result.skills, result.db_path
@@ -501,9 +557,10 @@ async fn fetch_gear_full_inner(app: &AppHandle) -> Result<GearFetchResult, Strin
 async fn build_and_write_gear_data(
     client: &reqwest::Client,
     equipment: &serde_json::Value,
+    equipment_en: Option<&serde_json::Value>,
     out_dir: &std::path::Path,
 ) -> Result<GearFetchResult, String> {
-    let db = build_gear_db(equipment, &generated_at_now())?;
+    let db = build_gear_db(equipment, equipment_en, &generated_at_now())?;
 
     let head = db.get("head").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
     let clothing = db.get("clothing").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
@@ -575,7 +632,7 @@ mod tests {
     #[test]
     fn build_gear_db_matches_gear_export_v1_schema() {
         let eq = fixture_equipment();
-        let db = build_gear_db(&eq, FIXTURE_GENERATED_AT).expect("build_gear_db failed");
+        let db = build_gear_db(&eq, None, FIXTURE_GENERATED_AT).expect("build_gear_db failed");
 
         // トップレベルは generated_at / head / clothing / shoes / skills（gear-export-v1 契約）
         for key in ["generated_at", "head", "clothing", "shoes", "skills"] {
@@ -610,6 +667,40 @@ mod tests {
         assert_eq!(skills.len(), 5, "skills = {:?}", skills.keys().collect::<Vec<_>>());
         assert_eq!(skills["0"]["name"], "アキ枠");
         assert_eq!(skills["2"]["name"], "ヒト移動速度アップ");
+    }
+
+    /// #723: SplatNet3 の英語版レスポンスが渡されたら、ID 一致で name_en/brand_en に使う
+    /// （静的マスターより優先）。英語版に対応が無いギアは静的マスターにフォールバックする。
+    #[test]
+    fn build_gear_db_uses_english_equipment_when_available() {
+        let eq = fixture_equipment();
+        let eq_en = serde_json::json!({
+            "data": {
+                "headGears": { "nodes": [{
+                    "headGearId": 100,
+                    "name": "Test Head EN",
+                    "brand": { "name": "Tentatek" },
+                }]},
+                "clothingGears": { "nodes": [{
+                    "clothingGearId": 200,
+                    "name": "Test Clothing EN",
+                    "brand": { "name": "SquidForce" },
+                }]},
+                // shoes は英語版取得が失敗したケースを模して欠落させる。
+                "shoesGears": { "nodes": [] }
+            }
+        });
+        let db = build_gear_db(&eq, Some(&eq_en), FIXTURE_GENERATED_AT).expect("build_gear_db failed");
+
+        assert_eq!(db["head"][0]["name_en"], "Test Head EN");
+        assert_eq!(db["head"][0]["brand_en"], "Tentatek");
+        assert_eq!(db["clothing"][0]["name_en"], "Test Clothing EN");
+        assert_eq!(db["clothing"][0]["brand_en"], "SquidForce");
+        // 靴は英語版に対応が無い → 静的マスターにフォールバックする。
+        // ギア名「テストシューズ」は静的マスター未収録なので None のまま、
+        // ブランド「エゾッコ」は静的マスター収録済みなので Zekko が埋まる。
+        assert!(db["shoes"][0]["name_en"].is_null());
+        assert_eq!(db["shoes"][0]["brand_en"], "Zekko");
     }
 
     /// #396: `generated_at` は battle_db（`strftime('%Y-%m-%dT%H:%M:%SZ','now')`）と
@@ -661,7 +752,7 @@ mod tests {
         let png_bytes: &[u8] = b"\x89PNG\r\n\x1a\nDUMMYPNGDATA";
         std::fs::write(img_dir.join("ink_main.png"), png_bytes).unwrap();
 
-        let db = build_gear_db(&fixture_equipment(), FIXTURE_GENERATED_AT).unwrap();
+        let db = build_gear_db(&fixture_equipment(), None, FIXTURE_GENERATED_AT).unwrap();
         let db_json = serde_json::to_string_pretty(&db).unwrap();
         encrypt_gear_data_at(&tmp, &db_json).unwrap();
 
