@@ -10,6 +10,7 @@ import {
 } from '../types'
 import { ABILITY_LABELS, abilityKeyFromUrl, colorToHex, loadAbilityImages } from '../utils/abilities'
 import { winRateColor } from '../utils/heatmapColors'
+import { battleStageDisplayName, battleWeaponDisplayName } from '../i18n/displayName'
 
 const PAGE_SIZE = 50
 
@@ -187,11 +188,11 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
                     <td>{new Date(b.played_at).toLocaleString(dateLocale(i18n.language), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                     <td>{modeLabel(b.mode)}</td>
                     <td>{ruleLabel(b.rule)}</td>
-                    <td>{b.stage_name ?? b.stage}</td>
+                    <td>{battleStageDisplayName(b)}</td>
                     <td>
                       <span className="weapon-cell">
                         {weaponImages.get(b.weapon) && <img src={weaponImages.get(b.weapon)} alt="" className="weapon-icon" />}
-                        {b.weapon}
+                        {battleWeaponDisplayName(b)}
                       </span>
                     </td>
                     <td className={`result-cell ${b.result.toLowerCase()}`}>
@@ -334,7 +335,7 @@ function BattleDetailModal({ battle, weaponImages, abilityImages, stageImages, s
           <span className={`result-badge ${battle.result.toLowerCase()}`}>{resultLabel(battle.result)}</span>
           {isKo && <span className="ko-badge">KO</span>}
           <span className="modal-title-text">{modeLabel(battle.mode)} / {ruleLabel(battle.rule)}</span>
-          <span className="modal-stage">{battle.stage_name ?? battle.stage}</span>
+          <span className="modal-stage">{battleStageDisplayName(battle)}</span>
           <span className="modal-meta">
             {new Date(battle.played_at).toLocaleString(dateLocale(i18n.language))}
             {battle.duration > 0 && <> · {durationMin}:{String(durationSec).padStart(2, '0')}</>}
@@ -468,7 +469,7 @@ function MyStatsCard({ battle, weaponImages }: {
         <div className="my-stats-weapon">
           {weaponImages.get(battle.weapon) && <img src={weaponImages.get(battle.weapon)} alt="" className="weapon-icon-lg" />}
           <div className="my-stats-weapon-names">
-            <div className="weapon-main">{battle.weapon}</div>
+            <div className="weapon-main">{battleWeaponDisplayName(battle)}</div>
             {battle.sub_weapon     && <div className="weapon-sub">{t('battles.subPrefix', { name: battle.sub_weapon })}</div>}
             {battle.special_weapon && <div className="weapon-sp">SP: {battle.special_weapon}</div>}
           </div>

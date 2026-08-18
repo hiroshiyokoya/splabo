@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { invoke } from '@tauri-apps/api/core'
 import type { GroupedStatsRow, Filters, StageRecord } from '../types'
+import { groupedStatsDisplayName } from '../i18n/displayName'
 import { RULE_LABELS, ruleLabel, filtersToBookDetailArgs, fmtKillRatioWithContrib, fmtOfficialWinRate, METRIC_LABELS } from '../types'
 import { winRateColor } from '../utils/heatmapColors'
 
@@ -122,7 +123,7 @@ export function StageDetailModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-panel stage-detail-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <span className="modal-title-text">{row.name}</span>
+          <span className="modal-title-text">{groupedStatsDisplayName(row)}</span>
           <span className="modal-meta">{t('common.battlesCount', { count: row.total })}</span>
           <button className="modal-close" onClick={onClose} aria-label={t('common.close')}>✕</button>
         </div>
@@ -132,7 +133,7 @@ export function StageDetailModal({
           <section className="modal-section stage-modal-hero">
             <div className="stage-modal-hero-image">
               {image
-                ? <img src={image} alt={row.name} />
+                ? <img src={image} alt={groupedStatsDisplayName(row)} />
                 : <div className="stage-modal-hero-placeholder" />}
             </div>
           </section>
@@ -269,11 +270,11 @@ function WeaponRow({ row, icon, primary, primaryColor }: {
     <div className="stage-modal-weapon-row">
       <div className="stage-modal-weapon-icon-wrap">
         {icon
-          ? <img src={icon} alt={row.name} className="stage-modal-weapon-icon" />
+          ? <img src={icon} alt={groupedStatsDisplayName(row)} className="stage-modal-weapon-icon" />
           : <div className="stage-modal-weapon-icon stage-modal-weapon-icon--placeholder" />
         }
       </div>
-      <span className="stage-modal-weapon-name" title={row.name}>{row.name}</span>
+      <span className="stage-modal-weapon-name" title={groupedStatsDisplayName(row)}>{groupedStatsDisplayName(row)}</span>
       <span className="stage-modal-weapon-count">{fmtRecord(t, row.total, row.wins, row.draws)}</span>
       <span
         className="stage-modal-weapon-primary"

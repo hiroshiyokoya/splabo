@@ -9,6 +9,7 @@ import { ViewToggle, getBookViews } from './ViewToggle'
 import { SortHeader } from './SortHeader'
 import { loadViewPrefs, saveViewPrefs } from '../utils/viewPrefs'
 import { winRateColor } from '../utils/heatmapColors'
+import { groupedStatsDisplayName } from '../i18n/displayName'
 
 /** ステージタブのソートキー。 */
 type SortKey =
@@ -100,7 +101,7 @@ function compareRows(a: GroupedStatsRow, b: GroupedStatsRow, sort: SortKey): num
       return bv - av
     }
     case 'name':
-      return a.name.localeCompare(b.name, 'ja')
+      return groupedStatsDisplayName(a).localeCompare(groupedStatsDisplayName(b))
   }
 }
 
@@ -170,7 +171,10 @@ export function StageBook({ filters }: { filters: Filters }) {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (view !== 'list' || !q) return rows
-    return rows.filter(r => r.name.toLowerCase().includes(q))
+    return rows.filter(r => {
+      const label = groupedStatsDisplayName(r).toLowerCase()
+      return label.includes(q) || r.name.toLowerCase().includes(q) || (r.name_en?.toLowerCase().includes(q) ?? false)
+    })
   }, [rows, search, view])
 
   const sorted = useMemo(() => {
@@ -296,7 +300,7 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
             const loses    = r.total - r.wins - r.draws
             return (
               <tr key={r.key} className="book-tr clickable-row" onClick={() => onSelect(r)}>
-                <td className="book-td book-td--left">{r.name}</td>
+                <td className="book-td book-td--left">{groupedStatsDisplayName(r)}</td>
                 <td className="book-td">{r.total}</td>
                 <td className="book-td">{r.wins}</td>
                 <td className="book-td">{loses}</td>
@@ -344,11 +348,11 @@ function StageCard({ row, image, official, onClick }: {
     >
       <div className="stage-card-image-wrap">
         {image
-          ? <img src={image} alt={row.name} className="stage-card-image" />
+          ? <img src={image} alt={groupedStatsDisplayName(row)} className="stage-card-image" />
           : <div className="stage-card-image stage-card-image--placeholder" />
         }
       </div>
-      <div className="stage-card-name" title={row.name}>{row.name}</div>
+      <div className="stage-card-name" title={groupedStatsDisplayName(row)}>{groupedStatsDisplayName(row)}</div>
 
       {hasOfficial && (
         <div className="weapon-card-official-grid">

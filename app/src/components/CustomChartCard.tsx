@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, MetricKey, BattleMetricKey } from '../types'
@@ -10,6 +11,9 @@ import {
   SCATTER_WIN_COUNT_METRICS, winCountTooltipText, type GroupByKey,
   SCATTER_IMAGE_PX, isScatterImageMode, isOfficialRateMetric,
 } from '../types'
+import {
+  groupedRowNameTransform, heatmap2dLabelTransform,
+} from '../i18n/displayName'
 import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
 import { StackedWinrateChart } from './charts/StackedWinrateChart'
@@ -30,7 +34,6 @@ import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelE
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import { rankRowsForBarChart, CHART_BAR_TOP_N, type ChartSortDir } from '../utils/chartSort'
 import i18n from '../i18n'
-import { useTranslation } from 'react-i18next'
 
 /** 1 バトル単位の散布図メトリクス値を BattleRow から計算する。 */
 function getBattleMetric(b: BattleRow, k: BattleMetricKey): number | null {
@@ -501,8 +504,10 @@ export function CustomChartCard({
   }, [chart.id, chart.yComposition, chart.metric, defaultSortKey])
 
   // 軸キーに応じた表示整形(ステージは斜め)
+  const groupedTransform = groupedRowNameTransform(data, chart.groupBy)
   const nameTransform =
-    chart.groupBy === 'stage' ? stageAbbr :
+    chart.groupBy === 'stage' ? groupedTransform ?? stageAbbr :
+    chart.groupBy === 'weapon' ? groupedTransform :
     chart.groupBy === 'mode'  ? modeLabel :
     chart.groupBy === 'rule'  ? ruleLabel :
                                 undefined
@@ -689,8 +694,12 @@ function renderChartBody(
     if (chart.yComposition !== 'single_metric' || !chart.metric) {
       return <div className="chart-not-implemented">{i18n.t('chart.needSingleMetric')}</div>
     }
-    const xT = chart.groupBy  === 'stage' ? stageAbbr : chart.groupBy  === 'mode' ? modeLabel : chart.groupBy  === 'rule' ? ruleLabel : undefined
-    const yT = chart.groupBy2 === 'stage' ? stageAbbr : chart.groupBy2 === 'mode' ? modeLabel : chart.groupBy2 === 'rule' ? ruleLabel : undefined
+    const xT = chart.groupBy  === 'stage' ? (heatmap2dLabelTransform(data2d ?? [], 'x', chart.groupBy) ?? stageAbbr)
+      : chart.groupBy  === 'weapon' ? heatmap2dLabelTransform(data2d ?? [], 'x', chart.groupBy)
+      : chart.groupBy  === 'mode' ? modeLabel : chart.groupBy  === 'rule' ? ruleLabel : undefined
+    const yT = chart.groupBy2 === 'stage' ? (heatmap2dLabelTransform(data2d ?? [], 'y', chart.groupBy2 ?? '') ?? stageAbbr)
+      : chart.groupBy2 === 'weapon' ? heatmap2dLabelTransform(data2d ?? [], 'y', chart.groupBy2 ?? '')
+      : chart.groupBy2 === 'mode' ? modeLabel : chart.groupBy2 === 'rule' ? ruleLabel : undefined
     // 軸タイトル(#145)：数値メトリクス bin 軸はメトリクス名 (bin 幅併記)、カテゴリ軸は GroupBy ラベル
     const xTitle = chart.xNumericMetric
       ? `${BATTLE_NUMERIC_METRIC_LABELS[chart.xNumericMetric]} (bin ${chart.xBinWidth ?? '?'})`

@@ -397,7 +397,10 @@ pub struct BattleRow {
     pub rule: String,
     pub stage: String,
     pub stage_name: Option<String>,
+    pub stage_name_en: Option<String>,
     pub weapon: String,
+    pub weapon_name_ja: Option<String>,
+    pub weapon_name_en: Option<String>,
     pub result: String,
     pub kill: i64,
     pub death: i64,
@@ -425,6 +428,8 @@ pub struct BattleRow {
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct WeaponRecord {
     pub name: String,
+    pub name_ja: Option<String>,
+    pub name_en: Option<String>,
     pub category: String,
     pub sub_weapon: Option<String>,
     pub special_weapon: Option<String>,
@@ -1257,7 +1262,10 @@ pub async fn db_list_battles(
                 COALESCE({RULE_KEY_AS_OLD}, '') AS rule,
                 m.key                    AS stage,
                 m.name_ja                AS stage_name,
+                m.name_en                AS stage_name_en,
                 w.key                    AS weapon,
+                w.name_ja                AS weapon_name_ja,
+                w.name_en                AS weapon_name_en,
                 res.key                  AS result,
                 b.kill                   AS kill,
                 b.death                  AS death,
@@ -1316,7 +1324,7 @@ pub async fn db_list_battles(
 #[tauri::command]
 pub async fn db_stages_used(db: tauri::State<'_, DbPool>) -> Result<Vec<serde_json::Value>, String> {
     let rows = sqlx::query(
-        "SELECT m.key as id, MAX(m.name_ja) as name
+        "SELECT m.key as id, MAX(m.name_ja) as name_ja, MAX(m.name_en) as name_en
          FROM battle b
          JOIN map m ON m.id = b.map_id
          GROUP BY m.id
@@ -1327,8 +1335,15 @@ pub async fn db_stages_used(db: tauri::State<'_, DbPool>) -> Result<Vec<serde_js
     .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(|r| {
         let id: String           = r.get("id");
-        let name: Option<String> = r.try_get("name").ok().flatten();
-        serde_json::json!({ "id": id, "name": name.unwrap_or_else(|| id.clone()) })
+        let name_ja: Option<String> = r.try_get("name_ja").ok().flatten();
+        let name_en: Option<String> = r.try_get("name_en").ok().flatten();
+        let fallback = name_ja.clone().unwrap_or_else(|| id.clone());
+        serde_json::json!({
+            "id": id,
+            "name_ja": name_ja,
+            "name_en": name_en,
+            "name": fallback,
+        })
     }).collect())
 }
 
@@ -1391,7 +1406,10 @@ pub async fn db_summary(
     }
 
     let by_weapon = bind_filters!(sqlx::query(&format!(
-        "SELECT w.key as name, COUNT(*) as total,
+        "SELECT w.key as name,
+                COALESCE(MAX(w.name_ja), w.key) as name_ja,
+                MAX(w.name_en) as name_en,
+                COUNT(*) as total,
                 SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END) as wins,
                 SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END) as draws
          {common_joins} WHERE {filter_where} GROUP BY w.id ORDER BY total DESC"
@@ -1422,7 +1440,8 @@ pub async fn db_summary(
 
     let by_stage = bind_filters!(sqlx::query(&format!(
         "SELECT m.key as name,
-                COALESCE(MAX(m.name_ja), m.key) as display_name,
+                COALESCE(MAX(m.name_ja), m.key) as name_ja,
+                MAX(m.name_en) as name_en,
                 COUNT(*) as total,
                 SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END) as wins,
                 SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END) as draws
@@ -1448,13 +1467,17 @@ pub async fn db_summary(
             let wins: i64  = r.get("wins");
             let draws: i64 = r.get("draws");
             let decisive   = total - draws;
+            let name_ja: Option<String> = r.try_get("name_ja").ok().flatten();
+            let name_en: Option<String> = r.try_get("name_en").ok().flatten();
             let name: String = if use_display_name {
-                r.try_get("display_name").unwrap_or_else(|_| r.get::<String, _>("name"))
+                name_ja.clone().unwrap_or_else(|| r.get::<String, _>("name"))
             } else {
                 r.get("name")
             };
             serde_json::json!({
                 "name": name,
+                "name_ja": name_ja,
+                "name_en": name_en,
                 "total": total,
                 "wins": wins,
                 "draws": draws,
@@ -1560,6 +1583,12 @@ pub async fn db_grouped_stats(
         _ => return Err(format!("未対応の group_by: {group_by}")),
     };
 
+    let (name_ja_expr, name_en_expr): (&str, &str) = match group_by.as_str() {
+        "weapon" => ("COALESCE(MAX(w.name_ja), w.key)", "MAX(w.name_en)"),
+        "stage"  => ("COALESCE(MAX(m.name_ja), m.key)", "MAX(m.name_en)"),
+        _        => ("NULL", "NULL"),
+    };
+
     // 時系列キーは古い → 新しいの順、それ以外はバトル数の多い順。
     let order_by: &str = match group_by.as_str() {
         "day" | "three_day" | "week" | "month" => "key ASC",
@@ -1579,6 +1608,8 @@ pub async fn db_grouped_stats(
         "SELECT
             {group_expr} as key,
             {display_expr} as display_name,
+            {name_ja_expr} as name_ja,
+            {name_en_expr} as name_en,
             COUNT(*)                                                  as total,
             SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END)           as wins,
             SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END)           as draws,
@@ -1635,6 +1666,8 @@ pub async fn db_grouped_stats(
         serde_json::json!({
             "key":           r.get::<String, _>("key"),
             "name":          name,
+            "name_ja":       r.try_get::<String, _>("name_ja").ok(),
+            "name_en":       r.try_get::<String, _>("name_en").ok(),
             "total":         total,
             "wins":          wins,
             "draws":         draws,
@@ -1720,6 +1753,8 @@ async fn db_grouped_stats_by_player_weapon(
         "SELECT
             d.bp_w_key                                                as key,
             MAX(d.bp_w_name)                                          as display_name,
+            MAX(d.bp_w_name_ja)                                       as name_ja,
+            MAX(d.bp_w_name_en)                                       as name_en,
             COUNT(*)                                                  as total,
             SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END)           as wins,
             SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END)           as draws,
@@ -1743,7 +1778,9 @@ async fn db_grouped_stats_by_player_weapon(
                  -- 表示名にもスラッグ（key）を使う。
                  -- weaponImages がスラッグでキー付けされており、Japanese 名にすると一部しか
                  -- マッチせずアイコンとテキストが混在してしまうため、ここで揃える。
-                 w_bp.key as bp_w_name
+                 w_bp.key as bp_w_name,
+                 w_bp.name_ja as bp_w_name_ja,
+                 w_bp.name_en as bp_w_name_en
              FROM battle_player bp
              JOIN weapon w_bp ON w_bp.id = bp.weapon_id
              WHERE {bp_where}
@@ -1784,6 +1821,8 @@ async fn db_grouped_stats_by_player_weapon(
         serde_json::json!({
             "key":           r.get::<String, _>("key"),
             "name":          name,
+            "name_ja":       r.try_get::<String, _>("name_ja").ok(),
+            "name_en":       r.try_get::<String, _>("name_en").ok(),
             "total":         total,
             "wins":          wins,
             "draws":         draws,
@@ -1903,10 +1942,20 @@ pub async fn db_grouped_stats_2d(
         })
     }
 
+    fn axis_name_en_expr(axis: &str) -> &'static str {
+        match axis {
+            "weapon" => "MAX(w.name_en)",
+            "stage"  => "MAX(m.name_en)",
+            _        => "NULL",
+        }
+    }
+
     let x_expr     = axis_expr_dyn(&group_by_x, x_bin_width)?;
     let y_expr     = axis_expr_dyn(&group_by_y, y_bin_width)?;
     let x_display  = axis_display_expr(&group_by_x, &x_expr)?;
     let y_display  = axis_display_expr(&group_by_y, &y_expr)?;
+    let x_name_en  = axis_name_en_expr(&group_by_x);
+    let y_name_en  = axis_name_en_expr(&group_by_y);
 
     let filter_where =
         "(? IS NULL OR b.played_at >= ?)
@@ -1925,6 +1974,8 @@ pub async fn db_grouped_stats_2d(
             CAST({y_expr} AS TEXT) as key_y,
             {x_display} as name_x,
             {y_display} as name_y,
+            {x_name_en} as name_en_x,
+            {y_name_en} as name_en_y,
             COUNT(*)                                                  as total,
             SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END)           as wins,
             SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END)           as draws,
@@ -1999,6 +2050,8 @@ pub async fn db_grouped_stats_2d(
             "key_y":        key_y,
             "name_x":       r.try_get::<String, _>("name_x").unwrap_or_else(|_| key_x.clone()),
             "name_y":       r.try_get::<String, _>("name_y").unwrap_or_else(|_| key_y.clone()),
+            "name_en_x":    r.try_get::<String, _>("name_en_x").ok(),
+            "name_en_y":    r.try_get::<String, _>("name_en_y").ok(),
             "total":        total,
             "wins":         wins,
             "draws":        draws,
@@ -2081,6 +2134,13 @@ async fn db_grouped_stats_2d_with_bp(
             _        => fallback,
         }
     }
+    fn non_bp_axis_name_en(axis: &str) -> &'static str {
+        match axis {
+            "weapon" => "MAX(w.name_en)",
+            "stage"  => "MAX(m.name_en)",
+            _        => "NULL",
+        }
+    }
 
     let (x_expr, x_display): (&str, &str) = if x_is_bp {
         // 表示名も key（スラッグ）で揃えて weaponImages にマッチさせる（#118 のフィックス方針と同じ）
@@ -2097,15 +2157,17 @@ async fn db_grouped_stats_2d_with_bp(
         let d = non_bp_axis_display(group_by_y, e);
         (e, d)
     };
+    let x_name_en: &str = if x_is_bp { "MAX(ax.weapon_name_en)" } else { non_bp_axis_name_en(group_by_x) };
+    let y_name_en: &str = if y_is_bp { "MAX(ay.weapon_name_en)" } else { non_bp_axis_name_en(group_by_y) };
 
     // FROM 句を組み立て：bp 軸 → DISTINCT サブクエリ、その下に battle 本体と通常 JOIN
     let from_clause = if x_is_bp && y_is_bp {
         format!(
-            "(SELECT DISTINCT bp.battle_id, w_bp.key as weapon_key
+            "(SELECT DISTINCT bp.battle_id, w_bp.key as weapon_key, w_bp.name_en as weapon_name_en
               FROM battle_player bp
               JOIN weapon w_bp ON w_bp.id = bp.weapon_id
               WHERE {x_bp_where}) ax
-             JOIN (SELECT DISTINCT bp.battle_id, w_bp.key as weapon_key
+             JOIN (SELECT DISTINCT bp.battle_id, w_bp.key as weapon_key, w_bp.name_en as weapon_name_en
                    FROM battle_player bp
                    JOIN weapon w_bp ON w_bp.id = bp.weapon_id
                    WHERE {y_bp_where}) ay ON ay.battle_id = ax.battle_id
@@ -2113,7 +2175,7 @@ async fn db_grouped_stats_2d_with_bp(
         )
     } else if x_is_bp {
         format!(
-            "(SELECT DISTINCT bp.battle_id, w_bp.key as weapon_key
+            "(SELECT DISTINCT bp.battle_id, w_bp.key as weapon_key, w_bp.name_en as weapon_name_en
               FROM battle_player bp
               JOIN weapon w_bp ON w_bp.id = bp.weapon_id
               WHERE {x_bp_where}) ax
@@ -2122,7 +2184,7 @@ async fn db_grouped_stats_2d_with_bp(
     } else {
         // y_is_bp のみ
         format!(
-            "(SELECT DISTINCT bp.battle_id, w_bp.key as weapon_key
+            "(SELECT DISTINCT bp.battle_id, w_bp.key as weapon_key, w_bp.name_en as weapon_name_en
               FROM battle_player bp
               JOIN weapon w_bp ON w_bp.id = bp.weapon_id
               WHERE {y_bp_where}) ay
@@ -2145,6 +2207,8 @@ async fn db_grouped_stats_2d_with_bp(
             {y_expr} as key_y,
             {x_display} as name_x,
             {y_display} as name_y,
+            {x_name_en} as name_en_x,
+            {y_name_en} as name_en_y,
             COUNT(*)                                                  as total,
             SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END)           as wins,
             SUM(CASE WHEN res.key='draw' THEN 1 ELSE 0 END)           as draws,
@@ -2224,6 +2288,8 @@ async fn db_grouped_stats_2d_with_bp(
             "key_y":        key_y,
             "name_x":       r.try_get::<String, _>("name_x").unwrap_or_else(|_| key_x.clone()),
             "name_y":       r.try_get::<String, _>("name_y").unwrap_or_else(|_| key_y.clone()),
+            "name_en_x":    r.try_get::<String, _>("name_en_x").ok(),
+            "name_en_y":    r.try_get::<String, _>("name_en_y").ok(),
             "total":        total,
             "wins":         wins,
             "draws":        draws,
@@ -5155,7 +5221,7 @@ pub async fn db_list_weapons(db: tauri::State<'_, DbPool>) -> Result<Vec<WeaponR
     //   weapons.name = weapon.key で JOIN し、weapon.id で battle.weapon_id とつなぐ。
     // weapon_records (#49) は LEFT JOIN で未取得ブキは NULL を返す。
     let rows = sqlx::query_as::<_, WeaponRecord>(
-        "SELECT w.name, w.category, w.sub_weapon, w.special_weapon,
+        "SELECT w.name, nw.name_ja, nw.name_en, w.category, w.sub_weapon, w.special_weapon,
                 w.sub_weapon_image, w.special_weapon_image,
                 COUNT(b.id) as total,
                 COALESCE(SUM(CASE WHEN res.key='win'  THEN 1 ELSE 0 END), 0) as wins,

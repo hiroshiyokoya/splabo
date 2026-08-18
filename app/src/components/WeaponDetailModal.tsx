@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { invoke } from '@tauri-apps/api/core'
 import type { Filters, GroupedStatsRow, WeaponRecord } from '../types'
+import { weaponRecordDisplayName, groupedStatsDisplayName } from '../i18n/displayName'
 import { RULE_LABELS, filtersToBookDetailArgs, fmtKillRatioWithContrib, fmtOfficialDate, ruleLabel, METRIC_LABELS } from '../types'
 import { winRateColor } from '../utils/heatmapColors'
 
@@ -118,7 +119,7 @@ export function WeaponDetailModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-panel weapon-detail-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <span className="modal-title-text">{weapon.name}</span>
+          <span className="modal-title-text">{weaponRecordDisplayName(weapon)}</span>
           {weapon.category && <span className="modal-meta">{weapon.category}</span>}
           <button className="modal-close" onClick={onClose} aria-label={t('common.close')}>✕</button>
         </div>
@@ -128,7 +129,7 @@ export function WeaponDetailModal({
           <section className="modal-section weapon-modal-hero">
             <div className="weapon-modal-hero-icon">
               {image
-                ? <img src={image} alt={weapon.name} />
+                ? <img src={image} alt={weaponRecordDisplayName(weapon)} />
                 : <div className="weapon-modal-hero-placeholder" />}
             </div>
             <div className="weapon-modal-hero-meta">
@@ -223,7 +224,7 @@ export function WeaponDetailModal({
                   return (
                     <RecordRow
                       key={r.key}
-                      name={r.name}
+                      name={groupedStatsDisplayName(r)}
                       total={r.total}
                       wins={r.wins}
                       draws={r.draws}
@@ -249,7 +250,7 @@ export function WeaponDetailModal({
                 {bestStages.map(({ row: r, winRate: wr }) => (
                   <RecordRow
                     key={r.key}
-                    name={r.name}
+                    name={groupedStatsDisplayName(r)}
                     total={r.total}
                     wins={r.wins}
                     draws={r.draws}

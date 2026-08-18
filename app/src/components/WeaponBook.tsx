@@ -9,6 +9,7 @@ import { ViewToggle, getBookViews } from './ViewToggle'
 import { SortHeader } from './SortHeader'
 import { loadViewPrefs, saveViewPrefs } from '../utils/viewPrefs'
 import { winRateColor } from '../utils/heatmapColors'
+import { weaponRecordDisplayName } from '../i18n/displayName'
 
 // 大きい数値を「12.3万」短縮表示。
 /** 平均統計(K/D/A/SP/inked/duration)用の小行。
@@ -233,7 +234,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
         case 'last_used_at':      return cmpNum(a.last_used_at,      b.last_used_at)
         case 'weapon_power':      return cmpNum(a.weapon_power,      b.weapon_power)
         case 'weapon_power_max':  return cmpNum(a.weapon_power_max,  b.weapon_power_max)
-        case 'name':              return a.name.localeCompare(b.name, 'ja')
+        case 'name':              return weaponRecordDisplayName(a).localeCompare(weaponRecordDisplayName(b))
       }
     })
     // 各キーの「自然な向き」を基準に、一覧ビューのヘッダ再クリックで反転する(#297)。
@@ -458,7 +459,7 @@ function WeaponTable({ rows, statsByWeapon, subImages, spImages, sortKey, ascend
             const spImg    = w.special_weapon ? (spImages.get(w.special_weapon) ?? null) : null
             return (
               <tr key={w.name} className="book-tr clickable-row" onClick={() => onSelect(w)}>
-                <td className="book-td book-td--left">{w.name}</td>
+                <td className="book-td book-td--left">{weaponRecordDisplayName(w)}</td>
                 <td className="book-td book-td--left">{w.category}</td>
                 <td className="book-td book-td--left">
                   <BookIcon src={subImg} name={w.sub_weapon} />
@@ -566,7 +567,7 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
     >
       <div className="weapon-card-icon-wrap">
         {image
-          ? <img src={image} alt={weapon.name} className="weapon-card-icon" />
+          ? <img src={image} alt={weaponRecordDisplayName(weapon)} className="weapon-card-icon" />
           : <div className="weapon-card-icon weapon-card-icon--placeholder" />
         }
       </div>
@@ -576,7 +577,7 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
           {subImage && <img src={subImage} alt={weapon.sub_weapon ?? ''} className="weapon-sub-sp-icon" title={weapon.sub_weapon ?? ''} />}
         </div>
       )}
-      <div className="weapon-card-name" title={weapon.name}>{weapon.name}</div>
+      <div className="weapon-card-name" title={weaponRecordDisplayName(weapon)}>{weaponRecordDisplayName(weapon)}</div>
       {hasOfficial && (
         <div className="weapon-card-official-grid">
           {officialRows.map(r => (
