@@ -7,8 +7,10 @@ export interface Skill {
 export interface GearItem {
   id: number
   name: string
+  name_en?: string | null
   rarity: number
   brand: string
+  brand_en?: string | null
   brand_image: string
   image: string
   primary_skill: Skill
