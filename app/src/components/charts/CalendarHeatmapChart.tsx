@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { GroupedStatsRow, MetricKey } from '../../types'
 import { METRIC_LABELS, getMetric, metricGroup, formatMetric, winCountTooltipText, SCATTER_WIN_COUNT_METRICS } from '../../types'
 import {
@@ -39,7 +40,7 @@ const GRID_LEFT = 22
 /** 1 日 = ミリ秒。 */
 const DAY_MS = 24 * 60 * 60 * 1000
 
-const DOW_LABELS = ['月', '火', '水', '木', '金', '土', '日']
+const DOW_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
 
 /** カラーバー (凡例) を描画するための、メトリクスグループごとの色順序。
  *  count / average は 5 段階 (薄い→濃い)、rate は 11 段階 (ピンク→くすみ黄緑→青) divergent。 */
@@ -112,6 +113,7 @@ export function CalendarHeatmapChart({
   /** FilterBar の期間終了(YYYY-MM-DD)。未指定なら「いま」(今日まで・#461)。 */
   until?:         string | null
 }) {
+  const { t } = useTranslation()
   // ツールチップ位置はマウスの clientX / clientY (viewport 基準) を使う。
   // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
   const [hover, setHover] = useState<{ mx: number; my: number; date: string; value: number | null; total: number; wins: number; draws: number } | null>(null)
@@ -287,7 +289,7 @@ export function CalendarHeatmapChart({
 
   return (
     <div ref={scrollRef} className="chart-hover-area chart-hover-area--scroll" style={{ position: 'relative' }}>
-      <svg width={width} height={height} role="img" aria-label="カレンダーヒートマップ">
+      <svg width={width} height={height} role="img" aria-label={t('chart.calendarAria')}>
         <defs><SparseHatchPattern id={sparseId} /></defs>
         {/* .cal-cell スタイルは App.css に定義(凡例バーの SVG rect と共有) */}
         {/* 月ラベル (横軸上部) */}
@@ -302,15 +304,15 @@ export function CalendarHeatmapChart({
           >{MONTH_LABELS[ml.month]}</text>
         ))}
         {/* 曜日ラベル */}
-        {DOW_LABELS.map((lbl, i) => (
+        {DOW_KEYS.map((key, i) => (
           <text
-            key={lbl}
+            key={key}
             x={4}
             y={GRID_TOP + i * pitch + cell * 0.75}
             fontSize={9}
             fontWeight={600}
             fill="var(--text)"
-          >{lbl}</text>
+          >{t(`chart.dow.${key}`)}</text>
         ))}
         {/* セル: 列は日単位で割り当て済み(月境界で列がずれる・#310)。
             期間外は cells に入れていない。未来日も rangeEnd で今日までに制限済み(#461)。 */}

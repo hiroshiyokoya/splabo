@@ -12,6 +12,8 @@
  *       データには投稿バイアスがあります。
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type {
@@ -19,7 +21,7 @@ import type {
   EnvStatus, EnvVersion, EnvRank, EnvFilterOption, MetricKey, GroupByKey, Season,
   WeaponRecord,
 } from '../types'
-import { currentSeasonStart, GROUP_BY_LABELS, SCATTER_IMAGE_PX, SCATTER_IMAGE_SIZE_LABELS } from '../types'
+import { currentSeasonStart, SCATTER_IMAGE_PX } from '../types'
 import type { ScatterImageSize } from '../types'
 import { ScatterChart, buildSizeLegend, buildColorLegend, metricRefLine } from './charts/ScatterChart'
 import type { ScatterPoint } from './charts/ScatterChart'
@@ -38,31 +40,40 @@ import { loadSubSpImageMaps, loadWeaponImageMap, weaponAxisTip } from '../utils/
 import { PanelExportButton, PanelExportCaption, PanelExportLogo, PanelExportNote } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import {
-  joinConditions, joinValues, formatAbsolutePeriodRange, buildExportCaption,
+  joinValues, formatAbsolutePeriodRange,
 } from '../utils/filterSummary'
 
-const LOBBY_OPTIONS = [
-  { key: '',                  label: 'すべてのロビー' },
-  { key: 'regular',           label: 'レギュラー' },
-  { key: 'bankara_open',      label: 'バンカラ(オープン)' },
-  { key: 'bankara_challenge', label: 'バンカラ(チャレンジ)' },
-  { key: 'xmatch',            label: 'Xマッチ' },
-  { key: 'splatfest_open',    label: 'フェス(オープン)' },
-  { key: 'splatfest_challenge', label: 'フェス(チャレンジ)' },
-  { key: 'event',             label: 'イベント' },
-]
+function lobbyOptions(t: TFunction) {
+  return [
+    { key: '',                  label: t('filter.allLobbies') },
+    { key: 'regular',           label: t('filter.lobby_regular') },
+    { key: 'bankara_open',      label: t('filter.lobby_bankara_open') },
+    { key: 'bankara_challenge', label: t('filter.lobby_bankara_challenge') },
+    { key: 'xmatch',            label: t('filter.lobby_xmatch') },
+    { key: 'splatfest_open',    label: t('filter.lobby_splatfest_open') },
+    { key: 'splatfest_challenge', label: t('filter.lobby_splatfest_challenge') },
+    { key: 'event',             label: t('filter.lobby_event') },
+  ]
+}
 
-const RULE_OPTIONS = [
-  { key: '',         label: 'すべてのルール' },
-  { key: 'nawabari', label: 'ナワバリ' },
-  { key: 'area',     label: 'ガチエリア' },
-  { key: 'yagura',   label: 'ガチヤグラ' },
-  { key: 'hoko',     label: 'ガチホコ' },
-  { key: 'asari',    label: 'ガチアサリ' },
-]
+function ruleOptions(t: TFunction) {
+  return [
+    { key: '',         label: t('filter.allRules') },
+    { key: 'nawabari', label: t('filter.rule_turf_war') },
+    { key: 'area',     label: t('filter.rule_area') },
+    { key: 'yagura',   label: t('filter.rule_yagura') },
+    { key: 'hoko',     label: t('filter.rule_hoko') },
+    { key: 'asari',    label: t('filter.rule_asari') },
+  ]
+}
 
-const LOBBY_LABEL: Record<string, string> = Object.fromEntries(LOBBY_OPTIONS.filter(o => o.key).map(o => [o.key, o.label]))
-const RULE_LABEL:  Record<string, string> = Object.fromEntries(RULE_OPTIONS.filter(o => o.key).map(o => [o.key, o.label]))
+function lobbyLabelMap(t: TFunction): Record<string, string> {
+  return Object.fromEntries(lobbyOptions(t).filter(o => o.key).map(o => [o.key, o.label]))
+}
+
+function ruleLabelMap(t: TFunction): Record<string, string> {
+  return Object.fromEntries(ruleOptions(t).filter(o => o.key).map(o => [o.key, o.label]))
+}
 
 // ---------------------------------------------------------------------------
 // 指標メタデータ
@@ -86,6 +97,8 @@ interface ScatterMetric {
   kda?:   boolean              // KDA 系(記録のあるプレイヤーだけが母数・注記対象)
 }
 
+type ScatterMetricDef = Omit<ScatterMetric, 'label'> & { metricKey: string }
+
 /** ログスケールを許さない指標(#473)。勝率は 0.5 前後の狭い帯に収まるので、
  *  ログにしても読みやすくならず、参照線 50% との相性も悪い。 */
 const NO_LOG_METRICS = new Set(['win_rate'])
@@ -93,39 +106,43 @@ const NO_LOG_METRICS = new Set(['win_rate'])
 /** EnvScatterStat の数値フィールドをそのまま取り出すアクセサ。 */
 const field = (k: keyof EnvScatterStat) => (s: EnvScatterStat) => s[k] as number | null
 
-const WEAPON_METRICS: ScatterMetric[] = [
-  { key: 'pick_rate',  label: 'ピック率',   rate01: true,  fmt: pct2, get: field('pick_rate') },
-  { key: 'win_rate',   label: '勝率',       rate01: true,  fmt: pct,  get: field('win_rate') },
-  { key: 'avg_kill',   label: '平均キル',   rate01: false, fmt: num2, get: field('avg_kill'),   kda: true },
-  { key: 'avg_assist', label: '平均アシスト', rate01: false, fmt: num2, get: field('avg_assist'), kda: true },
-  { key: 'contrib_kill', label: '平均貢献キル', rate01: false, fmt: num2, kda: true,
+const WEAPON_METRIC_DEFS: ScatterMetricDef[] = [
+  { key: 'pick_rate',  metricKey: 'pick_rate',  rate01: true,  fmt: pct2, get: field('pick_rate') },
+  { key: 'win_rate',   metricKey: 'win_rate',   rate01: true,  fmt: pct,  get: field('win_rate') },
+  { key: 'avg_kill',   metricKey: 'avg_kill',   rate01: false, fmt: num2, get: field('avg_kill'),   kda: true },
+  { key: 'avg_assist', metricKey: 'avg_assist', rate01: false, fmt: num2, get: field('avg_assist'), kda: true },
+  { key: 'contrib_kill', metricKey: 'contrib_kill', rate01: false, fmt: num2, kda: true,
     get: (s) => (s.avg_kill != null && s.avg_assist != null) ? s.avg_kill + s.avg_assist : null },
-  { key: 'avg_death',  label: '平均デス',   rate01: false, fmt: num2, get: field('avg_death'),  kda: true },
-  { key: 'kill_ratio', label: 'キルレ',     rate01: false, fmt: num2, kda: true,
+  { key: 'avg_death',  metricKey: 'avg_death',  rate01: false, fmt: num2, get: field('avg_death'),  kda: true },
+  { key: 'kill_ratio', metricKey: 'kill_ratio', rate01: false, fmt: num2, kda: true,
     get: (s) => (s.avg_kill != null && s.avg_death != null && s.avg_death > 0) ? s.avg_kill / s.avg_death : null },
-  { key: 'contrib_ratio', label: '貢献キルレ', rate01: false, fmt: num2, kda: true,
+  { key: 'contrib_ratio', metricKey: 'contrib_ratio', rate01: false, fmt: num2, kda: true,
     get: (s) => (s.avg_kill != null && s.avg_assist != null && s.avg_death != null && s.avg_death > 0)
       ? (s.avg_kill + s.avg_assist) / s.avg_death : null },
-  { key: 'avg_inked',  label: '平均塗りP',  rate01: false, fmt: pint, get: field('avg_inked'),  kda: true },
+  { key: 'avg_inked',  metricKey: 'avg_inked',  rate01: false, fmt: pint, get: field('avg_inked'),  kda: true },
 ]
 
-const STAGE_METRICS: ScatterMetric[] = [
+const STAGE_METRIC_DEFS: ScatterMetricDef[] = [
   // 勝率・KDA はブキ絞り込み時だけ BE が埋める(#478)。未選択時は点が null で落ちる。
-  { key: 'win_rate',   label: '勝率',       rate01: true,  fmt: pct,  get: field('win_rate') },
-  { key: 'avg_kill',   label: '平均キル',   rate01: false, fmt: num2, get: field('avg_kill'),   kda: true },
-  { key: 'avg_assist', label: '平均アシスト', rate01: false, fmt: num2, get: field('avg_assist'), kda: true },
-  { key: 'contrib_kill', label: '平均貢献キル', rate01: false, fmt: num2, kda: true,
+  { key: 'win_rate',   metricKey: 'win_rate',   rate01: true,  fmt: pct,  get: field('win_rate') },
+  { key: 'avg_kill',   metricKey: 'avg_kill',   rate01: false, fmt: num2, get: field('avg_kill'),   kda: true },
+  { key: 'avg_assist', metricKey: 'avg_assist', rate01: false, fmt: num2, get: field('avg_assist'), kda: true },
+  { key: 'contrib_kill', metricKey: 'contrib_kill', rate01: false, fmt: num2, kda: true,
     get: (s) => (s.avg_kill != null && s.avg_assist != null) ? s.avg_kill + s.avg_assist : null },
-  { key: 'avg_death',  label: '平均デス',   rate01: false, fmt: num2, get: field('avg_death'),  kda: true },
-  { key: 'kill_ratio', label: 'キルレ',     rate01: false, fmt: num2, kda: true,
+  { key: 'avg_death',  metricKey: 'avg_death',  rate01: false, fmt: num2, get: field('avg_death'),  kda: true },
+  { key: 'kill_ratio', metricKey: 'kill_ratio', rate01: false, fmt: num2, kda: true,
     get: (s) => (s.avg_kill != null && s.avg_death != null && s.avg_death > 0) ? s.avg_kill / s.avg_death : null },
-  { key: 'contrib_ratio', label: '貢献キルレ', rate01: false, fmt: num2, kda: true,
+  { key: 'contrib_ratio', metricKey: 'contrib_ratio', rate01: false, fmt: num2, kda: true,
     get: (s) => (s.avg_kill != null && s.avg_assist != null && s.avg_death != null && s.avg_death > 0)
       ? (s.avg_kill + s.avg_assist) / s.avg_death : null },
-  { key: 'avg_count',    label: '平均カウント', rate01: false, fmt: num1,   get: field('avg_count') },
-  { key: 'avg_ink_self', label: '自分側 塗り%', rate01: false, fmt: pct100, get: field('avg_ink_self') },
-  { key: 'avg_ink_opp',  label: '相手側 塗り%', rate01: false, fmt: pct100, get: field('avg_ink_opp') },
+  { key: 'avg_count',    metricKey: 'avg_count',    rate01: false, fmt: num1,   get: field('avg_count') },
+  { key: 'avg_ink_self', metricKey: 'avg_ink_self', rate01: false, fmt: pct100, get: field('avg_ink_self') },
+  { key: 'avg_ink_opp',  metricKey: 'avg_ink_opp',  rate01: false, fmt: pct100, get: field('avg_ink_opp') },
 ]
+
+function withScatterLabels(t: TFunction, defs: ScatterMetricDef[]): ScatterMetric[] {
+  return defs.map(d => ({ ...d, label: t(`env.metric.${d.metricKey}`) }))
+}
 
 /** ステージ散布図でブキ未選択だと無意味な指標(#478)。 */
 const STAGE_WEAPON_ONLY = new Set([
@@ -150,56 +167,66 @@ interface CellMetric {
   mid?:   number    // diverging の中心値(既定 0.5)
   hue?:   number    // sequential の色相(既定 210=青)。デスは 8=赤(高いほど悪い)
 }
-const CELL_METRICS: CellMetric[] = [
-  { key: 'win_rate',      label: '勝率',         fmt: pct,  scale: 'diverging',  weapon: true, mid: 0.5 },
-  { key: 'pick_rate',     label: 'ピック率',     fmt: pct2, scale: 'sequential', weapon: true },
-  { key: 'avg_kill',      label: '平均キル',     fmt: num2, scale: 'sequential', weapon: true },
-  { key: 'avg_assist',    label: '平均アシスト', fmt: num2, scale: 'sequential', weapon: true },
-  { key: 'contrib_kill',  label: '平均貢献キル', fmt: num2, scale: 'sequential', weapon: true },
-  { key: 'avg_death',     label: '平均デス',     fmt: num2, scale: 'sequential', weapon: true, hue: 8 },
-  { key: 'kill_ratio',    label: 'キルレ',       fmt: num2, scale: 'diverging',  weapon: true, mid: 1.0 },
-  { key: 'contrib_ratio', label: '貢献キルレ',   fmt: num2, scale: 'diverging',  weapon: true, mid: 1.0 },
-  { key: 'avg_inked',     label: '平均塗りP',   fmt: pint, scale: 'sequential', weapon: true },
-  { key: 'battles',       label: 'バトル数',     fmt: pint, scale: 'sequential', weapon: false },
+
+type CellMetricDef = Omit<CellMetric, 'label'> & { metricKey: string }
+
+const CELL_METRIC_DEFS: CellMetricDef[] = [
+  { key: 'win_rate',      metricKey: 'win_rate',      fmt: pct,  scale: 'diverging',  weapon: true, mid: 0.5 },
+  { key: 'pick_rate',     metricKey: 'pick_rate',     fmt: pct2, scale: 'sequential', weapon: true },
+  { key: 'avg_kill',      metricKey: 'avg_kill',      fmt: num2, scale: 'sequential', weapon: true },
+  { key: 'avg_assist',    metricKey: 'avg_assist',    fmt: num2, scale: 'sequential', weapon: true },
+  { key: 'contrib_kill',  metricKey: 'contrib_kill',  fmt: num2, scale: 'sequential', weapon: true },
+  { key: 'avg_death',     metricKey: 'avg_death',     fmt: num2, scale: 'sequential', weapon: true, hue: 8 },
+  { key: 'kill_ratio',    metricKey: 'kill_ratio',    fmt: num2, scale: 'diverging',  weapon: true, mid: 1.0 },
+  { key: 'contrib_ratio', metricKey: 'contrib_ratio', fmt: num2, scale: 'diverging',  weapon: true, mid: 1.0 },
+  { key: 'avg_inked',     metricKey: 'avg_inked',     fmt: pint, scale: 'sequential', weapon: true },
+  { key: 'battles',       metricKey: 'battles',       fmt: pint, scale: 'sequential', weapon: false },
 ]
+
+function withCellLabels(t: TFunction, defs: CellMetricDef[]): CellMetric[] {
+  return defs.map(d => ({ ...d, label: t(`env.metric.${d.metricKey}`) }))
+}
 // ルールを次元にしたときの並び順(ガチ系を先・ナワバリを最後)。
 const RULE_HEATMAP_ORDER = ['area', 'yagura', 'hoko', 'asari', 'nawabari']
-
-/** 投稿者除外の説明(#501)。投稿者本人を母数から外し、残り 7 人で集計している。
- *  散布図・ヒートマップ・保存画像で同じ文言を使う。 */
-const POSTER_EXCLUDED_TEXT = '集計は投稿者を除く 7 人分'
-/** 画面の注釈用。 */
-const POSTER_EXCLUDED_NOTE = `※ ${POSTER_EXCLUDED_TEXT}。`
-
-/** 画像に焼き込む注釈(#500)。パネル上の長文をそのまま入れるとレイアウトが崩れるので、
- *  足切り・母数だけの 1 行に抑える。出典はキャプション先頭に出す。 */
-const SCATTER_EXPORT_NOTE =
-  `50 サンプル未満は非表示 / ${POSTER_EXCLUDED_TEXT}`
-const heatmapExportNote = (kda: boolean) =>
-  `${kda ? 20 : 30} サンプル未満のセルは非表示 / ${POSTER_EXCLUDED_TEXT}`
-
-/**
- * 保存画像のキャプション。順序は **出典 → 絞り込み条件 → 該当バトル数**(#545 / #554)。
- * 組み立てはダッシュボードと共通(#553)。環境分析だけ先頭に出典が付く。
- */
-function envExportCaption(conditions: string, filteredCount: number | null): string {
-  return buildExportCaption(conditions, filteredCount, '出典: stat.ink')
-}
 
 /** スロット単位の集計が必要なヒートマップ次元(#481)。 */
 const WEAPON_SLOT_DIMS = ['weapon', 'weapon_category', 'sub_weapon', 'special_weapon'] as const
 const isWeaponSlotDim = (dim: string) =>
   (WEAPON_SLOT_DIMS as readonly string[]).includes(dim)
 
-const DIM_OPTIONS = [
-  { key: 'weapon',          label: GROUP_BY_LABELS.weapon },
-  { key: 'weapon_category', label: GROUP_BY_LABELS.weapon_category },
-  { key: 'sub_weapon',      label: GROUP_BY_LABELS.sub_weapon },
-  { key: 'special_weapon',  label: GROUP_BY_LABELS.special_weapon },
-  { key: 'stage',           label: GROUP_BY_LABELS.stage },
-  { key: 'rule',            label: GROUP_BY_LABELS.rule },
-  { key: 'lobby',           label: GROUP_BY_LABELS.mode },
-]
+type DimOption = { key: string; label: string }
+
+function dimOptions(t: TFunction): DimOption[] {
+  return [
+    { key: 'weapon',          label: t('env.groupBy.weapon') },
+    { key: 'weapon_category', label: t('env.groupBy.weapon_category') },
+    { key: 'sub_weapon',      label: t('env.groupBy.sub_weapon') },
+    { key: 'special_weapon',  label: t('env.groupBy.special_weapon') },
+    { key: 'stage',           label: t('env.groupBy.stage') },
+    { key: 'rule',            label: t('env.groupBy.rule') },
+    { key: 'lobby',           label: t('env.groupBy.lobby') },
+  ]
+}
+
+function groupByLabel(t: TFunction, key: GroupByKey): string {
+  const envKeys = ['weapon', 'weapon_category', 'sub_weapon', 'special_weapon', 'stage', 'rule', 'lobby'] as const
+  if ((envKeys as readonly string[]).includes(key)) return t(`env.groupBy.${key}`)
+  return key
+}
+
+/** 保存画像のキャプション。順序は **出典 → 絞り込み条件 → 該当バトル数**(#545 / #554)。 */
+function joinEnvConditions(parts: [string, string | null][]): string {
+  const kept = parts.filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`)
+  return kept.length ? kept.join(' / ') : ''
+}
+
+function envExportCaption(t: TFunction, conditions: string, filteredCount: number | null): string {
+  return [
+    t('env.sourceStatink'),
+    conditions,
+    filteredCount != null ? t('env.matchedBattles', { count: filteredCount.toLocaleString() }) : '',
+  ].filter(Boolean).join(' / ')
+}
 
 // ステージ正式名 → 短縮名(コミュニティ通称)。未知のキーはそのまま返す。
 const STAGE_SHORT: Record<string, string> = {
@@ -215,10 +242,15 @@ const STAGE_SHORT: Record<string, string> = {
 }
 const shortStage = (k: string) => STAGE_SHORT[k] ?? k
 
-const dimLabel = (dim: string) => DIM_OPTIONS.find(d => d.key === dim)?.label ?? dim
-function dimKeyLabeller(dim: string): (k: string) => string {
-  if (dim === 'rule')  return (k) => RULE_LABEL[k]  ?? k
-  if (dim === 'lobby') return (k) => LOBBY_LABEL[k] ?? k
+function dimLabel(opts: DimOption[], dim: string): string {
+  return opts.find(d => d.key === dim)?.label ?? dim
+}
+
+function dimKeyLabeller(t: TFunction, dim: string): (k: string) => string {
+  const lobbies = lobbyLabelMap(t)
+  const rules = ruleLabelMap(t)
+  if (dim === 'rule')  return (k) => rules[k]  ?? k
+  if (dim === 'lobby') return (k) => lobbies[k] ?? k
   if (dim === 'stage') return (k) => shortStage(k)
   return (k) => k
 }
@@ -229,15 +261,12 @@ function dimKeyLabeller(dim: string): (k: string) => string {
 
 /** `season` は特定のシーズンを名指しで選んだ状態（#585）。範囲は seasonName から引く。 */
 type Period = 'all' | 'current_season' | 'season' | '1y' | '180d' | '30d' | 'custom'
-const PERIOD_OPTIONS: { key: Period; label: string }[] = [
-  { key: 'all',            label: '全期間' },
-  // 🔴 'current_season' と 'season' はボタンに出さない（#585）。
-  // シーズンのプルダウン側にあるので、両方に出すと同じものが 2 つ並ぶ。
-  { key: '1y',             label: '1年' },
-  { key: '180d',           label: '180日' },
-  { key: '30d',            label: '30日' },
-  { key: 'custom',         label: 'カスタム' },
-]
+
+const PERIOD_KEYS: Period[] = ['all', '1y', '180d', '30d', 'custom']
+
+function periodLabelKey(id: Period): string {
+  return id === 'all' ? 'filter.allPeriod' : `filter.${id}`
+}
 
 /** "YYYY-MM-DD" に日数を加算する(UTC 基準で tz ずれを避ける)。 */
 function addDays(dateStr: string, delta: number): string {
@@ -284,6 +313,22 @@ function marginalProjection(ms: EnvMatrixMarginal[]): Map<string, number | null>
 }
 
 export function EnvAnalysis() {
+  const { t } = useTranslation()
+  const cellMetrics = useMemo(() => withCellLabels(t, CELL_METRIC_DEFS), [t])
+  const dims = useMemo(() => dimOptions(t), [t])
+  const lobbies = useMemo(() => lobbyLabelMap(t), [t])
+  const rules = useMemo(() => ruleLabelMap(t), [t])
+  const posterExcludedText = t('env.posterExcluded')
+  const posterExcludedNote = t('env.posterExcludedNote', { text: posterExcludedText })
+  const scatterExportNote = `${t('env.hideUnder50')} / ${posterExcludedText}`
+  const heatmapExportNote = useCallback((kda: boolean) =>
+    `${t('env.hideUnderN', { n: kda ? 20 : 30 })} / ${posterExcludedText}`,
+  [t, posterExcludedText])
+  const scatterImageSizeLabels = useMemo((): Record<ScatterImageSize, string> => ({
+    small:  t('env.imageSizeSmall'),
+    medium: t('env.imageSizeMedium'),
+    large:  t('env.imageSizeLarge'),
+  }), [t])
   // 選択状態の永続化(#407)。mount 時に localStorage から一度だけ読む。
   const [prefs] = useState(loadEnvPrefs)
   const [status, setStatus]           = useState<EnvStatus | null>(null)
@@ -524,10 +569,10 @@ export function EnvAnalysis() {
   // KO率はヒートマップから外した(#522)。
   const allowedCellMetrics = useMemo(() => {
     if (bothWeaponSlot) return []
-    if (weaponSlotInvolved) return CELL_METRICS.filter(m => m.weapon)
-    if (hasWeaponFilter) return CELL_METRICS.filter(m => m.key !== 'pick_rate')
-    return CELL_METRICS.filter(m => !m.weapon)
-  }, [weaponSlotInvolved, bothWeaponSlot, hasWeaponFilter])
+    if (weaponSlotInvolved) return cellMetrics.filter(m => m.weapon)
+    if (hasWeaponFilter) return cellMetrics.filter(m => m.key !== 'pick_rate')
+    return cellMetrics.filter(m => !m.weapon)
+  }, [weaponSlotInvolved, bothWeaponSlot, hasWeaponFilter, cellMetrics])
   useEffect(() => {
     if (allowedCellMetrics.length > 0 && !allowedCellMetrics.some(m => m.key === cellMetric)) {
       setCellMetric(allowedCellMetrics[0].key)
@@ -620,7 +665,7 @@ export function EnvAnalysis() {
       opts.find(o => o.key === k)?.label ?? k
     // データ未取得で相対期間が解けないときだけ、UI と同じラベルにフォールバックする。
     const periodCaption = (() => {
-      if (period === 'all') return '全期間'
+      if (period === 'all') return t('filter.allPeriod')
       // シーズンは名前を出す(#585)。後から見ても一意に決まるので日付に開かなくてよい。
       if (period === 'season' && seasonName) {
         return `${seasonName} (${range.since || '-'}~${range.until || '-'})`
@@ -631,22 +676,24 @@ export function EnvAnalysis() {
       if (range.since || range.until) {
         return formatAbsolutePeriodRange(range.since, range.until)
       }
-      return PERIOD_OPTIONS.find(o => o.key === period)?.label ?? period
+      return t(periodLabelKey(period))
     })()
-    return joinConditions([
-      ['ロビー',     lobbyKeys.length ? joinValues(lobbyKeys.map(k => LOBBY_LABEL[k] ?? k)) : null],
-      ['期間',       periodCaption],
-      ['ルール',     ruleKeys.length ? joinValues(ruleKeys.map(k => RULE_LABEL[k] ?? k)) : null],
-      ['ブキ',       weaponKeys.length ? joinValues(weaponKeys.map(k => optLabel(weaponOptions, k))) : null],
-      ['ステージ',   stageKeys.length ? joinValues(stageKeys.map(k => optLabel(stageOptions, k))) : null],
-      ['バージョン', gameVers.length ? joinValues(gameVers.map(formatGameVer)) : null],
-      ['ウデマエ',   posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
-      ['Xパワー',    (powerMin || powerMax) ? `${powerMin || '-'}~${powerMax || '-'}` : null],
+    const conditions = joinEnvConditions([
+      [t('env.exportCaption.lobby'),     lobbyKeys.length ? joinValues(lobbyKeys.map(k => lobbies[k] ?? k)) : null],
+      [t('env.exportCaption.period'),    periodCaption],
+      [t('env.exportCaption.rule'),      ruleKeys.length ? joinValues(ruleKeys.map(k => rules[k] ?? k)) : null],
+      [t('env.exportCaption.weapon'),    weaponKeys.length ? joinValues(weaponKeys.map(k => optLabel(weaponOptions, k))) : null],
+      [t('env.exportCaption.stage'),     stageKeys.length ? joinValues(stageKeys.map(k => optLabel(stageOptions, k))) : null],
+      [t('env.exportCaption.version'),   gameVers.length ? joinValues(gameVers.map(formatGameVer)) : null],
+      [t('env.exportCaption.rank'),      posterRanks.length ? joinValues(posterRanks.map(r => r.toUpperCase())) : null],
+      [t('env.exportCaption.xPower'),    (powerMin || powerMax) ? `${powerMin || '-'}~${powerMax || '-'}` : null],
       // 表示を絞ったなら画像にも書く(#593)。集計は全体のままだと分かるよう「表示」と付ける。
-      ['表示ブキ',   displayWeapons.length ? joinValues(displayWeapons.map(k => optLabel(weaponOptions, k))) : null],
+      [t('env.exportCaption.displayWeapon'), displayWeapons.length ? joinValues(displayWeapons.map(k => optLabel(weaponOptions, k))) : null],
     ])
+    return conditions || t('env.noFilters')
   }, [period, seasonName, range, lobbyKeys, ruleKeys, weaponKeys, stageKeys,
-      weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax, displayWeapons])
+      weaponOptions, stageOptions, gameVers, posterRanks, powerMin, powerMax, displayWeapons,
+      t, lobbies, rules])
 
   // 拡充フィルタ(#189 / #477)を invoke 引数へ。空配列 / 空文字は null(無指定)に正規化。
   const extFilters = useMemo(() => ({
@@ -815,7 +862,7 @@ export function EnvAnalysis() {
     const prefs = loadEnvImportPrefs()
     const since = resolveImportSince(prefs.kind, prefs.custom)
     if (prefs.kind === 'custom' && !since) {
-      setError('設定 → データで開始日を選んでください')
+      setError(t('env.pickStartDate'))
       return
     }
     setImporting(true); setError(null)
@@ -841,11 +888,12 @@ export function EnvAnalysis() {
   // 散布図ポイント生成
   const stageWeaponReady = groupBy === 'stage' && weaponKeys.length > 0
   const metrics = useMemo(() => {
-    if (groupBy === 'weapon') return WEAPON_METRICS
-    // ブキ未選択時は勝率・KDA を選択肢から外す(#478)
-    if (!stageWeaponReady) return STAGE_METRICS.filter(m => !STAGE_WEAPON_ONLY.has(m.key))
-    return STAGE_METRICS
-  }, [groupBy, stageWeaponReady])
+    if (groupBy === 'weapon') return withScatterLabels(t, WEAPON_METRIC_DEFS)
+    const stageDefs = stageWeaponReady
+      ? STAGE_METRIC_DEFS
+      : STAGE_METRIC_DEFS.filter(m => !STAGE_WEAPON_ONLY.has(m.key))
+    return withScatterLabels(t, stageDefs)
+  }, [groupBy, stageWeaponReady, t])
   const xM = metrics.find(m => m.key === xKey) ?? metrics[0]
   const yM = metrics.find(m => m.key === yKey) ?? metrics[1]
   // ログスケールの可否(#473)。設定が残っていても不可の指標では効かせない。
@@ -902,7 +950,7 @@ export function EnvAnalysis() {
       { key: yM.key,    row: { label: yM.label, value: y == null ? '-' : yM.fmt(y) } },
       ...(sizeM  ? [{ key: sizeM.key,  row: { label: sizeM.label,  value: sv == null ? '-' : sizeM.fmt(sv),  muted: true } }] : []),
       ...(colorM ? [{ key: colorM.key, row: { label: colorM.label, value: cv == null ? '-' : colorM.fmt(cv), muted: true } }] : []),
-      ...(isCatColor ? [{ key: colorKey, row: { label: GROUP_BY_LABELS[colorKey as GroupByKey], value: catVal!, muted: true } }] : []),
+      ...(isCatColor ? [{ key: colorKey, row: { label: groupByLabel(t, colorKey as GroupByKey), value: catVal!, muted: true } }] : []),
     ])
     return {
       name: s.key,
@@ -918,10 +966,10 @@ export function EnvAnalysis() {
       // 見出しにアイコン + 名前が出るので、ブキ/ステージ行は重複になる (#433)
       tooltipRows: [
         ...metricRows,
-        { label: 'サンプル', value: s.n.toLocaleString() },
+        { label: t('env.sample'), value: s.n.toLocaleString() },
       ],
     }
-  }).filter(p => p.x !== null && p.y !== null), [shownScatter, xM, yM, sizeM, colorM, isCatColor, colorKey, pointColor, iconUrls, iconKind, presentCategories, weaponMeta, subImages, spImages])
+  }).filter(p => p.x !== null && p.y !== null), [shownScatter, xM, yM, sizeM, colorM, isCatColor, colorKey, pointColor, iconUrls, iconKind, presentCategories, weaponMeta, subImages, spImages, t])
 
   // サイズ・色の凡例(#420)。
   // サイズは **描画された点** の値から作る(Recharts の ZAxis も描画データから
@@ -935,19 +983,19 @@ export function EnvAnalysis() {
   const colorLegend = useMemo(() => {
     if (isCatColor) {
       return buildCategoryColorLegend(
-        GROUP_BY_LABELS[colorKey as GroupByKey],
+        groupByLabel(t, colorKey as GroupByKey),
         shownScatter.map(s => categoryValueForEnvStat(s, colorKey)),
       )
     }
     return colorM
       ? buildColorLegend(colorM.label, shownScatter.map(s => colorM.get(s)), colorM.fmt, pointColor)
       : null
-  }, [isCatColor, colorKey, colorM, shownScatter, pointColor])
+  }, [isCatColor, colorKey, colorM, shownScatter, pointColor, t])
 
   const xDomain = useMemo(() => computeDomain(points.map(p => p.x as number), xM.rate01), [points, xM])
   const yDomain = useMemo(() => computeDomain(points.map(p => p.y as number), yM.rate01), [points, yM])
 
-  const cm = CELL_METRICS.find(m => m.key === cellMetric) ?? CELL_METRICS[0]
+  const cm = cellMetrics.find(m => m.key === cellMetric) ?? cellMetrics[0]
 
   // 軸ラベル色付け用の射影値(#405 / #411)。
   //
@@ -962,21 +1010,22 @@ export function EnvAnalysis() {
   return (
     <div className="env-analysis">
       <div className="env-analysis-header">
-        <h2>環境分析</h2>
+        <h2>{t('env.title')}</h2>
         <p className="env-bias-notice">
-          データ出典: <a href="https://stat.ink" target="_blank" rel="noopener noreferrer">stat.ink</a>(ユーザー投稿)。
-          stat.ink ユーザーは熱心なプレイヤーに偏るため、一般環境と差異がある場合があります。
+          {t('env.biasNoticeBefore')}{' '}
+          <a href="https://stat.ink" target="_blank" rel="noopener noreferrer">stat.ink</a>
+          {t('env.biasNoticeAfter')}
         </p>
       </div>
 
       {!hasData ? (
         <div className="env-placeholder">
           <div className="env-placeholder-icon">🌍</div>
-          <h3>環境データが未取得です</h3>
-          <p>stat.ink の公開データからバトル統計を取得します（既定は 2025.1.1〜）</p>
-          <p className="env-placeholder-sub">開始日の変更と入れ直しは、設定 → データ</p>
+          <h3>{t('env.noDataTitle')}</h3>
+          <p>{t('env.noDataDesc')}</p>
+          <p className="env-placeholder-sub">{t('env.noDataSub')}</p>
           <button className="btn-primary" onClick={handleDownloadFull} disabled={importing}>
-            {importing ? 'ダウンロード中...' : 'データを取得する'}
+            {importing ? t('env.downloading') : t('env.download')}
           </button>
           {error && <p className="env-error">{error}</p>}
           {progress && <ProgressDisplay progress={progress} />}
@@ -985,21 +1034,21 @@ export function EnvAnalysis() {
         <>
           <div className="env-data-header">
             <span className="env-data-range">
-              データ: {status.min_date} ~ {status.max_date} /&nbsp;
-              {(status.total_rows / 10000).toFixed(1)} 万行
+              {t('env.dataRange', {
+                min: status.min_date,
+                max: status.max_date,
+                rows: (status.total_rows / 10000).toFixed(1),
+              })}
             </span>
             <button className="btn-primary" onClick={handleDelta} disabled={importing}
-                    title="最終取得日の翌日から昨日分を差分取得します">
-              {importing ? '更新中...' : '差分更新'}
+                    title={t('env.deltaTitle')}>
+              {importing ? t('env.updating') : t('env.deltaUpdate')}
             </button>
             {error && <span className="env-error">{error}</span>}
           </div>
 
           {!status.full_kda && (
-            <p className="env-filter-note">
-              ※ v0.9.6 以前に取り込んだデータは、キル・デス・アシスト・塗りポイントが 1 人分しかありません。
-              設定 → データの「再取得」を実行してください(勝率・ピック率は再取得なしでも 7 人分で集計されます)。
-            </p>
+            <p className="env-filter-note">{t('env.kdaLegacyNote')}</p>
           )}
 
           {progress && <ProgressDisplay progress={progress} />}
@@ -1007,16 +1056,16 @@ export function EnvAnalysis() {
           {/* モード切替 */}
           <div className="env-mode-tabs">
             <button className={vizMode === 'scatter' ? 'env-mode-tab is-active' : 'env-mode-tab'}
-                    onClick={() => setVizMode('scatter')}>散布図</button>
+                    onClick={() => setVizMode('scatter')}>{t('env.scatter')}</button>
             <button className={vizMode === 'heatmap' ? 'env-mode-tab is-active' : 'env-mode-tab'}
-                    onClick={() => setVizMode('heatmap')}>ヒートマップ</button>
+                    onClick={() => setVizMode('heatmap')}>{t('env.heatmap')}</button>
           </div>
 
           {/* 共通フィルタ(並びは FilterBar＝期間→ロビー→ルール→ブキ→ステージ に合わせる) */}
           <div className="env-filters">
             {/* 期間はバトル・ブキ・ステージと同じくボタンを並べる（#585）。
                 「今シーズン」はボタンではなくシーズンのプルダウンの先頭にある。 */}
-            <label>期間
+            <label>{t('filter.period')}
               <span className="env-period-btns">
                 {/* シーズンは期間の先頭。既定が「今シーズン」なので、ボタンより前に置く。 */}
                 <SeasonSelect
@@ -1029,48 +1078,48 @@ export function EnvAnalysis() {
                     else   { setSeasonName(null);   setPeriod('current_season') }
                   }}
                 />
-                {PERIOD_OPTIONS.map(o => (
+                {PERIOD_KEYS.map(key => (
                   <button
-                    key={o.key}
+                    key={key}
                     type="button"
-                    className={`filter-btn${period === o.key ? ' active' : ''}`}
-                    onClick={() => setPeriod(o.key)}
-                  >{o.label}</button>
+                    className={`filter-btn${period === key ? ' active' : ''}`}
+                    onClick={() => setPeriod(key)}
+                  >{t(periodLabelKey(key))}</button>
                 ))}
               </span>
             </label>
             {period === 'custom' && (
               <>
-                <label>開始
+                <label>{t('env.periodStart')}
                   <input type="date" value={customSince} max={status.max_date ?? undefined}
                          min={status.min_date ?? undefined} onChange={e => setCustomSince(e.target.value)} />
                 </label>
-                <label>終了
+                <label>{t('env.periodEnd')}
                   <input type="date" value={customUntil} max={status.max_date ?? undefined}
                          min={status.min_date ?? undefined} onChange={e => setCustomUntil(e.target.value)} />
                 </label>
               </>
             )}
             <MultiSelect
-              label="ロビー"
-              allLabel="すべてのロビー"
+              label={t('filter.lobby')}
+              allLabel={t('filter.allLobbies')}
               selected={lobbyKeys}
               onChange={setLobbyKeys}
-              options={LOBBY_OPTIONS.filter(o => o.key).map(o => ({ key: o.key, label: o.label }))}
+              options={lobbyOptions(t).filter(o => o.key).map(o => ({ key: o.key, label: o.label }))}
             />
             <MultiSelect
-              label="ルール"
-              allLabel="すべてのルール"
+              label={t('filter.rule')}
+              allLabel={t('filter.allRules')}
               selected={ruleKeys}
               onChange={setRuleKeys}
-              options={RULE_OPTIONS.filter(o => o.key).map(o => ({ key: o.key, label: o.label }))}
+              options={ruleOptions(t).filter(o => o.key).map(o => ({ key: o.key, label: o.label }))}
             />
           </div>
           {/* ブキから行を変える（#585）。期間・シーズン・ロビー・ルールで 1 行目。 */}
           <div className="env-filters">
             <MultiSelect
-              label="ブキ"
-              allLabel="すべてのブキ"
+              label={t('filter.weapon')}
+              allLabel={t('filter.allWeapons')}
               loading={optionsLoading}
               selected={weaponKeys}
               onChange={setWeaponKeys}
@@ -1082,8 +1131,8 @@ export function EnvAnalysis() {
               }))}
             />
             <MultiSelect
-              label="ステージ"
-              allLabel="すべてのステージ"
+              label={t('filter.stage')}
+              allLabel={t('filter.allStages')}
               loading={optionsLoading}
               selected={stageKeys}
               onChange={setStageKeys}
@@ -1094,20 +1143,20 @@ export function EnvAnalysis() {
               }))}
             />
             <MultiSelect
-              label="バージョン"
-              allLabel="すべてのバージョン"
+              label={t('env.version')}
+              allLabel={t('env.allVersions')}
               loading={optionsLoading}
               selected={gameVers}
               onChange={setGameVers}
               options={versionOptions.map(v => ({
                 key:   v.game_ver,
-                label: `${formatGameVer(v.game_ver)}(${(v.n / 10000).toFixed(1)} 万)`,
+                label: `${formatGameVer(v.game_ver)}${t('env.tenThousand', { n: (v.n / 10000).toFixed(1) })}`,
                 short: formatGameVer(v.game_ver),
               }))}
             />
             <MultiSelect
-              label="ウデマエ帯"
-              allLabel="すべてのウデマエ"
+              label={t('env.rankBand')}
+              allLabel={t('env.allRanks')}
               loading={optionsLoading}
               selected={posterRanks}
               onChange={setPosterRanks}
@@ -1117,12 +1166,12 @@ export function EnvAnalysis() {
                 short: r.poster_rank.toUpperCase(),
               }))}
             />
-            <label>Xパワー帯
+            <label>{t('env.xPower')}
               <span className="env-power-range">
-                <input type="number" inputMode="numeric" placeholder="下限" step={50}
+                <input type="number" inputMode="numeric" placeholder={t('env.powerMin')} step={50}
                        value={powerMin} onChange={e => setPowerMin(e.target.value)} />
                 <span className="env-power-sep">~</span>
-                <input type="number" inputMode="numeric" placeholder="上限" step={50}
+                <input type="number" inputMode="numeric" placeholder={t('env.powerMax')} step={50}
                        value={powerMax} onChange={e => setPowerMax(e.target.value)} />
               </span>
             </label>
@@ -1131,34 +1180,30 @@ export function EnvAnalysis() {
               className="env-filter-clear"
               onClick={clearFilters}
               disabled={filtersAreDefault}
-              title={filtersAreDefault ? 'すでに初期状態です' : '共通フィルタをすべて初期状態に戻す'}
-            >✕ クリア</button>
+              title={filtersAreDefault ? t('env.clearDefaultTitle') : t('env.clearTitle')}
+            >{t('env.clear')}</button>
           </div>
 
           {(posterRanks.length > 0 || powerMin !== '' || powerMax !== '') && (
-            <p className="env-filter-note">
-              ※ ウデマエ帯・Xパワーは投稿者のみの記録に基づく絞り込みです。
-              残る 7 名(味方 3 人・相手 4 人)の帯は含まれないため、参加者全員がこの帯であることは保証されません。
-              Xパワーは X マッチ等の投稿でのみ記録されます。
-            </p>
+            <p className="env-filter-note">{t('env.rankFilterNote')}</p>
           )}
 
           <div className="env-status-line">
             {filteredCount != null && (
-              <span className="env-filtered-count">該当 {filteredCount.toLocaleString()} バトル</span>
+              <span className="env-filtered-count">{t('env.matchedBattles', { count: filteredCount.toLocaleString() })}</span>
             )}
             {loading
-              ? <span className="env-loading"><span className="env-loading-spinner" />グラフ更新中…</span>
-              : <span className="env-updated">✓ 表示は最新です</span>}
+              ? <span className="env-loading"><span className="env-loading-spinner" />{t('env.graphUpdating')}</span>
+              : <span className="env-updated">{t('env.graphUpdated')}</span>}
           </div>
 
           {vizMode === 'scatter' ? (
             <>
               <div className="env-filters">
-                <label>集計軸
+                <label>{t('env.groupByAxis')}
                   <select value={groupBy} onChange={e => setGroupBy(e.target.value as 'weapon' | 'stage')}>
-                    <option value="weapon">ブキ別</option>
-                    <option value="stage">ステージ別</option>
+                    <option value="weapon">{t('env.byWeapon')}</option>
+                    <option value="stage">{t('env.byStage')}</option>
                   </select>
                 </label>
                 {/* 表示するブキ（#593）。集計は動かさず、描く点だけを選ぶ。
@@ -1166,56 +1211,56 @@ export function EnvAnalysis() {
                 {groupBy === 'weapon' && <DisplayWeaponSelect
                   options={weaponOptions} selected={displayWeapons} onChange={setDisplayWeapons}
                   loading={optionsLoading} />}
-                <label>X軸
+                <label>{t('env.xAxis')}
                   <select value={xKey} onChange={e => setXKey(e.target.value)}>
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                   </select>
                 </label>
                 <LogToggle
-                  label="X軸ログ" checked={xLog} allowed={xLogOk}
+                  label={t('env.xLog')} checked={xLog} allowed={xLogOk}
                   metricLabel={xM.label} onChange={setXLog}
                 />
-                <label>Y軸
+                <label>{t('env.yAxis')}
                   <select value={yKey} onChange={e => setYKey(e.target.value)}>
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                   </select>
                 </label>
                 <LogToggle
-                  label="Y軸ログ" checked={yLog} allowed={yLogOk}
+                  label={t('env.yLog')} checked={yLog} allowed={yLogOk}
                   metricLabel={yM.label} onChange={setYLog}
                 />
                 {/* 点をブキ画像にする(#631)。ステージ画像は横長で正方形に収まらないので出さない。 */}
                 {groupBy === 'weapon' && (
-                  <label>点の見た目
+                  <label>{t('env.pointStyle')}
                     <select value={pointStyle} onChange={e => setPointStyle(e.target.value)}>
-                      <option value="dot">丸・記号</option>
-                      <option value="image">ブキ画像</option>
+                      <option value="dot">{t('env.pointDot')}</option>
+                      <option value="image">{t('env.pointImage')}</option>
                     </select>
                   </label>
                 )}
                 {imageMode && (
-                  <label>画像の大きさ
+                  <label>{t('env.imageSize')}
                     <select value={imageSize} onChange={e => setImageSize(e.target.value)}>
                       {(['small', 'medium', 'large'] as ScatterImageSize[]).map(s => (
-                        <option key={s} value={s}>{SCATTER_IMAGE_SIZE_LABELS[s]}</option>
+                        <option key={s} value={s}>{scatterImageSizeLabels[s]}</option>
                       ))}
                     </select>
                   </label>
                 )}
                 {/* 🔴 画像モードでは**出さない**。画像が塗りを埋めるので色は読めず、
                     サイズは一定にする約束（AGENTS.md「設定 UI のルール」）。 */}
-                {!imageMode && <label>サイズ
+                {!imageMode && <label>{t('env.size')}
                   <select value={sizeKey} onChange={e => setSizeKey(e.target.value)}>
-                    <option value="">なし</option>
+                    <option value="">{t('env.none')}</option>
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                   </select>
                 </label>}
-                {!imageMode && <label>色・形
+                {!imageMode && <label>{t('env.colorShape')}
                   <select value={colorKey} onChange={e => setColorKey(e.target.value)}>
-                    <option value="">なし</option>
+                    <option value="">{t('env.none')}</option>
                     {metrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                     {groupBy === 'weapon' && SCATTER_CATEGORY_COLOR_KEYS.map(k => (
-                      <option key={k} value={k}>{GROUP_BY_LABELS[k]}</option>
+                      <option key={k} value={k}>{groupByLabel(t, k)}</option>
                     ))}
                   </select>
                 </label>}
@@ -1225,21 +1270,27 @@ export function EnvAnalysis() {
                 {loading && (
                   <div className={`env-chart-loading ${EXPORT_HIDE_CLASS}`} aria-live="polite">
                     <span className="env-loading-spinner" />
-                    グラフ更新中…
+                    {t('env.graphUpdating')}
                   </div>
                 )}
                 <PanelExportLogo />
                 <div className="env-chart-title-row">
-                  <h3 className="env-chart-title">{xM.label} vs {yM.label}({groupBy === 'weapon' ? 'ブキ別' : 'ステージ別'})</h3>
+                  <h3 className="env-chart-title">{t('env.chartTitle', {
+                    x: xM.label,
+                    y: yM.label,
+                    group: groupBy === 'weapon' ? t('env.byWeapon') : t('env.byStage'),
+                  })}</h3>
                   <PanelExportButton
                     targetRef={scatterPanelRef}
-                    screen="環境分析"
-                    panel={`${groupBy === 'weapon' ? 'ブキ' : 'ステージ'}散布図 ${xM.label}×${yM.label}`}
+                    screen={t('nav.env')}
+                    panel={groupBy === 'weapon'
+                      ? t('env.scatterPanelWeapon', { x: xM.label, y: yM.label })
+                      : t('env.scatterPanelStage', { x: xM.label, y: yM.label })}
                   />
                 </div>
-                <PanelExportCaption conditions={envExportCaption(envFilterSummary, filteredCount)} />
+                <PanelExportCaption conditions={envExportCaption(t, envFilterSummary, filteredCount)} />
                 {points.length === 0 ? (
-                  <p className="env-no-data">条件に一致するデータがありません(50 サンプル未満は非表示)</p>
+                  <p className="env-no-data">{t('env.noScatterData')}</p>
                 ) : (
                   <ScatterChart
                     points={points}
@@ -1259,70 +1310,75 @@ export function EnvAnalysis() {
                   />
                 )}
                 <p className={`env-chart-note ${EXPORT_HIDE_CLASS}`}>
-                  50 サンプル未満は非表示。各点にマウスオーバーで詳細表示。
-                  {groupBy === 'stage' && weaponKeys.length === 0 &&
-                    ' ※勝率・キル系はブキを絞り込むと選べます。'}
-                  {' '}{POSTER_EXCLUDED_NOTE}
+                  {t('env.scatterNoteBase')}
+                  {groupBy === 'stage' && weaponKeys.length === 0 && t('env.scatterNoteStageWeapon')}
+                  {' '}{posterExcludedNote}
                 </p>
-                <PanelExportNote note={SCATTER_EXPORT_NOTE} />
+                <PanelExportNote note={scatterExportNote} />
               </div>
             </>
           ) : (
             <>
               <div className="env-filters">
-                <label>行
+                <label>{t('env.row')}
                   <select value={rowDim} onChange={e => setRowDim(e.target.value)}>
-                    {DIM_OPTIONS.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
+                    {dims.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
                   </select>
                 </label>
-                <label>列
+                <label>{t('env.col')}
                   <select value={colDim} onChange={e => setColDim(e.target.value)}>
-                    {DIM_OPTIONS.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
+                    {dims.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
                   </select>
                 </label>
                 {/* 行か列がブキのときだけ、表示するブキを選べる（#593）。 */}
                 {(rowDim === 'weapon' || colDim === 'weapon') && <DisplayWeaponSelect
                   options={weaponOptions} selected={displayWeapons} onChange={setDisplayWeapons}
                   loading={optionsLoading} />}
-                <label>セル指標
+                <label>{t('env.cellMetric')}
                   <select value={cellMetric} onChange={e => setCellMetric(e.target.value as CellMetricKey)}>
                     {allowedCellMetrics.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
                   </select>
                 </label>
               </div>
               {!weaponSlotInvolved && !bothWeaponSlot && !hasWeaponFilter && (
-                <p className={`env-filter-note ${EXPORT_HIDE_CLASS}`}>
-                  ※ 勝率・キル系を見るときは、上のブキフィルタでブキを選ぶか、行/列の一方をブキ系にしてください。
-                </p>
+                <p className={`env-filter-note ${EXPORT_HIDE_CLASS}`}>{t('env.heatmapWeaponHint')}</p>
               )}
 
               <div className={`env-chart-section${loading ? ' is-loading' : ''}`} ref={heatmapPanelRef}>
                 {loading && (
                   <div className={`env-chart-loading ${EXPORT_HIDE_CLASS}`} aria-live="polite">
                     <span className="env-loading-spinner" />
-                    グラフ更新中…
+                    {t('env.graphUpdating')}
                   </div>
                 )}
                 <PanelExportLogo />
                 <div className="env-chart-title-row">
-                  <h3 className="env-chart-title">{dimLabel(rowDim)} × {dimLabel(colDim)}({cm.label})</h3>
+                  <h3 className="env-chart-title">{t('env.heatmapTitle', {
+                    row: dimLabel(dims, rowDim),
+                    col: dimLabel(dims, colDim),
+                    metric: cm.label,
+                  })}</h3>
                   {heatmapSortCol && (
                     <button
                       type="button"
                       className={`env-heatmap-sort-reset ${EXPORT_HIDE_CLASS}`}
                       onClick={clearHeatmapSort}
-                      title="列クリックによる並べ替えを解除し、サンプル数順などの既定並びに戻す"
-                    >既定の並び</button>
+                      title={t('env.sortResetTitle')}
+                    >{t('env.sortReset')}</button>
                   )}
                   <PanelExportButton
                     targetRef={heatmapPanelRef}
-                    screen="環境分析"
-                    panel={`ヒートマップ ${dimLabel(rowDim)}×${dimLabel(colDim)} ${cm.label}`}
+                    screen={t('nav.env')}
+                    panel={t('env.heatmapPanel', {
+                      row: dimLabel(dims, rowDim),
+                      col: dimLabel(dims, colDim),
+                      metric: cm.label,
+                    })}
                   />
                 </div>
-                <PanelExportCaption conditions={envExportCaption(envFilterSummary, filteredCount)} />
+                <PanelExportCaption conditions={envExportCaption(t, envFilterSummary, filteredCount)} />
                 {bothWeaponSlot ? (
-                  <p className="env-no-data">ブキ × ブキは非対応です。一方をステージ/ルール/ロビーにしてください。</p>
+                  <p className="env-no-data">{t('env.bothWeaponSlot')}</p>
                 ) : (
                   <Heatmap
                     cells={shownMatrix}
@@ -1330,10 +1386,10 @@ export function EnvAnalysis() {
                     scale={cm.scale}
                     mid={cm.mid ?? 0.5}
                     sequentialHue={cm.hue ?? 210}
-                    rowAxis={dimLabel(rowDim)}
-                    colAxis={dimLabel(colDim)}
-                    rowLabel={dimKeyLabeller(rowDim)}
-                    colLabel={dimKeyLabeller(colDim)}
+                    rowAxis={dimLabel(dims, rowDim)}
+                    colAxis={dimLabel(dims, colDim)}
+                    rowLabel={dimKeyLabeller(t, rowDim)}
+                    colLabel={dimKeyLabeller(t, colDim)}
                     diagonalCols={colDim === 'stage'}
                     rowOrder={rowDim === 'rule' ? RULE_HEATMAP_ORDER : undefined}
                     colOrder={colDim === 'rule' ? RULE_HEATMAP_ORDER : undefined}
@@ -1349,15 +1405,14 @@ export function EnvAnalysis() {
                   />
                 )}
                 <p className={`env-chart-note ${EXPORT_HIDE_CLASS}`}>
-                  {KDA_CELL_KEYS.includes(cellMetric) ? '20' : '30'} サンプル未満のセルは非表示。セルにマウスオーバーで件数を表示。
-                  列見出しをクリックすると、その列の値で行を並べ替えられます(再クリックで昇順/降順切替)。
-                  {cellMetric === 'win_rate' && ' 勝率は、今見えているセルの最低〜最高をくすみ珊瑚〜くすみティールの 11 段階に割り振ります。'}
-                  {cellMetric === 'avg_death' && ' デスは多いほど濃い赤(少ないほど良い)。'}
-                  {(cellMetric === 'kill_ratio' || cellMetric === 'contrib_ratio') && ' 1.0 を中心に赤(低)~青(高)。'}
-                  {cm.weapon && ` ${POSTER_EXCLUDED_NOTE}`}
+                  {t('env.heatmapNoteBase', { n: KDA_CELL_KEYS.includes(cellMetric) ? 20 : 30 })}
+                  {cellMetric === 'win_rate' && t('env.heatmapNoteWinRate')}
+                  {cellMetric === 'avg_death' && t('env.heatmapNoteDeath')}
+                  {(cellMetric === 'kill_ratio' || cellMetric === 'contrib_ratio') && t('env.heatmapNoteRatio')}
+                  {cm.weapon && ` ${posterExcludedNote}`}
                   {cellMetric === 'battles'
-                    ? ' 行・列の見出し色は、その軸の合計バトル数(軸内で最大を最も濃く)です。'
-                    : ' 行・列の見出し色は、その軸の全バトルから算出した値です(非表示のセルも含むので、交差する軸を変えても同じ値になります)。'}
+                    ? t('env.heatmapNoteBattlesAxis')
+                    : t('env.heatmapNoteMarginalAxis')}
                 </p>
                 <PanelExportNote note={heatmapExportNote(KDA_CELL_KEYS.includes(cellMetric))} />
               </div>
@@ -1413,10 +1468,11 @@ function DisplayWeaponSelect({ options, selected, onChange, loading }: {
   onChange: (v: string[]) => void
   loading:  boolean
 }) {
+  const { t } = useTranslation()
   return (
     <MultiSelect
-      label="表示するブキ"
-      allLabel="すべて表示"
+      label={t('env.displayWeapons')}
+      allLabel={t('env.displayAll')}
       selected={selected}
       onChange={onChange}
       loading={loading}
@@ -1437,12 +1493,13 @@ function LogToggle({ label, checked, allowed, metricLabel, onChange }: {
   metricLabel: string
   onChange:    (v: boolean) => void
 }) {
+  const { t } = useTranslation()
   return (
     <label
       className={`env-log-toggle${allowed ? '' : ' is-disabled'}`}
       title={allowed
-        ? `${metricLabel}を対数軸にする。0 以下の点は描けないため除外されます。`
-        : `${metricLabel}は狭い範囲に収まるためログスケールは使えません。`}
+        ? t('env.logToggleAllowed', { metric: metricLabel })
+        : t('env.logToggleDisallowed', { metric: metricLabel })}
     >
       <input
         type="checkbox"
@@ -1457,12 +1514,13 @@ function LogToggle({ label, checked, allowed, metricLabel, onChange }: {
 
 /** 進捗バー表示。 */
 function ProgressDisplay({ progress }: { progress: ImportProgress }) {
+  const { t } = useTranslation()
   const pctv = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0
   const phaseLabel =
-    progress.phase === 'download' ? 'ダウンロード中' :
-    progress.phase === 'extract'  ? '解凍中' :
-    progress.phase === 'index'    ? 'インデックス作成中' :
-    'インポート中'
+    progress.phase === 'download' ? t('settings.envPhaseDownload') :
+    progress.phase === 'extract'  ? t('settings.envPhaseExtract') :
+    progress.phase === 'index'    ? t('settings.envPhaseIndex') :
+    t('settings.envPhaseImport')
   return (
     <div className="env-progress">
       <div className="env-progress-label">
