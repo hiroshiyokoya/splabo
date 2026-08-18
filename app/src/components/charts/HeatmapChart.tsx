@@ -431,7 +431,7 @@ export function HeatmapChart({
               メトリクス自体が「バトル数」のときは上の行と同じ値になるので、
               ラベルと件数を省いて勝敗内訳だけ出す(#388)。 */}
           <div className="hover-tt-row hover-tt-row--muted">
-            {metric !== 'total' && <>バトル数: {hover.total}</>}
+            {metric !== 'total' && <>{METRIC_LABELS.total}: {hover.total}</>}
             {hover.total > 0 && (
               <>
                 {metric !== 'total' && ' '}({winLoseBreakdown(hover.total, hover.wins, hover.draws)})

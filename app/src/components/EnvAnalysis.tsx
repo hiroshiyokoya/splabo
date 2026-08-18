@@ -251,12 +251,18 @@ function dimLabel(opts: DimOption[], dim: string): string {
   return opts.find(d => d.key === dim)?.label ?? dim
 }
 
-function dimKeyLabeller(t: TFunction, dim: string): (k: string) => string {
+function dimKeyLabeller(
+  t: TFunction,
+  dim: string,
+  weaponJaByKey?: Map<string, string>,
+  weaponEnByKey?: Map<string, string | null | undefined>,
+): (k: string) => string {
   const lobbies = lobbyLabelMap(t)
   const rules = ruleLabelMap(t)
   if (dim === 'rule')  return (k) => rules[k]  ?? k
   if (dim === 'lobby') return (k) => lobbies[k] ?? k
   if (dim === 'stage') return (k) => stageDimDisplayName(k, shortStage)
+  if (dim === 'weapon') return (k) => localizedName(weaponJaByKey?.get(k) ?? k, weaponEnByKey?.get(k), k)
   if (dim === 'weapon_category') return weaponCategoryDisplayName
   if (dim === 'sub_weapon')      return subWeaponDisplayName
   if (dim === 'special_weapon')  return specialWeaponDisplayName
@@ -1407,8 +1413,8 @@ export function EnvAnalysis() {
                     sequentialHue={cm.hue ?? 210}
                     rowAxis={dimLabel(dims, rowDim)}
                     colAxis={dimLabel(dims, colDim)}
-                    rowLabel={dimKeyLabeller(t, rowDim)}
-                    colLabel={dimKeyLabeller(t, colDim)}
+                    rowLabel={dimKeyLabeller(t, rowDim, weaponJaByKey, weaponEnByKey)}
+                    colLabel={dimKeyLabeller(t, colDim, weaponJaByKey, weaponEnByKey)}
                     diagonalCols={colDim === 'stage'}
                     rowOrder={rowDim === 'rule' ? RULE_HEATMAP_ORDER : undefined}
                     colOrder={colDim === 'rule' ? RULE_HEATMAP_ORDER : undefined}

@@ -422,7 +422,7 @@ export function CalendarHeatmapChart({
                 )}
                 {!isWinRateMetric && (
                   <div className="hover-tt-row hover-tt-row--muted">
-                    勝率: {winRate !== null ? `${winRate.toFixed(1)}%` : '-'}
+                    {METRIC_LABELS.win_rate}: {winRate !== null ? `${winRate.toFixed(1)}%` : '-'}
                   </div>
                 )}
               </>

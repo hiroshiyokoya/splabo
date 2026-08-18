@@ -179,7 +179,7 @@
     "tabDisplay": "表示",
     "tabAi": "AI",
     "language": "表示言語",
-    "languageHint": "アプリの表示に使う言語です。システムに合わせるは OS の言語から決めます。",
+    "languageHint": "アプリの表示言語。システムに合わせる場合、OS が日本語なら日本語、それ以外は English になります。",
     "languageSystem": "システムに合わせる",
     "languageJa": "日本語",
     "languageEn": "English",

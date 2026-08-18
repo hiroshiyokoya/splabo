@@ -137,7 +137,7 @@ export function SimpleBarChart({
           <>
             <div className="hover-tt-title">{displayLabel}</div>
             <div className="hover-tt-row">{METRIC_LABELS[metric]}: {formatMetric(p.value, metric)}</div>
-            <div className="hover-tt-row hover-tt-row--muted">バトル数: {p.rawRow.total}</div>
+            <div className="hover-tt-row hover-tt-row--muted">{METRIC_LABELS.total}: {p.rawRow.total}</div>
           </>
         )
       })()}

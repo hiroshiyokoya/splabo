@@ -179,7 +179,7 @@
     "tabDisplay": "Display",
     "tabAi": "AI",
     "language": "Language",
-    "languageHint": "Language for the app UI. Follow system uses the OS locale.",
+    "languageHint": "Language for the app UI. Follow system: Japanese OS → Japanese, otherwise English.",
     "languageSystem": "Follow system",
     "languageJa": "日本語",
     "languageEn": "English",
