@@ -10,7 +10,7 @@ import {
 } from '../types'
 import { ABILITY_LABELS, abilityKeyFromUrl, colorToHex, loadAbilityImages } from '../utils/abilities'
 import { winRateColor } from '../utils/heatmapColors'
-import { battleStageDisplayName, battleWeaponDisplayName } from '../i18n/displayName'
+import { battleStageDisplayName, battleWeaponDisplayName, subWeaponDisplayName, specialWeaponDisplayName } from '../i18n/displayName'
 
 const PAGE_SIZE = 50
 
@@ -470,8 +470,8 @@ function MyStatsCard({ battle, weaponImages }: {
           {weaponImages.get(battle.weapon) && <img src={weaponImages.get(battle.weapon)} alt="" className="weapon-icon-lg" />}
           <div className="my-stats-weapon-names">
             <div className="weapon-main">{battleWeaponDisplayName(battle)}</div>
-            {battle.sub_weapon     && <div className="weapon-sub">{t('battles.subPrefix', { name: battle.sub_weapon })}</div>}
-            {battle.special_weapon && <div className="weapon-sp">SP: {battle.special_weapon}</div>}
+            {battle.sub_weapon     && <div className="weapon-sub">{t('battles.subPrefix', { name: subWeaponDisplayName(battle.sub_weapon) })}</div>}
+            {battle.special_weapon && <div className="weapon-sp">SP: {specialWeaponDisplayName(battle.special_weapon)}</div>}
           </div>
         </div>
         <div className="my-stats-numbers">

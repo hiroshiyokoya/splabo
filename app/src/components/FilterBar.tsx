@@ -6,7 +6,7 @@ import { resultLabel } from '../types'
 import { MultiSelect } from './MultiSelect'
 import { SeasonSelect } from './SeasonSelect'
 import { LOBBY_OPTIONS, RULE_OPTIONS, PERIOD_OPTIONS } from '../utils/filterSummary'
-import { stageInfoDisplayName, weaponRecordDisplayName } from '../i18n/displayName'
+import { stageInfoDisplayName, weaponRecordDisplayName, weaponCategoryDisplayName } from '../i18n/displayName'
 
 // #190: モード/ルールは複数選択（OR）。モードのキーは lobby.key に一致させ、
 // バンカラ/フェスは オープン/チャレンジ を個別に選べるようにする（循環ボタン廃止）。
@@ -264,7 +264,7 @@ function WeaponPicker({
                   onClick={() => onToggleCategory(catWeapons.map(w => w.name))}
                 >
                   <span className="stage-check">{allSel ? '✓' : selCount > 0 ? '−' : ' '}</span>
-                  {cat}
+                  {weaponCategoryDisplayName(cat)}
                   <span className="category-count">{selCount > 0 ? `${selCount}/` : ''}{catWeapons.length}</span>
                 </button>
                 {catWeapons.map(w => (

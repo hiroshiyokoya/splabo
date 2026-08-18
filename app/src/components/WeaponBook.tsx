@@ -9,7 +9,7 @@ import { ViewToggle, getBookViews } from './ViewToggle'
 import { SortHeader } from './SortHeader'
 import { loadViewPrefs, saveViewPrefs } from '../utils/viewPrefs'
 import { winRateColor } from '../utils/heatmapColors'
-import { weaponRecordDisplayName } from '../i18n/displayName'
+import { weaponRecordDisplayName, weaponCategoryDisplayName, subWeaponDisplayName, specialWeaponDisplayName } from '../i18n/displayName'
 
 // 大きい数値を「12.3万」短縮表示。
 /** 平均統計(K/D/A/SP/inked/duration)用の小行。
@@ -307,7 +307,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
             key={c}
             className={`category-tab${category === c ? ' active' : ''}`}
             onClick={() => setCategory(prev => prev === c ? null : c)}
-          >{c}</button>
+          >{weaponCategoryDisplayName(c)}</button>
         ))}
       </div>
 
@@ -320,11 +320,11 @@ export function WeaponBook({ filters }: { filters: Filters }) {
                 key={s}
                 className={`filter-btn filter-btn--icon${subWeapon === s ? ' active' : ''}`}
                 onClick={() => setSubWeapon(prev => prev === s ? null : s)}
-                title={s}
+                title={subWeaponDisplayName(s)}
               >
                 {subImages.get(s)
-                  ? <img src={subImages.get(s)} alt={s} className="filter-btn-icon" />
-                  : s}
+                  ? <img src={subImages.get(s)} alt={subWeaponDisplayName(s)} className="filter-btn-icon" />
+                  : subWeaponDisplayName(s)}
               </button>
             ))}
           </div>
@@ -340,11 +340,11 @@ export function WeaponBook({ filters }: { filters: Filters }) {
                 key={s}
                 className={`filter-btn filter-btn--icon${specialWeapon === s ? ' active' : ''}`}
                 onClick={() => setSpecialWeapon(prev => prev === s ? null : s)}
-                title={s}
+                title={specialWeaponDisplayName(s)}
               >
                 {spImages.get(s)
-                  ? <img src={spImages.get(s)} alt={s} className="filter-btn-icon" />
-                  : s}
+                  ? <img src={spImages.get(s)} alt={specialWeaponDisplayName(s)} className="filter-btn-icon" />
+                  : specialWeaponDisplayName(s)}
               </button>
             ))}
           </div>
@@ -460,12 +460,12 @@ function WeaponTable({ rows, statsByWeapon, subImages, spImages, sortKey, ascend
             return (
               <tr key={w.name} className="book-tr clickable-row" onClick={() => onSelect(w)}>
                 <td className="book-td book-td--left">{weaponRecordDisplayName(w)}</td>
-                <td className="book-td book-td--left">{w.category}</td>
+                <td className="book-td book-td--left">{weaponCategoryDisplayName(w.category)}</td>
                 <td className="book-td book-td--left">
-                  <BookIcon src={subImg} name={w.sub_weapon} />
+                  <BookIcon src={subImg} name={w.sub_weapon ? subWeaponDisplayName(w.sub_weapon) : null} />
                 </td>
                 <td className="book-td book-td--left">
-                  <BookIcon src={spImg} name={w.special_weapon} />
+                  <BookIcon src={spImg} name={w.special_weapon ? specialWeaponDisplayName(w.special_weapon) : null} />
                 </td>
                 <td className="book-td">{total}</td>
                 <td className="book-td">{wins}</td>
@@ -573,8 +573,8 @@ function WeaponCard({ weapon, avgStats, image, subImage, spImage, onClick }: {
       </div>
       {(spImage || subImage) && (
         <div className="weapon-card-sub-sp">
-          {spImage && <img src={spImage} alt={weapon.special_weapon ?? ''} className="weapon-sub-sp-icon weapon-sub-sp-icon--sp" title={weapon.special_weapon ?? ''} />}
-          {subImage && <img src={subImage} alt={weapon.sub_weapon ?? ''} className="weapon-sub-sp-icon" title={weapon.sub_weapon ?? ''} />}
+          {spImage && <img src={spImage} alt={weapon.special_weapon ? specialWeaponDisplayName(weapon.special_weapon) : ''} className="weapon-sub-sp-icon weapon-sub-sp-icon--sp" title={weapon.special_weapon ? specialWeaponDisplayName(weapon.special_weapon) : ''} />}
+          {subImage && <img src={subImage} alt={weapon.sub_weapon ? subWeaponDisplayName(weapon.sub_weapon) : ''} className="weapon-sub-sp-icon" title={weapon.sub_weapon ? subWeaponDisplayName(weapon.sub_weapon) : ''} />}
         </div>
       )}
       <div className="weapon-card-name" title={weaponRecordDisplayName(weapon)}>{weaponRecordDisplayName(weapon)}</div>
