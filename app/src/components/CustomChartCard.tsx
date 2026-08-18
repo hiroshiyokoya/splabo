@@ -5,7 +5,7 @@ import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, Metric
 import {
   stageAbbr, modeLabel, ruleLabel, autoChartTitle, getMetric, chartMetrics,
   METRIC_LABELS, BATTLE_METRIC_LABELS, BATTLE_NUMERIC_METRIC_LABELS,
-  GROUP_BY_LABELS, formatMetric, type GroupByKey,
+  GROUP_BY_LABELS, formatMetric, winCountRecord, type GroupByKey,
   SCATTER_IMAGE_PX, isScatterImageMode, isOfficialRateMetric,
 } from '../types'
 import { SimpleBarChart } from './charts/SimpleBarChart'
@@ -74,39 +74,42 @@ type TooltipRow = { label: string; value: string; muted?: boolean }
  * 行は関数で受け取る。サイズ・色は未設定(key が undefined)のことがあり、その場合に
  * ラベル・値の組み立てを走らせないため(従来の三項演算子によるガードと同じ扱いを保つ)。
  */
-function dedupeRows(entries: { key: string | undefined; row: () => TooltipRow }[]): TooltipRow[] {
+function dedupeRows(entries: { key: string | undefined; row: () => TooltipRow | null }[]): TooltipRow[] {
   const seen = new Set<string>()
   const out: TooltipRow[] = []
   for (const { key, row } of entries) {
     if (!key || seen.has(key)) continue
     seen.add(key)
-    out.push(row())
+    const r = row()
+    if (r) out.push(r)
   }
   return out
 }
 
 /**
- * バトル数・勝数・負数はセットで見せる。どれか 1 つが軸・サイズ・色に
- * 割り当てられていれば、3 行まとめて出す(#562 拡張)。
+ * バトル数・勝数はセットで見せる。どれか 1 つが軸・サイズ・色に
+ * 割り当てられていれば、1 行のコンパクト戦績を出す(#449 / #562 拡張)。
  */
 const WIN_COUNT_METRICS = new Set<string>(['total', 'wins'])
 
-function winCountTooltipEntries(d: GroupedStatsRow): { key: string; row: () => TooltipRow }[] {
-  if (d.total <= 0) return []
-  const losses = d.total - d.wins - d.draws
-  const entries: { key: string; row: () => TooltipRow }[] = [
-    { key: 'total', row: () => ({ label: 'バトル数', value: formatMetric(d.total, 'total') }) },
-    { key: 'wins', row: () => ({ label: '勝数', value: formatMetric(d.wins, 'wins') }) },
-    { key: 'losses', row: () => ({ label: '負数', value: formatMetric(losses, 'total') }) },
-  ]
-  if (d.draws > 0) {
-    entries.push({ key: 'draws', row: () => ({ label: '引分', value: formatMetric(d.draws, 'total') }) })
-  }
-  return entries
+function winCountTooltipEntry(d: GroupedStatsRow): TooltipRow | null {
+  if (d.total <= 0) return null
+  return { label: '戦績', value: winCountRecord(d.total, d.wins, d.draws) }
 }
 
 function usesWinCountBlock(keys: (string | undefined)[]): boolean {
   return keys.some(k => k != null && WIN_COUNT_METRICS.has(k))
+}
+
+function scatterMetricRow(
+  winBlock: boolean,
+  key: string | undefined,
+  label: string,
+  value: string,
+  muted?: boolean,
+): TooltipRow | null {
+  if (!key || (winBlock && WIN_COUNT_METRICS.has(key))) return null
+  return { label, value, muted }
 }
 
 /** 集計散布図のツールチップ 1 行の値。 */
@@ -144,6 +147,7 @@ function buildAggScatterPoints(
   const categories = isCatColor
     ? filtered.map(d => categoryValueForWeaponName(d.name, colorKey, weaponMeta))
     : []
+  const winBlock = usesWinCountBlock([xKey, yKey, sizeKey, colorKey])
   const points = filtered.map(d => {
     const x = getMetric(d, xKey as MetricKey)
     const y = getMetric(d, yKey as MetricKey)
@@ -165,13 +169,13 @@ function buildAggScatterPoints(
       iconUrl: weaponImages?.get(d.name) ?? null,
       ...kitIconsForWeapon(d.name, weaponMeta, subImages, spImages),
       tooltipRows: dedupeRows([
-        ...(usesWinCountBlock([xKey, yKey, sizeKey, colorKey]) ? winCountTooltipEntries(d) : []),
-        { key: xKey, row: () => ({ label: metricLabelOf(xKey), value: fmtScatterMetric(x, xKey) }) },
-        { key: yKey, row: () => ({ label: metricLabelOf(yKey), value: fmtScatterMetric(y, yKey) }) },
-        { key: sizeKey, row: () => ({ label: metricLabelOf(sizeKey!), value: fmtScatterMetric(size, sizeKey!), muted: true }) },
+        { key: '__win_count__', row: () => (winBlock ? winCountTooltipEntry(d) : null) },
+        { key: xKey, row: () => scatterMetricRow(winBlock, xKey, metricLabelOf(xKey), fmtScatterMetric(x, xKey)) },
+        { key: yKey, row: () => scatterMetricRow(winBlock, yKey, metricLabelOf(yKey), fmtScatterMetric(y, yKey)) },
+        { key: sizeKey, row: () => scatterMetricRow(winBlock, sizeKey, metricLabelOf(sizeKey!), fmtScatterMetric(size, sizeKey!), true) },
         isCatColor
-          ? { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: catVal!, muted: true }) }
-          : { key: colorKey, row: () => ({ label: metricLabelOf(colorKey!), value: fmtScatterMetric(colorVal, colorKey!), muted: true }) },
+          ? { key: colorKey, row: () => scatterMetricRow(winBlock, colorKey, metricLabelOf(colorKey!), catVal!, true) }
+          : { key: colorKey, row: () => scatterMetricRow(winBlock, colorKey, metricLabelOf(colorKey!), fmtScatterMetric(colorVal, colorKey!), true) },
       ]),
     }
   })

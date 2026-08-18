@@ -584,12 +584,18 @@ export function fmtOfficialWinRate(n: number | null | undefined): string {
 /**
  * バトル数の勝敗内訳 `70 勝 50 敗 3 分`(#562)。
  *
- * 引き分けは発生したときだけ出す。ヒートマップ・散布図のツールチップで
+ * 引き分けは発生したときだけ出す。ヒートマップのツールチップで
  * 同じ書き方を使うため、文言はここ 1 か所に置く(#388 で決めた形)。
  */
 export function winLoseBreakdown(total: number, wins: number, draws: number): string {
   const losses = total - wins - draws
   return `${wins} 勝 ${losses} 敗${draws > 0 ? ` ${draws} 分` : ''}`
+}
+
+/** コンパクト戦績 `42戦 15勝27敗5分`(#449)。モーダル・散布図チップで共用。 */
+export function winCountRecord(total: number, wins: number, draws: number): string {
+  const losses = total - wins - draws
+  return `${total}戦 ${wins}勝${losses}敗${draws > 0 ? `${draws}分` : ''}`
 }
 
 // ---------------------------------------------------------------------------
