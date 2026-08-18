@@ -103,9 +103,8 @@ const BASE_VARS: Record<string, string> = {
   '--stage-img-filter':      'brightness(0.42) saturate(0.75)',
   '--panel-label-tint':      '#ffffff',
   // 勝率 11 段。端は旧スケールの端から 3 番目。彩度 72%。
-  // データなし線は --cell-hatch、サンプル不足の地はハッチ灰と r6 の中間。
+  // データなし線は --cell-hatch。サンプル不足の地はセルの指標色（#697）。
   '--cell-hatch':            '#d0d3d8',
-  '--cell-sparse-bg':        '#caccb4',
   '--cell-r1':               '#f6927d',
   '--cell-r2':               '#f09b75',
   '--cell-r3':               '#e7a674',

@@ -230,17 +230,22 @@ export function CalendarHeatmapChart({
     }
   }, [data, metric, group, minSampleSize, since, until])
 
-  function cellFill(_date: string, value: number | null, total: number): string {
+  function cellPaint(_date: string, value: number | null, total: number): { fill: string; overlay?: string } {
     // カレンダーは「バトルの無い日」が大半なので、データなしはハッチにせず静かなべた塗りのまま。
     // ヒートマップの空セル(その組み合わせを一度も使っていない)とは意味も頻度も違う。
-    if (value === null) return group === 'count' ? 'var(--cell-count-empty)' : 'var(--cell-empty)'
-    // 率・平均系はサンプル不足ならハッチ(色ではなく塗りの質で示す・#351)
-    if ((group === 'rate' || group === 'average') && total < minSampleSize) {
-      return hatchFill(sparseId)
+    if (value === null) {
+      return { fill: group === 'count' ? 'var(--cell-count-empty)' : 'var(--cell-empty)' }
     }
-    if (group === 'count')   return countColor(value, maxVal)
-    if (group === 'rate')    return rateCellColor(value)
-    return averageColor(value, minVal, maxVal, metric)
+    const fill = group === 'count'
+      ? countColor(value, maxVal)
+      : group === 'rate'
+        ? rateCellColor(value)
+        : averageColor(value, minVal, maxVal, metric)
+    // 率・平均系のサンプル不足は指標色の上に斜線（#697）
+    if ((group === 'rate' || group === 'average') && total < minSampleSize) {
+      return { fill, overlay: hatchFill(sparseId) }
+    }
+    return { fill }
   }
 
   const GRID_TOP = 32
@@ -316,21 +321,35 @@ export function CalendarHeatmapChart({
           const total = entry?.total ?? 0
           const wins  = entry?.wins ?? 0
           const draws = entry?.draws ?? 0
-          const fill = cellFill(dateStr, v, total)
+          const { fill, overlay } = cellPaint(dateStr, v, total)
           return (
-            <rect
+            <g
               key={dateStr}
-              className="cal-cell"
-              x={colX(col)}
-              y={GRID_TOP + row * pitch}
-              width={cell}
-              height={cell}
-              rx={2}
-              fill={fill}
               onMouseEnter={(e) => setHover({ mx: e.clientX, my: e.clientY, date: dateStr, value: v, total, wins, draws })}
               onMouseMove={(e) => setHover(prev => prev ? { ...prev, mx: e.clientX, my: e.clientY } : prev)}
               onMouseLeave={() => setHover(null)}
-            />
+            >
+              <rect
+                className="cal-cell"
+                x={colX(col)}
+                y={GRID_TOP + row * pitch}
+                width={cell}
+                height={cell}
+                rx={2}
+                fill={fill}
+              />
+              {overlay && (
+                <rect
+                  x={colX(col)}
+                  y={GRID_TOP + row * pitch}
+                  width={cell}
+                  height={cell}
+                  rx={2}
+                  fill={overlay}
+                  pointerEvents="none"
+                />
+              )}
+            </g>
           )
         })}
       </svg>
@@ -365,7 +384,10 @@ export function CalendarHeatmapChart({
         <span className="cal-legend-end">{legendRight}</span>
         {(group === 'rate' || group === 'average') && (
           <span className="cal-legend-sparse">
-            <span className="cal-legend-swatch cal-legend-swatch--sparse" />
+            <span
+              className="cal-legend-swatch cal-legend-swatch--sparse"
+              style={{ backgroundColor: legendColors[Math.floor(legendColors.length / 2)] }}
+            />
             <span className="cal-legend-sparse-text">サンプル不足</span>
           </span>
         )}
