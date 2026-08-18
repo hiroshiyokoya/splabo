@@ -87,30 +87,67 @@ function dedupeRows(entries: { key: string | undefined; row: () => TooltipRow | 
 }
 
 /**
- * バトル数・勝数はヒートマップのチップと同じ勝敗表記で添える(#388 / #562)。
- * 軸にバトル数があるときは内訳だけ、勝数だけのときはバトル数＋内訳。
+ * バトル数・勝数が軸などに割り当てられているとき、個別行の代わりに
+ * ヒートマップと同じ `バトル数: N (x 勝 y 敗)` を 1 行で出す(#388 / #562)。
  */
 const WIN_COUNT_METRICS = new Set<string>(['total', 'wins'])
 
-function heatmapStyleWinCountSupplement(
-  d: GroupedStatsRow,
-  assignedKeys: (string | undefined)[],
-): TooltipRow | null {
-  if (d.total <= 0 || !assignedKeys.some(k => k != null && WIN_COUNT_METRICS.has(k))) return null
-  const showTotal = !assignedKeys.includes('total')
-  const breakdown = winLoseBreakdown(d.total, d.wins, d.draws)
-  let text = ''
-  if (showTotal) text = `バトル数: ${d.total}`
-  if (d.total > 0) {
-    if (showTotal) text += ' '
-    text += `(${breakdown})`
+function usesWinCountBlock(keys: (string | undefined)[]): boolean {
+  return keys.some(k => k != null && WIN_COUNT_METRICS.has(k))
+}
+
+function winCountTooltipRow(d: GroupedStatsRow, muted?: boolean): TooltipRow | null {
+  if (d.total <= 0) return null
+  return {
+    label: '',
+    value: `バトル数: ${d.total} (${winLoseBreakdown(d.total, d.wins, d.draws)})`,
+    muted,
   }
-  return text ? { label: '', value: text, muted: true } : null
 }
 
 /** 集計散布図のツールチップ 1 行の値。 */
 function fmtScatterMetric(value: number | null, key: string): string {
   return formatMetric(value, key as MetricKey)
+}
+
+function scatterTooltipEntries(
+  d: GroupedStatsRow,
+  xKey: string,
+  yKey: string,
+  sizeKey: string | undefined,
+  colorKey: string | undefined,
+  x: number | null,
+  y: number | null,
+  size: number | null,
+  colorVal: number | null,
+  catVal: string | null,
+  isCatColor: boolean,
+): { key: string | undefined; row: () => TooltipRow | null }[] {
+  const winBlock = usesWinCountBlock([xKey, yKey, sizeKey, colorKey])
+  let winCountShown = false
+
+  const axisRow = (
+    key: string | undefined,
+    value: number | null,
+    muted?: boolean,
+  ): TooltipRow | null => {
+    if (!key) return null
+    if (winBlock && WIN_COUNT_METRICS.has(key)) {
+      if (winCountShown) return null
+      winCountShown = true
+      return winCountTooltipRow(d, muted)
+    }
+    return { label: metricLabelOf(key), value: fmtScatterMetric(value, key), muted }
+  }
+
+  return [
+    { key: xKey, row: () => axisRow(xKey, x) },
+    { key: yKey, row: () => axisRow(yKey, y) },
+    { key: sizeKey, row: () => axisRow(sizeKey, size, true) },
+    isCatColor
+      ? { key: colorKey, row: () => (colorKey ? { label: metricLabelOf(colorKey), value: catVal!, muted: true } : null) }
+      : { key: colorKey, row: () => axisRow(colorKey, colorVal, true) },
+  ]
 }
 
 /** 散布図の描画データ一式。凡例はポイントと同じ min/max・同じ色関数から作るので、
@@ -163,15 +200,9 @@ function buildAggScatterPoints(
       markerShape: catStyle?.shape,
       iconUrl: weaponImages?.get(d.name) ?? null,
       ...kitIconsForWeapon(d.name, weaponMeta, subImages, spImages),
-      tooltipRows: dedupeRows([
-        { key: xKey, row: () => (xKey ? { label: metricLabelOf(xKey), value: fmtScatterMetric(x, xKey) } : null) },
-        { key: yKey, row: () => (yKey ? { label: metricLabelOf(yKey), value: fmtScatterMetric(y, yKey) } : null) },
-        { key: sizeKey, row: () => (sizeKey ? { label: metricLabelOf(sizeKey), value: fmtScatterMetric(size, sizeKey), muted: true } : null) },
-        isCatColor
-          ? { key: colorKey, row: () => (colorKey ? { label: metricLabelOf(colorKey), value: catVal!, muted: true } : null) }
-          : { key: colorKey, row: () => (colorKey ? { label: metricLabelOf(colorKey), value: fmtScatterMetric(colorVal, colorKey), muted: true } : null) },
-        { key: '__win_supp__', row: () => heatmapStyleWinCountSupplement(d, [xKey, yKey, sizeKey, colorKey]) },
-      ]),
+      tooltipRows: dedupeRows(scatterTooltipEntries(
+        d, xKey, yKey, sizeKey, colorKey, x, y, size, colorVal, catVal, isCatColor,
+      )),
     }
   })
   return {
