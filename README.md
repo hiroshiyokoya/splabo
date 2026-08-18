@@ -2,6 +2,8 @@
 
 # スプラボ (splabo)
 
+[English README](README_en.md)
+
 Nintendo アカウントから [nxapi](https://github.com/samuelthomas2774/nxapi) が解析した非公式 API 経由で Splatoon 3 のバトル履歴・所持ギアを取得し、可視化・分析する OSS の PC アプリです。任天堂株式会社とは無関係です。
 
 > ## 📢 chartoon は splabo になりました

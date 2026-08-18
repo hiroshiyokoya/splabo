@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- GitHub に英語版 README（`README_en.md`）を追加しました
+
 ## [0.10.6] — 2026-08-18
 
 ### Added
