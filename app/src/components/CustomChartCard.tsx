@@ -5,9 +5,9 @@ import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, Metric
 import {
   stageAbbr, modeLabel, ruleLabel, autoChartTitle, chartMetrics,
   METRIC_LABELS, BATTLE_METRIC_LABELS, BATTLE_NUMERIC_METRIC_LABELS,
-  GROUP_BY_LABELS, formatMetric, winLoseBreakdown,
+  GROUP_BY_LABELS, formatMetric,
   scatterAggMetric, scatterAggMetricLabel, scatterAggColorMetric,
-  SCATTER_WIN_COUNT_METRICS, type GroupByKey,
+  SCATTER_WIN_COUNT_METRICS, winCountTooltipText, type GroupByKey,
   SCATTER_IMAGE_PX, isScatterImageMode, isOfficialRateMetric,
 } from '../types'
 import { SimpleBarChart } from './charts/SimpleBarChart'
@@ -100,7 +100,7 @@ function winCountTooltipRow(d: GroupedStatsRow, muted?: boolean): TooltipRow | n
   if (d.total <= 0) return null
   return {
     label: '',
-    value: `バトル数: ${d.total} (${winLoseBreakdown(d.total, d.wins, d.draws)})`,
+    value: winCountTooltipText(d.total, d.wins, d.draws),
     muted,
   }
 }

@@ -592,6 +592,11 @@ export function winLoseBreakdown(total: number, wins: number, draws: number): st
   return `${wins} 勝 ${losses} 敗${draws > 0 ? ` ${draws} 分` : ''}`
 }
 
+/** チップ用の勝敗 1 行 `バトル数: 42 (15 勝 27 敗)`。ヒートマップ・散布図・カレンダーで共用。 */
+export function winCountTooltipText(total: number, wins: number, draws: number): string {
+  return `バトル数: ${total} (${winLoseBreakdown(total, wins, draws)})`
+}
+
 // ---------------------------------------------------------------------------
 // カスタムグラフ(#86)用の型
 // ---------------------------------------------------------------------------

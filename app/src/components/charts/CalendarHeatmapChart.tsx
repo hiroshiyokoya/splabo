@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { GroupedStatsRow, MetricKey } from '../../types'
-import { METRIC_LABELS, getMetric, metricGroup } from '../../types'
+import { METRIC_LABELS, getMetric, metricGroup, formatMetric, winCountTooltipText, SCATTER_WIN_COUNT_METRICS } from '../../types'
 import {
   rateCellColor, RATE_LEGEND_COLORS, sequentialCellColor, seqLegendColors,
   integerRange, SparseHatchPattern, hatchFill,
@@ -405,15 +405,24 @@ export function CalendarHeatmapChart({
         >
           <div className="hover-tt-title">{hover.date}</div>
           {(() => {
-            const losses  = hover.total - hover.wins - hover.draws
             const decisive = hover.total - hover.draws
             const winRate = decisive > 0 ? (hover.wins / decisive) * 100 : null
+            const winCountLine = hover.total > 0 ? winCountTooltipText(hover.total, hover.wins, hover.draws) : null
+            const isWinCountMetric = SCATTER_WIN_COUNT_METRICS.has(metric)
+            const isWinRateMetric = metric === 'win_rate'
             return (
               <>
-                <div className="hover-tt-row">バトル数: {hover.total}</div>
-                <div className="hover-tt-row">勝数: {hover.wins}</div>
-                <div className="hover-tt-row">負数: {losses}</div>
-                <div className="hover-tt-row">勝率: {winRate !== null ? `${winRate.toFixed(1)}%` : '-'}</div>
+                {!isWinCountMetric && hover.value !== null && (
+                  <div className="hover-tt-row">{METRIC_LABELS[metric]}: {formatMetric(hover.value, metric)}</div>
+                )}
+                {winCountLine && (
+                  <div className={`hover-tt-row${!isWinCountMetric ? ' hover-tt-row--muted' : ''}`}>{winCountLine}</div>
+                )}
+                {!isWinRateMetric && (
+                  <div className="hover-tt-row hover-tt-row--muted">
+                    勝率: {winRate !== null ? `${winRate.toFixed(1)}%` : '-'}
+                  </div>
+                )}
               </>
             )
           })()}
