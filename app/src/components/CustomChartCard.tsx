@@ -34,7 +34,6 @@ import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelE
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import { rankRowsForBarChart, CHART_BAR_TOP_N, type ChartSortDir } from '../utils/chartSort'
 import i18n from '../i18n'
-import { useTranslation } from 'react-i18next'
 
 /** 1 バトル単位の散布図メトリクス値を BattleRow から計算する。 */
 function getBattleMetric(b: BattleRow, k: BattleMetricKey): number | null {
