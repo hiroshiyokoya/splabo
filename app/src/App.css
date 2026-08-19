@@ -1126,6 +1126,9 @@ body {
 .book-name-cell { display: inline-flex; align-items: center; gap: 6px; }
 .book-name-icon { width: 24px; height: 24px; object-fit: contain; flex-shrink: 0; }
 .book-name-icon--placeholder { background: var(--surface-alt, transparent); border-radius: 4px; }
+/* ステージ画像は横長なので、パネル表示(StageCard)と同じ cover 切り取りで幅を広げて出す(#741)。
+   contain のままだと 24×24 の正方形にレターボックスで収まり、ほぼ見えなくなる。 */
+.book-name-icon--stage { width: 42px; height: 24px; object-fit: cover; border-radius: 3px; }
 .book-tr:hover { background: color-mix(in srgb, var(--text-muted) 10%, transparent); }
 
 /* ── Filter Bar ── */

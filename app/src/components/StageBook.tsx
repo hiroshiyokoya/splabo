@@ -371,8 +371,8 @@ function StageTable({ rows, stageImages, officialByName, sort, ascending, onSort
                 <td className="book-td book-td--left">
                   <span className="book-name-cell">
                     {stageImg
-                      ? <img src={stageImg} alt="" className="book-name-icon" />
-                      : <span className="book-name-icon book-name-icon--placeholder" />}
+                      ? <img src={stageImg} alt="" className="book-name-icon book-name-icon--stage" />
+                      : <span className="book-name-icon book-name-icon--stage book-name-icon--placeholder" />}
                     {groupedStatsDisplayName(r)}
                   </span>
                 </td>
