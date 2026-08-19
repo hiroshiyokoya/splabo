@@ -168,11 +168,13 @@ function buildAggScatterPoints(
   data: GroupedStatsRow[],
   xKey: string, yKey: string, sizeKey?: string, colorKey?: string,
   weaponMeta?: Map<string, WeaponMeta>,
-  /** ブキ名 → 画像 data URI。点がブキのときだけ渡す(#626)。
+  /** ブキ名 → 画像 data URI。点がブキ/ステージのときだけ渡す(#626/#741)。
    *  ここで取りに行かないのは、ホバーのたびに invoke を飛ばさないため。 */
   weaponImages?: Map<string, string>,
   subImages?: Map<string, string>,
   spImages?: Map<string, string>,
+  /** true ならステージ画像のように横長。ツールチップのアイコンを cover 切り取りにする(#741)。 */
+  imagesAreWide?: boolean,
 ): ScatterBundle {
   const filtered = data.filter(d => d.total > 0)
   const isCatColor = isScatterCategoryColorKey(colorKey)
@@ -209,7 +211,8 @@ function buildAggScatterPoints(
           : 'var(--accent)',
       markerShape: catStyle?.shape,
       iconUrl: weaponImages?.get(d.name) ?? null,
-      ...kitIconsForWeapon(d.name, weaponMeta, subImages, spImages),
+      iconIsWide: imagesAreWide,
+      ...(imagesAreWide ? undefined : kitIconsForWeapon(d.name, weaponMeta, subImages, spImages)),
       tooltipRows: dedupeRows(scatterTooltipEntries(
         d, xKey, yKey, sizeKey, colorKey, x, y, size, colorVal, catVal, isCatColor,
       )),
@@ -621,7 +624,11 @@ function renderChartBody(
     chart.groupBy2 === 'weapon' ||
     chart.groupBy2 === 'ally_weapon' ||
     chart.groupBy2 === 'enemy_weapon'
-  const images = isWeaponAxis ? weaponImages : undefined
+  // 散布図の点がステージ単位のときも同様に画像を有効化する(#741)。
+  const isStageAxis = chart.groupBy === 'stage'
+  const images = isWeaponAxis ? weaponImages : isStageAxis ? stageImages : undefined
+  // ステージ画像は横長なので、パネル表示と同じ cover 切り取りで出す(#739/#741)。
+  const imagesAreWide = isStageAxis && !isWeaponAxis
 
   // line: 時系列のみ。複数系列対応(#436)。
   if (chart.shape === 'line') {
@@ -670,12 +677,12 @@ function renderChartBody(
     const imagePx = isScatterImageMode(chart) ? SCATTER_IMAGE_PX[chart.scatterImageSize ?? 'medium'] : undefined
     const sizeKey  = imagePx ? undefined : chart.sizeMetric
     const colorKey = imagePx ? undefined : chart.colorMetric
-    // ツールチップのブキ画像(#626)。
+    // ツールチップのブキ/ステージ画像(#626/#741)。
     // バトル単位は 1 点 = 1 バトルで必ず自分のブキを持つので、groupBy によらず渡す。
-    // 集計単位は点がブキのときだけ(ステージ別の点にブキ画像が付いたら嘘になる)。
+    // 集計単位は点がブキ/ステージのときだけ(他の軸の点に画像が付いたら嘘になる)。
     const { points, sizeLegend, colorLegend } = isBattle
       ? buildBattleScatterPoints(battleData ?? [], chart.xMetric, chart.yMetric, sizeKey, colorKey, weaponMeta, weaponImages, subImages, spImages)
-      : buildAggScatterPoints(data, chart.xMetric, chart.yMetric, sizeKey, colorKey, weaponMeta, images, images ? subImages : undefined, images ? spImages : undefined)
+      : buildAggScatterPoints(data, chart.xMetric, chart.yMetric, sizeKey, colorKey, weaponMeta, images, images ? subImages : undefined, images ? spImages : undefined, imagesAreWide)
     return (
       <ScatterChart
         points={points}
