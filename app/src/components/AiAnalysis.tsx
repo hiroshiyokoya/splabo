@@ -16,10 +16,12 @@
  * **バトルの中身は送らない**。AI② には**集計結果の先頭 `AI2_SAMPLE_ROWS` 行**を送る（#541）。
  */
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { invoke } from '@tauri-apps/api/core'
 import type { AppSettings, ShapedChart } from '../types'
 import { AiResultChart } from './charts/AiResultChart'
 import { defaultModelFor } from '../utils/aiModels'
+import i18n from '../i18n'
 
 /** AI に返させる形。SQL と、それが何を出すかの短い説明。 */
 interface SqlPlan {
@@ -80,8 +82,9 @@ const DISPLAY_ROWS = 200
 const MAX_ATTEMPTS = 3
 
 /** 0 件だったときの説明。エラーではないが、たいてい SQL の作りが間違っている。 */
-const EMPTY_PROBLEM =
-  '結果が 0 件でした。絞り込みが厳しすぎるか、集計の粒度が合っていない可能性があります。'
+function emptyProblem(): string {
+  return i18n.t('ai.emptyResult')
+}
 
 /**
  * AI② に見せる行数の上限。
@@ -95,14 +98,12 @@ const AI2_SAMPLE_ROWS = 20
 const MAX_PRESENT_ATTEMPTS = 2
 
 /** 何を聞けるか分からないと使われないので例を置く。 */
-const EXAMPLES = [
-  '勝率と最も相関の高いバトル指標は？',
-  'ルールごとに勝率と相関が高い指標の上位5つ。ルール×相関係数の表で、セルには指標と相関係数を並べて',
-  'ウデマエ帯ごとのブキ使用率を上位10件',
-  'Xパワーを 500 ごとに区切って、パワー帯ごとの勝率上位 5 ブキを、行 = 帯・列 = 順位で',
-]
+function examples(): string[] {
+  return i18n.t('ai.examples', { returnObjects: true }) as string[]
+}
 
 export function AiAnalysis({ settings }: { settings: AppSettings }) {
+  const { t } = useTranslation()
   const [prompt, setPrompt] = useState('')
   const [phase, setPhase] = useState<null | { kind: 'ai' | 'sql' | 'present'; attempt: number }>(null)
   const [error, setError] = useState<string | null>(null)
@@ -148,7 +149,7 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
   async function analyze(fixHint?: { sql: string; error: string }) {
     if (!prompt.trim()) return
     if (!settings.ai.apiKey) {
-      setError('設定でAPIキーを入力してください')
+      setError(i18n.t('ai.apiKeyMissing'))
       return
     }
     setError(null)
@@ -193,11 +194,11 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
           }
           setResult(next)
           if (emptyRetried) {
-            setSqlError(EMPTY_PROBLEM)
+            setSqlError(emptyProblem())
             return
           }
           emptyRetried = true
-          problem = EMPTY_PROBLEM
+          problem = emptyProblem()
         } catch (e) {
           problem = String(e)
         }
@@ -237,7 +238,7 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
         // 列の取り違えなら、エラーに実際の列名が入っているので渡せば直る。
         hint = String(e)
         if (attempt === MAX_PRESENT_ATTEMPTS) {
-          setShapeNote(`見せ方を決められなかったので、集計結果をそのまま表示しています。（${hint}）`)
+          setShapeNote(i18n.t('ai.presentationFailed', { detail: hint }))
         }
       }
     }
@@ -247,19 +248,17 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
 
   return (
     <div className="ai-panel">
-      <h2>AI分析</h2>
+      <h2>{t('ai.title')}</h2>
       <p className="ai-hint">
-        聞きたいことを日本語で入力してください。AI が SQL を書き、<strong>この PC の中だけで実行</strong>します。
+        {t('ai.hintL1Pre')}<strong>{t('ai.hintL1Strong')}</strong>{t('ai.hintL1Post')}
         <br />
-        SQL を書かせるときに送るのは<strong>質問文・データの構造の説明・件数と期間の範囲だけ</strong>で、
-        バトルの内容は送りません。
+        {t('ai.hintL2Pre')}<strong>{t('ai.hintL2Strong')}</strong>{t('ai.hintL2Post')}
         <br />
-        そのあと<strong>表やグラフの見せ方を決めるために、集計結果の先頭 {AI2_SAMPLE_ROWS} 行を送ります</strong>
-        （ステージ名・ブキ名・勝率などの集計値。個々のバトルや他プレイヤーの名前は含みません）。
+        {t('ai.hintL3Pre')}<strong>{t('ai.hintL3Strong', { n: AI2_SAMPLE_ROWS })}</strong>{t('ai.hintL3Post')}
       </p>
 
       <div className="ai-examples">
-        {EXAMPLES.map(ex => (
+        {examples().map(ex => (
           <button key={ex} className="ai-example" onClick={() => setPrompt(ex)} disabled={busy}>
             {ex}
           </button>
@@ -271,7 +270,7 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
           className="ai-textarea"
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
-          placeholder="聞きたいことを入力..."
+          placeholder={t('ai.placeholder')}
           rows={3}
           onKeyDown={e => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) analyze()
@@ -279,14 +278,14 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
         />
         <button className="btn-primary" onClick={() => analyze()} disabled={busy}>
           {phase === null
-            ? '分析'
+            ? t('ai.run')
             : (phase.kind === 'ai'
-                ? 'AI に問い合わせ中'
+                ? t('ai.askingAi')
                 : phase.kind === 'sql'
-                  ? `集計中${elapsed >= 3 ? `（${elapsed} 秒）` : ''}`
-                  : '見せ方を決めています') +
+                  ? (elapsed >= 3 ? t('ai.aggregatingElapsed', { sec: elapsed }) : t('ai.aggregating'))
+                  : t('ai.decidingPresentation')) +
               // 2 回目以降は書き直していることが分かるように出す。
-              (phase.attempt > 1 ? `（書き直し ${phase.attempt - 1} 回目）` : '') +
+              (phase.attempt > 1 ? t('ai.retrySuffix', { n: phase.attempt - 1 }) : '') +
               '...'}
         </button>
       </div>
@@ -298,8 +297,8 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
       {plan && (
         <details className="ai-sql">
           <summary>
-            実行した SQL
-            {attempts > 1 && `（AI が ${attempts - 1} 回書き直しました）`}
+            {t('ai.executedSql')}
+            {attempts > 1 && t('ai.sqlRewrittenSuffix', { n: attempts - 1 })}
           </summary>
           <pre>{plan.sql}</pre>
         </details>
@@ -313,7 +312,7 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
             disabled={busy}
             onClick={() => plan && analyze({ sql: plan.sql, error: sqlError })}
           >
-            AI に直させる
+            {t('ai.fixWithAi')}
           </button>
         </div>
       )}
@@ -350,7 +349,7 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
           グラフのときは特に、点になった値を数字で確かめられる必要がある。 */}
       {shaped && result && (
         <details className="ai-sql">
-          <summary>集計結果（{result.rows.length.toLocaleString()} 行）</summary>
+          <summary>{t('ai.aggregatedResult', { count: result.rows.length.toLocaleString() })}</summary>
           <ResultTable columns={result.columns} rows={result.rows} truncated={result.truncated} />
         </details>
       )}
@@ -371,9 +370,9 @@ function ResultTable({
   return (
     <>
       <div className="ai-result-meta">
-        {rows.length.toLocaleString()} 行
-        {truncated && '（上限で打ち切り）'}
-        {rows.length > DISPLAY_ROWS && ` / 先頭 ${DISPLAY_ROWS} 行を表示`}
+        {i18n.t('ai.resultRows', { count: rows.length.toLocaleString() })}
+        {truncated && i18n.t('ai.resultTruncated')}
+        {rows.length > DISPLAY_ROWS && i18n.t('ai.resultShownHead', { count: DISPLAY_ROWS })}
       </div>
       <div className="ai-result-wrap">
         <table className="ai-result-table">
@@ -532,7 +531,7 @@ function parseSpec(text: string): PresentationSpec {
   const parsed = parseJson(text)
   const obj = parsed as { shape?: unknown }
   if (obj.shape !== 'table' && obj.shape !== 'pivot') {
-    throw new Error(`shape は "table" か "pivot" にしてください（返答: ${String(obj.shape)}）`)
+    throw new Error(i18n.t('ai.shapeInvalid', { shape: String(obj.shape) }))
   }
   return parsed as PresentationSpec
 }
@@ -547,7 +546,7 @@ function parseJson(text: string): unknown {
   try {
     return JSON.parse(stripped)
   } catch {
-    throw new Error(`AI の返答を JSON として読めませんでした:\n${text.slice(0, 500)}`)
+    throw new Error(i18n.t('ai.responseNotJson', { detail: text.slice(0, 500) }))
   }
 }
 
@@ -555,7 +554,7 @@ function parsePlan(text: string): SqlPlan {
   const parsed = parseJson(text)
   const obj = parsed as { sql?: unknown; explanation?: unknown }
   if (typeof obj.sql !== 'string' || !obj.sql.trim()) {
-    throw new Error(`AI の返答に sql が入っていません:\n${text.slice(0, 500)}`)
+    throw new Error(i18n.t('ai.responseMissingSql', { detail: text.slice(0, 500) }))
   }
   return {
     sql: obj.sql.trim(),
