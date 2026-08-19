@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { invoke } from '@tauri-apps/api/core'
 import type { GroupedStatsRow, BookView, Filters, StageRecord } from '../types'
-import { avgKillRatio, filtersToBookArgs, fmtOfficialWinRate, fmtOfficialDate, METRIC_LABELS } from '../types'
+import { avgKillRatio, filtersToBookArgs, fmtOfficialWinRate, METRIC_LABELS } from '../types'
 import { StageDetailModal } from './StageDetailModal'
 import { ViewToggle, getBookViews } from './ViewToggle'
 import { SortHeader } from './SortHeader'
@@ -11,12 +11,12 @@ import { loadViewPrefs, saveViewPrefs } from '../utils/viewPrefs'
 import { winRateColor } from '../utils/heatmapColors'
 import { groupedStatsDisplayName } from '../i18n/displayName'
 
-/** ステージタブのソートキー。official_* は公式アプリ由来(ルール別通算勝率・最終プレイ日)。 */
+/** ステージタブのソートキー。official_* は公式アプリ由来(ルール別通算勝率)。 */
 type SortKey =
   | 'total' | 'wins' | 'loses' | 'draws'
   | 'win_rate' | 'avg_kill' | 'avg_assist' | 'avg_death' | 'kd' | 'contrib_kd' | 'avg_inked' | 'name'
   | 'official_win_rate_tw' | 'official_win_rate_ar' | 'official_win_rate_lf'
-  | 'official_win_rate_gl' | 'official_win_rate_cl' | 'last_played_at'
+  | 'official_win_rate_gl' | 'official_win_rate_cl'
 
 function stageSortLabels(t: TFunction): Record<SortKey, string> {
   return {
@@ -37,7 +37,6 @@ function stageSortLabels(t: TFunction): Record<SortKey, string> {
     official_win_rate_lf: `${METRIC_LABELS.official_win_rate_lf}`,
     official_win_rate_gl: `${METRIC_LABELS.official_win_rate_gl}`,
     official_win_rate_cl: `${METRIC_LABELS.official_win_rate_cl}`,
-    last_played_at: METRIC_LABELS.official_last_used_at,
   }
 }
 
@@ -49,7 +48,7 @@ const SORT_KEYS: SortKey[] = [
 /** 公式値のソートキー。1 件も取得できていなければソート項目から外す(WeaponBook の OFFICIAL_SORT と同じ流儀)。 */
 const OFFICIAL_SORT_KEYS: SortKey[] = [
   'official_win_rate_tw', 'official_win_rate_ar', 'official_win_rate_lf',
-  'official_win_rate_gl', 'official_win_rate_cl', 'last_played_at',
+  'official_win_rate_gl', 'official_win_rate_cl',
 ]
 
 /** K/D = 平均K ÷ 平均D。デス 0 は上位(Infinity)、データ無しは null。 */
@@ -92,8 +91,6 @@ function compareRows(
       return cmpOfficialRate(officialByName.get(a.name)?.win_rate_gl ?? null, officialByName.get(b.name)?.win_rate_gl ?? null)
     case 'official_win_rate_cl':
       return cmpOfficialRate(officialByName.get(a.name)?.win_rate_cl ?? null, officialByName.get(b.name)?.win_rate_cl ?? null)
-    case 'last_played_at':
-      return cmpOfficialRate(officialByName.get(a.name)?.last_played_at ?? null, officialByName.get(b.name)?.last_played_at ?? null)
     case 'total':
       return b.total - a.total
     case 'wins':
@@ -221,11 +218,11 @@ export function StageBook({ filters }: { filters: Filters }) {
     return copy
   }, [filtered, sort, reversed, officialByName])
 
-  // 公式統計(ルール別通算勝率・最終プレイ日)が 1 件でも取得できているか(#739)。
+  // 公式統計(ルール別通算勝率)が 1 件でも取得できているか(#739)。
   const hasOfficialStats = useMemo(
     () => [...officialByName.values()].some(r =>
       r.win_rate_tw != null || r.win_rate_ar != null || r.win_rate_lf != null ||
-      r.win_rate_gl != null || r.win_rate_cl != null || r.last_played_at != null
+      r.win_rate_gl != null || r.win_rate_cl != null
     ),
     [officialByName],
   )
@@ -356,7 +353,6 @@ function StageTable({ rows, stageImages, officialByName, sort, ascending, onSort
             <SortHeader label={t('filter.rule_yagura')}   sortKey="official_win_rate_lf" activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label={t('filter.rule_hoko')}     sortKey="official_win_rate_gl" activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label={t('filter.rule_asari')}    sortKey="official_win_rate_cl" activeKey={sort} ascending={ascending} onSort={onSort} />
-            <SortHeader label={METRIC_LABELS.official_last_used_at} sortKey="last_played_at" activeKey={sort} ascending={ascending} onSort={onSort} />
           </tr>
         </thead>
         <tbody>
@@ -397,7 +393,6 @@ function StageTable({ rows, stageImages, officialByName, sort, ascending, onSort
                 <td className="book-td" style={{ color: official?.win_rate_lf != null ? winRateColor(official.win_rate_lf) : undefined }}>{fmtOfficialWinRate(official?.win_rate_lf)}</td>
                 <td className="book-td" style={{ color: official?.win_rate_gl != null ? winRateColor(official.win_rate_gl) : undefined }}>{fmtOfficialWinRate(official?.win_rate_gl)}</td>
                 <td className="book-td" style={{ color: official?.win_rate_cl != null ? winRateColor(official.win_rate_cl) : undefined }}>{fmtOfficialWinRate(official?.win_rate_cl)}</td>
-                <td className="book-td">{fmtOfficialDate(official?.last_played_at)}</td>
               </tr>
             )
           })}
