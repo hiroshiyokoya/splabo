@@ -21,6 +21,9 @@
     "battlesCount": "{{count}} battles",
     "winsCount": "{{count}} wins"
   },
+  "app": {
+    "windowTitle": "SpLabo - Splatoon 3 Battle & Gear Analysis"
+  },
   "nav": {
     "battles": "Battles",
     "weapons": "Weapons",
