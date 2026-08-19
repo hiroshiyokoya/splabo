@@ -201,7 +201,7 @@ OpenAI / Google Gemini / Anthropic Claude / xAI Grok を **2 段**で使いま�
 - 本ツールは個人の利用を目的としています。
 - SplatNet 3 は任天堂が公式に公開している API ではありません。任天堂側の仕様変更により、予告なく動作しなくなる可能性があります。
 - 認証情報はアプリの AppData ディレクトリにのみ保存されます（Windows: `%APPDATA%\com.splabo.app\`、macOS: `~/Library/Application Support/com.splabo.app/`）。旧 chartoon / geartoon からのデータは初回起動時に非破壊コピーで移行されます。コミットしないでください。
-- アプリの UI は現状日本語のみです。
+- 表示言語は日本語 / English から選べます（設定 → 表示 → 表示言語。既定は OS の言語に合わせます）。
 
 ## プライバシーポリシー
 
