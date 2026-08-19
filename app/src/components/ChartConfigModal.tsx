@@ -207,7 +207,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       dotUnit:      shape === 'scatter' ? dotUnit : undefined,
       xMetric:      shape === 'scatter' ? xMetric : undefined,
       yMetric:      shape === 'scatter' ? yMetric : undefined,
-      sizeMetric:   shape === 'scatter' && sizeMetric  ? sizeMetric  : undefined,
+      sizeMetric:   (shape === 'scatter' || shape === 'calendar_heatmap') && sizeMetric ? sizeMetric : undefined,
       colorMetric:  shape === 'scatter' && colorMetric ? colorMetric : undefined,
       // 比率メトリクスにログは効かないので、選び直された場合は保存しない (#381)。
       xLogScale:    shape === 'scatter' && xLogScale && !isRateMetric(xMetric) ? true : undefined,
@@ -450,6 +450,21 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
                   <option key={m} value={m}>{METRIC_LABELS[m]}</option>
                 ))}
               </select>
+            </div>
+          )}
+
+          {/* カレンダーは色(上の metric)とサイズを別々に選べる(#742)。
+              色だけだと「同じ値でもバトル数が違う日」を区別できないため。 */}
+          {shape === 'calendar_heatmap' && (
+            <div className="form-field">
+              <label className="form-label">{t('chartConfig.sizeOptional')}</label>
+              <select className="form-input" value={sizeMetric} onChange={e => setSizeMetric(e.target.value)}>
+                <option value="">{t('chartConfig.fixedSize')}</option>
+                {LOCAL_METRIC_KEYS.map(m => (
+                  <option key={m} value={m}>{METRIC_LABELS[m]}</option>
+                ))}
+              </select>
+              <p className="form-hint">{t('chartConfig.sizeHint')}</p>
             </div>
           )}
 

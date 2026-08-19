@@ -31,7 +31,7 @@ import {
   categoryValueForWeaponName, categoryValueForBattle, kitIconsForWeapon, type WeaponMeta,
   type ScatterCategoryColorKey,
 } from '../utils/scatterCategoryColors'
-import { weaponAxisTip } from '../utils/weaponKitImages'
+import { weaponAxisTip, stageAxisTip } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import { rankRowsForBarChart, CHART_BAR_TOP_N, type ChartSortDir } from '../utils/chartSort'
@@ -450,7 +450,7 @@ function sortAndSlice(
  */
 export function CustomChartCard({
   chart, data, data2d, battleData, onEdit, onDelete, weaponImages, weaponMeta,
-  subImages, spImages,
+  subImages, spImages, stageImages,
   since = null, until = null, filterSummary = '',
 }: {
   chart:    CustomChart
@@ -468,6 +468,8 @@ export function CustomChartCard({
   /** サブ／スペシャル画像(#641)。散布図ツールチップのキット行用。 */
   subImages?: Map<string, string>
   spImages?: Map<string, string>
+  /** ステージ名 → 画像 URL の対応。ヒートマップの軸が `stage` のときラベルチップに出す(#742)。 */
+  stageImages?: Map<string, string>
   /** カレンダー用。FilterBar の期間(#461)。 */
   since?:   string | null
   until?:   string | null
@@ -586,7 +588,7 @@ export function CustomChartCard({
         )}
       </div>
       <PanelExportCaption conditions={filterSummary} />
-      {renderChartBody(chart, sliced, data2d, battleData, nameTransform, tickAngle, weaponImages, weaponMeta, subImages, spImages, since, until)}
+      {renderChartBody(chart, sliced, data2d, battleData, nameTransform, tickAngle, weaponImages, weaponMeta, subImages, spImages, stageImages, since, until)}
     </div>
   )
 }
@@ -605,6 +607,7 @@ function renderChartBody(
   weaponMeta:    Map<string, WeaponMeta> | undefined,
   subImages:     Map<string, string> | undefined,
   spImages:      Map<string, string> | undefined,
+  stageImages:   Map<string, string> | undefined,
   since:         string | null,
   until:         string | null,
 ): ReactNode {
@@ -636,7 +639,15 @@ function renderChartBody(
   // calendar_heatmap: 日別のみ。yComposition は single_metric 前提。
   if (chart.shape === 'calendar_heatmap') {
     if (chart.yComposition === 'single_metric' && chart.metric) {
-      return <CalendarHeatmapChart data={data} metric={chart.metric} since={since} until={until} />
+      return (
+        <CalendarHeatmapChart
+          data={data}
+          metric={chart.metric}
+          sizeMetric={(chart.sizeMetric as MetricKey) || undefined}
+          since={since}
+          until={until}
+        />
+      )
     }
     return (
       <div className="chart-not-implemented">
@@ -712,6 +723,9 @@ function renderChartBody(
       ? `${BATTLE_NUMERIC_METRIC_LABELS[chart.yNumericMetric]} (bin ${chart.yBinWidth ?? '?'})`
       : chart.groupBy2 ? GROUP_BY_LABELS[chart.groupBy2] : undefined
     const kitTip = (name: string) => weaponAxisTip(name, weaponMeta, weaponImages, subImages, spImages)
+    const stageTip = (name: string) => stageAxisTip(name, stageImages)
+    const isStageAxis  = chart.groupBy  === 'stage'
+    const isStageAxisY = chart.groupBy2 === 'stage'
     return (
       <HeatmapChart
         data={data2d ?? []}
@@ -722,8 +736,8 @@ function renderChartBody(
         yNumeric={!!chart.yNumericMetric}
         xTitle={xTitle}
         yTitle={yTitle}
-        xWeaponTip={!chart.xNumericMetric && isWeaponAxis ? kitTip : undefined}
-        yWeaponTip={!chart.yNumericMetric && isWeaponAxisY ? kitTip : undefined}
+        xWeaponTip={!chart.xNumericMetric && isWeaponAxis ? kitTip : !chart.xNumericMetric && isStageAxis ? stageTip : undefined}
+        yWeaponTip={!chart.yNumericMetric && isWeaponAxisY ? kitTip : !chart.yNumericMetric && isStageAxisY ? stageTip : undefined}
       />
     )
   }

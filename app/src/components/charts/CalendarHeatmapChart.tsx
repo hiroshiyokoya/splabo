@@ -107,24 +107,26 @@ function averageColor(value: number, min: number, max: number, metric: MetricKey
 const MIN_SIZE_RATIO = 0.35
 
 /**
- * バトル数(その日の total) → セルの一辺(px)。
+ * サイズ指標の値 → セルの一辺(px)。
  *
- * 色だけだと「同じ勝率でも 1 戦の日と 20 戦の日」が区別できない。面積比例(= 一辺は sqrt)
- * でサイズも変えることで、サンプル数の少なさが一目で分かるようにする(#739)。
- * データが無い日(value===null)はここを通さず、常に通常サイズのまま空セル色で出す。
+ * 色(metric)だけだと「同じ値でもサイズ指標が小さい/大きい日」が区別できない。
+ * 色とサイズを別指標にできるので(#742)、面積比例(= 一辺は sqrt)でサイズを変える。
+ * サイズ指標が未指定、またその日に解決できない(null)ときはここを通さず通常サイズのまま。
  */
-function cellSideFor(total: number, maxTotal: number, cellPx: number): number {
-  if (maxTotal <= 0) return cellPx
+function cellSideFor(value: number, maxValue: number, cellPx: number): number {
+  if (maxValue <= 0) return cellPx
   const minSide = cellPx * MIN_SIZE_RATIO
-  const t = Math.min(1, Math.max(0, total / maxTotal))
+  const t = Math.min(1, Math.max(0, value / maxValue))
   return Math.sqrt(minSide * minSide + (cellPx * cellPx - minSide * minSide) * t)
 }
 
 export function CalendarHeatmapChart({
-  data, metric, minSampleSize = 5, since = null, until = null,
+  data, metric, sizeMetric, minSampleSize = 5, since = null, until = null,
 }: {
   data:           GroupedStatsRow[]
   metric:         MetricKey
+  /** セルの大きさに使う指標(#742)。色(metric)とは独立に選べる。未指定ならサイズ表現なし(常に通常サイズ)。 */
+  sizeMetric?:    MetricKey
   minSampleSize?: number
   /** FilterBar の期間開始(YYYY-MM-DD)。未指定ならデータ最早日(#461)。 */
   since?:         string | null
@@ -134,7 +136,7 @@ export function CalendarHeatmapChart({
   const { t } = useTranslation()
   // ツールチップ位置はマウスの clientX / clientY (viewport 基準) を使う。
   // チャート枠 (overflow:auto) の外にも飛び出せるように position: fixed で描く。
-  const [hover, setHover] = useState<{ mx: number; my: number; date: string; value: number | null; total: number; wins: number; draws: number } | null>(null)
+  const [hover, setHover] = useState<{ mx: number; my: number; date: string; value: number | null; total: number; wins: number; draws: number; sizeVal: number | null } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   // カード幅に合わせてセルを広げるための実測幅(#429)。0 = 未計測(素のサイズで描く)。
   // ウィンドウリサイズやサイドバー幅の変化にも追従させたいので ResizeObserver で見る。
@@ -157,11 +159,11 @@ export function CalendarHeatmapChart({
   // データ map / min-max / セル配置(列は日単位で割り当て・#310)
   // 表示範囲は FilterBar の since/until を優先し、期間外は描かない(#461)。
   // until 未指定(または今日以降)なら右端を今日まで延ばし、バトル 0 でも今日のセルを出す。
-  const { dataMap, minVal, maxVal, maxTotal, cells, monthLabels, maxCol } = useMemo(() => {
-    const map = new Map<string, { value: number | null; total: number; wins: number; draws: number }>()
+  const { dataMap, minVal, maxVal, maxSizeVal, cells, monthLabels, maxCol } = useMemo(() => {
+    const map = new Map<string, { value: number | null; total: number; wins: number; draws: number; sizeVal: number | null }>()
     let mn = Number.POSITIVE_INFINITY
     let mx = Number.NEGATIVE_INFINITY
-    let maxT = 0
+    let maxS = 0
     let earliest: Date | null = null
     let latest:   Date | null = null
 
@@ -169,8 +171,9 @@ export function CalendarHeatmapChart({
       const date = fromIsoDate(row.name)
       if (isNaN(date.getTime())) continue
       const v = getMetric(row, metric)
-      map.set(row.name, { value: v, total: row.total, wins: row.wins, draws: row.draws })
-      if (v !== null && row.total > maxT) maxT = row.total
+      const sizeVal = sizeMetric ? getMetric(row, sizeMetric) : null
+      map.set(row.name, { value: v, total: row.total, wins: row.wins, draws: row.draws, sizeVal })
+      if (sizeVal !== null && sizeVal > maxS) maxS = sizeVal
       if (v !== null && (group === 'count' || row.total >= minSampleSize)) {
         if (v < mn) mn = v
         if (v > mx) mx = v
@@ -246,12 +249,12 @@ export function CalendarHeatmapChart({
       dataMap: map,
       minVal:  r.min,
       maxVal:  r.max,
-      maxTotal: maxT,
+      maxSizeVal: maxS,
       cells,
       monthLabels: labels,
       maxCol: col,
     }
-  }, [data, metric, group, minSampleSize, since, until])
+  }, [data, metric, sizeMetric, group, minSampleSize, since, until])
 
   function cellPaint(_date: string, value: number | null, total: number): { fill: string; overlay?: string } {
     // カレンダーは「バトルの無い日」が大半なので、データなしはハッチにせず静かなべた塗りのまま。
@@ -344,15 +347,17 @@ export function CalendarHeatmapChart({
           const total = entry?.total ?? 0
           const wins  = entry?.wins ?? 0
           const draws = entry?.draws ?? 0
+          const sizeVal = entry?.sizeVal ?? null
           const { fill, overlay } = cellPaint(dateStr, v, total)
-          // バトル数(total)でセルの大きさも変える(#739)。データが無い日は通常サイズのまま。
-          const side = v !== null ? cellSideFor(total, maxTotal, cell) : cell
+          // sizeMetric があればセルの大きさも独立に変える(#742)。データが無い日・
+          // サイズ指標が未指定/その日は解決できない(null)ときは通常サイズのまま。
+          const side = sizeMetric && sizeVal !== null ? cellSideFor(sizeVal, maxSizeVal, cell) : cell
           const cx = colX(col) + (cell - side) / 2
           const cy = GRID_TOP + row * pitch + (cell - side) / 2
           return (
             <g
               key={dateStr}
-              onMouseEnter={(e) => setHover({ mx: e.clientX, my: e.clientY, date: dateStr, value: v, total, wins, draws })}
+              onMouseEnter={(e) => setHover({ mx: e.clientX, my: e.clientY, date: dateStr, value: v, total, wins, draws, sizeVal })}
               onMouseMove={(e) => setHover(prev => prev ? { ...prev, mx: e.clientX, my: e.clientY } : prev)}
               onMouseLeave={() => setHover(null)}
             >
@@ -428,12 +433,12 @@ export function CalendarHeatmapChart({
           </span>
         )}
       </div>
-      {/* サイズ凡例: 色に加えてセルの大きさでもバトル数を表す(#739)。 */}
-      {maxTotal > 0 && (
+      {/* サイズ凡例: 色(metric)とは独立の指標でセルの大きさを表す(#742)。 */}
+      {sizeMetric && maxSizeVal > 0 && (
         <div className="cal-legend cal-legend-size">
-          <span className="cal-legend-label">{t('chart.size')}: {METRIC_LABELS.total}</span>
-          {niceSizeLegendValues(1, maxTotal, 3).map(v => {
-            const side = cellSideFor(v, maxTotal, CELL)
+          <span className="cal-legend-label">{t('chart.size')}: {METRIC_LABELS[sizeMetric]}</span>
+          {niceSizeLegendValues(0, maxSizeVal, 3).map(v => {
+            const side = cellSideFor(v, maxSizeVal, CELL)
             return (
               <span key={v} className="cal-legend-size-item">
                 <svg width={CELL} height={CELL} className="cal-legend-size-swatch">
@@ -446,7 +451,7 @@ export function CalendarHeatmapChart({
                     fill="var(--text-muted)"
                   />
                 </svg>
-                <span className="cal-legend-size-value">{Math.round(v).toLocaleString()}</span>
+                <span className="cal-legend-size-value">{fmtLegend(v, sizeMetric)}</span>
               </span>
             )
           })}
@@ -481,6 +486,11 @@ export function CalendarHeatmapChart({
                 {!isWinRateMetric && (
                   <div className="hover-tt-row hover-tt-row--muted">
                     {METRIC_LABELS.win_rate}: {winRate !== null ? `${winRate.toFixed(1)}%` : '-'}
+                  </div>
+                )}
+                {sizeMetric && sizeMetric !== metric && sizeMetric !== 'win_rate' && hover.sizeVal !== null && (
+                  <div className="hover-tt-row hover-tt-row--muted">
+                    {t('chart.size')} {METRIC_LABELS[sizeMetric]}: {formatMetric(hover.sizeVal, sizeMetric)}
                   </div>
                 )}
               </>
