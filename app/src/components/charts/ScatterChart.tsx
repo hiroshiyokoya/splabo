@@ -1189,7 +1189,7 @@ function ScatterLegends({ sizeLegend, colorLegend }: { sizeLegend?: SizeLegend |
     <div className="scatter-legend">
       {sizeLegend && (
         <div className="scatter-legend-group">
-          <span className="scatter-legend-title">サイズ: {sizeLegend.label}</span>
+          <span className="scatter-legend-title">{t('chart.size')}: {sizeLegend.label}</span>
           <span className="scatter-legend-items" style={{ minHeight: maxR * 2 }}>
             {sizeLegend.items.map((it, i) => (
               <span className="scatter-legend-size" key={i}>
@@ -1780,12 +1780,12 @@ export function ScatterChart({
         {hoverSiblings.length > 1 ? (
           <>
             {/* 重なってる全件: 共通の x/y 等を 1 回 + 各点の rowText を並べる */}
-            <div className="hover-tt-title">{active.tooltipRows.slice(0, 2).map(r => `${r.label} ${r.value}`).join(' / ')} <span className="hover-tt-row--muted">({hoverSiblings.length} 件)</span></div>
+            <div className="hover-tt-title">{active.tooltipRows.slice(0, 2).map(r => `${r.label} ${r.value}`).join(' / ')} <span className="hover-tt-row--muted">({i18n.t('chart.nItems', { count: hoverSiblings.length })})</span></div>
             {hoverSiblings.slice(0, ROW_LIMIT).map((p, i) => (
               <div key={i} className="hover-tt-row hover-tt-row--muted">{p.rowText ?? p.name}</div>
             ))}
             {hoverSiblings.length > ROW_LIMIT && (
-              <div className="hover-tt-row hover-tt-row--muted">他 {hoverSiblings.length - ROW_LIMIT} 件</div>
+              <div className="hover-tt-row hover-tt-row--muted">{i18n.t('chart.moreItems', { count: hoverSiblings.length - ROW_LIMIT })}</div>
             )}
           </>
         ) : (

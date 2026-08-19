@@ -239,7 +239,7 @@ export function HeatmapChart({
   const legendLeft  = group === 'rate' ? '0%'  : group === 'count' ? '0' : fmtLegend(minVal)
   const legendRight = group === 'rate' ? '100%' : fmtLegend(maxVal)
 
-  // 表示ラベル: nameMap (BE が返す display name) を引いてから、必要ならカテゴリ別に整形。
+  // 表示ラベル: nameMap (BE が返す display name、常に日本語) を引いてから、必要ならカテゴリ別に整形。
   function xLabel(k: string): string {
     const display = nameMap.get(k) ?? k
     return xLabelTransform ? xLabelTransform(display) : display
@@ -247,6 +247,16 @@ export function HeatmapChart({
   function yLabel(k: string): string {
     const display = nameMap.get(k) ?? k
     return yLabelTransform ? yLabelTransform(display) : display
+  }
+  // ブキ軸チップ: アイコン系 Map は日本語ブキ名で引くので、xLabelTransform 後の
+  // (英語表示時は英語化された) 名前ではなく nameMap の生値を渡す。表示名だけ後で差し替える。
+  function xWeaponKitTip(k: string): WeaponKitTipData | undefined {
+    const tip = xWeaponTip?.(nameMap.get(k) ?? k)
+    return tip ? { ...tip, name: xLabel(k) } : undefined
+  }
+  function yWeaponKitTip(k: string): WeaponKitTipData | undefined {
+    const tip = yWeaponTip?.(nameMap.get(k) ?? k)
+    return tip ? { ...tip, name: yLabel(k) } : undefined
   }
 
   return (
@@ -285,7 +295,7 @@ export function HeatmapChart({
         {xKeys.map((k, i) => {
           const x = PAD_LEFT + i * (CELL_W + GAP) + CELL_W / 2
           const c = xLabelColor(k)
-          const tip = xWeaponTip?.(xLabel(k))
+          const tip = xWeaponKitTip(k)
           const hitX = PAD_LEFT + i * (CELL_W + GAP)
           const hitY = xTitle ? TITLE_PAD : 0
           return (
@@ -316,7 +326,7 @@ export function HeatmapChart({
         {/* Y 軸ラベル(左) */}
         {yKeys.map((k, i) => {
           const c = yLabelColor(k)
-          const tip = yWeaponTip?.(yLabel(k))
+          const tip = yWeaponKitTip(k)
           const hitY = PAD_TOP + i * (CELL_H + GAP)
           const hitX = yTitle ? TITLE_PAD : 0
           return (
