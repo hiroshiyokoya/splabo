@@ -13,6 +13,7 @@ import {
 } from '../types'
 import {
   groupedRowNameTransform, heatmap2dLabelTransform, scatterCategoryValueDisplayName,
+  groupedStatsDisplayName,
 } from '../i18n/displayName'
 import { SimpleBarChart } from './charts/SimpleBarChart'
 import { AttackDefenseChart } from './charts/AttackDefenseChart'
@@ -197,7 +198,7 @@ function buildAggScatterPoints(
     const catVal = isCatColor ? categoryValueForWeaponName(d.name, colorKey, weaponMeta) : null
     const catStyle = isCatColor && catVal ? categoryStyleOf(catVal, categories) : null
     return {
-      name:  d.name,
+      name:  groupedStatsDisplayName(d),
       x,
       y,
       size,

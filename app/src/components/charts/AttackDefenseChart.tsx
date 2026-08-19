@@ -159,10 +159,10 @@ export function AttackDefenseChart({
         return (
           <>
             <div className="hover-tt-title">{displayLabel}</div>
-            <div className="hover-tt-row" style={{ color: '#22c55e' }}>平均キル: {row.kill.toFixed(2)}</div>
-            <div className="hover-tt-row" style={{ color: '#9ca3af' }}>平均アシスト: {row.assist.toFixed(2)}</div>
-            <div className="hover-tt-row" style={{ color: '#ef4444' }}>平均デス: {row.death.toFixed(2)}</div>
-            <div className="hover-tt-row hover-tt-row--muted">バトル数: {row.rawRow.total}</div>
+            <div className="hover-tt-row" style={{ color: '#22c55e' }}>{METRIC_LABELS.avg_kill}: {row.kill.toFixed(2)}</div>
+            <div className="hover-tt-row" style={{ color: '#9ca3af' }}>{METRIC_LABELS.avg_assist}: {row.assist.toFixed(2)}</div>
+            <div className="hover-tt-row" style={{ color: '#ef4444' }}>{METRIC_LABELS.avg_death}: {row.death.toFixed(2)}</div>
+            <div className="hover-tt-row hover-tt-row--muted">{METRIC_LABELS.total}: {row.rawRow.total}</div>
           </>
         )
       })()}
