@@ -13,41 +13,43 @@ import { useTranslation } from 'react-i18next'
 import { invoke } from '@tauri-apps/api/core'
 import type { Filters, Period } from '../types'
 import { filtersToRange, resultLabel } from '../types'
-import { stageInfoDisplayName } from '../i18n/displayName'
+import { stageInfoDisplayName, localizedName } from '../i18n/displayName'
+import i18n from '../i18n'
 
-/** FilterBar と表示を揃えるための選択肢定義。UI とキャプションで文言をぶらさない。 */
-export const PERIOD_OPTIONS: { id: Period; label: string }[] = [
-  { id: 'all',            label: '全期間' },
+/**
+ * FilterBar と表示を揃えるための選択肢定義。
+ * 表示ラベルは常に呼び出し側で `t('filter.xxx_${key}')` を引く(#689)ので、
+ * ここには locale キーの元になる `id`/`key` だけを持つ。
+ */
+export const PERIOD_OPTIONS: { id: Period }[] = [
+  { id: 'all' },
   // 🔴 'current_season' と 'season' はボタンではなくシーズンのプルダウンで選ぶ（#585）。
   // ここに並べるとボタンとプルダウンで同じものが 2 つ出るため入れない。
-  { id: '1y',             label: '1年' },
-  { id: '180d',           label: '180日' },
-  { id: '30d',            label: '30日' },
-  { id: '7d',             label: '7日' },
-  { id: 'custom',         label: 'カスタム' },
+  { id: '1y' },
+  { id: '180d' },
+  { id: '30d' },
+  { id: '7d' },
+  { id: 'custom' },
 ]
 
 /** モード(ロビー)。キーは lobby.key に一致させる。 */
 export const LOBBY_OPTIONS = [
-  { key: 'regular',             label: 'レギュラー' },
-  { key: 'bankara_open',        label: 'バンカラ(オープン)' },
-  { key: 'bankara_challenge',   label: 'バンカラ(チャレンジ)' },
-  { key: 'xmatch',              label: 'Xマッチ' },
-  { key: 'splatfest_open',      label: 'フェス(オープン)' },
-  { key: 'splatfest_challenge', label: 'フェス(チャレンジ)' },
-  { key: 'event',               label: 'イベント' },
+  { key: 'regular' },
+  { key: 'bankara_open' },
+  { key: 'bankara_challenge' },
+  { key: 'xmatch' },
+  { key: 'splatfest_open' },
+  { key: 'splatfest_challenge' },
+  { key: 'event' },
 ]
 
 export const RULE_OPTIONS = [
-  { key: 'turf_war', label: 'ナワバリ' },
-  { key: 'area',     label: 'ガチエリア' },
-  { key: 'yagura',   label: 'ガチヤグラ' },
-  { key: 'hoko',     label: 'ガチホコ' },
-  { key: 'asari',    label: 'ガチアサリ' },
+  { key: 'turf_war' },
+  { key: 'area' },
+  { key: 'yagura' },
+  { key: 'hoko' },
+  { key: 'asari' },
 ]
-
-const LOBBY_LABEL = new Map(LOBBY_OPTIONS.map(o => [o.key, o.label]))
-const RULE_LABEL  = new Map(RULE_OPTIONS.map(o => [o.key, o.label]))
 
 /** 画像内で 1 項目に並べる値の上限。これを超えたら「他 N 件」に畳む。 */
 const MAX_VALUES = 3
@@ -62,14 +64,14 @@ const VALUE_SEP = ', '
 
 export function joinValues(values: string[]): string {
   if (values.length <= MAX_VALUES) return values.join(VALUE_SEP)
-  return `${values.slice(0, MAX_VALUES).join(VALUE_SEP)}${VALUE_SEP}他${values.length - MAX_VALUES}件`
+  return `${values.slice(0, MAX_VALUES).join(VALUE_SEP)}${VALUE_SEP}${i18n.t('chart.moreItems', { count: values.length - MAX_VALUES })}`
 }
 
 /** `ラベル: 値` の並び。値が無い項目は落とす。 */
 export function joinConditions(parts: [string, string | null][]): string {
   const kept = parts.filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`)
   // 区切りは半角スペース + 半角スラッシュ(全角スペースや全角/は使わない)
-  return kept.length ? kept.join(' / ') : '絞り込みなし'
+  return kept.length ? kept.join(' / ') : i18n.t('env.noFilters')
 }
 
 /** ローカル日付の `YYYY-MM-DD`(保存キャプションの「今日」)。 */
@@ -93,7 +95,7 @@ export function formatAbsolutePeriodRange(
   until: string | null,
   now = new Date(),
 ): string {
-  if (!since && !until) return '全期間'
+  if (!since && !until) return i18n.t('filter.allPeriod')
   const end = until || localIsoDate(now)
   if (!since) return `~${end}`
   return `${since}~${end}`
@@ -101,7 +103,7 @@ export function formatAbsolutePeriodRange(
 
 /** 保存キャプション用の期間文言。UI プリセット名は使わない。 */
 function periodText(f: Filters, now = new Date()): string {
-  if (f.period === 'all') return '全期間'
+  if (f.period === 'all') return i18n.t('filter.allPeriod')
   // シーズンだけは名前を出す(#585)。「今シーズン」のような相対名と違い、
   // シーズン名は後から見ても一意に決まるので日付に開く必要がない。
   if (f.period === 'season' && f.seasonName) {
@@ -131,19 +133,24 @@ export function buildExportCaption(
   return [
     source ?? '',
     conditions,
-    count != null ? `該当 ${count.toLocaleString()} バトル` : '',
+    count != null ? i18n.t('env.matchedBattles', { count: count.toLocaleString() }) : '',
   ].filter(Boolean).join(' / ')
 }
 
-/** ダッシュボードなど FilterBar 配下の画面の条件。`buildExportCaption` に渡す。 */
-export function describeFilters(f: Filters, stageNames?: Map<string, string>): string {
+/** ダッシュボードなど FilterBar 配下の画面の条件。`buildExportCaption` に渡す。
+ *  `weaponEnByName` があれば `f.weapon`(日本語名の配列)を表示言語に合わせて訳す。 */
+export function describeFilters(
+  f: Filters,
+  stageNames?: Map<string, string>,
+  weaponEnByName?: Map<string, string | null | undefined>,
+): string {
   return joinConditions([
-    ['ロビー',   f.mode.length ? joinValues(f.mode.map(k => LOBBY_LABEL.get(k) ?? k)) : null],
-    ['期間',     periodText(f)],
-    ['ルール',   f.rule.length ? joinValues(f.rule.map(k => RULE_LABEL.get(k) ?? k)) : null],
-    ['ブキ',     f.weapon.length ? joinValues(f.weapon) : null],
-    ['ステージ', f.stage.length ? joinValues(f.stage.map(id => stageNames?.get(id) ?? id)) : null],
-    ['結果',     f.result ? resultLabel(f.result) : null],
+    [i18n.t('filter.lobby'),  f.mode.length ? joinValues(f.mode.map(k => i18n.t(`filter.lobby_${k}`, { defaultValue: k }))) : null],
+    [i18n.t('filter.period'), periodText(f)],
+    [i18n.t('filter.rule'),   f.rule.length ? joinValues(f.rule.map(k => i18n.t(`filter.rule_${k}`, { defaultValue: k }))) : null],
+    [i18n.t('filter.weapon'), f.weapon.length ? joinValues(f.weapon.map(name => localizedName(name, weaponEnByName?.get(name), name))) : null],
+    [i18n.t('filter.stage'),  f.stage.length ? joinValues(f.stage.map(id => stageNames?.get(id) ?? id)) : null],
+    [i18n.t('filter.result'), f.result ? resultLabel(f.result) : null],
   ])
 }
 

@@ -179,7 +179,8 @@ type ScatterTipPayload =
       kind: 'group'
       groupTitle: string
       members: string[]
-      more: number
+      /** 「他 N 件」相当。書き出し時点の表示言語で焼き込む(#695、書き出し先の HTML に i18next は無い)。 */
+      moreLabel: string | null
     }
 
 const SCATTER_TIP_ROW_LIMIT = 12
@@ -194,7 +195,9 @@ function buildScatterTipPayload(
       kind: 'group',
       groupTitle: `${point.tooltipRows.slice(0, 2).map(r => `${r.label} ${r.value}`).join(' / ')} (${i18n.t('chart.nItems', { count: sibs.length })})`,
       members: sibs.slice(0, SCATTER_TIP_ROW_LIMIT).map(p => p.rowText ?? p.name),
-      more: Math.max(0, sibs.length - SCATTER_TIP_ROW_LIMIT),
+      moreLabel: sibs.length > SCATTER_TIP_ROW_LIMIT
+        ? i18n.t('chart.moreItems', { count: sibs.length - SCATTER_TIP_ROW_LIMIT })
+        : null,
     }
   }
   return {
