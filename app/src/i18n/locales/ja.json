@@ -21,6 +21,9 @@
     "battlesCount": "{{count}} 戦",
     "winsCount": "{{count}} 勝"
   },
+  "app": {
+    "windowTitle": "SpLabo - Splatoon3 バトル & ギア 分析アプリ"
+  },
   "nav": {
     "battles": "バトル",
     "weapons": "ブキ",
