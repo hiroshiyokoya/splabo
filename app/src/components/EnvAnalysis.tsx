@@ -40,7 +40,7 @@ import {
   scatterCategoryValueDisplayName, weaponCategoryDisplayName, subWeaponDisplayName, specialWeaponDisplayName,
   stageDimDisplayName, localizedName,
 } from '../i18n/displayName'
-import { loadSubSpImageMaps, loadWeaponImageMap, weaponAxisTip } from '../utils/weaponKitImages'
+import { loadSubSpImageMaps, loadWeaponImageMap, weaponAxisTip, loadStageImageMap, stageAxisTip } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo, PanelExportNote } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import {
@@ -806,6 +806,7 @@ export function EnvAnalysis() {
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
   const [subImages, setSubImages] = useState<Map<string, string>>(new Map())
   const [spImages, setSpImages] = useState<Map<string, string>>(new Map())
+  const [stageImages, setStageImages] = useState<Map<string, string>>(new Map())
   const weaponJaByKey = useMemo(
     () => new Map(weaponOptions.map(w => [w.key, w.label])),
     [weaponOptions],
@@ -813,6 +814,14 @@ export function EnvAnalysis() {
   const weaponEnByKey = useMemo(
     () => new Map(weaponOptions.map(w => [w.key, w.label_en])),
     [weaponOptions],
+  )
+  const stageJaByKey = useMemo(
+    () => new Map(stageOptions.map(s => [s.key, s.label])),
+    [stageOptions],
+  )
+  const stageEnByKey = useMemo(
+    () => new Map(stageOptions.map(s => [s.key, s.label_en])),
+    [stageOptions],
   )
   const heatmapWeaponTip = useCallback((key: string) => {
     const name = weaponJaByKey.get(key) ?? key
@@ -825,6 +834,18 @@ export function EnvAnalysis() {
     }
     return displayTip
   }, [weaponJaByKey, weaponEnByKey, weaponMeta, weaponImages, subImages, spImages])
+  // ステージ軸チップ(#739)。ブキと同じく画像系 Map は日本語名で引き、表示名だけ差し替える。
+  const heatmapStageTip = useCallback((key: string) => {
+    const name = stageJaByKey.get(key) ?? key
+    const tip = stageAxisTip(name, stageImages)
+    if (!tip) return undefined
+    return { ...tip, name: localizedName(name, stageEnByKey.get(key), name) }
+  }, [stageJaByKey, stageEnByKey, stageImages])
+
+  useEffect(() => {
+    if (stageOptions.length === 0) return
+    loadStageImageMap(stageOptions.map(s => s.key)).then(setStageImages).catch(console.error)
+  }, [stageOptions])
 
   useEffect(() => {
     invoke<WeaponRecord[]>('db_list_weapons').then(list => {
@@ -983,6 +1004,7 @@ export function EnvAnalysis() {
       // 表示名(= key)はローカルマスターに無いブキだとスラッグのままで、当たらないパスを
       // 取りに行ってしまう。未ロード / 画像なしは undefined でアイコンなしになる。
       iconUrl: s.icon_name ? iconUrls.get(`${iconKind}:${s.icon_name}`) ?? null : null,
+      iconIsWide: iconKind === 'stage',
       ...(iconKind === 'weapon' ? kitIconsForWeapon(s.icon_name, weaponMeta, subImages, spImages) : undefined),
       // 見出しにアイコン + 名前が出るので、ブキ/ステージ行は重複になる (#433)
       tooltipRows: [
@@ -1425,8 +1447,8 @@ export function EnvAnalysis() {
                     colValue={colProj}
                     // バトル数は合計なので、セルの min/max ではなく軸内の相対で色付けする(#411)。
                     axisRelative={cellMetric === 'battles'}
-                    rowTip={rowDim === 'weapon' ? heatmapWeaponTip : undefined}
-                    colTip={colDim === 'weapon' ? heatmapWeaponTip : undefined}
+                    rowTip={rowDim === 'weapon' ? heatmapWeaponTip : rowDim === 'stage' ? heatmapStageTip : undefined}
+                    colTip={colDim === 'weapon' ? heatmapWeaponTip : colDim === 'stage' ? heatmapStageTip : undefined}
                   />
                 )}
                 <p className={`env-chart-note ${EXPORT_HIDE_CLASS}`}>

@@ -1,17 +1,25 @@
 import type { CSSProperties } from 'react'
 import type { ScatterKitIcons } from '../../utils/scatterCategoryColors'
 
-/** ブキ軸ラベル用チップ(#643)。散布図と同じキット行。 */
+/** ブキ・ステージ軸ラベル用チップ(#643)。散布図と同じキット行。 */
 export type WeaponKitTipData = {
   name: string
   iconUrl?: string | null
+  /** ステージ画像のように横長の元画像を、パネル表示と同じ cover 切り取りで出す(#739)。 */
+  iconIsWide?: boolean
 } & ScatterKitIcons
 
 export function WeaponKitTipBody(t: WeaponKitTipData) {
   return (
     <>
       <div className="hover-tt-title">
-        {t.iconUrl && <img className="hover-tt-icon" src={t.iconUrl} alt="" />}
+        {t.iconUrl && (
+          <img
+            className={`hover-tt-icon${t.iconIsWide ? ' hover-tt-icon--stage' : ''}`}
+            src={t.iconUrl}
+            alt=""
+          />
+        )}
         {t.name}
       </div>
       {(t.spIconUrl || t.subIconUrl) && (

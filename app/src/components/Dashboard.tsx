@@ -25,7 +25,7 @@ import { CustomChartCard } from './CustomChartCard'
 import { ChartConfigModal } from './ChartConfigModal'
 import { loadCustomCharts, saveCustomCharts, generateChartId } from '../utils/customCharts'
 import type { WeaponMeta } from '../utils/scatterCategoryColors'
-import { loadSubSpImageMaps } from '../utils/weaponKitImages'
+import { loadSubSpImageMaps, loadStageImageMap } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import { describeFilters, buildExportCaption, useStageNames } from '../utils/filterSummary'
@@ -95,6 +95,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
   const [weaponMeta, setWeaponMeta] = useState<Map<string, WeaponMeta>>(new Map())
   const [weaponEnByName, setWeaponEnByName] = useState<Map<string, string | null>>(new Map())
+  const [stageImages, setStageImages] = useState<Map<string, string>>(new Map())
   const [subImages, setSubImages] = useState<Map<string, string>>(new Map())
   const [spImages, setSpImages] = useState<Map<string, string>>(new Map())
   const [weaponSort, setWeaponSort] = useState<SortBy>('total')
@@ -219,6 +220,13 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
       ).then(results => {
         setWeaponImages(new Map(results.filter((r): r is [string, string] => r !== null)))
       })
+    }).catch(() => {})
+  }, [])
+
+  // ステージ画像を一度だけ事前ロード(#742)。カスタムヒートマップのステージ軸チップ用。
+  useEffect(() => {
+    invoke<{ name: string }[]>('db_stages_used').then(list => {
+      loadStageImageMap(list.map(s => s.name)).then(setStageImages).catch(console.error)
     }).catch(() => {})
   }, [])
 
@@ -412,6 +420,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
                       weaponMeta={weaponMeta}
                       subImages={subImages}
                       spImages={spImages}
+                      stageImages={stageImages}
                       since={filterSince}
                       until={filterUntil}
                       filterSummary={filterSummary}

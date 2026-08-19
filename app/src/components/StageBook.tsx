@@ -11,10 +11,12 @@ import { loadViewPrefs, saveViewPrefs } from '../utils/viewPrefs'
 import { winRateColor } from '../utils/heatmapColors'
 import { groupedStatsDisplayName } from '../i18n/displayName'
 
-/** ステージタブのソートキー。 */
+/** ステージタブのソートキー。official_* は公式アプリ由来(ルール別通算勝率)。 */
 type SortKey =
   | 'total' | 'wins' | 'loses' | 'draws'
   | 'win_rate' | 'avg_kill' | 'avg_assist' | 'avg_death' | 'kd' | 'contrib_kd' | 'avg_inked' | 'name'
+  | 'official_win_rate_tw' | 'official_win_rate_ar' | 'official_win_rate_lf'
+  | 'official_win_rate_gl' | 'official_win_rate_cl'
 
 function stageSortLabels(t: TFunction): Record<SortKey, string> {
   return {
@@ -30,12 +32,23 @@ function stageSortLabels(t: TFunction): Record<SortKey, string> {
     contrib_kd:     METRIC_LABELS.avg_contrib_kd,
     avg_inked:      t('books.avgInked'),
     name:           t('books.name'),
+    official_win_rate_tw: `${METRIC_LABELS.official_win_rate_tw}`,
+    official_win_rate_ar: `${METRIC_LABELS.official_win_rate_ar}`,
+    official_win_rate_lf: `${METRIC_LABELS.official_win_rate_lf}`,
+    official_win_rate_gl: `${METRIC_LABELS.official_win_rate_gl}`,
+    official_win_rate_cl: `${METRIC_LABELS.official_win_rate_cl}`,
   }
 }
 
 const SORT_KEYS: SortKey[] = [
   'total', 'wins', 'loses', 'draws',
   'win_rate', 'avg_kill', 'avg_assist', 'avg_death', 'kd', 'contrib_kd', 'avg_inked', 'name',
+]
+
+/** 公式値のソートキー。1 件も取得できていなければソート項目から外す(WeaponBook の OFFICIAL_SORT と同じ流儀)。 */
+const OFFICIAL_SORT_KEYS: SortKey[] = [
+  'official_win_rate_tw', 'official_win_rate_ar', 'official_win_rate_lf',
+  'official_win_rate_gl', 'official_win_rate_cl',
 ]
 
 /** K/D = 平均K ÷ 平均D。デス 0 は上位(Infinity)、データ無しは null。 */
@@ -54,9 +67,30 @@ function contribKdOf(r: GroupedStatsRow): number | null {
 /** compareRows が「昇順」で並べるキー(それ以外は降順)。一覧ビューの矢印表示に使う。 */
 const ASC_SORT_KEYS: ReadonlySet<SortKey> = new Set<SortKey>(['name', 'avg_death'])
 
-/** 比較関数(DESC を基本に、name / avg_death は ASC)。 */
-function compareRows(a: GroupedStatsRow, b: GroupedStatsRow, sort: SortKey): number {
+/** 公式値(勝率 0-1・null 許容)の比較。大きいほど上位、null は末尾。 */
+function cmpOfficialRate(a: number | null, b: number | null): number {
+  if (a === null && b === null) return 0
+  if (a === null) return  1
+  if (b === null) return -1
+  return b - a
+}
+
+/** 比較関数(DESC を基本に、name / avg_death は ASC)。official はローカル集計に無いので別引数で渡す。 */
+function compareRows(
+  a: GroupedStatsRow, b: GroupedStatsRow, sort: SortKey,
+  officialByName: Map<string, StageRecord>,
+): number {
   switch (sort) {
+    case 'official_win_rate_tw':
+      return cmpOfficialRate(officialByName.get(a.name)?.win_rate_tw ?? null, officialByName.get(b.name)?.win_rate_tw ?? null)
+    case 'official_win_rate_ar':
+      return cmpOfficialRate(officialByName.get(a.name)?.win_rate_ar ?? null, officialByName.get(b.name)?.win_rate_ar ?? null)
+    case 'official_win_rate_lf':
+      return cmpOfficialRate(officialByName.get(a.name)?.win_rate_lf ?? null, officialByName.get(b.name)?.win_rate_lf ?? null)
+    case 'official_win_rate_gl':
+      return cmpOfficialRate(officialByName.get(a.name)?.win_rate_gl ?? null, officialByName.get(b.name)?.win_rate_gl ?? null)
+    case 'official_win_rate_cl':
+      return cmpOfficialRate(officialByName.get(a.name)?.win_rate_cl ?? null, officialByName.get(b.name)?.win_rate_cl ?? null)
     case 'total':
       return b.total - a.total
     case 'wins':
@@ -179,10 +213,25 @@ export function StageBook({ filters }: { filters: Filters }) {
 
   const sorted = useMemo(() => {
     const copy = [...filtered]
-    copy.sort((a, b) => compareRows(a, b, sort))
+    copy.sort((a, b) => compareRows(a, b, sort, officialByName))
     if (reversed) copy.reverse()
     return copy
-  }, [filtered, sort, reversed])
+  }, [filtered, sort, reversed, officialByName])
+
+  // 公式統計(ルール別通算勝率)が 1 件でも取得できているか(#739)。
+  const hasOfficialStats = useMemo(
+    () => [...officialByName.values()].some(r =>
+      r.win_rate_tw != null || r.win_rate_ar != null || r.win_rate_lf != null ||
+      r.win_rate_gl != null || r.win_rate_cl != null
+    ),
+    [officialByName],
+  )
+
+  useEffect(() => {
+    if (!hasOfficialStats && OFFICIAL_SORT_KEYS.includes(sort)) {
+      setSort('total')
+    }
+  }, [hasOfficialStats, sort])
 
   return (
     <div className={`stage-book${view === 'list' ? ' book--fill' : ''}`}>
@@ -215,6 +264,9 @@ export function StageBook({ filters }: { filters: Filters }) {
               {SORT_KEYS.map(k => (
                 <option key={k} value={k}>{sortLabels[k]}</option>
               ))}
+              {hasOfficialStats && OFFICIAL_SORT_KEYS.map(k => (
+                <option key={k} value={k}>{sortLabels[k]}</option>
+              ))}
             </select>
           </div>
         )}
@@ -230,6 +282,8 @@ export function StageBook({ filters }: { filters: Filters }) {
       ) : view === 'list' ? (
         <StageTable
           rows={sorted}
+          stageImages={stageImages}
+          officialByName={officialByName}
           sort={sort}
           ascending={ASC_SORT_KEYS.has(sort) !== reversed}
           onSort={handleSort}
@@ -262,13 +316,16 @@ export function StageBook({ filters }: { filters: Filters }) {
   )
 }
 
-/** 一覧ビュー(#297)。ヘッダクリックで並び替え、行クリックで詳細モーダル。 */
-function StageTable({ rows, sort, ascending, onSort, onSelect }: {
-  rows:      GroupedStatsRow[]
-  sort:      SortKey
-  ascending: boolean
-  onSort:    (k: SortKey) => void
-  onSelect:  (r: GroupedStatsRow) => void
+/** 一覧ビュー(#297)。ヘッダクリックで並び替え、行クリックで詳細モーダル。
+ *  ローカル集計に加え、公式アプリ由来のルール別通算勝率・最終プレイ日も列として出す(#739)。 */
+function StageTable({ rows, stageImages, officialByName, sort, ascending, onSort, onSelect }: {
+  rows:           GroupedStatsRow[]
+  stageImages:    Map<string, string>
+  officialByName: Map<string, StageRecord>
+  sort:           SortKey
+  ascending:      boolean
+  onSort:         (k: SortKey) => void
+  onSelect:       (r: GroupedStatsRow) => void
 }) {
   const { t } = useTranslation()
   if (rows.length === 0) {
@@ -291,6 +348,11 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
             <SortHeader label={METRIC_LABELS.avg_kd}     sortKey="kd"            activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label={METRIC_LABELS.avg_contrib_kd} sortKey="contrib_kd"    activeKey={sort} ascending={ascending} onSort={onSort} />
             <SortHeader label={t('books.avgInked')}  sortKey="avg_inked"     activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label={t('filter.rule_turf_war')} sortKey="official_win_rate_tw" activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label={t('filter.rule_area')}     sortKey="official_win_rate_ar" activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label={t('filter.rule_yagura')}   sortKey="official_win_rate_lf" activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label={t('filter.rule_hoko')}     sortKey="official_win_rate_gl" activeKey={sort} ascending={ascending} onSort={onSort} />
+            <SortHeader label={t('filter.rule_asari')}    sortKey="official_win_rate_cl" activeKey={sort} ascending={ascending} onSort={onSort} />
           </tr>
         </thead>
         <tbody>
@@ -298,9 +360,18 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
             const decisive = r.total - r.draws
             const winRate  = decisive > 0 ? r.wins / decisive : null
             const loses    = r.total - r.wins - r.draws
+            const stageImg = stageImages.get(r.name) ?? null
+            const official = officialByName.get(r.name) ?? null
             return (
               <tr key={r.key} className="book-tr clickable-row" onClick={() => onSelect(r)}>
-                <td className="book-td book-td--left">{groupedStatsDisplayName(r)}</td>
+                <td className="book-td book-td--left">
+                  <span className="book-name-cell">
+                    {stageImg
+                      ? <img src={stageImg} alt="" className="book-name-icon book-name-icon--stage" />
+                      : <span className="book-name-icon book-name-icon--stage book-name-icon--placeholder" />}
+                    {groupedStatsDisplayName(r)}
+                  </span>
+                </td>
                 <td className="book-td">{r.total}</td>
                 <td className="book-td">{r.wins}</td>
                 <td className="book-td">{loses}</td>
@@ -317,6 +388,11 @@ function StageTable({ rows, sort, ascending, onSort, onSelect }: {
                   r.avg_death,
                 )}</td>
                 <td className="book-td">{r.avg_inked !== null ? r.avg_inked.toFixed(0) : '-'}</td>
+                <td className="book-td" style={{ color: official?.win_rate_tw != null ? winRateColor(official.win_rate_tw) : undefined }}>{fmtOfficialWinRate(official?.win_rate_tw)}</td>
+                <td className="book-td" style={{ color: official?.win_rate_ar != null ? winRateColor(official.win_rate_ar) : undefined }}>{fmtOfficialWinRate(official?.win_rate_ar)}</td>
+                <td className="book-td" style={{ color: official?.win_rate_lf != null ? winRateColor(official.win_rate_lf) : undefined }}>{fmtOfficialWinRate(official?.win_rate_lf)}</td>
+                <td className="book-td" style={{ color: official?.win_rate_gl != null ? winRateColor(official.win_rate_gl) : undefined }}>{fmtOfficialWinRate(official?.win_rate_gl)}</td>
+                <td className="book-td" style={{ color: official?.win_rate_cl != null ? winRateColor(official.win_rate_cl) : undefined }}>{fmtOfficialWinRate(official?.win_rate_cl)}</td>
               </tr>
             )
           })}
