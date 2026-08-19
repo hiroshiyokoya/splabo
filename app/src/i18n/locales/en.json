@@ -24,6 +24,14 @@
   "app": {
     "windowTitle": "SpLabo - Splatoon 3 Battle & Gear Analysis"
   },
+  "panelExport": {
+    "saveAria": "Save panel",
+    "saveTitle": "Save this panel as PNG or HTML",
+    "formatMenuAria": "Save format",
+    "png": "PNG image",
+    "html": "HTML file",
+    "saveFailed": "Failed to save the panel.\n{{detail}}"
+  },
   "nav": {
     "battles": "Battles",
     "weapons": "Weapons",

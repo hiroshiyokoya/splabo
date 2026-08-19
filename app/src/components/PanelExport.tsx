@@ -8,6 +8,7 @@
  *   クレジット本文（版・日付）は保存直前に `savePanel*` が埋める。
  */
 import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
 import { EXPORT_HIDE_CLASS, savePanel, type PanelExportFormat } from '../utils/panelExport'
 
 interface ButtonProps {
@@ -20,6 +21,7 @@ interface ButtonProps {
 }
 
 export function PanelExportButton({ targetRef, screen, panel }: ButtonProps) {
+  const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -51,7 +53,7 @@ export function PanelExportButton({ targetRef, screen, panel }: ButtonProps) {
       await savePanel(node, screen, panel, format)
     } catch (e) {
       console.error('[PanelExport] パネルの保存に失敗:', e)
-      window.alert(`パネルの保存に失敗しました。\n${String(e)}`)
+      window.alert(t('panelExport.saveFailed', { detail: String(e) }))
     } finally {
       setBusy(false)
     }
@@ -67,22 +69,22 @@ export function PanelExportButton({ targetRef, screen, panel }: ButtonProps) {
           setMenuOpen(open => !open)
         }}
         disabled={busy}
-        aria-label="パネルを保存"
+        aria-label={t('panelExport.saveAria')}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        title="このパネルを PNG または HTML で保存"
+        title={t('panelExport.saveTitle')}
       >
         {busy ? <span className="panel-export-btn__spinner" /> : <DownloadIcon />}
       </button>
       {menuOpen && !busy && (
-        <div className="panel-export-menu" role="menu" aria-label="保存形式">
+        <div className="panel-export-menu" role="menu" aria-label={t('panelExport.formatMenuAria')}>
           <button
             type="button"
             role="menuitem"
             className="panel-export-menu__item"
             onClick={() => void runSave('png')}
           >
-            PNG 画像
+            {t('panelExport.png')}
           </button>
           <button
             type="button"
@@ -90,7 +92,7 @@ export function PanelExportButton({ targetRef, screen, panel }: ButtonProps) {
             className="panel-export-menu__item"
             onClick={() => void runSave('html')}
           >
-            HTMLファイル
+            {t('panelExport.html')}
           </button>
         </div>
       )}

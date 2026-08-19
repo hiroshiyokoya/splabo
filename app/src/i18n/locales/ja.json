@@ -24,6 +24,14 @@
   "app": {
     "windowTitle": "SpLabo - Splatoon3 バトル & ギア 分析アプリ"
   },
+  "panelExport": {
+    "saveAria": "パネルを保存",
+    "saveTitle": "このパネルを PNG または HTML で保存",
+    "formatMenuAria": "保存形式",
+    "png": "PNG 画像",
+    "html": "HTMLファイル",
+    "saveFailed": "パネルの保存に失敗しました。\n{{detail}}"
+  },
   "nav": {
     "battles": "バトル",
     "weapons": "ブキ",

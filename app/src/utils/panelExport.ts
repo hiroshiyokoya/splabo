@@ -11,6 +11,7 @@ import { toPng } from 'html-to-image'
 import { invoke } from '@tauri-apps/api/core'
 import { getVersion } from '@tauri-apps/api/app'
 import { displayVersion } from './version'
+import i18n from '../i18n'
 
 /** 画像に写したくない操作 UI に付けるクラス。 */
 export const EXPORT_HIDE_CLASS = 'panel-export-hide'
@@ -510,7 +511,13 @@ body > .chart-card.chart-card--full {
 [data-scatter-point="true"] { cursor: pointer; }
 `
 
-/** 散布図ホバー用(オフライン・CDN なし)。 */
+/**
+ * 散布図ホバー用(オフライン・CDN なし)。
+ *
+ * 書き出した HTML は単体ファイルで、開いたときには i18next が無い。「他 N 件」に
+ * あたる文言は payload 側(`buildScatterTipPayload`)で書き出し時点の表示言語のまま
+ * 文字列として焼き込んでおり、ここではそのまま出すだけ(#695)。
+ */
 const HTML_EXPORT_TIP_SCRIPT = `(function () {
   var tip = document.getElementById('splabo-export-tip');
   if (!tip) return;
@@ -528,8 +535,8 @@ const HTML_EXPORT_TIP_SCRIPT = `(function () {
       (payload.members || []).forEach(function (m) {
         html += '<div class="hover-tt-row hover-tt-row--muted">' + esc(m) + '</div>';
       });
-      if (payload.more > 0) {
-        html += '<div class="hover-tt-row hover-tt-row--muted">他 ' + esc(payload.more) + ' 件</div>';
+      if (payload.moreLabel) {
+        html += '<div class="hover-tt-row hover-tt-row--muted">' + esc(payload.moreLabel) + '</div>';
       }
       return html;
     }
@@ -722,7 +729,7 @@ function buildStandaloneHtml(panelHtml: string, title: string): string {
   ].filter(Boolean).join('\n\n')
 
   return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="${i18n.language.startsWith('en') ? 'en' : 'ja'}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

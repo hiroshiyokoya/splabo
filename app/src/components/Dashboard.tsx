@@ -94,6 +94,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
   const [refreshKey, setRefreshKey] = useState(0)
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
   const [weaponMeta, setWeaponMeta] = useState<Map<string, WeaponMeta>>(new Map())
+  const [weaponEnByName, setWeaponEnByName] = useState<Map<string, string | null>>(new Map())
   const [subImages, setSubImages] = useState<Map<string, string>>(new Map())
   const [spImages, setSpImages] = useState<Map<string, string>>(new Map())
   const [weaponSort, setWeaponSort] = useState<SortBy>('total')
@@ -109,7 +110,10 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
   // 画像保存に焼き込む条件(#500)。FilterBar は画面上部にあり画像には写らない。
   // キャプション本体は末尾に該当バトル数が付くので、集計が出そろってから組む(下の filterSummary)。
   const stageNames      = useStageNames()
-  const filterConditions = useMemo(() => describeFilters(filters, stageNames), [filters, stageNames])
+  const filterConditions = useMemo(
+    () => describeFilters(filters, stageNames, weaponEnByName),
+    [filters, stageNames, weaponEnByName],
+  )
 
   useEffect(() => {
     const { since, until } = filtersToRange(filters)
@@ -199,6 +203,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
         sub_weapon: w.sub_weapon,
         special_weapon: w.special_weapon,
       }])))
+      setWeaponEnByName(new Map(list.map(w => [w.name, w.name_en ?? null])))
       loadSubSpImageMaps(list).then(({ subImages: sub, spImages: sp }) => {
         setSubImages(sub)
         setSpImages(sp)
