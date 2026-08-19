@@ -4,6 +4,7 @@ import {
 } from 'recharts'
 import type { GroupedStatsRow } from '../../types'
 import { METRIC_LABELS } from '../../types'
+import i18n from '../../i18n'
 import { categoryTick } from './CategoryTick'
 import { HoverTooltip } from './HoverTooltip'
 import { WIN_RATE_HI, WIN_RATE_LO, WIN_RATE_MID } from '../../utils/heatmapColors'
@@ -156,10 +157,10 @@ export function StackedWinrateChart({
           <>
             <div className="hover-tt-title">{displayLabel}</div>
             <div className="hover-tt-row">{METRIC_LABELS.total}: {entry.total}</div>
-            <div className="hover-tt-row" style={{ color: COLOR_WIN }}>勝ち: {entry.wins}</div>
-            <div className="hover-tt-row" style={{ color: COLOR_LOSE }}>負け: {entry.total - entry.wins - entry.draws}</div>
-            {entry.draws > 0 && <div className="hover-tt-row" style={{ color: COLOR_DRAW }}>引き分け: {entry.draws}</div>}
-            <div className="hover-tt-row">勝率: {(entry.win_rate * 100).toFixed(1)}%</div>
+            <div className="hover-tt-row" style={{ color: COLOR_WIN }}>{i18n.t('chart.wins')}: {entry.wins}</div>
+            <div className="hover-tt-row" style={{ color: COLOR_LOSE }}>{i18n.t('chart.losses')}: {entry.total - entry.wins - entry.draws}</div>
+            {entry.draws > 0 && <div className="hover-tt-row" style={{ color: COLOR_DRAW }}>{i18n.t('chart.draws')}: {entry.draws}</div>}
+            <div className="hover-tt-row">{METRIC_LABELS.win_rate}: {(entry.win_rate * 100).toFixed(1)}%</div>
           </>
         )
       })()}
