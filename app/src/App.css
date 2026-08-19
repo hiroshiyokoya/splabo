@@ -164,6 +164,10 @@
   margin-left: 12px;
 }
 .cal-legend-sparse-text { font-size: 11px; }
+.cal-legend-size { margin-top: 4px; }
+.cal-legend-size-item { display: inline-flex; align-items: center; gap: 3px; margin-right: 6px; }
+.cal-legend-size-swatch { display: inline-block; vertical-align: middle; }
+.cal-legend-size-value { color: var(--text); }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -828,6 +832,13 @@ body {
   margin-right: 6px;
   border-radius: 3px;
 }
+/* ステージのように横長の元画像は、パネル表示(StageCard)と同じ cover 切り取りで
+   幅を固定して出す(#739)。contain だとレターボックスで小さく見えてしまう。 */
+.hover-tt-icon--stage {
+  width: 64px;
+  max-width: 64px;
+  object-fit: cover;
+}
 /* 散布図チップのキット行(#641)。SP → サブ。名前は title のみ。
    ブキ(36px)より一段小さくして、メインが主役に見えるようにする。 */
 .hover-tt-kit {
@@ -1112,6 +1123,9 @@ body {
   height: 26px;
   object-fit: contain;
 }
+.book-name-cell { display: inline-flex; align-items: center; gap: 6px; }
+.book-name-icon { width: 24px; height: 24px; object-fit: contain; flex-shrink: 0; }
+.book-name-icon--placeholder { background: var(--surface-alt, transparent); border-radius: 4px; }
 .book-tr:hover { background: color-mix(in srgb, var(--text-muted) 10%, transparent); }
 
 /* ── Filter Bar ── */

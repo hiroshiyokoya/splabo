@@ -364,6 +364,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
         <WeaponTable
           rows={filtered}
           statsByWeapon={statsByWeapon}
+          weaponImages={weaponImages}
           subImages={subImages}
           spImages={spImages}
           sortKey={sortKey}
@@ -410,10 +411,12 @@ function BookIcon({ src, name }: { src: string | null; name: string | null }) {
 }
 
 /** 一覧ビュー(#297)。ヘッダクリックで並び替え、行クリックで詳細モーダル。
- *  列はローカル集計中心(任天堂由来の熟練度・通算勝利数はパネル/詳細モーダルに任せる)。 */
-function WeaponTable({ rows, statsByWeapon, subImages, spImages, sortKey, ascending, onSort, onSelect }: {
+ *  ローカル集計(バトル数・勝率・平均K/D等)に加え、公式アプリ由来の値(熟練度・通算・
+ *  ブキパワー・最終使用日)も列として出す(#739)。公式値は全期間固定でフィルタに追従しない。 */
+function WeaponTable({ rows, statsByWeapon, weaponImages, subImages, spImages, sortKey, ascending, onSort, onSelect }: {
   rows:          WeaponRecord[]
   statsByWeapon: Map<string, GroupedStatsRow>
+  weaponImages:  Map<string, string>
   subImages:     Map<string, string>
   spImages:      Map<string, string>
   sortKey:       SortKey
@@ -442,6 +445,12 @@ function WeaponTable({ rows, statsByWeapon, subImages, spImages, sortKey, ascend
             <SortHeader label={METRIC_LABELS.avg_kd}     sortKey="kd"            activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label={METRIC_LABELS.avg_contrib_kd} sortKey="contrib_kd"    activeKey={sortKey} ascending={ascending} onSort={onSort} />
             <SortHeader label={t('books.avgInked')}  sortKey="avg_inked"     activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label={METRIC_LABELS.official_weapon_level}     sortKey="weapon_level"      activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label={METRIC_LABELS.official_win_count}        sortKey="win_count_total"   activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label={METRIC_LABELS.official_paint}            sortKey="paint_point_total" activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label={METRIC_LABELS.official_weapon_power}     sortKey="weapon_power"      activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label={t('books.maxParen')}                    sortKey="weapon_power_max"  activeKey={sortKey} ascending={ascending} onSort={onSort} />
+            <SortHeader label={METRIC_LABELS.official_last_used_at}     sortKey="last_used_at"      activeKey={sortKey} ascending={ascending} onSort={onSort} />
           </tr>
         </thead>
         <tbody>
@@ -457,9 +466,17 @@ function WeaponTable({ rows, statsByWeapon, subImages, spImages, sortKey, ascend
             const winRate  = decisive > 0 ? (wins / decisive) : null
             const subImg   = w.sub_weapon     ? (subImages.get(w.sub_weapon)    ?? null) : null
             const spImg    = w.special_weapon ? (spImages.get(w.special_weapon) ?? null) : null
+            const weaponImg = weaponImages.get(w.name) ?? null
             return (
               <tr key={w.name} className="book-tr clickable-row" onClick={() => onSelect(w)}>
-                <td className="book-td book-td--left">{weaponRecordDisplayName(w)}</td>
+                <td className="book-td book-td--left">
+                  <span className="book-name-cell">
+                    {weaponImg
+                      ? <img src={weaponImg} alt="" className="book-name-icon" />
+                      : <span className="book-name-icon book-name-icon--placeholder" />}
+                    {weaponRecordDisplayName(w)}
+                  </span>
+                </td>
                 <td className="book-td book-td--left">{weaponCategoryDisplayName(w.category)}</td>
                 <td className="book-td book-td--left">
                   <BookIcon src={subImg} name={w.sub_weapon ? subWeaponDisplayName(w.sub_weapon) : null} />
@@ -483,6 +500,12 @@ function WeaponTable({ rows, statsByWeapon, subImages, spImages, sortKey, ascend
                   stats?.avg_death ?? null,
                 )}</td>
                 <td className="book-td">{stats?.avg_inked != null ? Math.round(stats.avg_inked).toLocaleString() : '-'}</td>
+                <td className="book-td">{w.weapon_level != null ? w.weapon_level.toLocaleString() : '-'}</td>
+                <td className="book-td">{w.win_count_total != null ? w.win_count_total.toLocaleString() : '-'}</td>
+                <td className="book-td">{w.paint_point_total != null ? w.paint_point_total.toLocaleString() : '-'}</td>
+                <td className="book-td">{fmtPower(w.weapon_power)}</td>
+                <td className="book-td">{fmtPower(w.weapon_power_max)}</td>
+                <td className="book-td">{fmtOfficialDate(w.last_used_at)}</td>
               </tr>
             )
           })}

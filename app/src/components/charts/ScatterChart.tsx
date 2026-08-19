@@ -27,6 +27,8 @@ export interface ScatterPoint {
    *  data URI を渡す。画像が無ければ省略(アイコンなしで名前だけ出す)。
    *  ここで画像を取りに行かないのは、ホバーのたびに invoke を飛ばさないため。 */
   iconUrl?:    string | null
+  /** ステージ画像のように横長の元画像を、パネル表示と同じ cover 切り取りで出す(#739)。 */
+  iconIsWide?: boolean
   /** 見出しの下に出すサブ／スペシャル(#641)。ブキ単位のときだけ。無い画像は省略。 */
   subIconUrl?: string | null
   spIconUrl?:  string | null
@@ -169,6 +171,7 @@ type ScatterTipPayload =
       kind: 'single'
       name: string
       iconUrl?: string | null
+      iconIsWide?: boolean
       subIconUrl?: string | null
       spIconUrl?: string | null
       subName?: string | null
@@ -204,6 +207,7 @@ function buildScatterTipPayload(
     kind: 'single',
     name: point.name,
     iconUrl: point.iconUrl ?? null,
+    iconIsWide: point.iconIsWide ?? false,
     subIconUrl: point.subIconUrl ?? null,
     spIconUrl: point.spIconUrl ?? null,
     subName: point.subName ?? null,
@@ -1088,7 +1092,7 @@ function legendFloor(min: number, max: number): number {
  * データ範囲から凡例用の切りのいい値を最大 `steps` 個選ぶ(#512)。
  * 1・2・5 × 10^n の候補から、範囲内をほぼ等分する。面積スケールはデータ max 基準なので ≤ max。
  */
-function niceSizeLegendValues(min: number, max: number, steps: number): number[] {
+export function niceSizeLegendValues(min: number, max: number, steps: number): number[] {
   if (!(max > 0)) return []
   if (!(max > min) || steps <= 1) return [max]
 
@@ -1794,7 +1798,13 @@ export function ScatterChart({
         ) : (
           <>
             <div className="hover-tt-title">
-              {active.iconUrl && <img className="hover-tt-icon" src={active.iconUrl} alt="" />}
+              {active.iconUrl && (
+                <img
+                  className={`hover-tt-icon${active.iconIsWide ? ' hover-tt-icon--stage' : ''}`}
+                  src={active.iconUrl}
+                  alt=""
+                />
+              )}
               {active.name}
             </div>
             {(active.spIconUrl || active.subIconUrl) && (

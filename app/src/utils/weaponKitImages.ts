@@ -32,6 +32,33 @@ export async function loadWeaponImageMap(names: string[]): Promise<Map<string, s
   return new Map(results.filter((r): r is [string, string] => r !== null))
 }
 
+/** ステージ画像を名前ごとに事前ロードする(#739)。 */
+export async function loadStageImageMap(names: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(names.filter(Boolean))]
+  const results = await Promise.all(
+    unique.map(name =>
+      invoke<string | null>('read_image', { kind: 'stage', name })
+        .then(url => (url ? ([name, url] as [string, string]) : null))
+        .catch(() => null),
+    ),
+  )
+  return new Map(results.filter((r): r is [string, string] => r !== null))
+}
+
+/** ステージ軸ラベル用チップ(#739)。名前は必ず出す。画像が無ければ省略。
+ *  ステージ画像は横長なので、パネル表示(StageCard)と同じ cover 切り取りで出す。 */
+export function stageAxisTip(
+  stageName: string | null | undefined,
+  stageImages?: Map<string, string>,
+): WeaponKitTipData | undefined {
+  if (!stageName) return undefined
+  return {
+    name: stageName,
+    iconUrl: stageImages?.get(stageName) ?? null,
+    iconIsWide: true,
+  }
+}
+
 /** サブ／スペシャル画像をユニーク名だけで事前ロードする(#641)。 */
 export async function loadSubSpImageMaps(
   list: WeaponRecord[],

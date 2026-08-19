@@ -6,6 +6,7 @@ import {
   rateCellColor, RATE_LEGEND_COLORS, sequentialCellColor, seqLegendColors,
   integerRange, SparseHatchPattern, hatchFill,
 } from '../../utils/heatmapColors'
+import { niceSizeLegendValues } from './ScatterChart'
 
 /**
  * GitHub contribution graph 風のカレンダーヒートマップ。
@@ -102,6 +103,23 @@ function averageColor(value: number, min: number, max: number, metric: MetricKey
   return sequentialCellColor((value - min) / (max - min), metric)
 }
 
+/** セルの最小サイズ(通常セルに対する比率)。0 に近づけすぎると点になって見づらい(#739)。 */
+const MIN_SIZE_RATIO = 0.35
+
+/**
+ * バトル数(その日の total) → セルの一辺(px)。
+ *
+ * 色だけだと「同じ勝率でも 1 戦の日と 20 戦の日」が区別できない。面積比例(= 一辺は sqrt)
+ * でサイズも変えることで、サンプル数の少なさが一目で分かるようにする(#739)。
+ * データが無い日(value===null)はここを通さず、常に通常サイズのまま空セル色で出す。
+ */
+function cellSideFor(total: number, maxTotal: number, cellPx: number): number {
+  if (maxTotal <= 0) return cellPx
+  const minSide = cellPx * MIN_SIZE_RATIO
+  const t = Math.min(1, Math.max(0, total / maxTotal))
+  return Math.sqrt(minSide * minSide + (cellPx * cellPx - minSide * minSide) * t)
+}
+
 export function CalendarHeatmapChart({
   data, metric, minSampleSize = 5, since = null, until = null,
 }: {
@@ -139,10 +157,11 @@ export function CalendarHeatmapChart({
   // データ map / min-max / セル配置(列は日単位で割り当て・#310)
   // 表示範囲は FilterBar の since/until を優先し、期間外は描かない(#461)。
   // until 未指定(または今日以降)なら右端を今日まで延ばし、バトル 0 でも今日のセルを出す。
-  const { dataMap, minVal, maxVal, cells, monthLabels, maxCol } = useMemo(() => {
+  const { dataMap, minVal, maxVal, maxTotal, cells, monthLabels, maxCol } = useMemo(() => {
     const map = new Map<string, { value: number | null; total: number; wins: number; draws: number }>()
     let mn = Number.POSITIVE_INFINITY
     let mx = Number.NEGATIVE_INFINITY
+    let maxT = 0
     let earliest: Date | null = null
     let latest:   Date | null = null
 
@@ -151,6 +170,7 @@ export function CalendarHeatmapChart({
       if (isNaN(date.getTime())) continue
       const v = getMetric(row, metric)
       map.set(row.name, { value: v, total: row.total, wins: row.wins, draws: row.draws })
+      if (v !== null && row.total > maxT) maxT = row.total
       if (v !== null && (group === 'count' || row.total >= minSampleSize)) {
         if (v < mn) mn = v
         if (v > mx) mx = v
@@ -226,6 +246,7 @@ export function CalendarHeatmapChart({
       dataMap: map,
       minVal:  r.min,
       maxVal:  r.max,
+      maxTotal: maxT,
       cells,
       monthLabels: labels,
       maxCol: col,
@@ -324,6 +345,10 @@ export function CalendarHeatmapChart({
           const wins  = entry?.wins ?? 0
           const draws = entry?.draws ?? 0
           const { fill, overlay } = cellPaint(dateStr, v, total)
+          // バトル数(total)でセルの大きさも変える(#739)。データが無い日は通常サイズのまま。
+          const side = v !== null ? cellSideFor(total, maxTotal, cell) : cell
+          const cx = colX(col) + (cell - side) / 2
+          const cy = GRID_TOP + row * pitch + (cell - side) / 2
           return (
             <g
               key={dateStr}
@@ -331,21 +356,30 @@ export function CalendarHeatmapChart({
               onMouseMove={(e) => setHover(prev => prev ? { ...prev, mx: e.clientX, my: e.clientY } : prev)}
               onMouseLeave={() => setHover(null)}
             >
+              {/* セルを縮めても当たり判定は通常サイズのまま(隙間で hover が抜けないように)。 */}
               <rect
-                className="cal-cell"
                 x={colX(col)}
                 y={GRID_TOP + row * pitch}
                 width={cell}
                 height={cell}
+                fill="transparent"
+              />
+              <rect
+                className="cal-cell"
+                x={cx}
+                y={cy}
+                width={side}
+                height={side}
                 rx={2}
                 fill={fill}
+                pointerEvents="none"
               />
               {overlay && (
                 <rect
-                  x={colX(col)}
-                  y={GRID_TOP + row * pitch}
-                  width={cell}
-                  height={cell}
+                  x={cx}
+                  y={cy}
+                  width={side}
+                  height={side}
                   rx={2}
                   fill={overlay}
                   pointerEvents="none"
@@ -394,6 +428,30 @@ export function CalendarHeatmapChart({
           </span>
         )}
       </div>
+      {/* サイズ凡例: 色に加えてセルの大きさでもバトル数を表す(#739)。 */}
+      {maxTotal > 0 && (
+        <div className="cal-legend cal-legend-size">
+          <span className="cal-legend-label">{t('chart.size')}: {METRIC_LABELS.total}</span>
+          {niceSizeLegendValues(1, maxTotal, 3).map(v => {
+            const side = cellSideFor(v, maxTotal, CELL)
+            return (
+              <span key={v} className="cal-legend-size-item">
+                <svg width={CELL} height={CELL} className="cal-legend-size-swatch">
+                  <rect
+                    x={(CELL - side) / 2}
+                    y={(CELL - side) / 2}
+                    width={side}
+                    height={side}
+                    rx={2}
+                    fill="var(--text-muted)"
+                  />
+                </svg>
+                <span className="cal-legend-size-value">{Math.round(v).toLocaleString()}</span>
+              </span>
+            )
+          })}
+        </div>
+      )}
       {hover && (
         <div
           className="cal-tooltip"

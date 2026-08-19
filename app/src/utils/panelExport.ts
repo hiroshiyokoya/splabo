@@ -491,6 +491,11 @@ body > .chart-card.chart-card--full {
   max-width: 72px;
   object-fit: contain;
 }
+#splabo-export-tip .hover-tt-icon--stage {
+  width: 64px;
+  max-width: 64px;
+  object-fit: cover;
+}
 #splabo-export-tip .hover-tt-kit {
   display: flex;
   align-items: center;
@@ -541,7 +546,7 @@ const HTML_EXPORT_TIP_SCRIPT = `(function () {
       return html;
     }
     var icon = payload.iconUrl
-      ? '<img class="hover-tt-icon" src="' + esc(payload.iconUrl) + '" alt="">'
+      ? '<img class="hover-tt-icon' + (payload.iconIsWide ? ' hover-tt-icon--stage' : '') + '" src="' + esc(payload.iconUrl) + '" alt="">'
       : '';
     var out = '<div class="hover-tt-title">' + icon + esc(payload.name) + '</div>';
     if (payload.spIconUrl || payload.subIconUrl) {
