@@ -86,6 +86,13 @@ git push origin splabo-vX.Y.Z
 
 ビルドが終わったら GitHub でドラフトを **Publish** する。Publish すると Slack に X 用の告知文が届く（#648）。2 通目のコードブロックをコピーして X に貼る（改行付き、#704）。プレリリースでは飛ばない。タグ push や CI 完了だけでは飛ばない。
 
+**英語版の投稿も作る（#688 以降、英語 UI 対応済みのため）。** CHANGELOG.md は日本語一本のまま維持し（英語版 CHANGELOG は作らない）、Slack に届いた日本語の投稿文をその都度英訳する。自動化はせず、リリースのたびに Claude が訳す。
+
+- 見出し・CTA・ハッシュタグは固定で対応させる：「更新内容」→「What's new」、「ダウンロードはプロフィールからどうぞ。」→「Download link in profile.」、`#スプラトゥーン3 #Splatoon3 #SpLabo` → `#Splatoon3 #SpLabo`（日本語タグは落とす）
+- 箇条書きは日本語版の要約と同じ粒度で英訳する（Query 名等の実装詳細は出さない）
+- X の加重文字数 280 に収める（`.github/scripts/x_release_post.py` の `tweet_weight()` と同じ考え方：ASCII は 1、非 ASCII は 2）
+- 日本語版と同じ投稿にスレッド返信として続ける、または独立した投稿として出す（アカウント運用次第、ユーザーに確認）
+
 ---
 
 ## 旧 geartoon コードの参照
