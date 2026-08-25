@@ -725,6 +725,7 @@
     "unimplemented": "(not implemented)",
     "notImplemented": "This chart type ({{shape}}) is not implemented yet.",
     "notImplementedLater": "It will come in a later update.",
+    "size": "Size",
     "color": "Color",
     "colorShape": "Color / shape",
     "nItems": "{{count}} items",
