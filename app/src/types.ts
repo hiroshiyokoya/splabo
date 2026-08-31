@@ -26,7 +26,7 @@ export type SettingsTab = 'link' | 'data' | 'display' | 'ai'
 /**
  * 期間の絞り込み。
  *
- * `current_season` は**今のシーズンに自動で追従する**（日が変わればシーズンも変わる）。
+ * `current_season` は**今のシーズンに自動で追従する**（スプラ日が変わればシーズンも変わる）。
  * `season` は**特定のシーズンを名指しで選んだ状態**（#585）。過去のシーズンを見るために使う。
  */
 export type Period = 'all' | 'current_season' | 'season' | '1y' | '180d' | '30d' | '7d' | 'custom'
@@ -56,11 +56,15 @@ export interface Season {
   until: string
 }
 
-/** Splatoon 3 シーズンの開始日 (YYYY-MM-DD) を返す。
- *  シーズンは 3/6/9/12 月の 1 日始まりの 3 ヶ月サイクル。 */
+/** Splatoon 3 の「今シーズン」開始日 (YYYY-MM-DD)。
+ *
+ * シーズンは 3/6/9/12 月 1 日始まりの 3 ヶ月サイクル。切替は日付と同じ
+ * **JST 9:00 = UTC 0:00**（ローカル暦の 0 時ではない・#749）。
+ * UTC の年月で判定すれば、バトルの `played_at`（UTC）と同じ境界になる。
+ */
 export function currentSeasonStart(now: Date = new Date()): string {
-  const month = now.getMonth() // 0-indexed
-  let year = now.getFullYear()
+  const month = now.getUTCMonth() // 0-indexed
+  let year = now.getUTCFullYear()
   let startMonth: number
   if      (month >= 11) startMonth = 11      // Dec → Dec
   else if (month >=  8) startMonth =  8      // Sep–Nov → Sep
