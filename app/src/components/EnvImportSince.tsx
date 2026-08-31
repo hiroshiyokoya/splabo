@@ -3,6 +3,7 @@
  * 環境分析タブの初回取得は、ここに保存した開始日を使う。
  */
 import { useTranslation } from 'react-i18next'
+import { currentSeasonStart } from '../types'
 import { lsGet, lsSet, mirrorToStore } from '../utils/settingsStore'
 
 export const ENV_IMPORT_KEY = 'splabo:envImport'
@@ -34,19 +35,10 @@ export function utcYesterday(): string {
   return addDays(utcToday(), -1)
 }
 
-/** その日が属する Splatoon シーズンの開始日（`season.rs` と同じ 3/6/9/12 月）。 */
-function splatoonSeasonStart(isoDate: string): string {
-  const [y, m] = isoDate.split('-').map(Number)
-  if (m === 1 || m === 2) return `${y - 1}-12-01`
-  if (m <= 5) return `${y}-03-01`
-  if (m <= 8) return `${y}-06-01`
-  if (m <= 11) return `${y}-09-01`
-  return `${y}-12-01`
-}
-
 export function resolveImportSince(kind: ImportSinceKind, custom: string): string | null {
   if (kind === 'all') return null
-  if (kind === 'current_season') return splatoonSeasonStart(utcToday())
+  // 切替は日付と同じ JST 9:00 = UTC 0:00（#749）。計算は currentSeasonStart に一本化。
+  if (kind === 'current_season') return currentSeasonStart()
   if (kind === 'from_2025') return DEFAULT_ENV_IMPORT_SINCE
   return custom || null
 }

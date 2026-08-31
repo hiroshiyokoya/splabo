@@ -652,7 +652,7 @@ export function EnvAnalysis() {
     switch (period) {
       case 'all':    return { since: null, until: null }
       // 他のプリセットは「データ最終取得日から遡る」相対期間だが、今シーズンだけは
-      // 暦上のシーズン開始日(3/6/9/12 月始まりの 3 ヶ月サイクル)を since にする。
+      // シーズン開始日(3/6/9/12 月始まり・切替は JST 9:00)を since にする。
       // until は他と揃えて max_date(それ以降のデータは存在しない)。
       case 'current_season':
         return { since: currentSeasonStart(), until: maxd }
