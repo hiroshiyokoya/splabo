@@ -78,9 +78,24 @@ def shorten_bullet(raw: str) -> str:
     s = re.sub(r"[（(][^）)]*[）)]", "", s)
     s = re.sub(r"\s{2,}", " ", s)
     s = re.sub(r"ようにしました。?$", "", s)
-    s = re.sub(r"しました。?$", "", s)
+    # 「直しました」を「直」にしない。消すのではなく「した」に縮める。
+    s = re.sub(r"しました。?$", "した", s)
     s = s.rstrip("。").strip()
     return s
+
+
+def _drop_leading_clause(s: str) -> str | None:
+    """長い行の先頭節を落とす。読点・「や」・長い主部の「が」まで。"""
+    for sep in ("、", "や"):
+        if sep in s:
+            rest = s.split(sep, 1)[1].strip()
+            if rest:
+                return rest
+    if "が" in s:
+        rest = s.split("が", 1)[1].strip()
+        if rest and tweet_weight(rest) >= 24:
+            return rest
+    return None
 
 
 def build_post(version: str, bullets: list[str]) -> str:
@@ -98,6 +113,13 @@ def build_post(version: str, bullets: list[str]) -> str:
 
     text = compose(chosen)
     while tweet_weight(text) > MAX_WEIGHT and chosen:
+        # 溢れたら末尾の項目を短くする。短くできなければ落とす。
+        last = chosen[-1]
+        trimmed = _drop_leading_clause(last)
+        if trimmed is not None and tweet_weight(trimmed) < tweet_weight(last):
+            chosen[-1] = trimmed
+            text = compose(chosen)
+            continue
         chosen = chosen[:-1]
         text = compose(chosen)
     if tweet_weight(text) > MAX_WEIGHT:
@@ -143,6 +165,7 @@ def self_test() -> None:
     assert "**" not in text
     assert tweet_weight(text) <= MAX_WEIGHT, tweet_weight(text)
     assert "散布図" in text
+    assert "ヒートマップ" in text
     queryish = """# Changelog
 
 ## [0.10.5] — 2026-08-15
@@ -159,8 +182,28 @@ def self_test() -> None:
     assert tweet_weight(empty) <= MAX_WEIGHT
     missing = render("# Changelog\n", "9.9.9")
     assert "SpLabo v9.9.9" in missing
+    assert shorten_bullet("グラフの黒い枠が出ていたのを直しました") == "グラフの黒い枠が出ていたのを直した"
+    cut = """# Changelog
+
+## [0.11.1] — 2026-09-01
+
+### Fixed
+
+- シーズンが暦の 0 時に切り替わっていたのを直しました（日付と同じ JST 9時）
+- 日本語表示で、カスタムグラフの散布図設定（点の見た目・画像の大きさ）や散布図・カレンダーのサイズ凡例見出しが翻訳されず英語キーのまま出ていたのを直しました
+"""
+    ctext = render(cut, "0.11.1")
+    assert tweet_weight(ctext) <= MAX_WEIGHT, tweet_weight(ctext)
+    assert "のを直した" in ctext
+    assert not re.search(r"のを直$", ctext, re.M)
+    assert "シーズン" in ctext
+    assert "英語キー" in ctext
+    assert ctext.count("\n・") == 2
+    assert "…" not in ctext
     print(text)
     print("--- weight:", tweet_weight(text), "/", MAX_WEIGHT)
+    print(ctext)
+    print("--- 0.11.1 weight:", tweet_weight(ctext), "/", MAX_WEIGHT)
 
 
 def main() -> int:
