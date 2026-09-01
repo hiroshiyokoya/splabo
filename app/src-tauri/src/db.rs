@@ -1113,6 +1113,18 @@ const LOBBY_KEY_AS_OLD: &str = "CASE l.key WHEN 'xmatch' THEN 'x' ELSE l.key END
 /// 'nawabari' (新マスター) → 'turf_war' (chartoon フロント `RULE_LABELS` キー)。
 const RULE_KEY_AS_OLD: &str = "CASE r.key WHEN 'nawabari' THEN 'turf_war' ELSE r.key END";
 
+/// 日付だけ（`YYYY-MM-DD`）の `until` は「その日を含む」。
+///
+/// `played_at` は `2026-08-31T12:20:13Z` のような ISO 日時。SQLite の文字列比較では
+/// `2026-08-31T…` が `2026-08-31` より大きいので、`played_at <= '2026-08-31'` だと
+/// 終了日のバトルが全部外れる（#754）。日時が来たらそのまま使う。
+fn inclusive_until(until: Option<String>) -> Option<String> {
+    match until {
+        Some(u) if u.len() == 10 => Some(format!("{u}T23:59:59Z")),
+        other => other,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tauri コマンド
 // ---------------------------------------------------------------------------
@@ -1128,6 +1140,7 @@ pub async fn db_battle_stats(
     weapon: Option<String>,
     stage: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    let until = inclusive_until(until);
     let mode = translate_mode_filter(mode);
     let rule = translate_rule_filter(rule);
     let row = sqlx::query(
@@ -1196,6 +1209,7 @@ pub async fn db_battle_count(
     weapon: Option<String>,
     stage: Option<String>,
 ) -> Result<i64, String> {
+    let until = inclusive_until(until);
     let mode = translate_mode_filter(mode);
     let rule = translate_rule_filter(rule);
     let row = sqlx::query(
@@ -1242,6 +1256,7 @@ pub async fn db_list_battles(
     order_by: Option<String>,       // JS: orderBy
     order_asc: Option<bool>,        // JS: orderAsc
 ) -> Result<Vec<BattleRow>, String> {
+    let until = inclusive_until(until);
     let mode = translate_mode_filter(mode);
     let rule = translate_rule_filter(rule);
     // kill_ratio は death=0 のとき大きなセンチネルに置換することで
@@ -1376,6 +1391,7 @@ pub async fn db_summary(
     weapon: Option<String>,
     stage: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    let until = inclusive_until(until);
     let mode = translate_mode_filter(mode);
     let rule = translate_rule_filter(rule);
 
@@ -1523,6 +1539,7 @@ pub async fn db_grouped_stats(
     weapon: Option<String>,
     stage: Option<String>,
 ) -> Result<Vec<serde_json::Value>, String> {
+    let until = inclusive_until(until);
     let mode = translate_mode_filter(mode);
     let rule = translate_rule_filter(rule);
 
@@ -1873,6 +1890,7 @@ pub async fn db_grouped_stats_2d(
     // 数値メトリクス軸のとき、Y 軸の bin 幅。
     y_bin_width: Option<f64>,
 ) -> Result<Vec<serde_json::Value>, String> {
+    let until = inclusive_until(until);
     if group_by_x == group_by_y {
         return Err(format!("X 軸と Y 軸に同じカテゴリを指定できません: {group_by_x}"));
     }
@@ -5578,6 +5596,19 @@ pub async fn insert_imported_battle(pool: &DbPool, row: &ImportedBattleRow) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn 日付だけのuntilはその日の終わりまで含む() {
+        assert_eq!(
+            inclusive_until(Some("2026-08-31".into())),
+            Some("2026-08-31T23:59:59Z".into())
+        );
+        assert_eq!(
+            inclusive_until(Some("2026-08-31T12:00:00Z".into())),
+            Some("2026-08-31T12:00:00Z".into())
+        );
+        assert_eq!(inclusive_until(None), None);
+    }
 
     /// 周辺集計の入力を組み立てるヘルパ。
     fn input(row: &str, col: &str, metric: &str, raw: MatrixRaw, kda_based: bool) -> MarginalInput {
