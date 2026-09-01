@@ -78,8 +78,6 @@ def shorten_bullet(raw: str) -> str:
     s = re.sub(r"[（(][^）)]*[）)]", "", s)
     s = re.sub(r"\s{2,}", " ", s)
     s = re.sub(r"ようにしました。?$", "", s)
-    # 「直しました」を「直」にしない。消すのではなく「した」に縮める。
-    s = re.sub(r"しました。?$", "した", s)
     s = s.rstrip("。").strip()
     return s
 
@@ -182,7 +180,7 @@ def self_test() -> None:
     assert tweet_weight(empty) <= MAX_WEIGHT
     missing = render("# Changelog\n", "9.9.9")
     assert "SpLabo v9.9.9" in missing
-    assert shorten_bullet("グラフの黒い枠が出ていたのを直しました") == "グラフの黒い枠が出ていたのを直した"
+    assert shorten_bullet("グラフの黒い枠が出ていたのを直しました") == "グラフの黒い枠が出ていたのを直しました"
     cut = """# Changelog
 
 ## [0.11.1] — 2026-09-01
@@ -194,7 +192,7 @@ def self_test() -> None:
 """
     ctext = render(cut, "0.11.1")
     assert tweet_weight(ctext) <= MAX_WEIGHT, tweet_weight(ctext)
-    assert "のを直した" in ctext
+    assert "のを直しました" in ctext
     assert not re.search(r"のを直$", ctext, re.M)
     assert "シーズン" in ctext
     assert "英語キー" in ctext
