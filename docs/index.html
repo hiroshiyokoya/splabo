@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>スプラボ (splabo) — Splatoon 3 戦績可視化・分析とギアコーデ</title>
-  <meta name="description" content="Splatoon 3 の戦績とギアを取得して可視化・分析する、非公式の OSS PC アプリ。勝率、カスタムグラフ、環境分析、ギアコーデ。Windows / macOS。任天堂とは無関係です。">
+  <meta name="description" content="Splatoon 3 の戦績とギアを取得して可視化・分析する、非公式の OSS PC アプリ。公式アプリは直近50戦、splaboはPC内に蓄積。勝率、カスタムグラフ、環境分析、ギアコーデ。Windows / macOS。任天堂とは無関係です。">
   <meta name="keywords" content="Splatoon 3, スプラトゥーン3, バトル可視化, 勝率, ダッシュボード, stat.ink, nxapi, OSS, デスクトップアプリ, Tauri">
   <link rel="canonical" href="https://splaboon.pages.dev/">
   <link rel="alternate" hreflang="ja" href="https://splaboon.pages.dev/">
@@ -16,7 +16,7 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="splabo">
   <meta property="og:title" content="スプラボ (splabo) — Splatoon 3 戦績可視化・分析とギアコーデ">
-  <meta property="og:description" content="Splatoon 3 の戦績とギアを取得して可視化・分析する、非公式の OSS PC アプリ。任天堂とは無関係です。">
+  <meta property="og:description" content="Splatoon 3 の戦績とギアを取得して可視化・分析する、非公式の OSS PC アプリ。公式アプリは直近50戦、splaboはPC内に蓄積。任天堂とは無関係です。">
   <meta property="og:url" content="https://splaboon.pages.dev/">
   <meta property="og:locale" content="ja_JP">
   <meta property="og:locale:alternate" content="en_US">
@@ -25,7 +25,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="スプラボ (splabo) — Splatoon 3 戦績可視化・分析とギアコーデ">
-  <meta name="twitter:description" content="Splatoon 3 の戦績とギアを取得して可視化・分析する、非公式の OSS PC アプリ。任天堂とは無関係です。">
+  <meta name="twitter:description" content="Splatoon 3 の戦績とギアを取得して可視化・分析する、非公式の OSS PC アプリ。公式アプリは直近50戦、splaboはPC内に蓄積。任天堂とは無関係です。">
   <meta name="twitter:image" content="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-logo.png">
 
   <style>
@@ -377,7 +377,7 @@
     <h1>スプラボ (splabo)</h1>
     <p class="hero-tagline">Splatoon 3 の戦績可視化・分析とギアコーデ</p>
     <p class="hero-desc">
-      Nintendo アカウントから非公式 API 経由で Splatoon 3 の戦績とギアを取得し、可視化・分析する OSS の PC アプリです。任天堂株式会社とは無関係です。<br>
+      Nintendo アカウントから非公式 API 経由で Splatoon 3 の戦績とギアを取得し、可視化・分析する OSS の PC アプリです。公式アプリの履歴は直近 50 戦までですが、取得した戦績はこの PC 内のデータベースに貯まっていきます。任天堂株式会社とは無関係です。<br>
       ブキ・ステージ・ルール別の勝率、線・棒・散布図・ヒートマップのカスタムグラフ、stat.ink 公開データによる環境分析、ギアコーデができます。<br>
       パネルは PNG や HTML に保存できます。旧 chartoon / geartoon の後継です。
     </p>
@@ -422,6 +422,7 @@
         <div class="feature-card">
           <h3>バトル・ダッシュボード</h3>
           <ul>
+            <li>公式アプリの履歴は直近 50 戦まで。取ったバトルはこの PC 内のデータベースに貯まり、過去の戦績も見返せます</li>
             <li>バトル履歴を一覧（検索・フィルター・ソート）。詳細で編成・ギア・ランク変動を確認</li>
             <li>期間・ロビー・ルール・結果で絞り込める</li>
             <li>勝率・キル/デス・キルレシオなど主要指標を、ブキ・ステージ・ルール・ロビー別に集計</li>

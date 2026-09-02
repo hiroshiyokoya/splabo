@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>splabo — Splatoon 3 battle stats, analysis, and gear loadouts</title>
-  <meta name="description" content="An unofficial open-source Windows / macOS app that fetches Splatoon 3 battles and gear, then visualizes and analyzes them. Win rates, custom charts, meta analysis, gear loadouts. Not affiliated with Nintendo.">
+  <meta name="description" content="An unofficial open-source Windows / macOS app that fetches Splatoon 3 battles and gear, then visualizes and analyzes them. The official app keeps the last 50 battles; splabo stores them on this PC. Win rates, custom charts, meta analysis, gear loadouts. Not affiliated with Nintendo.">
   <meta name="keywords" content="Splatoon 3, battle stats, win rate, dashboard, stat.ink, nxapi, OSS, desktop app, Tauri">
   <link rel="canonical" href="https://splaboon.pages.dev/en/">
   <link rel="alternate" hreflang="ja" href="https://splaboon.pages.dev/">
@@ -16,7 +16,7 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="splabo">
   <meta property="og:title" content="splabo — Splatoon 3 battle stats, analysis, and gear loadouts">
-  <meta property="og:description" content="An unofficial open-source Windows / macOS app that fetches Splatoon 3 battles and gear, then visualizes and analyzes them. Not affiliated with Nintendo.">
+  <meta property="og:description" content="An unofficial open-source Windows / macOS app that fetches Splatoon 3 battles and gear. The official app keeps the last 50 battles; splabo stores them on this PC. Not affiliated with Nintendo.">
   <meta property="og:url" content="https://splaboon.pages.dev/en/">
   <meta property="og:locale" content="en_US">
   <meta property="og:locale:alternate" content="ja_JP">
@@ -25,7 +25,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="splabo — Splatoon 3 battle stats, analysis, and gear loadouts">
-  <meta name="twitter:description" content="An unofficial open-source Windows / macOS app that fetches Splatoon 3 battles and gear, then visualizes and analyzes them. Not affiliated with Nintendo.">
+  <meta name="twitter:description" content="An unofficial open-source Windows / macOS app that fetches Splatoon 3 battles and gear. The official app keeps the last 50 battles; splabo stores them on this PC. Not affiliated with Nintendo.">
   <meta name="twitter:image" content="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-logo.png">
 
   <style>
@@ -377,7 +377,7 @@
     <h1>splabo</h1>
     <p class="hero-tagline">Splatoon 3 battle stats, analysis, and gear loadouts</p>
     <p class="hero-desc">
-      An open-source Windows / macOS app that fetches Splatoon 3 battles and gear from a Nintendo Account via an unofficial API, then visualizes and analyzes them. Not affiliated with Nintendo Co., Ltd.<br>
+      An open-source Windows / macOS app that fetches Splatoon 3 battles and gear from a Nintendo Account via an unofficial API, then visualizes and analyzes them. The official app only keeps the last 50 battles; every battle splabo fetches is stored in a database on this PC. Not affiliated with Nintendo Co., Ltd.<br>
       Win rates by weapon, stage, and mode; custom line, bar, scatter, and heatmap charts; meta analysis from public stat.ink data; and gear loadouts.<br>
       Save panels as PNG or HTML. Successor to chartoon / geartoon.
     </p>
@@ -422,6 +422,7 @@
         <div class="feature-card">
           <h3>Battles and dashboard</h3>
           <ul>
+            <li>The official app only keeps the last 50 battles. Every battle splabo fetches is stored in a database on this PC, so older stats stay available</li>
             <li>Browse battle history (search, filter, sort). Details show team composition, gear, and rank changes</li>
             <li>Filter by period, lobby, mode, and result</li>
             <li>Win rate, K/D, kill ratio, and more by weapon, stage, mode, and lobby</li>

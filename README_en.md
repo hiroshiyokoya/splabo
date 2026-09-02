@@ -4,7 +4,7 @@
 
 [日本語 README](README.md)
 
-An open-source Windows / macOS app that fetches Splatoon 3 battle history and owned gear via the unofficial API reverse-engineered by [nxapi](https://github.com/samuelthomas2774/nxapi) (Nintendo Account), then visualizes and analyzes it. Not affiliated with Nintendo Co., Ltd.
+An open-source Windows / macOS app that fetches Splatoon 3 battle history and owned gear via the unofficial API reverse-engineered by [nxapi](https://github.com/samuelthomas2774/nxapi) (Nintendo Account), then visualizes and analyzes it. The official app only keeps the last 50 battles; splabo stores every battle it fetches in a database on this PC. Not affiliated with Nintendo Co., Ltd.
 
 > ## 📢 chartoon is now splabo
 >
@@ -30,7 +30,7 @@ splabo/
 
 ## Features
 
-- **Battles** — switch between Dashboard and List in the tab
+- **Battles** — switch between Dashboard and List in the tab. The official app only keeps the last 50 battles; every battle splabo fetches is stored in a database on this PC
   - Dashboard: win-rate charts by weapon, lobby, and stage. Battle-count calendar (a new column starts on the 1st of each month) and custom charts
   - List: paginated battle history. Detail modal shows team composition, gear, rank / X Power changes
 - **Weapons** — Panel and List views. List columns sort on header click; filter by category / sub / special. Official-app records (freshness, total wins, total turf inked, Challenge Power) are available. Detail shows frequently played stages, high win-rate stages, and per-mode win rates
