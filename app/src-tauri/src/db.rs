@@ -2357,6 +2357,10 @@ pub async fn upsert_weapon(
 
 /// WeaponQuery で取得したユーザー固有のブキ統計を upsert する (#49 / #674)。
 /// weapon_id は weapons.name と一致するキー（ブキの日本語名）。
+///
+/// `weapon_power`（現在のブキチャレパワー）はシーズンごとにリセットされる。
+/// API が null のときは前シーズン値を残さず null にする (#760)。
+/// `weapon_power_max` は通算最大なので、欠けた取得では既存を残す。
 pub async fn upsert_weapon_record(
     pool: &DbPool,
     weapon_id: &str,
@@ -2380,7 +2384,7 @@ pub async fn upsert_weapon_record(
             big_run_level     = COALESCE(excluded.big_run_level, weapon_records.big_run_level),
             win_count_total   = excluded.win_count_total,
             paint_point_total = excluded.paint_point_total,
-            weapon_power      = COALESCE(excluded.weapon_power, weapon_records.weapon_power),
+            weapon_power      = excluded.weapon_power,
             weapon_power_max  = COALESCE(excluded.weapon_power_max, weapon_records.weapon_power_max),
             last_used_at      = COALESCE(excluded.last_used_at, weapon_records.last_used_at),
             last_fetched_at   = excluded.last_fetched_at",
@@ -5739,5 +5743,72 @@ mod tests {
                 assert_ne!(col, "NULL", "{} の KDA が NULL 固定のまま", s.wid);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod weapon_record_upsert_tests {
+    use super::*;
+
+    async fn pool() -> DbPool {
+        let raw = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query(
+            "CREATE TABLE weapon_records (
+                weapon_id          TEXT    PRIMARY KEY,
+                weapon_level       INTEGER NOT NULL DEFAULT 0,
+                big_run_level      INTEGER,
+                win_count_total    INTEGER NOT NULL DEFAULT 0,
+                paint_point_total  INTEGER NOT NULL DEFAULT 0,
+                weapon_power       REAL,
+                weapon_power_max   REAL,
+                last_used_at       INTEGER,
+                last_fetched_at    INTEGER
+            )",
+        )
+        .execute(&raw)
+        .await
+        .unwrap();
+        Arc::new(raw)
+    }
+
+    async fn read_power(pool: &DbPool, id: &str) -> (Option<f64>, Option<f64>) {
+        let row = sqlx::query("SELECT weapon_power, weapon_power_max FROM weapon_records WHERE weapon_id = ?")
+            .bind(id)
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+        (row.get("weapon_power"), row.get("weapon_power_max"))
+    }
+
+    /// シーズン切替後に現在値が null なら前シーズンを残さず、最大は残す (#760)。
+    #[tokio::test]
+    async fn current_weapon_power_clears_when_api_sends_null() {
+        let pool = pool().await;
+        upsert_weapon_record(&pool, "スシ", 10, 100, 1000, None, Some(2400.0), Some(2600.0), None)
+            .await
+            .unwrap();
+        assert_eq!(read_power(&pool, "スシ").await, (Some(2400.0), Some(2600.0)));
+
+        upsert_weapon_record(&pool, "スシ", 10, 100, 1000, None, None, Some(2600.0), None)
+            .await
+            .unwrap();
+        assert_eq!(read_power(&pool, "スシ").await, (None, Some(2600.0)));
+    }
+
+    /// 最大だけ欠けた取得では通算最大を落とさない。
+    #[tokio::test]
+    async fn max_weapon_power_keeps_existing_when_api_omits_it() {
+        let pool = pool().await;
+        upsert_weapon_record(&pool, "スシ", 10, 100, 1000, None, Some(2400.0), Some(2600.0), None)
+            .await
+            .unwrap();
+        upsert_weapon_record(&pool, "スシ", 10, 100, 1000, None, Some(1800.0), None, None)
+            .await
+            .unwrap();
+        assert_eq!(read_power(&pool, "スシ").await, (Some(1800.0), Some(2600.0)));
     }
 }

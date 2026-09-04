@@ -873,8 +873,21 @@ pub async fn fetch_and_store_weapons(
 /// レスポンス構造:
 ///   data.weaponRecords.nodes[]（weapons の alias）…所持寄り＋統計
 ///   data.allWeapons.nodes[]（isOwnedOnly:false）…全ブキの画像
-///   各 node: name, image2d.url, stats.{level, paint, win, maxWeaponPower, ...},
+///   各 node: name, image2d.url, stats.{level, paint, win, maxWeaponPower,
+///            currentWeaponPowerOrder.weaponPower, ...},
 ///            subWeapon / specialWeapon
+///
+/// 現在のブキチャレパワーは今シーズンのみ。未使用なら `currentWeaponPowerOrder` は null (#760)。
+/// 最大は通算。
+fn parse_current_weapon_power(node: &serde_json::Value) -> Option<f64> {
+    node.pointer("/stats/currentWeaponPowerOrder/weaponPower")
+        .and_then(|v| v.as_f64())
+}
+
+fn parse_max_weapon_power(node: &serde_json::Value) -> Option<f64> {
+    node.pointer("/stats/maxWeaponPower").and_then(|v| v.as_f64())
+}
+
 pub async fn fetch_and_store_weapon_records(
     pool: &crate::db::DbPool,
     client: &reqwest::Client,
@@ -921,10 +934,8 @@ pub async fn fetch_and_store_weapon_records(
         let paint   = node.pointer("/stats/paint").and_then(|v| v.as_i64()).unwrap_or(0);
 
         let big_run_level: Option<i64> = None;
-        let weapon_power = node
-            .pointer("/stats/currentWeaponPowerOrder/weaponPower")
-            .and_then(|v| v.as_f64());
-        let weapon_power_max = node.pointer("/stats/maxWeaponPower").and_then(|v| v.as_f64());
+        let weapon_power = parse_current_weapon_power(node);
+        let weapon_power_max = parse_max_weapon_power(node);
         let last_used_at = parse_last_used_at(node);
 
         if let Err(e) = crate::db::upsert_weapon_record(
@@ -1468,6 +1479,25 @@ mod weapon_record_hash_tests {
         let unix = serde_json::json!({ "stats": { "lastUsedTime": 1786701600 } });
         assert_eq!(parse_last_used_at(&unix), Some(1786701600));
         assert_eq!(parse_last_used_at(&serde_json::json!({ "stats": {} })), None);
+    }
+
+    #[test]
+    fn current_weapon_power_is_none_when_order_is_null() {
+        let used = serde_json::json!({
+            "stats": { "currentWeaponPowerOrder": { "weaponPower": 2412.5 }, "maxWeaponPower": 2600.0 }
+        });
+        assert_eq!(parse_current_weapon_power(&used), Some(2412.5));
+        assert_eq!(parse_max_weapon_power(&used), Some(2600.0));
+
+        let unused = serde_json::json!({
+            "stats": { "currentWeaponPowerOrder": null, "maxWeaponPower": 2600.0 }
+        });
+        assert_eq!(parse_current_weapon_power(&unused), None);
+        assert_eq!(parse_max_weapon_power(&unused), Some(2600.0));
+
+        let missing = serde_json::json!({ "stats": {} });
+        assert_eq!(parse_current_weapon_power(&missing), None);
+        assert_eq!(parse_max_weapon_power(&missing), None);
     }
 
     #[test]
