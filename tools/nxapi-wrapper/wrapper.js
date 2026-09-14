@@ -24,6 +24,7 @@ import { embedded_nxapi_auth_cli_client_id, pkg } from './node_modules/nxapi/dis
 import { initStorage } from './node_modules/nxapi/dist/util/storage.js';
 import { NxapiClientAssertionProvider, setClientAssertionProvider } from './node_modules/nxapi/dist/util/nxapi-auth.js';
 import { addUserAgent } from './node_modules/nxapi/dist/util/useragent.js';
+import nxapiRemoteConfig from './node_modules/nxapi/dist/common/remote-config.js';
 
 // ── nxapi 初期化 ────────────────────────────────────────────
 initGlobals();
@@ -205,6 +206,8 @@ async function cmdGetBulletToken([dataDir]) {
   const sessionToken = await storage.getItem('NintendoAccountToken.' + nsid);
   if (!sessionToken) throw new Error('session_token が見つかりません');
 
+  await applyLatestZncaVersion(storage, sessionToken);
+
   // キャッシュに当たるのか、認証をやり直すのかを**先に**出す（#611）。
   // 区別が付かないと「なぜ枠が減るのか」がストレージを掘るまで分からない。
   // 実際、3 分間に 4 回も再認証していたのに気付けなかった。
@@ -298,6 +301,8 @@ async function cmdWeaponRecords([dataDir]) {
   const sessionToken = await storage.getItem('NintendoAccountToken.' + nsid);
   if (!sessionToken) throw new Error('session_token が見つかりません');
 
+  await applyLatestZncaVersion(storage, sessionToken);
+
   process.stderr.write(
     `WeaponRecordQuery を実行中... (${await tokenState(storage, sessionToken)})\n`,
   );
@@ -326,6 +331,62 @@ async function cmdWeaponRecords([dataDir]) {
 }
 
 // ── ユーティリティ ─────────────────────────────────────────
+
+/**
+ * 認証直前に znca-api の `nso_version` を読んで、同梱 remote config の
+ * `coral.znca_version` を上書きする（#767）。
+ *
+ * nxapi 公式の remote config は実行時取得を切ってある（サイドカー同梱のため）。
+ * しかも上流は `coral: null` を認証停止スイッチとして使うので、そちらを
+ * 復活させてはいけない。版だけ znca-api の `/api/znca/config` から取る。
+ *
+ * 取れなければ同梱値のまま進む（オフラインや znca-api 障害時）。
+ */
+const ZNCA_CONFIG_URL = 'https://nxapi-znca-api.fancy.org.uk/api/znca/config';
+
+async function applyLatestZncaVersion(storage, sessionToken) {
+  let nsoVersion;
+  try {
+    const res = await fetch(ZNCA_CONFIG_URL, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    const json = await res.json();
+    nsoVersion = json?.nso_version;
+    if (typeof nsoVersion !== 'string' || !nsoVersion) {
+      throw new Error('nso_version が無い');
+    }
+  } catch (e) {
+    const fallback = nxapiRemoteConfig.coral?.znca_version;
+    process.stderr.write(
+      `znca-api の NSO 版が取れませんでした（${e.message}）。同梱値 ${fallback ?? '(なし)'} を使います\n`,
+    );
+    return fallback;
+  }
+
+  const previous = nxapiRemoteConfig.coral?.znca_version;
+  if (!nxapiRemoteConfig.coral) {
+    nxapiRemoteConfig.coral = { znca_version: nsoVersion };
+  } else {
+    nxapiRemoteConfig.coral.znca_version = nsoVersion;
+  }
+  if (previous && previous !== nsoVersion) {
+    process.stderr.write(`NSO アプリ版を ${previous} → ${nsoVersion} に合わせます（znca-api）\n`);
+  } else {
+    process.stderr.write(`NSO アプリ版: ${nsoVersion}（znca-api）\n`);
+  }
+
+  await dropCoralTokenIfVersionMismatch(storage, sessionToken, nsoVersion);
+  return nsoVersion;
+}
+
+/** 古い NSO 版で取った Coral トークンを残すと、任天堂が Upgrade required を返す。 */
+async function dropCoralTokenIfVersionMismatch(storage, sessionToken, nsoVersion) {
+  const existing = await storage.getItem('NsoToken.' + sessionToken);
+  if (!existing?.znca_version || existing.znca_version === nsoVersion) return;
+  process.stderr.write(
+    `キャッシュの Coral トークンは ${existing.znca_version} なので捨てます（今は ${nsoVersion}）\n`,
+  );
+  await storage.removeItem('NsoToken.' + sessionToken);
+}
 
 function respond(obj) {
   process.stdout.write(JSON.stringify(obj) + '\n');
