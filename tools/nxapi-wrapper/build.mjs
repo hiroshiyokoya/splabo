@@ -16,13 +16,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // 1. nxapi の遠隔設定を**ビルド時に取得**して同梱する（#618）
 //
-// 🔴 実行時の取得はバンドルの都合で無効化してある（下の remote-config.js パッチ）。
-// そのため同梱した値が**そのまま固定**になる。
-//
-// この設定には NSO アプリの版（`coral.znca_version`）が入っていて、
-// 任天堂がアプリを更新すると古い版は znca-api に拒否される。
-// nxapi は本来これを実行時に読んで**新しい nxapi を出さずに追従**する仕組みだが、
-// 無効化しているぶんをビルド時取得で埋める。
+// 🔴 nxapi 公式 remote config の実行時取得はバンドルの都合で無効化してある
+// （下の remote-config.js パッチ）。NSO の版（`coral.znca_version`）だけは
+// wrapper.js が認証直前に znca-api `/api/znca/config` から上書きする（#767）。
+// 同梱値は、その取得が失敗したときのフォールバック。
 //
 // 取得できないときは同梱値へフォールバックする（ネットワークが無い環境でも
 // ビルドは通す）。どちらを使ったかは必ずログに出す。
@@ -37,9 +34,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // つまり上流が配信を止めるための**停止スイッチ**であって、版の省略ではない。
 // 素直に取り込むと認証が 1 回も通らなくなる（実際に止めた）。
 //
-// 上流が null を返し、同梱値に版があるときは**同梱値を残す**。ただし黙って
-// 上書きせず、必ずログに出す。上流が止めた事実は運用者が知る必要がある。
+// 上流が null のときは znca-api の `nso_version` を同梱する。それも失敗したら
+// 既存の同梱値を残す。黙って上書きせず、必ずログに出す。
 const CONFIG_URL = 'https://fancy.org.uk/api/nxapi/config';
+const ZNCA_CONFIG_URL = 'https://nxapi-znca-api.fancy.org.uk/api/znca/config';
 const remoteConfigSrc = path.join(__dirname, '..', 'nxapi-remote-config.json');
 const remoteConfigDst = path.join(__dirname, 'node_modules', 'nxapi', 'resources', 'common', 'remote-config.json');
 
@@ -60,18 +58,40 @@ async function fetchRemoteConfig() {
   }
 }
 
+async function fetchZncaNsoVersion() {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const res = await fetch(ZNCA_CONFIG_URL, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    const json = await res.json();
+    if (typeof json?.nso_version !== 'string' || !json.nso_version) {
+      throw new Error('nso_version が無い');
+    }
+    return json.nso_version;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const bundledConfig = JSON.parse(readFileSync(remoteConfigSrc, 'utf-8'));
 
 let remoteConfig;
 try {
   remoteConfig = await fetchRemoteConfig();
 
-  // `coral: null` は停止スイッチ。同梱値に版があるなら残す（上を参照）。
-  if (!remoteConfig.coral?.znca_version && bundledConfig.coral?.znca_version) {
+  // `coral: null` は停止スイッチ。znca-api の版、だめなら同梱値（#620 / #767）。
+  if (!remoteConfig.coral?.znca_version) {
     console.warn('remote-config: 🔴 上流が coral を止めています（coral: null）');
-    console.warn(`  そのまま使うと Coral 認証が拒否されるので、同梱値 ${JSON.stringify(bundledConfig.coral)} を残します`);
-    console.warn('  認証が通らなくなったら、まずここを疑ってください');
-    remoteConfig = { ...remoteConfig, coral: bundledConfig.coral };
+    try {
+      const nsoVersion = await fetchZncaNsoVersion();
+      remoteConfig = { ...remoteConfig, coral: { znca_version: nsoVersion } };
+      console.warn(`  znca-api の nso_version=${nsoVersion} を同梱します（実行時にも取り直す）`);
+    } catch (zncaErr) {
+      if (!bundledConfig.coral?.znca_version) throw zncaErr;
+      console.warn(`  znca-api からも取れないので同梱値 ${JSON.stringify(bundledConfig.coral)} を残します（${zncaErr.message}）`);
+      remoteConfig = { ...remoteConfig, coral: bundledConfig.coral };
+    }
   }
 
   // 同梱ファイルには**実際に同梱する値**を書く（差分が git に出るので、変化に気付ける）。
@@ -272,7 +292,10 @@ await build({
   if (!bundle.includes('NETWORK_TIMEOUT_MS') || !/function withTimeout\b/.test(bundle)) {
     throw new Error('[verify] dist/bundle.cjs: ネットワークタイムアウト（withTimeout / NETWORK_TIMEOUT_MS）が載っていません（#402）。');
   }
-  console.log(`verified bundle: znca-api ErrorResponse ${kept} 箇所 / upstream_error 出力あり / network timeout あり`);
+  if (!bundle.includes('nxapi-znca-api.fancy.org.uk/api/znca/config') || !bundle.includes('applyLatestZncaVersion')) {
+    throw new Error('[verify] dist/bundle.cjs: 実行時の NSO 版取得（znca-api /config）が載っていません（#767）。');
+  }
+  console.log(`verified bundle: znca-api ErrorResponse ${kept} 箇所 / upstream_error 出力あり / network timeout あり / nso_version 実行時取得あり`);
 }
 
 console.log('dist/bundle.cjs generated');
