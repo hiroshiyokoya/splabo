@@ -76,6 +76,7 @@ const MIRROR_KEYS: readonly string[] = [
   'splabo:densityId',
   'splabo:comboLimit',
   'splabo:nearLimit',
+  'splabo:stackableSkillOrder',
 ]
 
 // ── localStorage 読み書き（新キー優先・旧キーフォールバック） ─────────
