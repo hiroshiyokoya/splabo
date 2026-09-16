@@ -9,7 +9,7 @@ import type { FilterState } from './components/FilterDrawer'
 import type { ComboSlots } from './components/ComboSheet'
 import type { ComboResult } from './utils/findCombo'
 import type { GearCategory, GearItem, Skill } from './types'
-import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from './constants/gearPowerMeta'
+import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank, compareAdditionalSkillsCanonical } from './constants/gearPowerMeta'
 import { initAppSettings, loadComboLimit, loadNearLimit } from './utils/appSettings'
 import type { ComboLimitValue, NearLimitValue } from './utils/appSettings'
 import { formatInvokeError } from '../utils/notify'
@@ -40,11 +40,11 @@ function gearTabs(t: (key: string) => string): { key: GearCategory; label: strin
 
 function sortOptions(t: (key: string) => string): { key: SortKey; label: string }[] {
   return [
-    { key: 'brand',  label: t('gear.sort.brand') },
     { key: 'skill',  label: t('gear.sort.skill') },
-    { key: 'name',   label: t('gear.sort.name') },
     { key: 'rarity', label: t('gear.sort.rarity') },
     { key: 'exp',    label: t('gear.sort.exp') },
+    { key: 'brand',  label: t('gear.sort.brand') },
+    { key: 'name',   label: t('gear.sort.name') },
   ]
 }
 
@@ -81,19 +81,8 @@ function sortItems(items: GearItem[], key: SortKey, category: GearCategory): Gea
         const bSubCount = b.additional_skills.filter(s => s.id !== -1).length
         if (aSubCount !== bSubCount) return bSubCount - aSubCount
 
-        // サブキー2: サブパワーのスキルID順（左から、スタック型表示順）
-        for (let i = 0; i < 3; i++) {
-          const aSubId = a.additional_skills[i]?.id ?? -1
-          const bSubId = b.additional_skills[i]?.id ?? -1
-          if (aSubId === bSubId) continue
-          if (aSubId === -1) return 1
-          if (bSubId === -1) return -1
-          const ra = getStackableSkillSortRank(aSubId)
-          const rb = getStackableSkillSortRank(bSubId)
-          if (ra !== rb) return ra - rb
-          if (aSubId !== bSubId) return aSubId - bSubId
-        }
-        return 0
+        // サブキー2: スロット順ではなく構成（同じパワーが隣り合う）
+        return compareAdditionalSkillsCanonical(a.additional_skills, b.additional_skills)
       }
     }
   })
@@ -225,7 +214,7 @@ export function GearSection() {
       setUpdatePhase('error')
     }
   }, [updatePhase, isCoolingDown, t])
-  const [sortKey, setSortKey]       = useState<SortKey>('brand')
+  const [sortKey, setSortKey]       = useState<SortKey>('skill')
   const [drawerOpen, setDrawerOpen]       = useState(false)
   const [comboLimit] = useState<ComboLimitValue>(loadComboLimit)
   const [nearLimit]  = useState<NearLimitValue>(loadNearLimit)
