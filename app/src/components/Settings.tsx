@@ -35,6 +35,7 @@ import {
   type ComboLimitValue,
   type NearLimitValue,
 } from '../gear/utils/appSettings'
+import { StackableSkillOrderEditor } from '../gear/components/StackableSkillOrderEditor'
 import { saveLocalePref } from '../i18n'
 import { loadLocalePref } from '../i18n/persist'
 import type { LocalePref } from '../i18n/locale'
@@ -770,6 +771,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
             ))}
           </select>
         </label>
+        <StackableSkillOrderEditor />
       </section>
       )}
 
