@@ -82,13 +82,12 @@ export function getMainOnlySkillSortRank(skillId: number, category: GearCategory
 }
 
 /**
- * スタック型スキルの表示順（個人で調整したい場合はここを編集する）
+ * スタック型スキルの既定の表示順（ゲーム内と同じ）。
+ * ユーザーが設定で並べ替えた結果は `loadStackableSkillOrder()` が返す（#773）。
  * - 絞り込みパネルのスタック型表示順
  * - 「ギアパワー」並び替え時: この順でポイント（メイン10+サブ3）の高いギアを先にする
- *
- * 配列に含まれないスキルは、後ろにスキルID昇順で並ぶ。
  */
-export const STACKABLE_SKILL_ORDER: number[] = [
+export const DEFAULT_STACKABLE_SKILL_ORDER: number[] = [
   0,  // インク効率アップ(メイン)
   1,  // インク効率アップ(サブ)
   2,  // インク回復力アップ
@@ -105,8 +104,61 @@ export const STACKABLE_SKILL_ORDER: number[] = [
   13, // アクション強化
 ]
 
+/** gearPowerId → 画像キャッシュの stat.ink キー（#773 設定リストのアイコン）。 */
+export const STACKABLE_ABILITY_KEY_BY_ID: Record<number, string> = {
+  0: 'ink_saver_main',
+  1: 'ink_saver_sub',
+  2: 'ink_recovery_up',
+  3: 'run_speed_up',
+  4: 'swim_speed_up',
+  5: 'special_charge_up',
+  6: 'special_saver',
+  7: 'special_power_up',
+  8: 'quick_respawn',
+  9: 'quick_super_jump',
+  10: 'sub_power_up',
+  11: 'ink_resistance_up',
+  12: 'sub_resistance_up',
+  13: 'intensify_action',
+}
+
+const LS_STACKABLE_SKILL_ORDER_KEY = 'splabo:stackableSkillOrder'
+
+export function normalizeStackableSkillOrder(raw: unknown): number[] {
+  const seen = new Set<number>()
+  const out: number[] = []
+  if (Array.isArray(raw)) {
+    for (const x of raw) {
+      if (typeof x !== 'number' || !Number.isInteger(x)) continue
+      if (x === -1 || MAIN_ONLY_SKILL_IDS.has(x) || seen.has(x)) continue
+      seen.add(x)
+      out.push(x)
+    }
+  }
+  for (const id of DEFAULT_STACKABLE_SKILL_ORDER) {
+    if (seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+}
+
+export function loadStackableSkillOrder(): number[] {
+  try {
+    const raw = localStorage.getItem(LS_STACKABLE_SKILL_ORDER_KEY)
+    if (!raw) return [...DEFAULT_STACKABLE_SKILL_ORDER]
+    return normalizeStackableSkillOrder(JSON.parse(raw) as unknown)
+  } catch {
+    return [...DEFAULT_STACKABLE_SKILL_ORDER]
+  }
+}
+
+export function saveStackableSkillOrder(ids: number[]): void {
+  localStorage.setItem(LS_STACKABLE_SKILL_ORDER_KEY, JSON.stringify(normalizeStackableSkillOrder(ids)))
+}
+
 export function getStackableSkillSortRank(skillId: number): number {
-  const idx = STACKABLE_SKILL_ORDER.indexOf(skillId)
+  const idx = loadStackableSkillOrder().indexOf(skillId)
   return idx === -1 ? Number.POSITIVE_INFINITY : idx
 }
 
@@ -150,11 +202,12 @@ export function hasMainOnlySkill(gear: GearItem, skillId: number): boolean {
 }
 
 /**
- * スタック型のポイント（メイン10 + サブ3）を、STACKABLE_SKILL_ORDER の順で高い方を先にする。
+ * スタック型のポイント（メイン10 + サブ3）を、設定した順位で高い方を先にする。
  * スロット位置は見ない。同じ構成は同じキーになる。
  */
 export function compareStackablePowerDesc(a: GearItem, b: GearItem): number {
-  const listed = new Set(STACKABLE_SKILL_ORDER)
+  const order = loadStackableSkillOrder()
+  const listed = new Set(order)
   const extra: number[] = []
   for (const gear of [a, b]) {
     for (const s of [gear.primary_skill, ...gear.additional_skills]) {
@@ -164,7 +217,7 @@ export function compareStackablePowerDesc(a: GearItem, b: GearItem): number {
     }
   }
   extra.sort((x, y) => x - y)
-  for (const id of [...STACKABLE_SKILL_ORDER, ...extra]) {
+  for (const id of [...order, ...extra]) {
     const diff = calcSkillPoints(b, id) - calcSkillPoints(a, id)
     if (diff !== 0) return diff
   }
