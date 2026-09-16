@@ -10,7 +10,7 @@
  *   - ローカルDB: geartoon/tools/data/gear_db.json の primary_skill.id と additional_skills[].id を参照する
  */
 
-import type { GearCategory, GearItem, Skill } from '../types'
+import type { GearCategory, GearItem } from '../types'
 
 /** メインスロットにのみ存在するギアパワーのID集合 */
 export const MAIN_ONLY_SKILL_IDS = new Set<number>([
@@ -84,46 +84,30 @@ export function getMainOnlySkillSortRank(skillId: number, category: GearCategory
 /**
  * スタック型スキルの表示順（個人で調整したい場合はここを編集する）
  * - 絞り込みパネルのスタック型表示順
- * - 「ギアパワー」並び替え時のスタック型（メイン／サブ構成）の順序
+ * - 「ギアパワー」並び替え時: この順でポイント（メイン10+サブ3）の高いギアを先にする
  *
  * 配列に含まれないスキルは、後ろにスキルID昇順で並ぶ。
  */
 export const STACKABLE_SKILL_ORDER: number[] = [
-  // 例: ここに優先したいスキルIDを並べる
+  0,  // インク効率アップ(メイン)
+  1,  // インク効率アップ(サブ)
+  2,  // インク回復力アップ
+  3,  // ヒト移動速度アップ
+  4,  // イカダッシュ速度アップ
+  5,  // スペシャル増加量アップ
+  6,  // スペシャル減少量ダウン
+  7,  // スペシャル性能アップ
+  8,  // 復活時間短縮
+  9,  // スーパージャンプ時間短縮
+  10, // サブ性能アップ
+  11, // 相手インク影響軽減
+  12, // サブ影響軽減
+  13, // アクション強化
 ]
 
 export function getStackableSkillSortRank(skillId: number): number {
   const idx = STACKABLE_SKILL_ORDER.indexOf(skillId)
   return idx === -1 ? Number.POSITIVE_INFINITY : idx
-}
-
-/** アキ枠（id: -1）は後ろ。同じ構成がスロット順に依存しないように使う（#771）。 */
-function compareSkillIdCanonical(aId: number, bId: number): number {
-  if (aId === bId) return 0
-  if (aId === -1) return 1
-  if (bId === -1) return -1
-  const ra = getStackableSkillSortRank(aId)
-  const rb = getStackableSkillSortRank(bId)
-  if (ra !== rb) return ra - rb
-  return aId - bId
-}
-
-/**
- * サブギアをスロット位置ではなく構成（スキルIDの多重集合）で比較する。
- * 同じ3種でも並びが違うギアが隣り合う。
- */
-export function compareAdditionalSkillsCanonical(a: Skill[], b: Skill[]): number {
-  const aIds = a.map(s => s.id)
-  const bIds = b.map(s => s.id)
-  while (aIds.length < 3) aIds.push(-1)
-  while (bIds.length < 3) bIds.push(-1)
-  aIds.sort(compareSkillIdCanonical)
-  bIds.sort(compareSkillIdCanonical)
-  for (let i = 0; i < 3; i++) {
-    const cmp = compareSkillIdCanonical(aIds[i], bIds[i])
-    if (cmp !== 0) return cmp
-  }
-  return 0
 }
 
 /** ギアパワーの種別 */
@@ -163,4 +147,26 @@ export function calcSkillPoints(gear: GearItem, skillId: number): number {
  */
 export function hasMainOnlySkill(gear: GearItem, skillId: number): boolean {
   return gear.primary_skill.id === skillId
+}
+
+/**
+ * スタック型のポイント（メイン10 + サブ3）を、STACKABLE_SKILL_ORDER の順で高い方を先にする。
+ * スロット位置は見ない。同じ構成は同じキーになる。
+ */
+export function compareStackablePowerDesc(a: GearItem, b: GearItem): number {
+  const listed = new Set(STACKABLE_SKILL_ORDER)
+  const extra: number[] = []
+  for (const gear of [a, b]) {
+    for (const s of [gear.primary_skill, ...gear.additional_skills]) {
+      const id = s.id
+      if (id === -1 || MAIN_ONLY_SKILL_IDS.has(id) || listed.has(id) || extra.includes(id)) continue
+      extra.push(id)
+    }
+  }
+  extra.sort((x, y) => x - y)
+  for (const id of [...STACKABLE_SKILL_ORDER, ...extra]) {
+    const diff = calcSkillPoints(b, id) - calcSkillPoints(a, id)
+    if (diff !== 0) return diff
+  }
+  return 0
 }

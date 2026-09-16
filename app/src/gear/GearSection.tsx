@@ -9,7 +9,7 @@ import type { FilterState } from './components/FilterDrawer'
 import type { ComboSlots } from './components/ComboSheet'
 import type { ComboResult } from './utils/findCombo'
 import type { GearCategory, GearItem, Skill } from './types'
-import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank, compareAdditionalSkillsCanonical } from './constants/gearPowerMeta'
+import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, compareStackablePowerDesc } from './constants/gearPowerMeta'
 import { initAppSettings, loadComboLimit, loadNearLimit } from './utils/appSettings'
 import type { ComboLimitValue, NearLimitValue } from './utils/appSettings'
 import { formatInvokeError } from '../utils/notify'
@@ -56,7 +56,7 @@ function sortItems(items: GearItem[], key: SortKey, category: GearCategory): Gea
       case 'exp':    return b.exp - a.exp
       case 'brand':  return a.brand.localeCompare(b.brand, 'ja')
       case 'skill': {
-        // 絞り込みパネルと同じ並び: 発動型 → スタック型、各グループ内はID昇順
+        // 発動型メインを先に。そのあとスタック型は順位順にポイント高い順（スロット位置は見ない）
         const aId = a.primary_skill.id
         const bId = b.primary_skill.id
 
@@ -68,21 +68,10 @@ function sortItems(items: GearItem[], key: SortKey, category: GearCategory): Gea
           const ra = getMainOnlySkillSortRank(aId, category)
           const rb = getMainOnlySkillSortRank(bId, category)
           if (ra !== rb) return ra - rb
-        } else if (aType === 1 && bType === 1) {
-          const ra = getStackableSkillSortRank(aId)
-          const rb = getStackableSkillSortRank(bId)
-          if (ra !== rb) return ra - rb
+          if (aId !== bId) return aId - bId
         }
 
-        if (aId !== bId) return aId - bId
-
-        // サブキー1: サブパワーの数（多い順）
-        const aSubCount = a.additional_skills.filter(s => s.id !== -1).length
-        const bSubCount = b.additional_skills.filter(s => s.id !== -1).length
-        if (aSubCount !== bSubCount) return bSubCount - aSubCount
-
-        // サブキー2: スロット順ではなく構成（同じパワーが隣り合う）
-        return compareAdditionalSkillsCanonical(a.additional_skills, b.additional_skills)
+        return compareStackablePowerDesc(a, b)
       }
     }
   })
