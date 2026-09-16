@@ -104,6 +104,24 @@ export const DEFAULT_STACKABLE_SKILL_ORDER: number[] = [
   13, // アクション強化
 ]
 
+/** gearPowerId → 画像キャッシュの stat.ink キー（#773 設定リストのアイコン）。 */
+export const STACKABLE_ABILITY_KEY_BY_ID: Record<number, string> = {
+  0: 'ink_saver_main',
+  1: 'ink_saver_sub',
+  2: 'ink_recovery_up',
+  3: 'run_speed_up',
+  4: 'swim_speed_up',
+  5: 'special_charge_up',
+  6: 'special_saver',
+  7: 'special_power_up',
+  8: 'quick_respawn',
+  9: 'quick_super_jump',
+  10: 'sub_power_up',
+  11: 'ink_resistance_up',
+  12: 'sub_resistance_up',
+  13: 'intensify_action',
+}
+
 const LS_STACKABLE_SKILL_ORDER_KEY = 'splabo:stackableSkillOrder'
 
 export function normalizeStackableSkillOrder(raw: unknown): number[] {

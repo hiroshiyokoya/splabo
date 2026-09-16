@@ -2287,6 +2287,15 @@ body {
 }
 .stackable-order__handle:active { cursor: grabbing; }
 .stackable-order__handle:hover { color: var(--text); }
+.stackable-order__icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: contain;
+  flex-shrink: 0;
+  background: #000;
+}
+.stackable-order__icon--empty { background: var(--border); }
 .stackable-order__name { font-size: 13px; color: var(--text); }
 .checkbox-label { flex-direction: row !important; align-items: center; gap: 8px !important; }
 /* 折れ線グラフのメトリクス複数選択（#436）。チェックボックスをグリッド状に並べる。 */
