@@ -486,11 +486,6 @@
     flex: 1;
   }
 
-  /* 「?」（アキ）: 背景は他と同じ黒のまま、アイコンだけ薄く */
-  .skill-icon--unknown img {
-    opacity: 0.4;
-  }
-
   .skill-icon--empty {
     opacity: 0.15;
   }
