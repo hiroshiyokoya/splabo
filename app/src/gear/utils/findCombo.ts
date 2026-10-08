@@ -1,7 +1,10 @@
 import type { GearItem, GearDB } from '../types'
+import { isMainOnly } from '../constants/gearPowerMeta'
 
 export const MAIN_AP = 10
 export const SUB_AP  = 3
+/** サブスロットの最大数 */
+const SUB_SLOTS = 3
 
 export interface SkillRequirement {
   skillId:   number
@@ -24,6 +27,12 @@ export interface ComboResult {
   matchKind?: ComboMatchKind
   /** matchKind === 'near' のとき: 目標に対する不足APの合計 */
   deficitSum?: number
+  /** matchKind === 'near' のとき: 並び順に使う減点（アキ・未開放枠で埋められる不足は半分） */
+  nearPenalty?: number
+  /** matchKind === 'near' のとき: 目標に届かないスキルの skillId → 不足AP */
+  shortfallBySkill?: Record<number, number>
+  /** matchKind === 'near' のとき: 指定アキ数に対する不足枠数 */
+  akiShortfall?: number
 }
 
 /** 1ギアについて、各スキルIDの AP を計算 */
@@ -43,6 +52,11 @@ function gearAp(gear: GearItem, skillIds: number[]): Record<number, number> {
 /** 1ギアのアキ（id=-1）サブスロット数 */
 function countEmptySlots(gear: GearItem): number {
   return gear.additional_skills.filter(s => s.id === -1).length
+}
+
+/** 1ギアの未開放サブスロット数 */
+function countClosedSlots(gear: GearItem): number {
+  return Math.max(0, SUB_SLOTS - gear.additional_skills.length)
 }
 
 /** 3着について、スキルIDごとの装備内AP（メイン10・サブ3、id=-1 は除く） */
@@ -115,25 +129,61 @@ export function comboBestBadgeKeysEqual(ka: ComboSortKey, kb: ComboSortKey): boo
   return ka.targetSum === kb.targetSum && ka.allSum === kb.allSum
 }
 
-function deficitSum(
+type GAp = { gear: GearItem; ap: Record<number, number>; aki: number; closed: number }
+
+/**
+ * 惜しい組の減点。不足AP（アキ不足は 1 枠 = SUB_AP）を基本に、
+ * アキ枠・未開放枠で埋められる分は半分にする。
+ * - 未開放枠は開ければアキになるので、アキ不足の補填に先に使う
+ * - 指定アキ数ぶんのアキ枠はスキル不足の補填に回さない
+ * - 発動型（メイン専用）の不足はサブ枠では埋まらないので全額
+ */
+function nearPenalty(
   requirements: SkillRequirement[],
-  hAp: Record<number, number>,
-  cAp: Record<number, number>,
-  shAp: Record<number, number>,
+  h: GAp, c: GAp, sh: GAp,
+  minAkiSlots: number,
 ): number {
-  let d = 0
+  const aki = h.aki + c.aki + sh.aki
+  const closed = h.closed + c.closed + sh.closed
+
+  const akiShort = Math.max(0, minAkiSlots - aki)
+  const closedForAki = Math.min(akiShort, closed)
+  let penalty = (akiShort - closedForAki) * SUB_AP + closedForAki * SUB_AP / 2
+
+  let free = Math.max(0, aki - minAkiSlots) + (closed - closedForAki)
+  const partials: number[] = []
   for (const r of requirements) {
-    const got = hAp[r.skillId] + cAp[r.skillId] + shAp[r.skillId]
-    if (got < r.minAp) d += r.minAp - got
+    const short = r.minAp - (h.ap[r.skillId] + c.ap[r.skillId] + sh.ap[r.skillId])
+    if (short <= 0) continue
+    if (isMainOnly(r.skillId)) {
+      penalty += short
+      continue
+    }
+    // 1 枠で 3pt 埋まる分を先に割り当て、端数（1 枠で 1〜2pt）は大きい順に後で割り当てる
+    const full = Math.min(free, Math.floor(short / SUB_AP))
+    free -= full
+    penalty += full * SUB_AP / 2 + (short - full * SUB_AP)
+    const rest = short - full * SUB_AP
+    if (rest > 0) partials.push(rest)
   }
-  return d
+  partials.sort((a, b) => b - a)
+  for (const rest of partials) {
+    if (free <= 0) break
+    free--
+    penalty -= rest / 2
+  }
+  return penalty
 }
 
-function compareNearTie(a: ComboResult, b: ComboResult): number {
-  return compareComboResultsSort(a, b)
+/** 目標に届かないスキルごとの不足AP */
+function shortfallBySkill(requirements: SkillRequirement[], h: GAp, c: GAp, sh: GAp): Record<number, number> {
+  const out: Record<number, number> = {}
+  for (const r of requirements) {
+    const short = r.minAp - (h.ap[r.skillId] + c.ap[r.skillId] + sh.ap[r.skillId])
+    if (short > 0) out[r.skillId] = short
+  }
+  return out
 }
-
-type GAp = { gear: GearItem; ap: Record<number, number> }
 
 function buildComboResult(h: GAp, c: GAp, sh: GAp, skillIds: number[]): ComboResult {
   const totalAp: Record<number, number> = {}
@@ -144,8 +194,17 @@ function buildComboResult(h: GAp, c: GAp, sh: GAp, skillIds: number[]): ComboRes
   return { head: h.gear, clothing: c.gear, shoes: sh.gear, totalAp, allApBySkill }
 }
 
+/** 惜しい組の並び順: 減点が小さい順、同点は compareComboResultsSort */
+function compareNear(
+  a: { deficit: number; combo: ComboResult },
+  b: { deficit: number; combo: ComboResult },
+): number {
+  if (a.deficit !== b.deficit) return a.deficit - b.deficit
+  return compareComboResultsSort(a.combo, b.combo)
+}
+
 /**
- * 不足AP合計が大きい候補を根に置く max-heap。
+ * 減点が大きい候補を根に置く max-heap。
  * 満杯のときは「根より不足が小さい」候補で根を差し替え、全体として不足が小さい cap 件を保つ。
  */
 class NearDeficitMaxHeap {
@@ -169,19 +228,14 @@ class NearDeficitMaxHeap {
     }
   }
 
-  /** 不足が小さい順（同率は目標APが多い順） */
+  /** 減点が小さい順（同率は目標APが多い順） */
   sorted(): { deficit: number; combo: ComboResult }[] {
-    return [...this.a].sort((u, v) => {
-      if (u.deficit !== v.deficit) return u.deficit - v.deficit
-      return compareNearTie(u.combo, v.combo)
-    })
+    return [...this.a].sort(compareNear)
   }
 
-  /** true なら i 側を親にしたい（欠損が大きいほど上＝max-heap） */
+  /** true なら i 側を親にしたい（減点が大きいほど上＝max-heap） */
   private dominates(i: number, j: number): boolean {
-    const di = this.a[i].deficit - this.a[j].deficit
-    if (di !== 0) return di > 0
-    return compareComboResultsSort(this.a[j].combo, this.a[i].combo) < 0
+    return compareNear(this.a[i], this.a[j]) > 0
   }
 
   private up(i: number) {
@@ -221,7 +275,7 @@ function comboSortKeyStrictEqual(a: ComboResult, b: ComboResult): boolean {
 }
 
 /**
- * (targetSum, allSum, perSkillDesc) でグループ化し、
+ * (減点, targetSum, allSum, perSkillDesc) でグループ化し、
  * 累計が NEAR_LIMIT を超えないグループまでを返す。
  * 超えるグループは丸ごと出さない。
  */
@@ -231,13 +285,17 @@ function pickNearGroups(
 ): { deficit: number; combo: ComboResult }[] {
   if (nearLimit <= 0 || nearEntries.length === 0) return []
 
-  const sorted = [...nearEntries].sort((a, b) => compareComboResultsSort(a.combo, b.combo))
+  const sorted = [...nearEntries].sort(compareNear)
   const result: { deficit: number; combo: ComboResult }[] = []
   let i = 0
 
   while (i < sorted.length) {
     let j = i + 1
-    while (j < sorted.length && comboSortKeyStrictEqual(sorted[i].combo, sorted[j].combo)) j++
+    while (
+      j < sorted.length
+      && sorted[i].deficit === sorted[j].deficit
+      && comboSortKeyStrictEqual(sorted[i].combo, sorted[j].combo)
+    ) j++
     const groupSize = j - i
     if (result.length + groupSize > nearLimit) break
     result.push(...sorted.slice(i, j))
@@ -250,9 +308,8 @@ function pickNearGroups(
 /**
  * find_combo.py の探索ロジック（枝刈り全探索）を TS に移植。
  * requirements に指定したスキル・最低AP をすべて満たす組を優先し、
- * 残り枠に不足APが小さい順の「惜しい」組を載せる（件数の最低保証はしない）。
- * 惜しいは targetSum・allSum が同じ組は 1 件に畳む（不足が最小で、同不足ならソート上最良）。
- * 結果は compareComboResultsSort でソートし、全体は limit 件まで。
+ * 残り枠に減点（nearPenalty）が小さい順の「惜しい」組を載せる（件数の最低保証はしない）。
+ * 完全一致は compareComboResultsSort でソートし、全体は limit 件まで。
  *
  * 探索は頭・服・靴の全組み合わせを走査する。DB ごとにカテゴリ別の理論最大が異なるため、
  * 特定スロット前提の枝刈りは行わない（惜しい候補の取りこぼしを防ぐ）。
@@ -268,9 +325,10 @@ export function findCombo(
 
   const skillIds = requirements.map(r => r.skillId)
 
-  const heads     = data.head.map(g     => ({ gear: g, ap: gearAp(g, skillIds), aki: countEmptySlots(g) }))
-  const clothings = data.clothing.map(g => ({ gear: g, ap: gearAp(g, skillIds), aki: countEmptySlots(g) }))
-  const shoesAll  = data.shoes.map(g    => ({ gear: g, ap: gearAp(g, skillIds), aki: countEmptySlots(g) }))
+  const toGAp = (g: GearItem): GAp => ({ gear: g, ap: gearAp(g, skillIds), aki: countEmptySlots(g), closed: countClosedSlots(g) })
+  const heads     = data.head.map(toGAp)
+  const clothings = data.clothing.map(toGAp)
+  const shoesAll  = data.shoes.map(toGAp)
 
   const valid: ComboResult[] = []
   const effectiveNearLimit = Math.min(nearLimit, limit)
@@ -280,7 +338,7 @@ export function findCombo(
   for (const h of heads) {
     for (const c of clothings) {
       const hcAki = h.aki + c.aki
-      /** 同一 (h,c) で不足が最小になる靴だけヒープ候補にする（全靴より欠損が悪いものは捨ててよい） */
+      /** 同一 (h,c) で減点が最小になる靴だけヒープ候補にする（全靴より減点が大きいものは捨ててよい） */
       let minNearDeficit = Infinity
       const bestNearShoes: typeof shoesAll = []
 
@@ -293,8 +351,7 @@ export function findCombo(
           valid.push(buildComboResult(h, c, sh, skillIds))
           continue
         }
-        const d = deficitSum(requirements, h.ap, c.ap, sh.ap)
-          + Math.max(0, minAkiSlots - (hcAki + sh.aki)) * 3
+        const d = nearPenalty(requirements, h, c, sh, minAkiSlots)
         if (d < minNearDeficit) {
           minNearDeficit = d
           bestNearShoes.length = 0
@@ -320,12 +377,21 @@ export function findCombo(
 
   if (valid.length >= 10) return perfectTagged
 
+  const byGear = new Map<GearItem, GAp>([...heads, ...clothings, ...shoesAll].map(x => [x.gear, x]))
   const nearPicks = pickNearGroups(nearHeap.sorted(), effectiveNearLimit)
-  const nearTagged: ComboResult[] = nearPicks.map(({ combo, deficit }) => ({
-    ...combo,
-    matchKind: 'near' as const,
-    deficitSum: deficit,
-  }))
+  const nearTagged: ComboResult[] = nearPicks.map(({ combo, deficit }) => {
+    const shortfall = shortfallBySkill(requirements, byGear.get(combo.head)!, byGear.get(combo.clothing)!, byGear.get(combo.shoes)!)
+    const aki = countEmptySlots(combo.head) + countEmptySlots(combo.clothing) + countEmptySlots(combo.shoes)
+    const akiShortfall = Math.max(0, minAkiSlots - aki)
+    return {
+      ...combo,
+      matchKind: 'near' as const,
+      deficitSum: Object.values(shortfall).reduce((s, v) => s + v, 0) + akiShortfall * SUB_AP,
+      nearPenalty: deficit,
+      shortfallBySkill: shortfall,
+      akiShortfall,
+    }
+  })
 
   return [...perfectTagged, ...nearTagged]
 }

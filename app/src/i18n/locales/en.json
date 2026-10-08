@@ -362,7 +362,10 @@
       "resultsPerfect": "{{total}} loadouts — tap to apply",
       "best": "Best",
       "near": "Close",
-      "points": "{{count}} pt"
+      "points": "{{count}} pt",
+      "shortBy": "{{count}} pt short",
+      "missingPoints": "−{{count}} pt",
+      "missingSlots": "−{{count}} slot(s)"
     },
     "power": {
       "-1": "Empty",

@@ -19,6 +19,7 @@ void i18n.use(initReactI18next).init({
 
 /** ネイティブのタイトルバー文字列(#732)。tauri.conf.json の title は初回描画までの仮値。 */
 function applyWindowTitle(locale: AppLocale): void {
+  if (!('__TAURI_INTERNALS__' in window)) return
   getCurrentWindow().setTitle(i18n.getFixedT(locale)('app.windowTitle')).catch(() => {})
 }
 

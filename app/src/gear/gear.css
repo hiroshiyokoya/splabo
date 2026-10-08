@@ -486,7 +486,8 @@
     flex: 1;
   }
 
-  .skill-icon--unknown {
+  /* 「?」（アキ）: 背景は他と同じ黒のまま、アイコンだけ薄く */
+  .skill-icon--unknown img {
     opacity: 0.4;
   }
 
@@ -1827,6 +1828,18 @@
 
   .combo-result-ap-chip--unknown {
     opacity: 0.85;
+  }
+
+  /* 惜しい: 目標に届かない pt は赤字 */
+  .combo-result-ap-chip--short span:not(.combo-result-ap-chip__id),
+  .combo-result-ap-chip--missing span:not(.combo-result-ap-chip__id) {
+    color: rgba(255, 110, 110, 0.85);
+  }
+
+  /* 惜しい: 1pt も無い目標スキル・足りないアキ枠はアイコンを赤枠で */
+  .combo-result-ap-chip--missing img,
+  .combo-result-ap-chip--missing .combo-result-ap-chip__id {
+    box-shadow: 0 0 0 1.5px rgba(255, 90, 90, 0.75);
   }
 
   .combo-result-ap-chip__id {

@@ -832,18 +832,43 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                             const mainOnly = isMainOnly(sid)
                             const info = skillInfoById.get(sid)
                             const displayName = info ? skillDisplayName({ id: sid, name: info.name }, t) : null
+                            const short = combo.shortfallBySkill?.[sid]
+                            const shortCls = short ? ' combo-result-ap-chip--short' : ''
+                            const shortTitle = short ? t('gear.combo.shortBy', { count: short }) : undefined
                             return info ? (
-                              <div key={skillIdStr} className="combo-result-ap-chip">
+                              <div key={skillIdStr} className={`combo-result-ap-chip${shortCls}`} title={shortTitle}>
                                 <img src={info.image} alt={displayName ?? ''} title={displayName ?? ''} />
                                 {!mainOnly && <span>{t('gear.combo.points', { count: ap })}</span>}
                               </div>
                             ) : (
-                              <div key={skillIdStr} className="combo-result-ap-chip combo-result-ap-chip--unknown" title={`id=${sid}`}>
+                              <div key={skillIdStr} className={`combo-result-ap-chip combo-result-ap-chip--unknown${shortCls}`} title={shortTitle ?? `id=${sid}`}>
                                 <span className="combo-result-ap-chip__id">{sid}</span>
                                 {!mainOnly && <span>{t('gear.combo.points', { count: ap })}</span>}
                               </div>
                             )
                           })}
+                        {/* 惜しい: 1pt も無い目標スキル・足りないアキ枠を赤枠で */}
+                        {Object.entries(combo.shortfallBySkill ?? {})
+                          .filter(([skillIdStr]) => !(skillIdStr in combo.allApBySkill))
+                          .map(([skillIdStr, short]) => {
+                            const sid = Number(skillIdStr)
+                            const info = skillInfoById.get(sid)
+                            const displayName = info ? skillDisplayName({ id: sid, name: info.name }, t) : `id=${sid}`
+                            return (
+                              <div key={`missing-${skillIdStr}`} className="combo-result-ap-chip combo-result-ap-chip--missing" title={displayName}>
+                                {info
+                                  ? <img src={info.image} alt={displayName} />
+                                  : <span className="combo-result-ap-chip__id">{sid}</span>}
+                                {!isMainOnly(sid) && <span>{t('gear.combo.missingPoints', { count: short })}</span>}
+                              </div>
+                            )
+                          })}
+                        {(combo.akiShortfall ?? 0) > 0 && (
+                          <div className="combo-result-ap-chip combo-result-ap-chip--missing" title={emptyLabel}>
+                            <img src={emptySkillImage} alt={emptyLabel} />
+                            <span>{t('gear.combo.missingSlots', { count: combo.akiShortfall })}</span>
+                          </div>
+                        )}
                       </div>
                     </button>
                     )
