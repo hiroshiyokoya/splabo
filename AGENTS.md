@@ -81,11 +81,12 @@ splabo/
 ```bash
 npm ci                     # ルートで workspace 全体
 npm run build -w app       # フロント: tsc + vite build
+npm run tauri -w app -- dev  # dev 版を起動（app/ で `npx tauri dev` と同じ）
 cargo check                # workspace 全体の Rust 型チェック
 ```
 
 - Windows では Node.js が PATH に無いことがある（`$env:ProgramFiles\nodejs` を前置する）。
-- npm script は `-w app` で対象 workspace を指定して呼ぶ。
+- npm script は `-w app` で対象 workspace を指定して呼ぶ。tauri CLI に渡す引数は `--` の後ろに書く（`npx tauri dev -w app` は `-w` が tauri CLI 側に渡って失敗する）。
 
 ---
 
