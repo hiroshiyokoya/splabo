@@ -2362,6 +2362,281 @@
     font-family: monospace;
   }
 
+  /* ── 保存コーデ（#782） ── */
+
+  /* コーデ候補の行と右端の保存ボタン */
+  .combo-result-row-wrap {
+    display: flex;
+    align-items: stretch;
+    gap: 0.35rem;
+  }
+
+  .combo-result-row-wrap .combo-result-row {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .combo-result-row__save {
+    flex-shrink: 0;
+    padding: 0 0.6rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    background: var(--chip-bg);
+    border: 1px solid var(--chip-border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+
+  .combo-result-row__save:hover,
+  .combo-sheet__save-btn:hover {
+    border-color: var(--accent-hover-border);
+    color: var(--accent);
+  }
+
+  .coord-empty {
+    padding: 3rem 1rem;
+    font-size: 0.9rem;
+  }
+
+  .coord-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .coord-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--card-radius);
+    overflow: hidden;
+  }
+
+  .coord-card__main {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+
+  .coord-card__main:hover {
+    background: var(--accent-hover-bg);
+  }
+
+  .coord-card__gears {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    flex-shrink: 0;
+  }
+
+  .coord-card__gear {
+    width: 52px;
+    height: 52px;
+    border-radius: 8px;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid transparent;
+  }
+
+  .coord-card__gear img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .coord-card__gear--changed {
+    border-color: rgba(255, 190, 60, 0.7);
+  }
+
+  .coord-card__gear--missing {
+    background: var(--chip-bg);
+    border: 1.5px dashed var(--border);
+  }
+
+  .coord-gear-missing {
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    text-align: center;
+  }
+
+  .coord-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+
+  .coord-card__title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text);
+    overflow-wrap: anywhere;
+  }
+
+  .coord-card__memo {
+    font-size: 0.78rem;
+    color: var(--chip-text);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .coord-card__ap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.55rem;
+  }
+
+  .coord-card__warn {
+    font-size: 0.72rem;
+    color: #ffc04a;
+  }
+
+  .coord-card__actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .coord-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.25rem 0.8rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .coord-btn:hover:not(:disabled) {
+    border-color: var(--accent-hover-border);
+    color: var(--accent);
+  }
+
+  .coord-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .coord-btn--primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-dark);
+  }
+
+  .coord-btn--primary:hover:not(:disabled) {
+    color: var(--accent-dark);
+    box-shadow: 0 0 10px var(--accent-glow);
+  }
+
+  .coord-btn--danger:hover,
+  .coord-btn--confirm {
+    border-color: rgba(255, 100, 100, 0.6);
+    color: #ff8080;
+  }
+
+  .coord-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  .coord-dialog {
+    width: min(440px, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    padding: 1.25rem;
+    background: var(--bg);
+    border: 1.5px solid var(--border);
+    border-radius: var(--card-radius);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  }
+
+  .coord-dialog__header {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .coord-dialog__gears {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  .coord-dialog__gears img,
+  .coord-dialog__gears .coord-gear-missing {
+    width: 44px;
+    height: 44px;
+    border-radius: 6px;
+    background: #000;
+    object-fit: contain;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .coord-dialog__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+
+  .coord-dialog__field input,
+  .coord-dialog__field textarea {
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 400;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.45rem 0.6rem;
+    resize: vertical;
+  }
+
+  .coord-dialog__field input:focus,
+  .coord-dialog__field textarea:focus {
+    outline: none;
+    border-color: var(--accent-hover-border);
+  }
+
+  .coord-dialog__error {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #ff9090;
+  }
+
+  .coord-dialog__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
   /* ── Mobile responsive ──
      @media (max-width: 600px) の中身はヘッダー（.app-header 一式）専用の
      打ち消しだけだったので、ヘッダーの撤去（#419 / #424）に伴いブロックごと削除した。 */

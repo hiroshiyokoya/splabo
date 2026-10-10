@@ -6,6 +6,7 @@ import type { ComboResult, ComboSortKey } from '../utils/findCombo'
 import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from '../constants/gearPowerMeta'
 import { skillDisplayName } from '../utils/skillDisplayName'
 import { gearItemDisplayName, gearBrandDisplayName } from '../utils/gearItemDisplayName'
+import type { FullSlots } from '../utils/savedCoordinates'
 
 export type ComboSlots = {
   head:     GearItem | null
@@ -85,9 +86,11 @@ interface Props {
   comboLimit?:      number
   /** 惜しい候補の最大件数(デフォルト 10) */
   nearLimit?:       number
+  /** 3 部位そろったコーデを保存する(#782) */
+  onSaveCombo?:     (slots: FullSlots) => void
 }
 
-export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '', comboLimit = 50, nearLimit = 10 }: Props) {
+export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '', comboLimit = 50, nearLimit = 10, onSaveCombo }: Props) {
   const { t } = useTranslation()
   const emptyLabel = t('gear.empty')
   const [isOpen, setIsOpen]             = useState(false)
@@ -167,6 +170,9 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
 
   const totalAp   = useMemo(() => calcTotalAp(slots), [slots])
   const anyFilled = slots.head !== null || slots.clothing !== null || slots.shoes !== null
+  const fullSlots: FullSlots | null = slots.head && slots.clothing && slots.shoes
+    ? { head: slots.head, clothing: slots.clothing, shoes: slots.shoes }
+    : null
 
   // DB からスタック型スキル一覧
   const stackableSkills = useMemo(() => {
@@ -543,6 +549,17 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
         {/* ヘッダー */}
         <div className="combo-sheet__header">
           <span className="combo-sheet__title">{t('gear.combo.title')}</span>
+          <div className="combo-sheet__header-actions">
+          {onSaveCombo && fullSlots && (
+            <button
+              type="button"
+              className="combo-sheet__clear-btn combo-sheet__save-btn"
+              onClick={() => onSaveCombo(fullSlots)}
+              title={t('gear.saved.saveCombo')}
+            >
+              {t('gear.saved.saveButton')}
+            </button>
+          )}
           {anyFilled && (
             <button
               type="button"
@@ -558,6 +575,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
               {t('gear.combo.clear')}
             </button>
           )}
+          </div>
         </div>
 
         <div className="combo-sheet__body">
@@ -798,8 +816,11 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                     const isBest = !isNear && bestPerfectSortKeys !== null &&
                       comboBestBadgeKeysEqual(sk, bestPerfectSortKeys)
                     return (
-                    <button
+                    <div
                       key={`${combo.head.id}-${combo.clothing.id}-${combo.shoes.id}-${combo.matchKind ?? 'perfect'}-${combo.deficitSum ?? 0}`}
+                      className="combo-result-row-wrap"
+                    >
+                    <button
                       type="button"
                       className={`combo-result-row${isBest ? ' combo-result-row--best' : ''}${isNear ? ' combo-result-row--near' : ''}`}
                       onClick={() => {
@@ -871,6 +892,18 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                         )}
                       </div>
                     </button>
+                    {onSaveCombo && (
+                      <button
+                        type="button"
+                        className="combo-result-row__save"
+                        onClick={() => onSaveCombo({ head: combo.head, clothing: combo.clothing, shoes: combo.shoes })}
+                        aria-label={t('gear.saved.saveCombo')}
+                        title={t('gear.saved.saveCombo')}
+                      >
+                        {t('gear.saved.saveButton')}
+                      </button>
+                    )}
+                    </div>
                     )
                   })}
                 </div>

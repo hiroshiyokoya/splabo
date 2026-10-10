@@ -3,6 +3,13 @@ import { useTranslation } from 'react-i18next'
 import { GearCard } from './components/GearCard'
 import { FilterDrawer, emptyFilter, countActiveFilters } from './components/FilterDrawer'
 import { ComboSheet, emptySlots } from './components/ComboSheet'
+import { SavedCoordinateList } from './components/SavedCoordinateList'
+import { SaveCoordinateDialog } from './components/SaveCoordinateDialog'
+import {
+  listSavedCoordinates, saveCoordinate, deleteSavedCoordinate,
+  toCoordinateGears, defaultCoordinateTitle, resolveCoordinate,
+} from './utils/savedCoordinates'
+import type { FullSlots, ResolvedCoordinate, SavedCoordinate } from './utils/savedCoordinates'
 import { useGearDB, saveLastFetchedAt } from './hooks/useGearDB'
 import { isTauri } from './utils/tauri'
 import type { FilterState } from './components/FilterDrawer'
@@ -27,6 +34,11 @@ const UPDATE_COOLDOWN_MS = 5 * 60 * 1000
 
 const SCROLL_TOP_THRESHOLD = 600
 const SCROLL_TOP_HIDE_AFTER_MS = 1000
+
+/** 保存コーデのダイアログ（新規はスロットのギア、編集は既存コーデ） */
+type SaveDialogState =
+  | { mode: 'new'; slots: FullSlots }
+  | { mode: 'edit'; coord: SavedCoordinate; resolved: ResolvedCoordinate }
 
 type SortKey = 'name' | 'rarity' | 'exp' | 'brand' | 'skill'
 
@@ -211,6 +223,12 @@ export function GearSection() {
   const [filter, setFilter]               = useState<FilterState>(emptyFilter)
   const [comboOpen, setComboOpen]   = useState(false)
   const [comboSlots, setComboSlots] = useState<ComboSlots>(emptySlots)
+  const [showSaved, setShowSaved]   = useState(false)
+  const [savedCoords, setSavedCoords] = useState<SavedCoordinate[]>([])
+  const [savedError, setSavedError] = useState<string | null>(null)
+  const [saveDialog, setSaveDialog] = useState<SaveDialogState | null>(null)
+  const [saveDialogError, setSaveDialogError] = useState<string | null>(null)
+  const [saving, setSaving]         = useState(false)
   const [showScrollTop, setShowScrollTop] = useState(false)
   const appTopRef = useRef<HTMLDivElement | null>(null)
   const scrollTopHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -373,6 +391,75 @@ export function GearSection() {
     setComboSlots({ head: combo.head, clothing: combo.clothing, shoes: combo.shoes })
   }, [])
 
+  // ── 保存コーデ（#782） ───────────────────────────────────────
+
+  const reloadSavedCoords = useCallback(async () => {
+    try {
+      setSavedCoords(await listSavedCoordinates())
+      setSavedError(null)
+    } catch (e) {
+      setSavedError(t('gear.saved.loadFailed', { error: formatInvokeError(e) }))
+    }
+  }, [t])
+
+  useEffect(() => { void reloadSavedCoords() }, [reloadSavedCoords])
+
+  const handleOpenSaveDialog = useCallback((slots: FullSlots) => {
+    setSaveDialogError(null)
+    setSaveDialog({ mode: 'new', slots })
+  }, [])
+
+  const handleCloseSaveDialog = useCallback(() => setSaveDialog(null), [])
+
+  const handleSubmitSaveDialog = useCallback(async (title: string, memo: string) => {
+    if (!saveDialog) return
+    setSaving(true)
+    setSaveDialogError(null)
+    try {
+      if (saveDialog.mode === 'new') {
+        await saveCoordinate({ title, memo, gears: toCoordinateGears(saveDialog.slots) })
+      } else {
+        await saveCoordinate({ id: saveDialog.coord.id, title, memo, gears: saveDialog.coord.gears })
+      }
+      setSaveDialog(null)
+      await reloadSavedCoords()
+    } catch (e) {
+      setSaveDialogError(t('gear.saved.saveFailed', { error: formatInvokeError(e) }))
+    } finally {
+      setSaving(false)
+    }
+  }, [saveDialog, reloadSavedCoords, t])
+
+  /** 保存コーデをスロットに入れる（手放したギアの部位は空ける） */
+  const handleApplySaved = useCallback((resolved: ResolvedCoordinate) => {
+    setComboSlots({ head: resolved.head.gear, clothing: resolved.clothing.gear, shoes: resolved.shoes.gear })
+  }, [])
+
+  const handleDeleteSaved = useCallback(async (coord: SavedCoordinate) => {
+    try {
+      await deleteSavedCoordinate(coord.id)
+      await reloadSavedCoords()
+    } catch (e) {
+      setSavedError(t('gear.saved.saveFailed', { error: formatInvokeError(e) }))
+    }
+  }, [reloadSavedCoords, t])
+
+  const handleResaveSaved = useCallback(async (coord: SavedCoordinate, resolved: ResolvedCoordinate) => {
+    const { head, clothing, shoes } = resolved
+    if (!head.gear || !clothing.gear || !shoes.gear) return
+    try {
+      await saveCoordinate({
+        id: coord.id,
+        title: coord.title,
+        memo: coord.memo,
+        gears: toCoordinateGears({ head: head.gear, clothing: clothing.gear, shoes: shoes.gear }),
+      })
+      await reloadSavedCoords()
+    } catch (e) {
+      setSavedError(t('gear.saved.saveFailed', { error: formatInvokeError(e) }))
+    }
+  }, [reloadSavedCoords, t])
+
   const activeFilterCount = countActiveFilters(filter)
 
   if (loading) return <div className="gear-root"><div className="status">{t('gear.loading')}</div></div>
@@ -428,8 +515,9 @@ export function GearSection() {
             {tabs.map(({ key, label, icon }) => (
               <button
                 key={key}
-                className={`tab ${activeTab === key ? 'tab--active' : ''}`}
+                className={`tab ${!showSaved && activeTab === key ? 'tab--active' : ''}`}
                 onClick={() => {
+                  setShowSaved(false)
                   setActiveTab(key)
                   // タブ切り替え時: 新しいタブに対応しない発動型フィルターをクリア
                   setFilter(prev => {
@@ -446,6 +534,17 @@ export function GearSection() {
               </button>
             ))}
 
+            <button
+              className={`tab ${showSaved ? 'tab--active' : ''}`}
+              onClick={() => setShowSaved(true)}
+            >
+              <span className="tab__icon">💾</span>
+              {t('gear.saved.tab')}
+              <span className="tab__badge">{savedCoords.length}</span>
+            </button>
+
+            {/* 保存コーデの一覧では絞り込み・並び替えは効かないので出さない */}
+            {!showSaved && <>
             <button
               className={`gear-filter-btn ${activeFilterCount > 0 ? 'gear-filter-btn--active' : ''}`}
               onClick={() => setDrawerOpen(true)}
@@ -480,9 +579,37 @@ export function GearSection() {
                 <option key={key} value={key}>{label}</option>
               ))}
             </select>
+            </>}
           </nav>
         </div>
 
+        {showSaved ? (
+          <>
+            {savedError && (
+              <p className="app-update-error" role="alert">
+                <span className="app-update-error__icon">⚠️</span>
+                {savedError}
+                <button
+                  type="button"
+                  className="app-update-error__dismiss"
+                  onClick={() => setSavedError(null)}
+                  aria-label={t('gear.dismissError')}
+                >✕</button>
+              </p>
+            )}
+            <SavedCoordinateList
+              data={data}
+              coordinates={savedCoords}
+              onApply={handleApplySaved}
+              onEdit={coord => {
+                setSaveDialogError(null)
+                setSaveDialog({ mode: 'edit', coord, resolved: resolveCoordinate(coord, data) })
+              }}
+              onDelete={handleDeleteSaved}
+              onResave={handleResaveSaved}
+            />
+          </>
+        ) : <>
         {/* 絞り込み結果カウント */}
         {activeFilterCount > 0 && (
           <div className="filter-result">
@@ -503,6 +630,7 @@ export function GearSection() {
             <div className="status">{t('gear.noMatch')}</div>
           )}
         </div>
+        </>}
 
         {showScrollTop && (
           <button
@@ -562,7 +690,23 @@ export function GearSection() {
           emptySkillImage={emptySkillImage}
           comboLimit={comboLimit}
           nearLimit={nearLimit}
+          onSaveCombo={handleOpenSaveDialog}
         />
+
+        {saveDialog && (
+          <SaveCoordinateDialog
+            mode={saveDialog.mode}
+            initialTitle={saveDialog.mode === 'new' ? defaultCoordinateTitle(saveDialog.slots, t) : saveDialog.coord.title}
+            initialMemo={saveDialog.mode === 'new' ? '' : saveDialog.coord.memo}
+            gears={saveDialog.mode === 'new'
+              ? saveDialog.slots
+              : { head: saveDialog.resolved.head.gear, clothing: saveDialog.resolved.clothing.gear, shoes: saveDialog.resolved.shoes.gear }}
+            error={saveDialogError}
+            saving={saving}
+            onSave={(title, memo) => { void handleSubmitSaveDialog(title, memo) }}
+            onClose={handleCloseSaveDialog}
+          />
+        )}
 
         <FilterDrawer
           open={drawerOpen}
