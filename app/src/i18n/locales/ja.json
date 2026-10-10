@@ -362,7 +362,10 @@
       "resultsPerfect": "{{total}} 件の候補(タップで適用)",
       "best": "ベスト",
       "near": "惜しい",
-      "points": "{{count}}pt"
+      "points": "{{count}}pt",
+      "shortBy": "あと{{count}}pt",
+      "missingPoints": "−{{count}}pt",
+      "missingSlots": "−{{count}}枠"
     },
     "power": {
       "-1": "アキ",
