@@ -541,7 +541,7 @@ export function GearSection() {
             ))}
 
             <button
-              className={`tab ${showSaved ? 'tab--active' : ''}`}
+              className={`tab tab--coord ${showSaved ? 'tab--active' : ''}`}
               onClick={() => {
                 setShowSaved(true)
                 // コーデタブを開いたらコーデシートも上げる
@@ -553,12 +553,14 @@ export function GearSection() {
               <span className="tab__badge">{savedCoords.length}</span>
             </button>
 
-            {/* 保存コーデの一覧では絞り込み・並び替えは効かないので出さない */}
-            {!showSaved && <>
+            {/* 保存コーデの一覧では絞り込み・並び替えは効かないので出さない。
+                場所は残す（消すとコーデボタンの位置が動く） */}
             <button
-              className={`gear-filter-btn ${activeFilterCount > 0 ? 'gear-filter-btn--active' : ''}`}
+              className={`gear-filter-btn ${activeFilterCount > 0 ? 'gear-filter-btn--active' : ''}${showSaved ? ' gear-tool--hidden' : ''}`}
               onClick={() => setDrawerOpen(true)}
               aria-label={t('gear.filterBtn')}
+              aria-hidden={showSaved || undefined}
+              inert={showSaved}
             >
               <svg
                 width="16"
@@ -580,16 +582,17 @@ export function GearSection() {
             </button>
 
             <select
-              className="sort-select"
+              className={`sort-select${showSaved ? ' gear-tool--hidden' : ''}`}
               value={sortKey}
               onChange={e => setSortKey(e.target.value as SortKey)}
               aria-label={t('gear.sort.aria')}
+              aria-hidden={showSaved || undefined}
+              inert={showSaved}
             >
               {sortOpts.map(({ key, label }) => (
                 <option key={key} value={key}>{label}</option>
               ))}
             </select>
-            </>}
           </nav>
         </div>
 

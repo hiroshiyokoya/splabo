@@ -2395,6 +2395,17 @@
     color: var(--accent);
   }
 
+  /* コーデボタンは頭/服/靴から離し、絞り込みとの中間に置く
+     （絞り込みの margin-left: auto と空きを半分ずつ分ける） */
+  .tab--coord {
+    margin-left: auto;
+  }
+
+  /* コーデタブでは効かない絞り込み・並び替え。場所は残して見えなくする */
+  .gear-tool--hidden {
+    visibility: hidden;
+  }
+
   .coord-heading {
     margin: 0 0 0.75rem;
     font-size: 1rem;
