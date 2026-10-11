@@ -1,8 +1,6 @@
-import type { TFunction } from 'i18next'
 import type { GearCategory, GearDB, GearItem } from '../types'
 import { MAIN_AP, SUB_AP } from './findCombo'
 import { isMainOnly } from '../constants/gearPowerMeta'
-import { skillDisplayName } from './skillDisplayName'
 import { isTauri } from './tauri'
 
 /**
@@ -76,10 +74,27 @@ function writeBrowser(list: SavedCoordinate[]): void {
   try { localStorage.setItem(BROWSER_KEY, JSON.stringify(list)) } catch { /* 開発用なので無視 */ }
 }
 
-export async function listSavedCoordinates(): Promise<SavedCoordinate[]> {
-  if (!isTauri()) return readBrowser()
+function readBrowserCount(): number {
+  try { return Number(localStorage.getItem(`${BROWSER_KEY}:count`) ?? 0) || 0 } catch { return 0 }
+}
+
+function writeBrowserCount(n: number): void {
+  try { localStorage.setItem(`${BROWSER_KEY}:count`, String(n)) } catch { /* 開発用なので無視 */ }
+}
+
+export interface SavedCoordinatesList {
+  coordinates: SavedCoordinate[]
+  /** 次に保存するときのタイトル初期値「コーデN」の番号（保存回数 + 1。削除しても戻らない） */
+  next_number: number
+}
+
+export async function listSavedCoordinates(): Promise<SavedCoordinatesList> {
+  if (!isTauri()) {
+    const coordinates = readBrowser()
+    return { coordinates, next_number: Math.max(readBrowserCount(), coordinates.length) + 1 }
+  }
   const { invoke } = await import('@tauri-apps/api/core')
-  return invoke<SavedCoordinate[]>('list_saved_coordinates')
+  return invoke<SavedCoordinatesList>('list_saved_coordinates')
 }
 
 export async function saveCoordinate(input: SaveCoordinateInput): Promise<SavedCoordinate> {
@@ -91,6 +106,7 @@ export async function saveCoordinate(input: SaveCoordinateInput): Promise<SavedC
       ? { ...existing, title: input.title.trim(), memo: input.memo.trimEnd(), gears: input.gears, updated_at: now }
       : { id: crypto.randomUUID(), title: input.title.trim(), memo: input.memo.trimEnd(), gears: input.gears, created_at: now, updated_at: now }
     writeBrowser(existing ? list.map(c => (c.id === saved.id ? saved : c)) : [...list, saved])
+    if (!existing) writeBrowserCount(Math.max(readBrowserCount(), list.length) + 1)
     return saved
   }
   const { invoke } = await import('@tauri-apps/api/core')
@@ -158,17 +174,4 @@ export function sortApEntries(ap: Map<number, number>): [number, number][] {
     if (aMain !== bMain) return aMain ? -1 : 1
     return bAp - aAp || aId - bId
   })
-}
-
-/** 自動で付けるタイトル（主なギアパワー 2 つ） */
-export function defaultCoordinateTitle(slots: FullSlots, t: TFunction): string {
-  const ap = totalApBySkill([slots.head, slots.clothing, slots.shoes])
-  const names = new Map<number, string>()
-  for (const gear of [slots.head, slots.clothing, slots.shoes]) {
-    for (const s of [gear.primary_skill, ...gear.additional_skills]) names.set(s.id, s.name)
-  }
-  return sortApEntries(ap)
-    .slice(0, 2)
-    .map(([id]) => skillDisplayName({ id, name: names.get(id) ?? '' }, t))
-    .join(' / ')
 }

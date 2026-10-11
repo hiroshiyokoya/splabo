@@ -69,12 +69,30 @@ pub struct SavedCoordinatesFile {
     pub schema: String,
     pub version: u32,
     pub coordinates: Vec<SavedCoordinate>,
+    /// これまでに新規保存した回数（削除しても減らない）。タイトルの初期値「コーデN」の番号に使う。
+    #[serde(default)]
+    pub saved_count: u64,
+}
+
+impl SavedCoordinatesFile {
+    /// これまでの保存回数。`saved_count` を持たない時期に保存したぶんは件数で補う。
+    fn effective_saved_count(&self) -> u64 {
+        self.saved_count.max(self.coordinates.len() as u64)
+    }
 }
 
 impl Default for SavedCoordinatesFile {
     fn default() -> Self {
-        Self { schema: SCHEMA.to_string(), version: VERSION, coordinates: Vec::new() }
+        Self { schema: SCHEMA.to_string(), version: VERSION, coordinates: Vec::new(), saved_count: 0 }
     }
+}
+
+/// `list_saved_coordinates` の戻り値。
+#[derive(Debug, Clone, Serialize)]
+pub struct SavedCoordinatesList {
+    pub coordinates: Vec<SavedCoordinate>,
+    /// 次に保存するときのタイトル初期値の番号（保存回数 + 1）。
+    pub next_number: u64,
 }
 
 /// `save_coordinate` の入力。`id` が既存なら更新、無い・未知なら新規作成。
@@ -155,6 +173,7 @@ pub fn upsert(path: &Path, input: SaveCoordinateInput) -> Result<SavedCoordinate
                 updated_at: now,
                 gears: input.gears,
             };
+            file.saved_count = file.effective_saved_count() + 1;
             file.coordinates.push(c.clone());
             c
         }
@@ -189,10 +208,15 @@ pub fn export_bytes(path: &Path) -> Result<Vec<u8>, String> {
 }
 
 #[tauri::command]
-pub fn list_saved_coordinates(app: AppHandle) -> Result<Vec<SavedCoordinate>, String> {
+pub fn list_saved_coordinates(app: AppHandle) -> Result<SavedCoordinatesList, String> {
     let path = file_path(&app)?;
     let _guard = FILE_LOCK.lock().map_err(|e| e.to_string())?;
-    Ok(read_file(&path)?.coordinates)
+    Ok(list(read_file(&path)?))
+}
+
+fn list(file: SavedCoordinatesFile) -> SavedCoordinatesList {
+    let next_number = file.effective_saved_count() + 1;
+    SavedCoordinatesList { coordinates: file.coordinates, next_number }
 }
 
 #[tauri::command]
@@ -273,6 +297,31 @@ mod tests {
         remove(&path, "nope").unwrap();
         let ids: Vec<_> = read_file(&path).unwrap().coordinates.into_iter().map(|c| c.id).collect();
         assert_eq!(ids, vec![b.id]);
+    }
+
+    #[test]
+    fn next_number_counts_saves_and_does_not_go_back_on_delete() {
+        let path = temp_path("number");
+        assert_eq!(list(read_file(&path).unwrap()).next_number, 1);
+
+        let a = upsert(&path, input(None, "a")).unwrap();
+        upsert(&path, input(None, "b")).unwrap();
+        // 更新は回数に数えない。
+        upsert(&path, input(Some(&a.id), "a2")).unwrap();
+        assert_eq!(list(read_file(&path).unwrap()).next_number, 3);
+
+        remove(&path, &a.id).unwrap();
+        assert_eq!(list(read_file(&path).unwrap()).next_number, 3);
+    }
+
+    #[test]
+    fn next_number_covers_files_without_saved_count() {
+        let path = temp_path("legacy");
+        upsert(&path, input(None, "a")).unwrap();
+        upsert(&path, input(None, "b")).unwrap();
+        let mut file = read_file(&path).unwrap();
+        file.saved_count = 0;
+        assert_eq!(list(file).next_number, 3);
     }
 
     #[test]

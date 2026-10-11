@@ -7,7 +7,7 @@ import { SavedCoordinateList } from './components/SavedCoordinateList'
 import { SaveCoordinateDialog } from './components/SaveCoordinateDialog'
 import {
   listSavedCoordinates, saveCoordinate, deleteSavedCoordinate,
-  toCoordinateGears, defaultCoordinateTitle, resolveCoordinate,
+  toCoordinateGears, resolveCoordinate,
 } from './utils/savedCoordinates'
 import type { FullSlots, ResolvedCoordinate, SavedCoordinate } from './utils/savedCoordinates'
 import { useGearDB, saveLastFetchedAt } from './hooks/useGearDB'
@@ -225,6 +225,7 @@ export function GearSection() {
   const [comboSlots, setComboSlots] = useState<ComboSlots>(emptySlots)
   const [showSaved, setShowSaved]   = useState(false)
   const [savedCoords, setSavedCoords] = useState<SavedCoordinate[]>([])
+  const [nextNumber, setNextNumber] = useState(1)
   const [savedError, setSavedError] = useState<string | null>(null)
   const [saveDialog, setSaveDialog] = useState<SaveDialogState | null>(null)
   const [saveDialogError, setSaveDialogError] = useState<string | null>(null)
@@ -395,7 +396,9 @@ export function GearSection() {
 
   const reloadSavedCoords = useCallback(async () => {
     try {
-      setSavedCoords(await listSavedCoordinates())
+      const list = await listSavedCoordinates()
+      setSavedCoords(list.coordinates)
+      setNextNumber(list.next_number)
       setSavedError(null)
     } catch (e) {
       setSavedError(t('gear.saved.loadFailed', { error: formatInvokeError(e) }))
@@ -696,7 +699,7 @@ export function GearSection() {
         {saveDialog && (
           <SaveCoordinateDialog
             mode={saveDialog.mode}
-            initialTitle={saveDialog.mode === 'new' ? defaultCoordinateTitle(saveDialog.slots, t) : saveDialog.coord.title}
+            initialTitle={saveDialog.mode === 'new' ? t('gear.saved.defaultTitle', { n: nextNumber }) : saveDialog.coord.title}
             initialMemo={saveDialog.mode === 'new' ? '' : saveDialog.coord.memo}
             gears={saveDialog.mode === 'new'
               ? saveDialog.slots
