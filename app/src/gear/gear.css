@@ -2395,6 +2395,13 @@
     color: var(--accent);
   }
 
+  .coord-heading {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+
   .coord-empty {
     padding: 3rem 1rem;
     font-size: 0.9rem;

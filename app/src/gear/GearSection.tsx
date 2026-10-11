@@ -542,9 +542,13 @@ export function GearSection() {
 
             <button
               className={`tab ${showSaved ? 'tab--active' : ''}`}
-              onClick={() => setShowSaved(true)}
+              onClick={() => {
+                setShowSaved(true)
+                // コーデタブを開いたらコーデシートも上げる
+                setComboOpenRequest(n => n + 1)
+              }}
             >
-              <span className="tab__icon">💾</span>
+              <span className="tab__icon">🎮</span>
               {t('gear.saved.tab')}
               <span className="tab__badge">{savedCoords.length}</span>
             </button>
@@ -591,6 +595,7 @@ export function GearSection() {
 
         {showSaved ? (
           <>
+            <h2 className="coord-heading">{t('gear.saved.heading')}</h2>
             {savedError && (
               <p className="app-update-error" role="alert">
                 <span className="app-update-error__icon">⚠️</span>
