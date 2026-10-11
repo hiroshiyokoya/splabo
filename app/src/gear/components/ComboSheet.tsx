@@ -88,9 +88,11 @@ interface Props {
   nearLimit?:       number
   /** 3 部位そろったコーデを保存する(#782) */
   onSaveCombo?:     (slots: FullSlots) => void
+  /** 値が変わるたびに、閉じていればシートを開く(保存コーデをスロットに入れたとき・#782) */
+  openRequest?:     number
 }
 
-export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '', comboLimit = 50, nearLimit = 10, onSaveCombo }: Props) {
+export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '', comboLimit = 50, nearLimit = 10, onSaveCombo, openRequest = 0 }: Props) {
   const { t } = useTranslation()
   const emptyLabel = t('gear.empty')
   const [isOpen, setIsOpen]             = useState(false)
@@ -117,6 +119,13 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
   const comboStepperCtxRef = useRef({ skillPoints, remainingPool: 0, aAvail: 3 })
 
   useEffect(() => { onIsOpenChange?.(isOpen) }, [isOpen])
+
+  // 外からの「開いて」(保存コーデの適用など)。開いているときは高さを変えない
+  useEffect(() => {
+    if (openRequest === 0 || isOpen) return
+    setIsOpen(true)
+    setSnapExpanded(false)
+  }, [openRequest])
 
   // リストから別ギアが入ったら UNDO スナップショットを破棄。埋まったら UNDO ボタン表示も止める
   useEffect(() => {

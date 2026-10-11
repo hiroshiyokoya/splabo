@@ -223,6 +223,7 @@ export function GearSection() {
   const [filter, setFilter]               = useState<FilterState>(emptyFilter)
   const [comboOpen, setComboOpen]   = useState(false)
   const [comboSlots, setComboSlots] = useState<ComboSlots>(emptySlots)
+  const [comboOpenRequest, setComboOpenRequest] = useState(0)
   const [showSaved, setShowSaved]   = useState(false)
   const [savedCoords, setSavedCoords] = useState<SavedCoordinate[]>([])
   const [nextNumber, setNextNumber] = useState(1)
@@ -436,6 +437,8 @@ export function GearSection() {
   /** 保存コーデをスロットに入れる（手放したギアの部位は空ける） */
   const handleApplySaved = useCallback((resolved: ResolvedCoordinate) => {
     setComboSlots({ head: resolved.head.gear, clothing: resolved.clothing.gear, shoes: resolved.shoes.gear })
+    // コーデシートが閉じていたら開いて、入れた中身を見せる
+    setComboOpenRequest(n => n + 1)
   }, [])
 
   const handleDeleteSaved = useCallback(async (coord: SavedCoordinate) => {
@@ -694,6 +697,7 @@ export function GearSection() {
           comboLimit={comboLimit}
           nearLimit={nearLimit}
           onSaveCombo={handleOpenSaveDialog}
+          openRequest={comboOpenRequest}
         />
 
         {saveDialog && (
