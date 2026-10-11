@@ -1,6 +1,6 @@
 import type { GearCategory, GearDB, GearItem } from '../types'
 import { MAIN_AP, SUB_AP } from './findCombo'
-import { isMainOnly } from '../constants/gearPowerMeta'
+import { makeSkillDisplayComparator } from '../constants/gearPowerMeta'
 import { isTauri } from './tauri'
 
 /**
@@ -168,10 +168,6 @@ export function totalApBySkill(gears: (GearItem | null)[]): Map<number, number> 
 
 /** 合計 AP の表示順（発動型が先、そのあと AP の高い順） */
 export function sortApEntries(ap: Map<number, number>): [number, number][] {
-  return [...ap.entries()].sort(([aId, aAp], [bId, bAp]) => {
-    const aMain = isMainOnly(aId)
-    const bMain = isMainOnly(bId)
-    if (aMain !== bMain) return aMain ? -1 : 1
-    return bAp - aAp || aId - bId
-  })
+  const compare = makeSkillDisplayComparator()
+  return [...ap.entries()].sort(([aId], [bId]) => compare(aId, bId))
 }

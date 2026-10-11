@@ -162,6 +162,34 @@ export function getStackableSkillSortRank(skillId: number): number {
   return idx === -1 ? Number.POSITIVE_INFINITY : idx
 }
 
+const MAIN_ONLY_CATEGORY_ORDER: GearCategory[] = ['head', 'clothing', 'shoes']
+
+/**
+ * 合計 AP の並び順（コーデによらず固定）を比べる関数を作る。
+ * 発動型（頭 → 服 → 靴、部位内は既定の順）→ スタック型（設定の順・#773）。
+ * スタック型の順は作った時点で 1 回だけ読む（並び替えのたびに localStorage を読まない）。
+ */
+export function makeSkillDisplayComparator(): (a: number, b: number) => number {
+  const stackOrder = loadStackableSkillOrder()
+  const rank = (id: number): [number, number] => {
+    if (isMainOnly(id)) {
+      const cat = MAIN_ONLY_SKILL_CATEGORY[id]
+      const catIdx = cat ? MAIN_ONLY_CATEGORY_ORDER.indexOf(cat) : MAIN_ONLY_CATEGORY_ORDER.length
+      const inCat = cat ? getMainOnlySkillSortRank(id, cat) : Number.POSITIVE_INFINITY
+      return [catIdx, inCat]
+    }
+    const idx = stackOrder.indexOf(id)
+    return [MAIN_ONLY_CATEGORY_ORDER.length + 1, idx === -1 ? Number.POSITIVE_INFINITY : idx]
+  }
+  return (a, b) => {
+    const [ga, ra] = rank(a)
+    const [gb, rb] = rank(b)
+    if (ga !== gb) return ga - gb
+    if (ra !== rb) return ra < rb ? -1 : 1
+    return a - b
+  }
+}
+
 /** ギアパワーの種別 */
 export type GearPowerType = 'stackable' | 'main_only'
 

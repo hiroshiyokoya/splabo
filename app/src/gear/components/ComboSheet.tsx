@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { GearCategory, GearItem, GearDB, Skill } from '../types'
 import { findCombo, MAIN_AP, SUB_AP, getComboSortKey, comboBestBadgeKeysEqual } from '../utils/findCombo'
 import type { ComboResult, ComboSortKey } from '../utils/findCombo'
-import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from '../constants/gearPowerMeta'
+import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank, makeSkillDisplayComparator } from '../constants/gearPowerMeta'
 import { skillDisplayName } from '../utils/skillDisplayName'
 import { gearItemDisplayName, gearBrandDisplayName } from '../utils/gearItemDisplayName'
 import type { FullSlots } from '../utils/savedCoordinates'
@@ -169,6 +169,8 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
   const [searching, setSearching]       = useState(false)
 
   const totalAp   = useMemo(() => calcTotalAp(slots), [slots])
+  /** 合計 AP の並び順（発動型 → スタック型の固定順。コーデによって変わらない） */
+  const compareSkill = makeSkillDisplayComparator()
   const anyFilled = slots.head !== null || slots.clothing !== null || slots.shoes !== null
   const fullSlots: FullSlots | null = slots.head && slots.clothing && slots.shoes
     ? { head: slots.head, clothing: slots.clothing, shoes: slots.shoes }
@@ -678,13 +680,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
               <span className="combo-ap-bar__label">{t('gear.combo.totalAp')}</span>
               <div className="combo-ap-chips">
                 {[...totalAp.entries()]
-                  .sort(([aId, a], [bId, b]) => {
-                    const aMain = isMainOnly(aId)
-                    const bMain = isMainOnly(bId)
-                    if (aMain && !bMain) return -1
-                    if (!aMain && bMain) return 1
-                    return b.ap - a.ap
-                  })
+                  .sort(([aId], [bId]) => compareSkill(aId, bId))
                   .map(([id, { name, ap, image }]) => {
                     const displayName = skillDisplayName({ id, name }, t)
                     return (
@@ -841,13 +837,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                       </div>
                       <div className="combo-result-row__ap">
                         {Object.entries(combo.allApBySkill)
-                          .sort(([aId, aAp], [bId, bAp]) => {
-                            const aMain = isMainOnly(Number(aId))
-                            const bMain = isMainOnly(Number(bId))
-                            if (aMain && !bMain) return -1
-                            if (!aMain && bMain) return 1
-                            return bAp - aAp
-                          })
+                          .sort(([aId], [bId]) => compareSkill(Number(aId), Number(bId)))
                           .map(([skillIdStr, ap]) => {
                             const sid = Number(skillIdStr)
                             const mainOnly = isMainOnly(sid)
