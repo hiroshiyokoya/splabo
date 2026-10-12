@@ -323,6 +323,7 @@
     "winRate": "勝率",
     "battlesCount": "{{count}} 戦",
     "winsLosses": "{{wins}} 勝 {{losses}} 敗",
+    "record": "{{total}}戦（{{wins}}勝{{losses}}敗）",
     "avgKda": "平均 {{k}}({{a}}) / {{d}}",
     "byRule": "ルール別",
     "topWeapons": "よく使うブキ",

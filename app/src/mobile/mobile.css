@@ -379,17 +379,24 @@ html, body {
   background: var(--accent);
 }
 
-.m-bar-row__value {
-  flex: 0 0 40px;
-  text-align: right;
+/* 勝率と、その下に「何戦（何勝何敗）」 */
+.m-record {
+  flex: 0 0 auto;
+  min-width: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+}
+
+.m-record__rate {
   font-weight: 700;
 }
 
-.m-bar-row__count {
-  flex: 0 0 36px;
-  text-align: right;
-  color: var(--text-muted);
+.m-record__detail {
   font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .m-battle-row {

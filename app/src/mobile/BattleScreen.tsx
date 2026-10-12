@@ -57,6 +57,18 @@ function pct(rate: number | null | undefined): string {
   return rate == null ? '—' : `${Math.round(rate * 100)}%`
 }
 
+/** 勝率と、その内訳（何戦・何勝何敗）。引き分けは勝ちにも負けにも数えない */
+function RecordCell({ g }: { g: GroupStat }) {
+  const { t } = useTranslation()
+  const losses = g.total - g.wins - g.draws
+  return (
+    <span className="m-record">
+      <span className="m-record__rate">{pct(g.win_rate)}</span>
+      <span className="m-record__detail">{t('mobile.record', { total: g.total, wins: g.wins, losses })}</span>
+    </span>
+  )
+}
+
 function fmtTime(iso: string, locale: string): string {
   return new Date(iso).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
@@ -171,8 +183,7 @@ export function BattleScreen() {
               <span className="m-bar">
                 <span className="m-bar__fill" style={{ width: `${Math.round((g.win_rate ?? 0) * 100)}%` }} />
               </span>
-              <span className="m-bar-row__value">{pct(g.win_rate)}</span>
-              <span className="m-bar-row__count">{g.total}</span>
+              <RecordCell g={g} />
             </div>
           ))}
         </section>
@@ -187,8 +198,7 @@ export function BattleScreen() {
                 {weaponImages.get(g.name) && <img src={weaponImages.get(g.name)} alt="" />}
                 <span>{(en ? g.name_en : g.name_ja) ?? g.name}</span>
               </span>
-              <span className="m-bar-row__value">{pct(g.win_rate)}</span>
-              <span className="m-bar-row__count">{g.total}</span>
+              <RecordCell g={g} />
             </div>
           ))}
         </section>

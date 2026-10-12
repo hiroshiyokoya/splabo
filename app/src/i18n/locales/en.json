@@ -323,6 +323,7 @@
     "winRate": "Win rate",
     "battlesCount": "{{count}} battles",
     "winsLosses": "{{wins}} W {{losses}} L",
+    "record": "{{total}} ({{wins}}W {{losses}}L)",
     "avgKda": "Avg {{k}}({{a}}) / {{d}}",
     "byRule": "By mode",
     "topWeapons": "Most used weapons",
