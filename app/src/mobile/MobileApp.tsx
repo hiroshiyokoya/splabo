@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { call, BackendUnauthorizedError, BackendUnreachableError, MOBILE_REFRESH_EVENT } from '../utils/backend'
 import { GearSection } from '../gear/GearSection'
+import { BattleScreen } from './BattleScreen'
 import { requestPcUpdate } from './pcUpdate'
 import type { SessionResult } from './session'
 
@@ -21,7 +22,7 @@ const REFRESH_AFTER_HIDDEN_MS = 30 * 1000
 /** 更新結果の表示を消すまで */
 const UPDATE_NOTE_MS = 4000
 
-type Section = 'gear'
+type Section = 'battle' | 'gear'
 
 /** つながらないときの案内（#788・設計 #784 §8） */
 export function ConnectionProblem({ connection, onRetry }: { connection: Connection; onRetry: () => void }) {
@@ -59,7 +60,7 @@ export function MobileApp({ session }: { session: SessionResult }) {
   const [connection, setConnection] = useState<Connection>(
     session === 'rejected' ? 'unauthorized' : session === 'unreachable' ? 'unreachable' : 'checking',
   )
-  const [section, setSection] = useState<Section>('gear')
+  const [section, setSection] = useState<Section>('battle')
   const [updating, setUpdating] = useState(false)
   const [updateNote, setUpdateNote] = useState<{ ok: boolean; text: string } | null>(null)
   const hiddenAt = useRef<number | null>(null)
@@ -124,6 +125,13 @@ export function MobileApp({ session }: { session: SessionResult }) {
             <nav className="m-nav">
               <button
                 type="button"
+                className={`m-nav__item${section === 'battle' ? ' m-nav__item--active' : ''}`}
+                onClick={() => setSection('battle')}
+              >
+                {t('mobile.navBattle')}
+              </button>
+              <button
+                type="button"
                 className={`m-nav__item${section === 'gear' ? ' m-nav__item--active' : ''}`}
                 onClick={() => setSection('gear')}
               >
@@ -152,6 +160,7 @@ export function MobileApp({ session }: { session: SessionResult }) {
         {(connection === 'unauthorized' || connection === 'unreachable') && (
           <ConnectionProblem connection={connection} onRetry={check} />
         )}
+        {connection === 'ok' && section === 'battle' && <BattleScreen />}
         {connection === 'ok' && section === 'gear' && <GearSection />}
       </main>
     </div>

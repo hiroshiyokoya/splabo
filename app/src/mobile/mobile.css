@@ -257,3 +257,212 @@ html, body {
   color: var(--text-muted);
   font-size: 13px;
 }
+
+/* ── バトル（#791） ── */
+
+.m-battle {
+  padding: 10px 10px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.m-periods {
+  display: flex;
+  gap: 6px;
+}
+
+.m-period {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.m-period--active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.m-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.m-card__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.m-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.m-stats__main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 84px;
+}
+
+.m-stats__rate {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1.1;
+}
+
+.m-stats__label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.m-stats__sub {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.m-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.m-bar-row__label {
+  flex: 0 0 96px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-bar-row__label--weapon {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.m-bar-row__label--weapon img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.m-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface2);
+  overflow: hidden;
+}
+
+.m-bar__fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.m-bar-row__value {
+  flex: 0 0 40px;
+  text-align: right;
+  font-weight: 700;
+}
+
+.m-bar-row__count {
+  flex: 0 0 36px;
+  text-align: right;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.m-battle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.m-battle-row__weapon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.m-battle-row__weapon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.m-battle-row__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.m-battle-row__line1 {
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-battle-row__line2 {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.m-battle-row__kda {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.m-battle-row__kda small {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.m-result {
+  flex: 0 0 auto;
+  min-width: 44px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 6px;
+  padding: 3px 6px;
+}
+
+.m-result--win { background: color-mix(in srgb, var(--win) 20%, transparent); color: var(--win); }
+.m-result--lose { background: color-mix(in srgb, var(--lose) 20%, transparent); color: var(--lose); }
+.m-result--draw { background: color-mix(in srgb, var(--draw) 20%, transparent); color: var(--draw); }
+
+.m-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 8px 0;
+}
+
+.m-more {
+  width: 100%;
+  margin-top: 8px;
+}
