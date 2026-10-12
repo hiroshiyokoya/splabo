@@ -87,6 +87,7 @@ cargo check                # workspace 全体の Rust 型チェック
 
 - Windows では Node.js が PATH に無いことがある（`$env:ProgramFiles\nodejs` を前置する）。
 - npm script は `-w app` で対象 workspace を指定して呼ぶ。tauri CLI に渡す引数は `--` の後ろに書く（`npx tauri dev -w app` は `-w` が tauri CLI 側に渡って失敗する）。
+- **スマホ Web 版（`app/mobile.html`・`app/src/mobile/`）は、dev 版でも `app/dist/` から配られる**（コンパニオンサーバーが Tauri の `asset_resolver` で読むため。Vite の dev サーバーは通らず、ホットリロードも効かない）。スマホ画面を変えたら `npm run build -w app` してから、スマホのブラウザで再読み込みする。開くには dev 版の 設定 →「スマホで見る」をオンにして QR を読む。
 
 ---
 
