@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -92,6 +93,17 @@ export default defineConfig(async () => ({
 
   define: {
     __GIT_SHA__: JSON.stringify(gitShortSha()),
+  },
+
+  // デスクトップ（index.html）とスマホ Web 版（mobile.html・#788）の 2 ページ。
+  // mobile.html はコンパニオンサーバーが `/m/` で配信する。
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        mobile: fileURLToPath(new URL("./mobile.html", import.meta.url)),
+      },
+    },
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

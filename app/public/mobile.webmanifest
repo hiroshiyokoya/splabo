@@ -1,0 +1,12 @@
+{
+  "name": "SpLabo",
+  "short_name": "SpLabo",
+  "start_url": "/m/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#1a1a1e",
+  "theme_color": "#1a1a1e",
+  "icons": [
+    { "src": "/splabo-favicon.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

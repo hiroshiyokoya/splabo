@@ -298,6 +298,17 @@
     "customModelId": "カスタムモデル ID",
     "aiPriceNote": "価格・コンテキスト長は 2026 年 5 月時点の情報。最新は各プロバイダの公式料金ページを参照してください。"
   },
+  "mobile": {
+    "connecting": "PC に接続しています…",
+    "connected": "PC に接続しました（バトル {{count}} 件）",
+    "unauthorizedTitle": "QR コードを読み直してください",
+    "unauthorizedBody": "PC の SpLabo の 設定 →「スマホで見る」に出ている QR コードを、スマホのカメラで読み取ってください。トークンを再発行したときや、初めて開くときに必要です。",
+    "unreachableTitle": "PC に接続できません",
+    "unreachableCheckOn": "PC で SpLabo が起動していて、設定の「スマホで見る」がオンになっているか",
+    "unreachableCheckWifi": "スマホと PC が同じ Wi-Fi（同じネットワーク）につながっているか",
+    "unreachableCheckPrivate": "Windows のネットワークが「パブリック」になっていないか（「プライベート」にする）",
+    "retry": "もう一度試す"
+  },
   "gear": {
     "tab": {
       "head": "頭ギア",
