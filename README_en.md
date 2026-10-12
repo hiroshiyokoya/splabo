@@ -35,7 +35,7 @@ splabo/
   - List: paginated battle history. Detail modal shows team composition, gear, rank / X Power changes
 - **Weapons** — Panel and List views. List columns sort on header click; filter by category / sub / special. Official-app records (freshness, total wins, total turf inked, Challenge Power) are available. Detail shows frequently played stages, high win-rate stages, and per-mode win rates
 - **Stages** — Panel and List views. Your stats plus official-app all-time win rates by mode
-- **Gear loadouts** — fetch owned gear and combine abilities into loadouts (former geartoon)
+- **Gear loadouts** — fetch owned gear, combine abilities into loadouts, and save them with a title and note (former geartoon)
 - **Meta analysis** — import public [stat.ink](https://stat.ink/) battles and analyze community pick rates and win rates with scatter plots and matrix heatmaps. Import start date is under Settings → Data (default: 2025-01-01 onward). Filter by period, lobby, mode, weapon (select by category heading), stage, version, and rank band (all-time / current season / 1 year / 180 days / 30 days / custom). Matching battle count is shown. Aggregation matches stat.ink overall stats: the other 7 players (excluding the uploader)
 - **stat.ink auto-upload** — upload fetched battles to [stat.ink](https://stat.ink/) when an API key is set. The same UUID v5 namespace as s3s deduplicates identical battles
 - **Save panels** — save Dashboard and Meta Analysis panels as **PNG** or **HTML** (button at the top-right of each panel). Images/HTML include title, filters, the splabo logo, and credit. PNG keeps pixels outside rounded corners transparent. Open HTML in a browser to hover scatter tooltips; weapon-icon scatter plots still spread overlapping points
