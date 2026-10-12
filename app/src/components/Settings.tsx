@@ -62,6 +62,8 @@ interface CompanionInfo {
 interface CompanionStatus {
   running: boolean
   port: number | null
+  /** 保存済みのポート(止まっているときも表示する・#787)。 */
+  configured_port: number
 }
 
 /** companion_diagnostics の戻り値(Rust companion.rs::CompanionDiagnostics に対応・#363)。 */
@@ -80,6 +82,14 @@ interface CompanionDiagnostics {
  */
 function pairingPayload(info: CompanionInfo): string {
   return JSON.stringify({ v: 1, hosts: info.host_ips, port: info.port, token: info.token })
+}
+
+/**
+ * スマホ Web 版の URL(#787・設計 #784 §5)。トークンは `#` 以降に載せる
+ * (サーバーに送られず、ログにも残らない。ページが読んで Cookie に交換する)。
+ */
+function webUrl(info: CompanionInfo, host: string): string {
+  return `http://${host}:${info.port}/m/#t=${info.token}`
 }
 
 export function Settings({ settings, onSave, loginVersion, focus }: Props) {
@@ -147,6 +157,10 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   const [companionError, setCompanionError] = useState<string | null>(null)
   // 接続トラブルの自己診断(#363)。有効化中のみ取得する。
   const [companionDiag, setCompanionDiag] = useState<CompanionDiagnostics | null>(null)
+  // ポート(#787)。入力中の値は文字列で持ち、「変更」で保存する。
+  const [companionPort, setCompanionPort] = useState('')
+  const [companionNotice, setCompanionNotice] = useState<string | null>(null)
+  const [urlCopied, setUrlCopied] = useState(false)
 
   useEffect(() => {
     if (companionInfo) {
@@ -166,6 +180,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   useEffect(() => {
     call<CompanionStatus>('companion_status')
       .then(st => {
+        setCompanionPort(String(st.configured_port))
         if (st.running) {
           return call<CompanionInfo>('companion_start').then(setCompanionInfo)
         }
@@ -354,6 +369,54 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
     }
   }
 
+  /** トークン・ポートを変えたあと、稼働中なら新しい情報で QR を出し直す。 */
+  async function refreshCompanionInfo() {
+    const st = await call<CompanionStatus>('companion_status')
+    setCompanionPort(String(st.configured_port))
+    setCompanionInfo(st.running ? await call<CompanionInfo>('companion_start') : null)
+  }
+
+  async function handleSaveCompanionPort() {
+    const port = Number(companionPort)
+    if (!Number.isInteger(port)) return
+    setCompanionBusy(true)
+    setCompanionError(null)
+    setCompanionNotice(null)
+    try {
+      await call('companion_set_port', { port })
+    } catch (e) {
+      setCompanionError(formatInvokeError(e))
+    } finally {
+      await refreshCompanionInfo().catch(() => {})
+      setCompanionBusy(false)
+    }
+  }
+
+  async function handleRegenerateToken() {
+    setCompanionBusy(true)
+    setCompanionError(null)
+    setCompanionNotice(null)
+    try {
+      await call('companion_regenerate_token')
+      setCompanionNotice(t('settings.companionRegenerated'))
+    } catch (e) {
+      setCompanionError(formatInvokeError(e))
+    } finally {
+      await refreshCompanionInfo().catch(() => {})
+      setCompanionBusy(false)
+    }
+  }
+
+  async function handleCopyUrl(url: string) {
+    try {
+      await navigator.clipboard.writeText(url)
+      setUrlCopied(true)
+      setTimeout(() => setUrlCopied(false), 1500)
+    } catch {
+      // コピーできない環境でも URL は画面に出ているので、手で写せる
+    }
+  }
+
   return (
     <div className="settings-panel">
       <div className="settings-header">
@@ -467,8 +530,8 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
       </section>
       )}
 
-      {/* モバイル同期 UI は splabo-viewer 公開までリリースビルドでは隠す(#339)。 */}
-      {subTab === 'link' && isDevBuild && (
+      {/* スマホで見る(コンパニオン・#787)。スマホ Web 版の入口なのでリリースビルドでも出す(#339 のガードは解除)。 */}
+      {subTab === 'link' && (
       <section className="settings-section">
         <h3>{t('settings.companion')}</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
@@ -488,7 +551,10 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
             {t('common.errorWithDetail', { detail: companionError })}
           </p>
         )}
-        {companionInfo && (
+        {companionNotice && (
+          <p style={{ color: 'var(--win)', fontSize: 13, margin: '8px 0 0' }}>{companionNotice}</p>
+        )}
+        {companionInfo && companionInfo.host_ips.length > 0 && (
           <div style={{ marginTop: 14 }}>
             <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
               {t('settings.companionQr')}
@@ -501,14 +567,34 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
                 borderRadius: 8,
               }}
             >
-              <QRCodeSVG value={pairingPayload(companionInfo)} size={192} level="M" />
+              <QRCodeSVG value={webUrl(companionInfo, companionInfo.host_ips[0])} size={192} level="M" />
             </div>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '10px 0 0' }}>
-              {t('settings.companionEndpoint', {
-                hosts: companionInfo.host_ips.length > 0 ? companionInfo.host_ips.join(', ') : t('common.unknownIp'),
-                port: companionInfo.port,
-              })}
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0 0', flexWrap: 'wrap' }}>
+              <code style={{ fontSize: 12, wordBreak: 'break-all' }}>
+                {webUrl(companionInfo, companionInfo.host_ips[0])}
+              </code>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => handleCopyUrl(webUrl(companionInfo, companionInfo.host_ips[0]))}
+              >
+                {urlCopied ? t('settings.companionCopied') : t('settings.companionCopy')}
+              </button>
+            </div>
+            {companionInfo.host_ips.length > 1 && (
+              <div style={{ color: 'var(--text-muted)', fontSize: 12, margin: '8px 0 0' }}>
+                {t('settings.companionOtherUrls')}
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                  {companionInfo.host_ips.slice(1).map(ip => (
+                    <li key={ip}><code style={{ wordBreak: 'break-all' }}>{webUrl(companionInfo, ip)}</code></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+        {companionInfo && (
+          <div>
             {companionInfo.host_ips.length === 0 && (
               <p style={{ color: 'var(--lose)', fontSize: 12, margin: '4px 0 0' }}>
                 {t('settings.companionNoLan')}
@@ -530,6 +616,67 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
               {t('settings.companionFwHint')}
             </p>
           </div>
+        )}
+
+        {/* ポート(#787)。止まっているときも変えられる */}
+        <div style={{ marginTop: 16 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {t('settings.companionPort')}
+            <input
+              type="number"
+              min={1024}
+              max={65535}
+              value={companionPort}
+              disabled={companionBusy}
+              onChange={(e) => setCompanionPort(e.target.value)}
+              style={{ width: 100 }}
+            />
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={companionBusy || companionPort === ''}
+              onClick={handleSaveCompanionPort}
+            >
+              {t('settings.companionPortSave')}
+            </button>
+          </label>
+          <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '4px 0 0' }}>
+            {t('settings.companionPortHint')}
+          </p>
+        </div>
+
+        {/* トークンの再発行(#787) */}
+        <div style={{ marginTop: 12 }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={companionBusy}
+            onClick={handleRegenerateToken}
+          >
+            {t('settings.companionRegenerate')}
+          </button>
+          <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '4px 0 0' }}>
+            {t('settings.companionRegenerateHint')}
+          </p>
+        </div>
+
+        {/* splabo-viewer(Android アプリ)用。viewer はしばらく置いておくので、QR も残す */}
+        {companionInfo && (
+          <details style={{ marginTop: 16 }}>
+            <summary style={{ cursor: 'pointer', fontSize: 13 }}>{t('settings.companionViewerQr')}</summary>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '8px 0' }}>
+              {t('settings.companionViewerQrHint')}
+            </p>
+            <div style={{ display: 'inline-block', padding: 12, background: '#fff', borderRadius: 8 }}>
+              <QRCodeSVG value={pairingPayload(companionInfo)} size={160} level="M" />
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '8px 0 0' }}>
+              {t('settings.companionEndpoint', {
+                hosts: companionInfo.host_ips.length > 0 ? companionInfo.host_ips.join(', ') : t('common.unknownIp'),
+                port: companionInfo.port,
+              })}
+            </p>
+          </details>
         )}
       </section>
       )}

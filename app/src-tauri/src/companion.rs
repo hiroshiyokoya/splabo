@@ -108,6 +108,8 @@ pub struct CompanionInfo {
 pub struct CompanionStatus {
     pub running: bool,
     pub port: Option<u16>,
+    /// 保存済みのポート（止まっているときも設定画面に出す・#787）。
+    pub configured_port: u16,
 }
 
 // ---------------------------------------------------------------------------
@@ -999,42 +1001,122 @@ fn resolve_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// コンパニオンサーバーを起動する。
-///
-/// ランダムトークン発行 → 空きポートで HTTP サーバー起動 → mDNS 広告 →
-/// `{host_ips, port, token}` を返す（ペアリング QR 用）。
-/// 既に稼働中なら現行の情報をそのまま返す（多重起動しない）。
-#[tauri::command]
-pub fn companion_start(
-    app: AppHandle,
-    state: State<'_, CompanionState>,
-) -> Result<CompanionInfo, String> {
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+// ---------------------------------------------------------------------------
+// 設定（#787・設計 #784 §5・§6）
+// ---------------------------------------------------------------------------
 
-    // 既に稼働中: 現行情報を返す。
+/// 既定のポート。スマホのショートカット（URL）が変わらないよう固定にする。
+pub const DEFAULT_PORT: u16 = 47620;
+
+const CONFIG_FILE: &str = "companion.json";
+
+fn default_port() -> u16 {
+    DEFAULT_PORT
+}
+
+/// `app_data_dir()/companion.json`。オン/オフ・ポート・トークンを保存する。
+///
+/// - トークンは起動ごとに変えず固定にする（スマホのショートカットを PC の再起動で壊さない）。
+///   「再発行」で作り直すと、古いトークンも Cookie も無効になる。
+/// - `enabled` が true なら、アプリ起動時にサーバーを立ち上げる（[`autostart`]）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CompanionConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_port")]
+    pub port: u16,
+    #[serde(default)]
+    pub token: String,
+}
+
+impl Default for CompanionConfig {
+    fn default() -> Self {
+        Self { enabled: false, port: DEFAULT_PORT, token: String::new() }
+    }
+}
+
+fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("アプリデータディレクトリ解決失敗: {e}"))?
+        .join(CONFIG_FILE))
+}
+
+/// 設定を読む。無い・壊れているときは既定値（壊れていても起動は妨げない）。
+fn load_config(path: &std::path::Path) -> CompanionConfig {
+    std::fs::read(path)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+fn save_config(path: &std::path::Path, cfg: &CompanionConfig) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_vec_pretty(cfg).map_err(|e| e.to_string())?;
+    std::fs::write(path, json).map_err(|e| e.to_string())
+}
+
+/// トークンが無ければ作る。作ったら true（保存が要る）。
+fn ensure_token(cfg: &mut CompanionConfig) -> bool {
+    if cfg.token.is_empty() {
+        cfg.token = generate_token();
+        true
+    } else {
+        false
+    }
+}
+
+/// 設定できるポートか（予約ポートは避ける）。
+pub fn validate_port(port: u16) -> Result<(), String> {
+    if port < 1024 {
+        return Err(format!("ポートは 1024〜65535 の範囲で指定してください（{port}）"));
+    }
+    Ok(())
+}
+
+fn update_config(app: &AppHandle, f: impl FnOnce(&mut CompanionConfig)) -> Result<CompanionConfig, String> {
+    let path = config_path(app)?;
+    let mut cfg = load_config(&path);
+    f(&mut cfg);
+    save_config(&path, &cfg)?;
+    Ok(cfg)
+}
+
+fn running_info(running: &RunningServer) -> CompanionInfo {
+    CompanionInfo {
+        host_ips: host_ipv4s().iter().map(|ip| ip.to_string()).collect(),
+        port: running.port,
+        token: running.token.clone(),
+    }
+}
+
+/// サーバーを起動する（ロック取得済み）。稼働中なら現行の情報を返す。
+fn start_locked(app: &AppHandle, guard: &mut Option<RunningServer>) -> Result<CompanionInfo, String> {
     if let Some(running) = guard.as_ref() {
-        return Ok(CompanionInfo {
-            host_ips: host_ipv4s().iter().map(|ip| ip.to_string()).collect(),
-            port: running.port,
-            token: running.token.clone(),
-        });
+        return Ok(running_info(running));
     }
 
-    let data_dir = resolve_data_dir(&app)?;
+    let path = config_path(app)?;
+    let mut cfg = load_config(&path);
+    if ensure_token(&mut cfg) {
+        save_config(&path, &cfg)?;
+    }
+    let port = cfg.port;
+    let token = cfg.token.clone();
+
+    let data_dir = resolve_data_dir(app)?;
     // バトルアイコンのキャッシュルート（`app_data_dir()/images`・data_dir とは別系統／#327）。
     // 未キャッシュでも起動を妨げない（マニフェストが空になるだけ）。
-    let images_root = crate::icon_manifest::resolve_images_root(&app)?;
+    let images_root = crate::icon_manifest::resolve_images_root(app)?;
 
-    // 空きポートで全インターフェースにバインド（LAN の viewer から到達可能に）。
-    let server = tiny_http::Server::http("0.0.0.0:0")
-        .map_err(|e| format!("HTTP サーバー起動失敗: {e}"))?;
-    let port = server
-        .server_addr()
-        .to_ip()
-        .map(|a| a.port())
-        .ok_or_else(|| "バインドポートの解決に失敗".to_string())?;
+    // 固定ポートで全インターフェースにバインド（LAN のスマホから到達可能に）。
+    let server = tiny_http::Server::http(("0.0.0.0", port)).map_err(|e| {
+        format!("ポート {port} で起動できませんでした。ほかのアプリが使っている可能性があります。設定でポートを変えてください（{e}）")
+    })?;
 
-    let token = generate_token();
     let stop = Arc::new(AtomicBool::new(false));
 
     // 配信スレッド: recv_timeout でポーリングし、stop フラグで抜ける。
@@ -1046,7 +1128,7 @@ pub fn companion_start(
             token: token.clone(),
             data_dir: data_dir.clone(),
             images_root: images_root.clone(),
-            coords_path: crate::saved_coordinates::file_path(&app)?,
+            coords_path: crate::saved_coordinates::file_path(app)?,
             app: app.clone(),
             job: Arc::new(Mutex::new(UpdateStatus::default())),
         };
@@ -1084,10 +1166,8 @@ pub fn companion_start(
     })
 }
 
-/// コンパニオンサーバーを停止する（HTTP スレッド join + mDNS 広告停止）。
-#[tauri::command]
-pub fn companion_stop(state: State<'_, CompanionState>) -> Result<(), String> {
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+/// サーバーを止める（ロック取得済み・HTTP スレッド join + mDNS 広告停止）。
+fn stop_locked(guard: &mut Option<RunningServer>) {
     if let Some(mut running) = guard.take() {
         running.stop.store(true, Ordering::SeqCst);
         if let Some(daemon) = running.mdns.take() {
@@ -1098,22 +1178,88 @@ pub fn companion_stop(state: State<'_, CompanionState>) -> Result<(), String> {
         }
         log::info!("[companion] 停止完了");
     }
+}
+
+/// 稼働中なら止めて立ち上げ直す（トークン・ポートを変えたとき）。止まっていれば何もしない。
+fn restart_if_running(app: &AppHandle, guard: &mut Option<RunningServer>) -> Result<(), String> {
+    if guard.is_some() {
+        stop_locked(guard);
+        start_locked(app, guard)?;
+    }
     Ok(())
 }
 
-/// 稼働状態を返す。
+/// アプリ起動時、前回オンのままだったらサーバーを立ち上げる（#787）。失敗してもアプリの起動は止めない。
+pub fn autostart(app: &AppHandle) {
+    let Ok(path) = config_path(app) else { return };
+    if !load_config(&path).enabled {
+        return;
+    }
+    let state = app.state::<CompanionState>();
+    let Ok(mut guard) = state.0.lock() else { return };
+    match start_locked(app, &mut guard) {
+        Ok(info) => log::info!("[companion] 起動時に自動開始 port={}", info.port),
+        Err(e) => log::warn!("[companion] 起動時の自動開始に失敗: {e}"),
+    }
+}
+
+/// コンパニオンサーバーを起動する（設定の「スマホで見る」をオン）。
+///
+/// 保存済みのトークン・ポートで起動し、オンにしたことを保存する（次回のアプリ起動時も立ち上がる）。
+/// 既に稼働中なら現行の情報をそのまま返す（多重起動しない）。
 #[tauri::command]
-pub fn companion_status(state: State<'_, CompanionState>) -> Result<CompanionStatus, String> {
+pub fn companion_start(
+    app: AppHandle,
+    state: State<'_, CompanionState>,
+) -> Result<CompanionInfo, String> {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    let info = start_locked(&app, &mut guard)?;
+    update_config(&app, |c| c.enabled = true)?;
+    Ok(info)
+}
+
+/// コンパニオンサーバーを停止する（設定の「スマホで見る」をオフ。次回のアプリ起動時も立ち上げない）。
+#[tauri::command]
+pub fn companion_stop(app: AppHandle, state: State<'_, CompanionState>) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    stop_locked(&mut guard);
+    update_config(&app, |c| c.enabled = false)?;
+    Ok(())
+}
+
+/// トークンを作り直す。古いトークンと、それで作った Cookie は使えなくなる（スマホは QR を読み直す）。
+#[tauri::command]
+pub fn companion_regenerate_token(
+    app: AppHandle,
+    state: State<'_, CompanionState>,
+) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    update_config(&app, |c| c.token = generate_token())?;
+    restart_if_running(&app, &mut guard)
+}
+
+/// ポートを変える。稼働中なら新しいポートで立ち上げ直す（失敗したら止まったままエラーを返す）。
+#[tauri::command]
+pub fn companion_set_port(
+    app: AppHandle,
+    state: State<'_, CompanionState>,
+    port: u16,
+) -> Result<(), String> {
+    validate_port(port)?;
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    update_config(&app, |c| c.port = port)?;
+    restart_if_running(&app, &mut guard)
+}
+
+/// 稼働状態を返す。`configured_port` は止まっているときも設定画面に出すための保存済みポート。
+#[tauri::command]
+pub fn companion_status(app: AppHandle, state: State<'_, CompanionState>) -> Result<CompanionStatus, String> {
     let guard = state.0.lock().map_err(|e| e.to_string())?;
-    Ok(match guard.as_ref() {
-        Some(running) => CompanionStatus {
-            running: true,
-            port: Some(running.port),
-        },
-        None => CompanionStatus {
-            running: false,
-            port: None,
-        },
+    let configured_port = config_path(&app).map(|p| load_config(&p).port).unwrap_or(DEFAULT_PORT);
+    Ok(CompanionStatus {
+        running: guard.is_some(),
+        port: guard.as_ref().map(|r| r.port),
+        configured_port,
     })
 }
 
@@ -1739,6 +1885,56 @@ mod tests {
         let json = serde_json::to_value(&running).unwrap();
         assert_eq!(json["state"], "running");
         assert_eq!(json["step"], "battles");
+    }
+
+    // --- #787: 設定（固定トークン・固定ポート・オン/オフ） ---
+
+    #[test]
+    fn missing_or_broken_config_falls_back_to_defaults() {
+        let dir = temp_root("cfg_missing");
+        let path = dir.join(CONFIG_FILE);
+        assert_eq!(load_config(&path), CompanionConfig::default());
+        assert_eq!(load_config(&path).port, DEFAULT_PORT);
+        std::fs::write(&path, b"{broken").unwrap();
+        assert_eq!(load_config(&path), CompanionConfig::default());
+    }
+
+    #[test]
+    fn config_round_trips_and_keeps_token() {
+        let dir = temp_root("cfg_roundtrip");
+        let path = dir.join(CONFIG_FILE);
+        let mut cfg = CompanionConfig::default();
+        assert!(ensure_token(&mut cfg));
+        assert_eq!(cfg.token.len(), 32);
+        cfg.enabled = true;
+        cfg.port = 50000;
+        save_config(&path, &cfg).unwrap();
+
+        let mut loaded = load_config(&path);
+        assert_eq!(loaded, cfg);
+        // 既にあるトークンは作り直さない（スマホのショートカットを壊さない）。
+        assert!(!ensure_token(&mut loaded));
+        assert_eq!(loaded.token, cfg.token);
+    }
+
+    #[test]
+    fn config_with_missing_fields_uses_defaults() {
+        let dir = temp_root("cfg_partial");
+        let path = dir.join(CONFIG_FILE);
+        std::fs::write(&path, br#"{"enabled":true}"#).unwrap();
+        let cfg = load_config(&path);
+        assert!(cfg.enabled);
+        assert_eq!(cfg.port, DEFAULT_PORT);
+        assert!(cfg.token.is_empty());
+    }
+
+    #[test]
+    fn rejects_reserved_ports() {
+        assert!(validate_port(80).is_err());
+        assert!(validate_port(1023).is_err());
+        assert!(validate_port(1024).is_ok());
+        assert!(validate_port(DEFAULT_PORT).is_ok());
+        assert!(validate_port(65535).is_ok());
     }
 
     // --- #363: 接続トラブルの自己診断 ---
