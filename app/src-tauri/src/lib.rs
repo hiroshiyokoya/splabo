@@ -165,6 +165,9 @@ pub fn run() {
             companion::companion_start,
             companion::companion_stop,
             companion::companion_status,
+            // トークンの再発行・ポートの変更（スマホ Web 版・#787）
+            companion::companion_regenerate_token,
+            companion::companion_set_port,
             // 接続トラブルの自己診断（Windows ファイアウォール / プロファイル案内・#363）
             companion::companion_diagnostics,
             // データ移行（Phase C・migration.rs）
@@ -200,6 +203,10 @@ pub fn run() {
                     }
                 });
             }
+
+            // 「スマホで見る」が前回オンのままなら、コンパニオンサーバーを立ち上げる（#787）。
+            // スマホのショートカットが PC の再起動のたびに使えなくならないように。
+            companion::autostart(app.handle());
 
             // DB初期化 → 完了後に起動時フェッチを1回実行
             let handle = app.handle().clone();
