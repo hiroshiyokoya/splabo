@@ -307,7 +307,13 @@
     "unreachableCheckOn": "SpLabo is running on the PC and \"View on your phone\" is on in Settings",
     "unreachableCheckWifi": "Your phone and PC are on the same Wi-Fi (same network)",
     "unreachableCheckPrivate": "The Windows network is not set to Public (set it to Private)",
-    "retry": "Try again"
+    "retry": "Try again",
+    "navGear": "Gear",
+    "navBattle": "Battles",
+    "update": "Have the PC fetch the latest data",
+    "updating": "Your PC is fetching the latest data from Nintendo… (takes tens of seconds)",
+    "updateDone": "Up to date",
+    "updateFailed": "Couldn't fetch: {{detail}}"
   },
   "gear": {
     "tab": {

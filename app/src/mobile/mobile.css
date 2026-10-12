@@ -26,6 +26,206 @@ html, body {
   font-weight: 700;
 }
 
+.m-nav {
+  display: flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.m-nav__item {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.m-nav__item--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.m-update-btn {
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.m-update-btn:disabled {
+  opacity: 0.6;
+}
+
+.m-spin {
+  display: inline-block;
+  animation: m-spin 1s linear infinite;
+}
+
+@keyframes m-spin {
+  to { transform: rotate(360deg); }
+}
+
+.m-note {
+  padding: 6px 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.m-note--error {
+  color: var(--lose);
+}
+
+/* ── ギア（デスクトップの GearSection をスマホ幅に合わせる・#789） ── */
+
+.m-app .gear-root .gear-app {
+  padding: 0 10px 48px;
+}
+
+.m-app .gear-root .app-top--sticky {
+  padding-top: 8px;
+}
+
+.m-app .gear-root .app-top--sticky .tabs {
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 4px;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+}
+
+.m-app .gear-root .tab {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.m-app .gear-root .tab--coord {
+  margin-left: 0;
+}
+
+/* デスクトップは位置を保つため場所を残すが、スマホは折り返すので消してよい */
+.m-app .gear-root .gear-tool--hidden {
+  display: none;
+}
+
+.m-app .gear-root .gear-filter-btn {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.m-app .gear-root .gear-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.m-app .gear-root .combo-sheet-container {
+  width: 100%;
+}
+
+.m-app .gear-root .combo-slots {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+}
+
+/* スロット: デスクトップは「画像 | ブランド・ギアパワー」の横並び。スマホは 3 等分の枠に縦に詰める */
+.m-app .gear-root .combo-slot {
+  width: auto;
+  min-width: 0;
+  height: auto;
+  min-height: 96px;
+  padding: 6px 4px;
+}
+
+.m-app .gear-root .combo-slot--filled {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.m-app .gear-root .combo-slot__img {
+  width: 56px;
+  height: 56px;
+}
+
+.m-app .gear-root .combo-slot__info,
+.m-app .gear-root .combo-slot--filled .combo-slot__info {
+  width: 100%;
+  padding-top: 0;
+}
+
+.m-app .gear-root .combo-slot__brand-row {
+  display: none;
+}
+
+.m-app .gear-root .combo-slot__skills {
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+}
+
+.m-app .gear-root .combo-slot__skill--main {
+  width: 24px;
+  height: 24px;
+}
+
+.m-app .gear-root .combo-slot__skill--sub {
+  width: 18px;
+  height: 18px;
+}
+
+.m-app .gear-root .combo-slot__icon-btn {
+  top: 2px;
+  right: 2px;
+  width: 24px;
+  height: 24px;
+}
+
+/* 合計 AP は折り返すとシートの高さを超えるので横スクロール */
+.m-app .gear-root .combo-ap-bar {
+  min-width: 0;
+}
+
+.m-app .gear-root .combo-ap-chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.m-app .gear-root .combo-stackable-grid {
+  grid-template-columns: 1fr;
+}
+
+/* 目標スキルの欄はデスクトップでは中身の幅（max-content）。スマホは画面幅に収めて折り返す */
+.m-app .gear-root .combo-sheet__expand-block,
+.m-app .gear-root .combo-sheet__expand-block--peek-hidden {
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  align-self: stretch;
+}
+
+.m-app .gear-root .combo-main-only-chips {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.m-app .gear-root .drawer {
+  width: min(var(--drawer-width), 88vw);
+}
+
+.m-app .gear-root .coord-list {
+  grid-template-columns: 1fr;
+}
+
 .m-main {
   flex: 1;
   min-height: 0;

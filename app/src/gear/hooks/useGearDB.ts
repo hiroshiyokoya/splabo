@@ -60,14 +60,13 @@ async function loadFromTauri(): Promise<GearDB> {
   return fixDB(db)
 }
 
-// ── ブラウザ dev モード ───────────────────────────────────────
+// ── ブラウザ（スマホ Web 版・#789） ───────────────────────────
 async function loadFromBrowser(): Promise<GearDB> {
-  const res = await fetch('/data/gear_db.json')
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const db: GearDB = await res.json()
+  const db: GearDB = JSON.parse(await call<string>('read_gear_db'))
 
-  // JSON の相対パス（例: "images/xxx.png"）→ /data/images/xxx.png
-  const fixDB = makePathFixer((rel) => `/data/${rel}`)
+  // JSON の相対パス（例: "images/gear/head/xxx.gti"）→ /img/images/gear/head/xxx.gti
+  // コンパニオンサーバーが .gti を PNG に戻して返す（#786）。
+  const fixDB = makePathFixer((rel) => `/img/${rel}`)
   return fixDB(db)
 }
 
