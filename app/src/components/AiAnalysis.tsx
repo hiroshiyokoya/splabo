@@ -17,7 +17,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { invoke } from '@tauri-apps/api/core'
+import { call } from '../utils/backend'
 import type { AppSettings, ShapedChart } from '../types'
 import { AiResultChart } from './charts/AiResultChart'
 import { defaultModelFor } from '../utils/aiModels'
@@ -137,7 +137,7 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
   // 分析ごとに取り直す。**データの規模（件数と期間）が入る**ので、
   // 取り込みの前後で内容が変わる。件数の集計は 50ms 程度なので毎回引いて問題ない。
   async function schemaPrompt(): Promise<string> {
-    return await invoke<string>('ai_analysis_prompt')
+    return await call<string>('ai_analysis_prompt')
   }
 
   /**
@@ -185,7 +185,7 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
         setPhase({ kind: 'sql', attempt })
         let problem: string
         try {
-          const next = await invoke<AnalysisResult>('ai_run_sql', { sql: issued.sql })
+          const next = await call<AnalysisResult>('ai_run_sql', { sql: issued.sql })
           if (next.rows.length > 0) {
             setResult(next)
             // 集計は済んだので、失敗しても表は出せる。ここから先で throw しない。
@@ -232,7 +232,7 @@ export function AiAnalysis({ settings }: { settings: AppSettings }) {
       setPhase({ kind: 'present', attempt })
       try {
         const spec = await askForPresentation(settings, prompt, data, hint)
-        setShaped(await invoke<Presentation>('ai_apply_presentation', { result: data, spec }))
+        setShaped(await call<Presentation>('ai_apply_presentation', { result: data, spec }))
         return
       } catch (e) {
         // 列の取り違えなら、エラーに実際の列名が入っているので渡せば直る。
@@ -497,7 +497,7 @@ async function askForPresentation(
   data: AnalysisResult,
   fixHint?: string,
 ): Promise<PresentationSpec> {
-  const system = await invoke<string>('ai_presentation_prompt')
+  const system = await call<string>('ai_presentation_prompt')
   const sample = data.rows.slice(0, AI2_SAMPLE_ROWS)
   let user = `質問: ${question}
 

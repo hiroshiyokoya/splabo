@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import type { GearDB, GearItem, Skill } from '../types'
 import { initTauriDataPath } from '../utils/dataPath'
 import { isTauri } from '../utils/tauri'
+import { call } from '../../utils/backend'
 
 // ── 画像パスの変換ヘルパー ────────────────────────────────────
 
@@ -35,16 +36,16 @@ function makePathFixer(toUrl: (rel: string) => string) {
 
 // ── Tauri モード ──────────────────────────────────────────────
 async function loadFromTauri(): Promise<GearDB> {
-  const { invoke, convertFileSrc } = await import('@tauri-apps/api/core')
+  const { convertFileSrc } = await import('@tauri-apps/api/core')
 
   // images/ 配下の全 .gti を一括スキャン・読み込みして data URL マップを構築する。
   // DB 参照外の画像（アキ枠など UI にハードコードされたもの）も含めて全カバー。
   // WebView2（Windows）は <img src> でカスタム URI スキームをブロックするため、
   // data:image/png;base64,... 形式に変換することで Windows/macOS 両対応とする。
   const [jsonStr, dataDir, gtiMap] = await Promise.all([
-    invoke<string>('read_gear_db'),
-    invoke<string>('get_data_dir'),
-    invoke<Record<string, string>>('read_all_gti'),
+    call<string>('read_gear_db'),
+    call<string>('get_data_dir'),
+    call<Record<string, string>>('read_all_gti'),
   ])
 
   /** 絶対パスを画像 URL に変換する。.gti は data URL、それ以外は asset:// */

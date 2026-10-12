@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { invoke } from '@tauri-apps/api/core'
+import { call } from '../utils/backend'
 import type { GroupedStatsRow, BookView, Filters, StageRecord } from '../types'
 import { avgKillRatio, filtersToBookArgs, fmtOfficialWinRate, METRIC_LABELS } from '../types'
 import { StageDetailModal } from './StageDetailModal'
@@ -169,14 +169,14 @@ export function StageBook({ filters }: { filters: Filters }) {
     setLoading(true)
     // 共通 FilterBar(期間・モード・ルール・結果)を集計に反映する(#298)。
     // ステージタブはローカル集計のみなので、全項目がフィルタに追従する。
-    invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'stage', ...filtersToBookArgs(filters) })
+    call<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'stage', ...filtersToBookArgs(filters) })
       .then(data => {
         setRows(data)
 
         // ステージ画像(BattleLog と同じ流儀で name を渡す)。
         Promise.all(
           data.map(r =>
-            invoke<string | null>('read_image', { kind: 'stage', name: r.name })
+            call<string | null>('read_image', { kind: 'stage', name: r.name })
               .then(url => (url ? ([r.name, url] as [string, string]) : null))
               .catch(() => null)
           )
@@ -189,7 +189,7 @@ export function StageBook({ filters }: { filters: Filters }) {
   }, [filters])
 
   useEffect(() => {
-    invoke<StageRecord[]>('db_list_stage_records')
+    call<StageRecord[]>('db_list_stage_records')
       .then(list => setOfficialByName(new Map(list.map(r => [r.stage_id, r]))))
       .catch(console.error)
   }, [])

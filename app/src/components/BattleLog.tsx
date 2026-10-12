@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { invoke } from '@tauri-apps/api/core'
+import { call } from '../utils/backend'
 import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import type { BattleRow, BattleStats, Filters, ParentJson, Player, Team, VsHistoryDetail, Award } from '../types'
@@ -78,10 +78,10 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
 
   // ブキ・アビリティ・ステージ画像をロード
   useEffect(() => {
-    invoke<string[]>('db_weapons_used').then(weapons => {
+    call<string[]>('db_weapons_used').then(weapons => {
       Promise.all(
         weapons.map(name =>
-          invoke<string | null>('read_image', { kind: 'weapon', name })
+          call<string | null>('read_image', { kind: 'weapon', name })
             .then(url => (url ? ([name, url] as [string, string]) : null))
             .catch(() => null)
         )
@@ -90,10 +90,10 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
       })
     })
     loadAbilityImages().then(setAbilityImages)
-    invoke<{ id: string; name: string }[]>('db_stages_used').then(stages => {
+    call<{ id: string; name: string }[]>('db_stages_used').then(stages => {
       Promise.all(
         stages.map(s =>
-          invoke<string | null>('read_image', { kind: 'stage', name: s.name })
+          call<string | null>('read_image', { kind: 'stage', name: s.name })
             .then(url => (url ? ([s.name, url] as [string, string]) : null))
             .catch(() => null)
         )
@@ -121,9 +121,9 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
       stage: filters.stage.length > 0 ? filters.stage.join('|') : null,
     }
     Promise.all([
-      invoke<BattleRow[]>('db_list_battles', { limit: PAGE_SIZE, offset, ...filterArgs, orderBy, orderAsc }),
-      invoke<number>('db_battle_count', filterArgs),
-      invoke<BattleStats>('db_battle_stats', filterArgs),
+      call<BattleRow[]>('db_list_battles', { limit: PAGE_SIZE, offset, ...filterArgs, orderBy, orderAsc }),
+      call<number>('db_battle_count', filterArgs),
+      call<BattleStats>('db_battle_stats', filterArgs),
     ])
       .then(([rows, count, s]) => { setBattles(rows); setTotal(count); setStats(s) })
       .catch(console.error)

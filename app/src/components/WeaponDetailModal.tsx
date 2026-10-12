@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { invoke } from '@tauri-apps/api/core'
+import { call } from '../utils/backend'
 import type { Filters, GroupedStatsRow, WeaponRecord } from '../types'
 import { weaponRecordDisplayName, groupedStatsDisplayName, weaponCategoryDisplayName, subWeaponDisplayName, specialWeaponDisplayName } from '../i18n/displayName'
 import { RULE_LABELS, filtersToBookDetailArgs, fmtKillRatioWithContrib, fmtOfficialDate, ruleLabel, METRIC_LABELS } from '../types'
@@ -77,8 +77,8 @@ export function WeaponDetailModal({
     setError(null)
     const filterArgs = filtersToBookDetailArgs(filters, { weapon: weapon.name })
     Promise.all([
-      invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'stage', ...filterArgs }),
-      invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'rule',  ...filterArgs }),
+      call<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'stage', ...filterArgs }),
+      call<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'rule',  ...filterArgs }),
     ])
       .then(([stages, rules]) => {
         setStageRows(stages)

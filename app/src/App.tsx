@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { invoke } from '@tauri-apps/api/core'
+import { call } from './utils/backend'
 import { listen } from '@tauri-apps/api/event'
 import { Dashboard } from './components/Dashboard'
 import { BattleLog } from './components/BattleLog'
@@ -154,11 +154,11 @@ export default function App() {
   // 動かない」状態になっていた。settings は本コンポーネントが持つので、mount 時
   // (loadSettings の値)と import 後(setSettings)で必ず同期される。
   useEffect(() => {
-    invoke('set_scheduler_config', {
+    call('set_scheduler_config', {
       enabled: settings.autoFetchEnabled,
       intervalMin: settings.autoFetchIntervalMin,
     }).catch(console.error)
-    invoke('set_statink_config', {
+    call('set_statink_config', {
       autoUpload: settings.statink.autoUpload,
       apiKey: settings.statink.apiKey,
     }).catch(console.error)
@@ -188,7 +188,7 @@ export default function App() {
   // 認証完了後にデータ取得を実行
   useEffect(() => {
     if (loginVersion > 0) {
-      invoke('fetch_battles_full').catch(err => reportFetchError(err, () => invoke('fetch_battles_full').catch(e => reportFetchError(e))))
+      call('fetch_battles_full').catch(err => reportFetchError(err, () => call('fetch_battles_full').catch(e => reportFetchError(e))))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loginVersion])
@@ -221,7 +221,7 @@ export default function App() {
     // fetch_finish を取りこぼして『取得中』が残る」race を塞げる(#402 任意4):
     // 登録前に emit された finish は、登録後のこの再確認が false を読んで解除する。
     Promise.all([startP, finishP]).then(() => {
-      invoke<boolean>('is_fetching')
+      call<boolean>('is_fetching')
         .then(v => { if (!disposed && !sawEvent) setFetching(v) })
         .catch(() => {})
     })
@@ -270,7 +270,7 @@ export default function App() {
   useEffect(() => {
     if (settings.statink.screenName) return
     if (!settings.statink.apiKey) return
-    invoke<string | null>('detect_statink_screen_name', { apiKey: settings.statink.apiKey }).then(name => {
+    call<string | null>('detect_statink_screen_name', { apiKey: settings.statink.apiKey }).then(name => {
       if (!name) return
       setSettings(prev => {
         if (prev.statink.screenName === name) return prev
@@ -287,7 +287,7 @@ export default function App() {
   useEffect(() => {
     const last = Number(localStorage.getItem(LAST_WEAPONS_FETCH_K) ?? 0)
     if (Date.now() - last < WEAPONS_FETCH_INTERVAL_MS) return
-    invoke<number>('fetch_weapons')
+    call<number>('fetch_weapons')
       .then(count => {
         localStorage.setItem(LAST_WEAPONS_FETCH_K, String(Date.now()))
         console.log(`[startup] ブキマスター ${count} 件取得`)
@@ -300,7 +300,7 @@ export default function App() {
       const url = event.payload
       if (url.startsWith('npf71b963c1b7b6d119://')) {
         try {
-          await invoke('handle_auth_redirect', { url })
+          await call('handle_auth_redirect', { url })
           setLoginVersion(v => v + 1)
         } catch (e) {
           console.error('認証リダイレクト処理失敗:', e)
@@ -344,11 +344,11 @@ export default function App() {
     if (fetching) return
     setFetching(true)
     try {
-      await invoke('fetch_battles_full')
+      await call('fetch_battles_full')
       // 統合: サイドバーの取得でバトルに続けてギアも取得する。
       // ギアの失敗はバトル取得と独立に通知し、バトル取得の成功は保つ。
       try {
-        await invoke('fetch_gear_full')
+        await call('fetch_gear_full')
       } catch (gearErr) {
         console.error('gear fetch failed:', gearErr)
         notify({ kind: 'warning', title: t('notify.gearFailTitle'), message: t('notify.gearFailMessage'), durationMs: 6000 })

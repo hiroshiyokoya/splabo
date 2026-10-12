@@ -8,7 +8,7 @@
  * PNG は角丸の外側を透過のまま残す。HTML は単体ファイルで、散布図はホバー tip が動く。
  */
 import { toPng } from 'html-to-image'
-import { invoke } from '@tauri-apps/api/core'
+import { call } from './backend'
 import { getVersion } from '@tauri-apps/api/app'
 import { displayVersion } from './version'
 import i18n from '../i18n'
@@ -275,7 +275,7 @@ async function invokeSave(
   dataBase64: string,
   format: PanelExportFormat,
 ): Promise<string | null> {
-  return await invoke<string | null>('save_panel_image', {
+  return await call<string | null>('save_panel_image', {
     filename,
     dataBase64,
     format,

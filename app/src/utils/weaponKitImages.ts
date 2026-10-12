@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { call } from './backend'
 import type { WeaponRecord } from '../types'
 import { kitIconsForWeapon, type WeaponMeta } from './scatterCategoryColors'
 import type { WeaponKitTipData } from '../components/charts/WeaponKitTip'
@@ -24,7 +24,7 @@ export async function loadWeaponImageMap(names: string[]): Promise<Map<string, s
   const unique = [...new Set(names.filter(Boolean))]
   const results = await Promise.all(
     unique.map(name =>
-      invoke<string | null>('read_image', { kind: 'weapon', name })
+      call<string | null>('read_image', { kind: 'weapon', name })
         .then(url => (url ? ([name, url] as [string, string]) : null))
         .catch(() => null),
     ),
@@ -37,7 +37,7 @@ export async function loadStageImageMap(names: string[]): Promise<Map<string, st
   const unique = [...new Set(names.filter(Boolean))]
   const results = await Promise.all(
     unique.map(name =>
-      invoke<string | null>('read_image', { kind: 'stage', name })
+      call<string | null>('read_image', { kind: 'stage', name })
         .then(url => (url ? ([name, url] as [string, string]) : null))
         .catch(() => null),
     ),
@@ -68,7 +68,7 @@ export async function loadSubSpImageMaps(
   const loadKind = (kind: 'sub_weapon' | 'special_weapon', names: string[]) =>
     Promise.all(
       names.map(name =>
-        invoke<string | null>('read_image', { kind, name })
+        call<string | null>('read_image', { kind, name })
           .then(url => (url ? ([name, url] as [string, string]) : null))
           .catch(() => null),
       ),

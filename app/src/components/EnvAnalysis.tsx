@@ -14,7 +14,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { invoke } from '@tauri-apps/api/core'
+import { call } from '../utils/backend'
 import { listen } from '@tauri-apps/api/event'
 import type {
   EnvScatterStat, EnvMatrixCell, EnvMatrixMarginal, EnvMatrixStats,
@@ -612,7 +612,7 @@ export function EnvAnalysis() {
   // 取得状況とシーズンレンジを読み込む
   const loadStatus = useCallback(async () => {
     try {
-      const s = await invoke<EnvStatus>('env_status')
+      const s = await call<EnvStatus>('env_status')
       setStatus(s)
       if (s.total_rows > 0) {
         // 🔴 シーズンを最初に取る（#585）。以降の選択肢は 550 万行を集計するので秒単位かかり、
@@ -620,7 +620,7 @@ export function EnvAnalysis() {
         // こちらは MIN/MAX を引くだけなので一瞬で返る。
         // 失敗すると選択肢が空になってプルダウンが黙って消えるため、握り潰さずログに出す。
         try {
-          setSeasons(await invoke<Season[]>('list_seasons', { source: 'env' }))
+          setSeasons(await call<Season[]>('list_seasons', { source: 'env' }))
         } catch (e) {
           console.error('[EnvAnalysis] list_seasons 失敗:', e)
         }
@@ -629,10 +629,10 @@ export function EnvAnalysis() {
         // 遅れて出てくる**。互いに依存しないので同時に投げ、取れたものから反映する。
         setOptionsLoading(true)
         void Promise.allSettled([
-          invoke<EnvVersion[]>('env_versions').then(setVersionOptions),
-          invoke<EnvRank[]>('env_ranks').then(setRankOptions),
-          invoke<EnvFilterOption[]>('env_weapons').then(setWeaponOptions),
-          invoke<EnvFilterOption[]>('env_stages').then(setStageOptions),
+          call<EnvVersion[]>('env_versions').then(setVersionOptions),
+          call<EnvRank[]>('env_ranks').then(setRankOptions),
+          call<EnvFilterOption[]>('env_weapons').then(setWeaponOptions),
+          call<EnvFilterOption[]>('env_stages').then(setStageOptions),
         ]).then(results => {
           setOptionsLoading(false)
           // 失敗しても選択肢が空になるだけで画面は動く。原因が追えるようログには出す。
@@ -729,7 +729,7 @@ export function EnvAnalysis() {
     setLoading(true)
     try {
       if (vizMode === 'scatter') {
-        const rows = await invoke<EnvScatterStat[]>('env_scatter_stats', {
+        const rows = await call<EnvScatterStat[]>('env_scatter_stats', {
           groupBy,
           side:     'all',
           lobbyKeys,
@@ -749,7 +749,7 @@ export function EnvAnalysis() {
         // 次元を変えた直後、セル指標が新しい次元にまだ整合していない一瞬は取得しない
         // (直後に走る useEffect が cellMetric を有効値へ補正し、再取得される)。
         if (!allowedCellMetrics.some(m => m.key === cellMetric)) return
-        const res = await invoke<EnvMatrixStats>('env_matrix_stats', {
+        const res = await call<EnvMatrixStats>('env_matrix_stats', {
           rowDim, colDim, cellMetric,
           lobbyKeys,
           ruleKeys,
@@ -778,7 +778,7 @@ export function EnvAnalysis() {
   useEffect(() => {
     if (!hasData) { setFilteredCount(null); return }
     const seq = ++countSeqRef.current
-    invoke<number>('env_filtered_count', {
+    call<number>('env_filtered_count', {
       lobbyKeys,
       ruleKeys,
       since: range.since,
@@ -848,7 +848,7 @@ export function EnvAnalysis() {
   }, [stageOptions])
 
   useEffect(() => {
-    invoke<WeaponRecord[]>('db_list_weapons').then(list => {
+    call<WeaponRecord[]>('db_list_weapons').then(list => {
       setWeaponMeta(new Map(list.map(w => [w.name, {
         category: w.category,
         sub_weapon: w.sub_weapon,
@@ -877,7 +877,7 @@ export function EnvAnalysis() {
     }
     if (targets.length === 0) return
     Promise.all(targets.map(([ck, name]) =>
-      invoke<string | null>('read_image', { kind: iconKind, name })
+      call<string | null>('read_image', { kind: iconKind, name })
         .then(url => (url ? [ck, url] as [string, string] : null))
         .catch(() => null)
     )).then(res => {
@@ -910,7 +910,7 @@ export function EnvAnalysis() {
     setImporting(true); setError(null)
     setProgress({ current: 0, total: 1, phase: 'download' })
     try {
-      await invoke<number>('import_env_full', { since })
+      await call<number>('import_env_full', { since })
       await loadStatus()
     } catch (e) { setError(formatInvokeError(e)) }
     finally { setImporting(false); setProgress(null) }
@@ -921,7 +921,7 @@ export function EnvAnalysis() {
     setImporting(true); setError(null)
     setProgress({ current: 0, total: 1, phase: 'download' })
     try {
-      await invoke<number>('import_env_delta')
+      await call<number>('import_env_delta')
       await loadStatus()
     } catch (e) { setError(formatInvokeError(e)) }
     finally { setImporting(false); setProgress(null) }

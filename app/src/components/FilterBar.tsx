@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { invoke } from '@tauri-apps/api/core'
+import { call } from '../utils/backend'
 import type { Filters, Period, Season, WeaponRecord } from '../types'
 import { resultLabel } from '../types'
 import { MultiSelect } from './MultiSelect'
@@ -41,12 +41,12 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
   const [seasons,         setSeasons]         = useState<Season[]>([])
 
   useEffect(() => {
-    invoke<WeaponRecord[]>('db_list_weapons').then(weapons => {
+    call<WeaponRecord[]>('db_list_weapons').then(weapons => {
       const used = weapons.filter(w => w.total > 0)
       setWeaponList(used)
       Promise.all(
         used.map(w =>
-          invoke<string | null>('read_image', { kind: 'weapon', name: w.name })
+          call<string | null>('read_image', { kind: 'weapon', name: w.name })
             .then(url => (url ? ([w.name, url] as [string, string]) : null))
             .catch(() => null)
         )
@@ -54,8 +54,8 @@ export function FilterBar({ filters, onChange, hideTargetFilters = false }: Prop
         setWeaponImages(new Map(results.filter((r): r is [string, string] => r !== null)))
       })
     })
-    invoke<StageInfo[]>('db_stages_used').then(setStageList).catch(() => {})
-    invoke<Season[]>('list_seasons', { source: 'battle' }).then(setSeasons).catch(() => {})
+    call<StageInfo[]>('db_stages_used').then(setStageList).catch(() => {})
+    call<Season[]>('list_seasons', { source: 'battle' }).then(setSeasons).catch(() => {})
   }, [])
 
   function patch<K extends keyof Filters>(key: K, val: Filters[K]) {

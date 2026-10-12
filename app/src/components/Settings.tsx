@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { invoke } from '@tauri-apps/api/core'
+import { call } from '../utils/backend'
 import { listen } from '@tauri-apps/api/event'
 import { getVersion } from '@tauri-apps/api/app'
 import { isDevVersion } from '../utils/version'
@@ -150,7 +150,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
 
   useEffect(() => {
     if (companionInfo) {
-      invoke<CompanionDiagnostics>('companion_diagnostics')
+      call<CompanionDiagnostics>('companion_diagnostics')
         .then(setCompanionDiag)
         .catch(() => setCompanionDiag(null))
     } else {
@@ -159,15 +159,15 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   }, [companionInfo])
 
   useEffect(() => {
-    invoke<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
+    call<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
   }, [loginVersion])
 
   // 起動時にサーバー稼働中なら QR を復元表示する(start は冪等＝稼働中は現行情報を返す)。
   useEffect(() => {
-    invoke<CompanionStatus>('companion_status')
+    call<CompanionStatus>('companion_status')
       .then(st => {
         if (st.running) {
-          return invoke<CompanionInfo>('companion_start').then(setCompanionInfo)
+          return call<CompanionInfo>('companion_start').then(setCompanionInfo)
         }
       })
       .catch(() => {})
@@ -182,14 +182,14 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
     onSave(next)
     // スケジューラー関連の変更は即 Rust 側へ同期
     if ('autoFetchEnabled' in patch || 'autoFetchIntervalMin' in patch) {
-      invoke('set_scheduler_config', {
+      call('set_scheduler_config', {
         enabled: next.autoFetchEnabled,
         intervalMin: next.autoFetchIntervalMin,
       }).catch(console.error)
     }
     // stat.ink 設定の変更も即 Rust 側へ同期
     if ('statink' in patch) {
-      invoke('set_statink_config', {
+      call('set_statink_config', {
         autoUpload: next.statink.autoUpload,
         apiKey: next.statink.apiKey,
       }).catch(console.error)
@@ -199,7 +199,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   async function handleLogin() {
     setAuthLoading(true)
     try {
-      await invoke('start_login')
+      await call('start_login')
     } catch (e) {
       console.error('ログイン開始失敗:', e)
     } finally {
@@ -210,7 +210,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   async function handleLogout() {
     setAuthLoading(true)
     try {
-      await invoke('logout')
+      await call('logout')
       setLoggedIn(false)
     } catch (e) {
       console.error('ログアウト失敗:', e)
@@ -223,7 +223,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
     setWeaponUpdating(true)
     setWeaponUpdateResult(null)
     try {
-      const count = await invoke<number>('fetch_weapons')
+      const count = await call<number>('fetch_weapons')
       setWeaponUpdateResult(t('settings.weaponsFetched', { count: count }))
     } catch (e) {
       setWeaponUpdateResult(failText(e))
@@ -236,7 +236,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
     setUploading(true)
     setUploadResult(null)
     try {
-      const count = await invoke<number>('upload_to_statink')
+      const count = await call<number>('upload_to_statink')
       setUploadResult(count > 0 ? t('settings.uploaded', { count }) : t('settings.uploadedNone'))
     } catch (e) {
       setUploadResult(failText(e))
@@ -250,7 +250,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
     setImporting(true)
     setImportResult(null)
     try {
-      const r = await invoke<{ imported: number; skipped: number; failed: number; total: number }>(
+      const r = await call<{ imported: number; skipped: number; failed: number; total: number }>(
         'import_from_statink'
       )
       const parts = [
@@ -294,7 +294,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
     setGearDeleting(true)
     setGearDeleteResult(null)
     try {
-      await invoke('delete_gear_data')
+      await call('delete_gear_data')
       setGearDeleteResult(t('settings.gearDeleted'))
     } catch (e) {
       setGearDeleteResult(failText(e))
@@ -325,7 +325,7 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
     setEnvRefetchResult(null)
     setEnvRefetchProgress({ current: 0, total: 1, phase: 'download' })
     try {
-      const n = await invoke<number>('import_env_full', { since })
+      const n = await call<number>('import_env_full', { since })
       setEnvRefetchResult(t('settings.envImported', { count: n.toLocaleString(numLocale) }))
     } catch (e) {
       setEnvRefetchResult(failText(e))
@@ -341,10 +341,10 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
     setCompanionError(null)
     try {
       if (enabled) {
-        const info = await invoke<CompanionInfo>('companion_start')
+        const info = await call<CompanionInfo>('companion_start')
         setCompanionInfo(info)
       } else {
-        await invoke('companion_stop')
+        await call('companion_stop')
         setCompanionInfo(null)
       }
     } catch (e) {
