@@ -4,6 +4,7 @@ import { call, BackendUnauthorizedError, BackendUnreachableError, MOBILE_REFRESH
 import { GearSection } from '../gear/GearSection'
 import { BattleScreen } from './BattleScreen'
 import { requestPcUpdate } from './pcUpdate'
+import { applyPcSettings } from './sharedSettings'
 import type { SessionResult } from './session'
 
 /** PC との接続状態 */
@@ -79,7 +80,9 @@ export function MobileApp({ session }: { session: SessionResult }) {
     if (session !== 'rejected') void check()
   }, [session, check])
 
-  const refresh = useCallback(() => {
+  // PC 側で設定（スタック型の順など）を変えていたら、それも拾ってから各画面に読み直させる
+  const refresh = useCallback(async () => {
+    await applyPcSettings()
     window.dispatchEvent(new Event(MOBILE_REFRESH_EVENT))
   }, [])
 
@@ -93,7 +96,7 @@ export function MobileApp({ session }: { session: SessionResult }) {
       const since = hiddenAt.current
       hiddenAt.current = null
       if (since === null || Date.now() - since < REFRESH_AFTER_HIDDEN_MS) return
-      if (connection === 'ok') refresh()
+      if (connection === 'ok') void refresh()
       else void check()
     }
     document.addEventListener('visibilitychange', onVisibility)
@@ -107,7 +110,7 @@ export function MobileApp({ session }: { session: SessionResult }) {
     const outcome = await requestPcUpdate()
     setUpdating(false)
     if (outcome.ok) {
-      refresh()
+      void refresh()
       setUpdateNote({ ok: true, text: t('mobile.updateDone') })
     } else {
       setUpdateNote({ ok: false, text: t('mobile.updateFailed', { detail: outcome.message }) })
