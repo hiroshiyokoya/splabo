@@ -26,6 +26,7 @@ pub mod images;
 pub mod locale;
 pub mod migration;
 pub mod saved_coordinates;
+pub mod web_api;
 pub mod nxapi;
 pub mod splatnet3;
 pub mod sql_functions;

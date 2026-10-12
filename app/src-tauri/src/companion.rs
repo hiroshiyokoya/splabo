@@ -30,6 +30,10 @@
 //!                           ボディ `{"target":"battle"|"gear"|"both"}` で対象を選べる（#395）。
 //!   - `GET /update_status`… ②更新命令の進捗・完了・失敗を問い合わせる（ポーリング用）。
 //!   - いずれも `Authorization: Bearer <token>` 検証必須。不一致・欠落は 401。
+//! - スマホ Web 版（#786・設計 #784）の経路。Cookie（または Bearer）で認証する:
+//!   - `POST /api/session` … 本文 `{"token":"..."}` が合えば `Set-Cookie`（`splabo_session`）。
+//!   - `POST /api/cmd/<名前>` … 許可リストの Tauri コマンドを中継（`web_api.rs`）。
+//!   - `GET  /img/<相対パス>` … 画像（.gti）を PNG に戻して返す。
 //!
 //! ## ②更新命令（設計書 §4②）
 //! - 「重い・数十秒」処理なので HTTP を掴んだまま待たせない。`POST /update` は受付可否だけを
@@ -819,6 +823,147 @@ fn respond_coordinates(request: tiny_http::Request, coords_path: &std::path::Pat
     let _ = request.respond(response);
 }
 
+// ---------------------------------------------------------------------------
+// スマホ Web 版（#786・設計 #784 §3〜§5・§7）
+// ---------------------------------------------------------------------------
+
+/// リクエスト本文の上限（保存コーデの JSON 程度しか来ない）。
+const WEB_BODY_LIMIT: u64 = 1 << 20;
+
+/// スマホ Web 版の経路か（`/api/...` と `/img/...`）。
+fn is_web_path(path: &str) -> bool {
+    path.starts_with("/api/") || path.starts_with("/img/")
+}
+
+fn header_value(request: &tiny_http::Request, name: &'static str) -> Option<String> {
+    request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv(name))
+        .map(|h| h.value.as_str().to_string())
+}
+
+/// スマホ Web 版の認証。Cookie（`POST /api/session` で受け取る）か Bearer のどちらかが合えば通す。
+fn web_authorized(request: &tiny_http::Request, token: &str) -> bool {
+    crate::web_api::session_matches(header_value(request, "Cookie").as_deref(), token)
+        || authorized(request, token)
+}
+
+fn read_body(request: &mut tiny_http::Request) -> Result<String, String> {
+    use std::io::Read;
+    let mut body = String::new();
+    request
+        .as_reader()
+        .take(WEB_BODY_LIMIT)
+        .read_to_string(&mut body)
+        .map_err(|e| e.to_string())?;
+    Ok(body)
+}
+
+fn respond_text(request: tiny_http::Request, status: u16, text: &str) {
+    let _ = request.respond(tiny_http::Response::from_string(text).with_status_code(status));
+}
+
+/// スマホ Web 版の経路を捌く。コマンドの実行は `dispatch` に任せる（テストでは差し替える）。
+///
+/// - `POST /api/session`   … 本文 `{"token":"..."}` が合えば 204 と `Set-Cookie`。合わなければ 401
+/// - `POST /api/cmd/<名前>` … 許可リストのコマンドを中継（本文は invoke と同じ camelCase の引数 JSON）
+/// - `GET  /img/<相対パス>` … 画像を PNG に戻して返す
+fn route_web(
+    mut request: tiny_http::Request,
+    method: &tiny_http::Method,
+    path: &str,
+    token: &str,
+    data_dir: &std::path::Path,
+    images_root: &std::path::Path,
+    dispatch: &dyn Fn(&str, serde_json::Value) -> Result<serde_json::Value, crate::web_api::ApiError>,
+) {
+    if (method, path) == (&tiny_http::Method::Post, "/api/session") {
+        let body = read_body(&mut request).unwrap_or_default();
+        let ok = serde_json::from_str::<crate::web_api::SessionRequest>(&body)
+            .map(|s| !token.is_empty() && s.token == token)
+            .unwrap_or(false);
+        if !ok {
+            return respond_text(request, 401, "unauthorized");
+        }
+        let cookie = tiny_http::Header::from_bytes(
+            &b"Set-Cookie"[..],
+            crate::web_api::session_set_cookie(token).as_bytes(),
+        )
+        .unwrap();
+        let _ = request.respond(tiny_http::Response::empty(204).with_header(cookie));
+        return;
+    }
+
+    if !web_authorized(&request, token) {
+        return respond_text(request, 401, "unauthorized");
+    }
+
+    match method {
+        tiny_http::Method::Post if path.starts_with("/api/cmd/") => {
+            let cmd = &path["/api/cmd/".len()..];
+            let body = match read_body(&mut request) {
+                Ok(b) => b,
+                Err(e) => return respond_text(request, 400, &e),
+            };
+            let args = if body.trim().is_empty() {
+                serde_json::Value::Null
+            } else {
+                match serde_json::from_str(&body) {
+                    Ok(v) => v,
+                    Err(e) => return respond_text(request, 400, &format!("引数が不正です: {e}")),
+                }
+            };
+            match dispatch(cmd, args) {
+                Ok(v) => respond_json(request, 200, &v),
+                Err(e) => respond_text(request, e.status(), &e.body()),
+            }
+        }
+        tiny_http::Method::Get if path.starts_with("/img/") => {
+            respond_png(request, &path["/img".len()..], data_dir, images_root)
+        }
+        _ => respond_text(request, 404, "not found"),
+    }
+}
+
+/// 画像（`.gti`）を PNG に戻して返す（#786）。`rel` は `/images/...`。
+///
+/// ETag は元ファイルの sha256。スマホのブラウザがキャッシュできるよう `Cache-Control` を付ける。
+fn respond_png(
+    request: tiny_http::Request,
+    rel: &str,
+    data_dir: &std::path::Path,
+    images_root: &std::path::Path,
+) {
+    let Some(file) = resolve_image_path(rel, data_dir, images_root) else {
+        return respond_text(request, 403, "forbidden");
+    };
+    let Ok(bytes) = std::fs::read(&file) else {
+        return respond_text(request, 404, "not found");
+    };
+    let etag = crate::icon_manifest::hash_bytes(&bytes);
+    if crate::icon_manifest::etag_matches(header_value(&request, "If-None-Match").as_deref(), &etag) {
+        let _ = request.respond(tiny_http::Response::empty(304));
+        return;
+    }
+    let png = if file.extension().and_then(|e| e.to_str()) == Some("gti") {
+        crate::crypto::scramble_image(&bytes)
+    } else {
+        bytes
+    };
+    let ctype = tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"image/png"[..]).unwrap();
+    let cache =
+        tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"private, max-age=86400"[..]).unwrap();
+    let etag_header =
+        tiny_http::Header::from_bytes(&b"ETag"[..], format!("\"{etag}\"").as_bytes()).unwrap();
+    let _ = request.respond(
+        tiny_http::Response::from_data(png)
+            .with_header(ctype)
+            .with_header(cache)
+            .with_header(etag_header),
+    );
+}
+
 /// `images/` 配下の相対パスを安全に解決する（パストラバーサル拒否）。
 ///
 /// リクエストパス（先頭 `/` 込み）を受け取り、実ファイルパスを返す。
@@ -882,16 +1027,25 @@ fn respond_icon_manifest(request: tiny_http::Request, images_root: &std::path::P
 /// `ServerCtx`（`AppHandle` / ジョブ状態）を使って捌き、残りの静的配信ルート（ping / DB / 画像 /
 /// アイコンマニフェスト）は `AppHandle` 非依存の `serve_asset` へ委譲する。
 fn handle_request(request: tiny_http::Request, ctx: &ServerCtx) {
-    // 疎通・認証チェック（全エンドポイント共通で Bearer 検証。②更新命令も同じ検証を通す）。
-    if !authorized(&request, &ctx.token) {
-        let _ = request.respond(tiny_http::Response::from_string("unauthorized").with_status_code(401));
-        return;
-    }
-
     // クエリを除いたパス部分で分岐。
     let url = request.url().to_string();
     let path = url.split('?').next().unwrap_or("").to_string();
     let method = request.method().clone();
+
+    // スマホ Web 版（#786）の経路は Cookie でも認証できるので、Bearer 検証より先に振り分ける。
+    if is_web_path(&path) {
+        let app = ctx.app.clone();
+        route_web(request, &method, &path, &ctx.token, &ctx.data_dir, &ctx.images_root, &|cmd, args| {
+            crate::web_api::dispatch(&app, cmd, args)
+        });
+        return;
+    }
+
+    // 疎通・認証チェック（viewer 用のエンドポイントは Bearer 検証。②更新命令も同じ検証を通す）。
+    if !authorized(&request, &ctx.token) {
+        let _ = request.respond(tiny_http::Response::from_string("unauthorized").with_status_code(401));
+        return;
+    }
     match (&method, path.as_str()) {
         // ②更新命令の受付（#326）。受付可否を即返し、実処理は裏で走る。
         (tiny_http::Method::Post, "/update") => handle_update_command(request, ctx),
@@ -1344,6 +1498,135 @@ mod tests {
             "GET {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer tok\r\n{extra_headers}Connection: close\r\n\r\n"
         );
         serve_once(&raw, data_dir, images_root)
+    }
+
+    // --- スマホ Web 版（#786） ---
+
+    /// テスト用: 1 リクエストだけ `route_web` で捌く。コマンドは受け取った名前と引数をそのまま返す。
+    fn serve_web_once(raw_request: &str, data_dir: PathBuf, images_root: PathBuf) -> String {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let addr = server.server_addr().to_ip().unwrap();
+        let raw = raw_request.to_string();
+        let handle = std::thread::spawn(move || {
+            let request = server.recv().unwrap();
+            let url = request.url().to_string();
+            let path = url.split('?').next().unwrap_or("").to_string();
+            let method = request.method().clone();
+            route_web(request, &method, &path, "tok", &data_dir, &images_root, &|cmd, args| {
+                if crate::web_api::is_allowed(cmd) {
+                    Ok(serde_json::json!({ "cmd": cmd, "args": args }))
+                } else {
+                    Err(crate::web_api::ApiError::NotFound)
+                }
+            });
+        });
+        let mut stream = std::net::TcpStream::connect(addr).unwrap();
+        stream.write_all(raw.as_bytes()).unwrap();
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).unwrap();
+        handle.join().unwrap();
+        String::from_utf8_lossy(&response).into_owned()
+    }
+
+    fn post_web(path: &str, headers: &str, body: &str) -> String {
+        let raw = format!(
+            "POST {path} HTTP/1.1\r\nHost: localhost\r\n{headers}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        serve_web_once(&raw, temp_root("web_data"), temp_root("web_images"))
+    }
+
+    #[test]
+    fn session_sets_cookie_for_matching_token() {
+        let res = post_web("/api/session", "", r#"{"token":"tok"}"#);
+        assert!(res.starts_with("HTTP/1.1 204"), "unexpected: {res}");
+        assert!(res.contains("Set-Cookie: splabo_session=tok;"), "cookie missing: {res}");
+        assert!(res.contains("HttpOnly"), "{res}");
+    }
+
+    #[test]
+    fn session_rejects_wrong_token() {
+        let res = post_web("/api/session", "", r#"{"token":"nope"}"#);
+        assert!(res.starts_with("HTTP/1.1 401"), "unexpected: {res}");
+        assert!(!res.contains("Set-Cookie"), "{res}");
+        let res = post_web("/api/session", "", "not json");
+        assert!(res.starts_with("HTTP/1.1 401"), "unexpected: {res}");
+    }
+
+    #[test]
+    fn cmd_requires_cookie_or_bearer() {
+        let res = post_web("/api/cmd/db_summary", "", "{}");
+        assert!(res.starts_with("HTTP/1.1 401"), "unexpected: {res}");
+        let res = post_web("/api/cmd/db_summary", "Cookie: splabo_session=nope\r\n", "{}");
+        assert!(res.starts_with("HTTP/1.1 401"), "unexpected: {res}");
+    }
+
+    #[test]
+    fn cmd_passes_camel_case_args_through() {
+        let res = post_web(
+            "/api/cmd/db_list_battles",
+            "Cookie: other=1; splabo_session=tok\r\n",
+            r#"{"limit":20,"offset":0,"resultFilter":"win"}"#,
+        );
+        assert!(res.starts_with("HTTP/1.1 200"), "unexpected: {res}");
+        assert!(res.contains(r#""cmd":"db_list_battles""#), "{res}");
+        assert!(res.contains(r#""resultFilter":"win""#), "{res}");
+    }
+
+    #[test]
+    fn cmd_accepts_bearer_and_empty_body() {
+        let res = post_web("/api/cmd/db_list_weapons", "Authorization: Bearer tok\r\n", "");
+        assert!(res.starts_with("HTTP/1.1 200"), "unexpected: {res}");
+        assert!(res.contains(r#""args":null"#), "{res}");
+    }
+
+    #[test]
+    fn cmd_not_in_allowlist_is_404() {
+        let res = post_web("/api/cmd/start_login", "Cookie: splabo_session=tok\r\n", "{}");
+        assert!(res.starts_with("HTTP/1.1 404"), "unexpected: {res}");
+    }
+
+    #[test]
+    fn cmd_with_broken_json_is_400() {
+        let res = post_web("/api/cmd/db_summary", "Cookie: splabo_session=tok\r\n", "{broken");
+        assert!(res.starts_with("HTTP/1.1 400"), "unexpected: {res}");
+    }
+
+    #[test]
+    fn img_returns_descrambled_png_with_cookie() {
+        let data_dir = temp_root("web_img_data");
+        let images_root = temp_root("web_img_root");
+        std::fs::create_dir_all(data_dir.join("images/gear/head")).unwrap();
+        std::fs::write(
+            data_dir.join("images/gear/head/a.gti"),
+            crate::crypto::scramble_image(b"PNG-BYTES"),
+        )
+        .unwrap();
+
+        let raw = "GET /img/images/gear/head/a.gti HTTP/1.1\r\nHost: localhost\r\nCookie: splabo_session=tok\r\nConnection: close\r\n\r\n";
+        let res = serve_web_once(raw, data_dir.clone(), images_root.clone());
+        assert!(res.starts_with("HTTP/1.1 200"), "unexpected: {res}");
+        assert!(res.contains("image/png"), "{res}");
+        assert!(res.contains("PNG-BYTES"), "not descrambled: {res}");
+        assert!(res.contains("Cache-Control: private, max-age=86400"), "{res}");
+
+        let raw = "GET /img/images/gear/head/a.gti HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+        let res = serve_web_once(raw, data_dir.clone(), images_root.clone());
+        assert!(res.starts_with("HTTP/1.1 401"), "unexpected: {res}");
+
+        let raw = "GET /img/images/../secret HTTP/1.1\r\nHost: localhost\r\nCookie: splabo_session=tok\r\nConnection: close\r\n\r\n";
+        let res = serve_web_once(raw, data_dir, images_root);
+        assert!(res.starts_with("HTTP/1.1 403"), "unexpected: {res}");
+    }
+
+    #[test]
+    fn web_paths_are_routed_before_bearer_check() {
+        assert!(is_web_path("/api/session"));
+        assert!(is_web_path("/api/cmd/db_summary"));
+        assert!(is_web_path("/img/images/weapon/x.gti"));
+        assert!(!is_web_path("/gear_db.bin"));
+        assert!(!is_web_path("/images/gear/x.gti"));
+        assert!(!is_web_path("/update"));
     }
 
     #[test]
