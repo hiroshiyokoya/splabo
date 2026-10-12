@@ -20,6 +20,7 @@ import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY
 import { initAppSettings, loadComboLimit, loadNearLimit } from './utils/appSettings'
 import type { ComboLimitValue, NearLimitValue } from './utils/appSettings'
 import { formatInvokeError } from '../utils/notify'
+import { call } from '../utils/backend'
 import { gearBrandDisplayName } from './utils/gearItemDisplayName'
 import './gear.css'
 
@@ -189,12 +190,10 @@ export function GearSection() {
     setUpdateError(null)
 
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-
       // 1. chartoon 認証（Nintendo ログイン）済みか確認
       //    未ログインなら chartoon シェル（設定タブ）でのログインを促す。
       //    B1 ではギアセクション内にログインフローは持たない（認証は chartoon 側に一本化）。
-      const loggedIn = await invoke<boolean>('check_auth_status').catch(() => false)
+      const loggedIn = await call<boolean>('check_auth_status').catch(() => false)
 
       if (!loggedIn) {
         // ログインは設定タブに委譲。ここでは案内のみ。
@@ -205,7 +204,7 @@ export function GearSection() {
 
       // 2. SplatNet3 からギアデータを取得（Phase A2 の Rust GraphQL 経路）
       setUpdatePhase('fetching')
-      await invoke('fetch_gear_full')
+      await call('fetch_gear_full')
 
       // 3. 取得成功。lastFetchedAt の更新と一覧の再読み込みは gear_updated イベント経由で
       //    行う（サイドバーの一括取得など取得元を問わず同じ経路で反映するため）。

@@ -1,7 +1,7 @@
 import type { GearCategory, GearDB, GearItem } from '../types'
 import { MAIN_AP, SUB_AP } from './findCombo'
 import { makeSkillDisplayComparator } from '../constants/gearPowerMeta'
-import { isTauri } from './tauri'
+import { call } from '../../utils/backend'
 
 /**
  * 保存コーデ（#782）。実体は Rust 側の `app_data_dir()/saved_coordinates.json`
@@ -58,29 +58,7 @@ export function toCoordinateGears(slots: FullSlots): CoordinateGears {
 }
 
 // ── 保存先 ────────────────────────────────────────────────
-// ブラウザ開発時（Tauri 外）は localStorage で代用する。
-
-const BROWSER_KEY = 'splabo:dev:savedCoordinates'
-
-function readBrowser(): SavedCoordinate[] {
-  try {
-    return JSON.parse(localStorage.getItem(BROWSER_KEY) ?? '[]') as SavedCoordinate[]
-  } catch {
-    return []
-  }
-}
-
-function writeBrowser(list: SavedCoordinate[]): void {
-  try { localStorage.setItem(BROWSER_KEY, JSON.stringify(list)) } catch { /* 開発用なので無視 */ }
-}
-
-function readBrowserCount(): number {
-  try { return Number(localStorage.getItem(`${BROWSER_KEY}:count`) ?? 0) || 0 } catch { return 0 }
-}
-
-function writeBrowserCount(n: number): void {
-  try { localStorage.setItem(`${BROWSER_KEY}:count`, String(n)) } catch { /* 開発用なので無視 */ }
-}
+// デスクトップでは invoke、スマホ Web 版では HTTP（どちらも backend の call が切り替える）。
 
 export interface SavedCoordinatesList {
   coordinates: SavedCoordinate[]
@@ -88,38 +66,16 @@ export interface SavedCoordinatesList {
   next_number: number
 }
 
-export async function listSavedCoordinates(): Promise<SavedCoordinatesList> {
-  if (!isTauri()) {
-    const coordinates = readBrowser()
-    return { coordinates, next_number: Math.max(readBrowserCount(), coordinates.length) + 1 }
-  }
-  const { invoke } = await import('@tauri-apps/api/core')
-  return invoke<SavedCoordinatesList>('list_saved_coordinates')
+export function listSavedCoordinates(): Promise<SavedCoordinatesList> {
+  return call<SavedCoordinatesList>('list_saved_coordinates')
 }
 
-export async function saveCoordinate(input: SaveCoordinateInput): Promise<SavedCoordinate> {
-  if (!isTauri()) {
-    const list = readBrowser()
-    const now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
-    const existing = input.id ? list.find(c => c.id === input.id) : undefined
-    const saved: SavedCoordinate = existing
-      ? { ...existing, title: input.title.trim(), memo: input.memo.trimEnd(), gears: input.gears, updated_at: now }
-      : { id: crypto.randomUUID(), title: input.title.trim(), memo: input.memo.trimEnd(), gears: input.gears, created_at: now, updated_at: now }
-    writeBrowser(existing ? list.map(c => (c.id === saved.id ? saved : c)) : [...list, saved])
-    if (!existing) writeBrowserCount(Math.max(readBrowserCount(), list.length) + 1)
-    return saved
-  }
-  const { invoke } = await import('@tauri-apps/api/core')
-  return invoke<SavedCoordinate>('save_coordinate', { input })
+export function saveCoordinate(input: SaveCoordinateInput): Promise<SavedCoordinate> {
+  return call<SavedCoordinate>('save_coordinate', { input })
 }
 
 export async function deleteSavedCoordinate(id: string): Promise<void> {
-  if (!isTauri()) {
-    writeBrowser(readBrowser().filter(c => c.id !== id))
-    return
-  }
-  const { invoke } = await import('@tauri-apps/api/core')
-  await invoke('delete_saved_coordinate', { id })
+  await call('delete_saved_coordinate', { id })
 }
 
 // ── 表示 ──────────────────────────────────────────────────

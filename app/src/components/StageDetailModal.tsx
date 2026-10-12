@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { invoke } from '@tauri-apps/api/core'
+import { call } from '../utils/backend'
 import type { GroupedStatsRow, Filters, StageRecord } from '../types'
 import { groupedStatsDisplayName } from '../i18n/displayName'
 import { RULE_LABELS, ruleLabel, filtersToBookDetailArgs, fmtKillRatioWithContrib, fmtOfficialWinRate, METRIC_LABELS } from '../types'
@@ -67,8 +67,8 @@ export function StageDetailModal({
     setError(null)
     const filterArgs = filtersToBookDetailArgs(filters, { stage: row.key })
     Promise.all([
-      invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'rule',   ...filterArgs }),
-      invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'weapon', ...filterArgs }),
+      call<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'rule',   ...filterArgs }),
+      call<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'weapon', ...filterArgs }),
     ])
       .then(([rules, weapons]) => {
         setRuleRows(rules)
@@ -86,12 +86,12 @@ export function StageDetailModal({
 
         Promise.all(
           [...uniq.entries()].map(([key, name]) =>
-            invoke<string | null>('read_image', { kind: 'weapon', name: key })
+            call<string | null>('read_image', { kind: 'weapon', name: key })
               .then(url => (url ? ([key, url] as [string, string]) : null))
               .catch(() => null)
               // key が name_ja だった場合のフォールバック(read_image がスラッグ想定)。
               .then(res => res ?? (name && name !== key
-                ? invoke<string | null>('read_image', { kind: 'weapon', name })
+                ? call<string | null>('read_image', { kind: 'weapon', name })
                     .then(url => (url ? ([key, url] as [string, string]) : null))
                     .catch(() => null)
                 : null))

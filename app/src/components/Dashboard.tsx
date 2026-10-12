@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { invoke } from '@tauri-apps/api/core'
+import { call } from '../utils/backend'
 import { listen } from '@tauri-apps/api/event'
 import {
   BarChart, Bar,
@@ -156,10 +156,10 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
     const needsBattleData = customCharts.some(c => c.shape === 'scatter' && c.dotUnit === 'battle')
 
     Promise.all([
-      invoke<Summary>('db_summary', filterArgs),
-      invoke<BattleStats>('db_battle_stats', filterArgs),
-      ...neededGroups.map(g => invoke<GroupedStatsRow[]>('db_grouped_stats', { ...filterArgs, groupBy: g }).then(rows => [g, rows] as const)),
-      ...needed2dKeys.map(s => invoke<GroupedStatsRow2D[]>('db_grouped_stats_2d', {
+      call<Summary>('db_summary', filterArgs),
+      call<BattleStats>('db_battle_stats', filterArgs),
+      ...neededGroups.map(g => call<GroupedStatsRow[]>('db_grouped_stats', { ...filterArgs, groupBy: g }).then(rows => [g, rows] as const)),
+      ...needed2dKeys.map(s => call<GroupedStatsRow2D[]>('db_grouped_stats_2d', {
         ...filterArgs,
         groupByX:   s.xa.gb,
         groupByY:   s.ya.gb,
@@ -168,7 +168,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
         yBinWidth:  s.ya.bin,
       }).then(rows => [s.key, rows] as const)),
       needsBattleData
-        ? invoke<BattleRow[]>('db_list_battles', { ...filterArgs, limit: 10000, offset: 0, orderBy: 'played_at', orderAsc: false })
+        ? call<BattleRow[]>('db_list_battles', { ...filterArgs, limit: 10000, offset: 0, orderBy: 'played_at', orderAsc: false })
         : Promise.resolve([] as BattleRow[]),
     ])
       .then((results) => {
@@ -198,7 +198,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
 
   // Load weapon images once
   useEffect(() => {
-    invoke<WeaponRecord[]>('db_list_weapons').then(list => {
+    call<WeaponRecord[]>('db_list_weapons').then(list => {
       setWeaponMeta(new Map(list.map(w => [w.name, {
         category: w.category,
         sub_weapon: w.sub_weapon,
@@ -210,10 +210,10 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
         setSpImages(sp)
       }).catch(console.error)
     }).catch(console.error)
-    invoke<string[]>('db_weapons_used').then(weapons => {
+    call<string[]>('db_weapons_used').then(weapons => {
       Promise.all(
         weapons.map(name =>
-          invoke<string | null>('read_image', { kind: 'weapon', name })
+          call<string | null>('read_image', { kind: 'weapon', name })
             .then(url => (url ? ([name, url] as [string, string]) : null))
             .catch(() => null)
         )
@@ -225,7 +225,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
 
   // ステージ画像を一度だけ事前ロード(#742)。カスタムヒートマップのステージ軸チップ用。
   useEffect(() => {
-    invoke<{ name: string }[]>('db_stages_used').then(list => {
+    call<{ name: string }[]>('db_stages_used').then(list => {
       loadStageImageMap(list.map(s => s.name)).then(setStageImages).catch(console.error)
     }).catch(() => {})
   }, [])
@@ -263,7 +263,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
     if (targets.length === 0) return
     targets.forEach(n => weaponIconTried.current.add(n))   // 解決前に積む(再レンダーで二重に invoke しない)
     Promise.all(targets.map(name =>
-      invoke<string | null>('read_image', { kind: 'weapon', name })
+      call<string | null>('read_image', { kind: 'weapon', name })
         .then(url => (url ? ([name, url] as [string, string]) : null))
         .catch(() => null)
     )).then(results => {

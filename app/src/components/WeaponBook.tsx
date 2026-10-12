@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { invoke } from '@tauri-apps/api/core'
+import { call } from '../utils/backend'
 import type { GroupedStatsRow, WeaponRecord, BookView, Filters } from '../types'
 import { filtersToBookArgs, avgKillRatio, fmtOfficialDate, METRIC_LABELS } from '../types'
 import { WeaponDetailModal } from './WeaponDetailModal'
@@ -107,14 +107,14 @@ export function WeaponBook({ filters }: { filters: Filters }) {
   }
 
   useEffect(() => {
-    invoke<WeaponRecord[]>('db_list_weapons')
+    call<WeaponRecord[]>('db_list_weapons')
       .then(rows => {
         setWeapons(rows)
 
         // 主ブキ画像
         Promise.all(
           rows.map(w =>
-            invoke<string | null>('read_image', { kind: 'weapon', name: w.name })
+            call<string | null>('read_image', { kind: 'weapon', name: w.name })
               .then(url => (url ? ([w.name, url] as [string, string]) : null))
               .catch(() => null)
           )
@@ -128,7 +128,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
         ).keys()]
         Promise.all(
           uniqueSubs.map(name =>
-            invoke<string | null>('read_image', { kind: 'sub_weapon', name })
+            call<string | null>('read_image', { kind: 'sub_weapon', name })
               .then(url => (url ? ([name, url] as [string, string]) : null))
               .catch(() => null)
           )
@@ -142,7 +142,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
         ).keys()]
         Promise.all(
           uniqueSps.map(name =>
-            invoke<string | null>('read_image', { kind: 'special_weapon', name })
+            call<string | null>('read_image', { kind: 'special_weapon', name })
               .then(url => (url ? ([name, url] as [string, string]) : null))
               .catch(() => null)
           )
@@ -157,7 +157,7 @@ export function WeaponBook({ filters }: { filters: Filters }) {
     // 共通 FilterBar(期間・モード・ルール・結果)をローカル集計に反映する(#298)。
     // ※ 公式アプリの数字（熟練度・通算勝利・通算塗りPなど）は全期間固定でフィルタ不可。
     //    そちらは db_list_weapons 由来なので、この呼び出しには追従しない(「全期間」バッジで区別)。
-    invoke<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'weapon', ...filtersToBookArgs(filters) })
+    call<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'weapon', ...filtersToBookArgs(filters) })
       .then(rows => setStatsByWeapon(new Map(rows.map(r => [r.key, r]))))
       .catch(console.error)
   }, [filters])

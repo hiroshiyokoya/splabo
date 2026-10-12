@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { call } from './backend'
 import i18n from '../i18n'
 
 /**
@@ -59,7 +59,7 @@ export const ABILITY_KEYS: string[] = Object.keys(ABILITY_LABELS_JA)
 export async function loadAbilityImages(): Promise<Map<string, string>> {
   const entries = await Promise.all(
     ABILITY_KEYS.map(key =>
-      invoke<string | null>('read_image', { kind: 'ability', name: key })
+      call<string | null>('read_image', { kind: 'ability', name: key })
         .then(url => (url ? ([key, url] as [string, string]) : null))
         .catch(() => null)
     )

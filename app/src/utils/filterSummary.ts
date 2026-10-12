@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { invoke } from '@tauri-apps/api/core'
+import { call } from './backend'
 import type { Filters, Period } from '../types'
 import { filtersToRange, resultLabel } from '../types'
 import { stageInfoDisplayName, localizedName } from '../i18n/displayName'
@@ -172,7 +172,7 @@ export function useStageNames(): Map<string, string> {
       return
     }
     let alive = true
-    invoke<StageInfo[]>('db_stages_used')
+    call<StageInfo[]>('db_stages_used')
       .then(list => {
         stageListCache = list
         const mapped = new Map(list.map(s => [s.id, stageInfoDisplayName(s)]))
