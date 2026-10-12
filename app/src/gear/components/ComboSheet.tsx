@@ -3,9 +3,10 @@ import { useTranslation } from 'react-i18next'
 import type { GearCategory, GearItem, GearDB, Skill } from '../types'
 import { findCombo, MAIN_AP, SUB_AP, getComboSortKey, comboBestBadgeKeysEqual } from '../utils/findCombo'
 import type { ComboResult, ComboSortKey } from '../utils/findCombo'
-import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank } from '../constants/gearPowerMeta'
+import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank, makeSkillDisplayComparator } from '../constants/gearPowerMeta'
 import { skillDisplayName } from '../utils/skillDisplayName'
 import { gearItemDisplayName, gearBrandDisplayName } from '../utils/gearItemDisplayName'
+import type { FullSlots } from '../utils/savedCoordinates'
 
 export type ComboSlots = {
   head:     GearItem | null
@@ -85,9 +86,13 @@ interface Props {
   comboLimit?:      number
   /** 惜しい候補の最大件数(デフォルト 10) */
   nearLimit?:       number
+  /** 3 部位そろったコーデを保存する(#782) */
+  onSaveCombo?:     (slots: FullSlots) => void
+  /** 値が変わるたびに、閉じていればシートを開く(保存コーデをスロットに入れたとき・#782) */
+  openRequest?:     number
 }
 
-export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '', comboLimit = 50, nearLimit = 10 }: Props) {
+export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '', comboLimit = 50, nearLimit = 10, onSaveCombo, openRequest = 0 }: Props) {
   const { t } = useTranslation()
   const emptyLabel = t('gear.empty')
   const [isOpen, setIsOpen]             = useState(false)
@@ -114,6 +119,13 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
   const comboStepperCtxRef = useRef({ skillPoints, remainingPool: 0, aAvail: 3 })
 
   useEffect(() => { onIsOpenChange?.(isOpen) }, [isOpen])
+
+  // 外からの「開いて」(保存コーデの適用など)。開いているときは高さを変えない
+  useEffect(() => {
+    if (openRequest === 0 || isOpen) return
+    setIsOpen(true)
+    setSnapExpanded(false)
+  }, [openRequest])
 
   // リストから別ギアが入ったら UNDO スナップショットを破棄。埋まったら UNDO ボタン表示も止める
   useEffect(() => {
@@ -166,7 +178,12 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
   const [searching, setSearching]       = useState(false)
 
   const totalAp   = useMemo(() => calcTotalAp(slots), [slots])
+  /** 合計 AP の並び順（発動型 → スタック型の固定順。コーデによって変わらない） */
+  const compareSkill = makeSkillDisplayComparator()
   const anyFilled = slots.head !== null || slots.clothing !== null || slots.shoes !== null
+  const fullSlots: FullSlots | null = slots.head && slots.clothing && slots.shoes
+    ? { head: slots.head, clothing: slots.clothing, shoes: slots.shoes }
+    : null
 
   // DB からスタック型スキル一覧
   const stackableSkills = useMemo(() => {
@@ -543,6 +560,17 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
         {/* ヘッダー */}
         <div className="combo-sheet__header">
           <span className="combo-sheet__title">{t('gear.combo.title')}</span>
+          <div className="combo-sheet__header-actions">
+          {onSaveCombo && fullSlots && (
+            <button
+              type="button"
+              className="combo-sheet__clear-btn combo-sheet__save-btn"
+              onClick={() => onSaveCombo(fullSlots)}
+              title={t('gear.saved.saveCombo')}
+            >
+              {t('gear.saved.saveButton')}
+            </button>
+          )}
           {anyFilled && (
             <button
               type="button"
@@ -558,6 +586,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
               {t('gear.combo.clear')}
             </button>
           )}
+          </div>
         </div>
 
         <div className="combo-sheet__body">
@@ -660,13 +689,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
               <span className="combo-ap-bar__label">{t('gear.combo.totalAp')}</span>
               <div className="combo-ap-chips">
                 {[...totalAp.entries()]
-                  .sort(([aId, a], [bId, b]) => {
-                    const aMain = isMainOnly(aId)
-                    const bMain = isMainOnly(bId)
-                    if (aMain && !bMain) return -1
-                    if (!aMain && bMain) return 1
-                    return b.ap - a.ap
-                  })
+                  .sort(([aId], [bId]) => compareSkill(aId, bId))
                   .map(([id, { name, ap, image }]) => {
                     const displayName = skillDisplayName({ id, name }, t)
                     return (
@@ -798,8 +821,11 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                     const isBest = !isNear && bestPerfectSortKeys !== null &&
                       comboBestBadgeKeysEqual(sk, bestPerfectSortKeys)
                     return (
-                    <button
+                    <div
                       key={`${combo.head.id}-${combo.clothing.id}-${combo.shoes.id}-${combo.matchKind ?? 'perfect'}-${combo.deficitSum ?? 0}`}
+                      className="combo-result-row-wrap"
+                    >
+                    <button
                       type="button"
                       className={`combo-result-row${isBest ? ' combo-result-row--best' : ''}${isNear ? ' combo-result-row--near' : ''}`}
                       onClick={() => {
@@ -820,13 +846,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                       </div>
                       <div className="combo-result-row__ap">
                         {Object.entries(combo.allApBySkill)
-                          .sort(([aId, aAp], [bId, bAp]) => {
-                            const aMain = isMainOnly(Number(aId))
-                            const bMain = isMainOnly(Number(bId))
-                            if (aMain && !bMain) return -1
-                            if (!aMain && bMain) return 1
-                            return bAp - aAp
-                          })
+                          .sort(([aId], [bId]) => compareSkill(Number(aId), Number(bId)))
                           .map(([skillIdStr, ap]) => {
                             const sid = Number(skillIdStr)
                             const mainOnly = isMainOnly(sid)
@@ -871,6 +891,18 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                         )}
                       </div>
                     </button>
+                    {onSaveCombo && (
+                      <button
+                        type="button"
+                        className="combo-result-row__save"
+                        onClick={() => onSaveCombo({ head: combo.head, clothing: combo.clothing, shoes: combo.shoes })}
+                        aria-label={t('gear.saved.saveCombo')}
+                        title={t('gear.saved.saveCombo')}
+                      >
+                        {t('gear.saved.saveButton')}
+                      </button>
+                    )}
+                    </div>
                     )
                   })}
                 </div>

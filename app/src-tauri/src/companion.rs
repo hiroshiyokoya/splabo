@@ -14,6 +14,9 @@
 //!                           ETag（内容 sha256）対応。`If-None-Match` 一致なら 304（#356）。
 //!   - `GET /battle_db.bin`… `app_data_dir()/data/battle_db.bin` を配信（不在は 404）。
 //!                           ETag（内容 sha256）対応。`If-None-Match` 一致なら 304（#356）。
+//!   - `GET /coordinates.bin` … 保存コーデ（`app_data_dir()/saved_coordinates.json`・#782）を
+//!                           gear_db と同じ方式で暗号化して配信。保存が無ければ空の一覧（404 にしない）。
+//!                           ETag は暗号化前の内容 sha256（暗号化は nonce が毎回変わるため）。
 //!   - `GET /images/...`   … 画像（.gti）を相対パスで配信。`..` 等は 403。**2 系統を振り分ける**:
 //!                           - `images/{weapon,sub_weapon,special_weapon,stage,ability}/...`
 //!                             → `app_data_dir()/images/`（バトルアイコン・`images.rs` が書く／#327）
@@ -80,6 +83,8 @@ struct ServerCtx {
     /// バトルアイコン（`images.rs` が書く）のキャッシュルート（`app_data_dir()/images`・#327）。
     /// `data_dir` とは別系統。`/images/...` の kind で振り分ける（`resolve_image_path`）。
     images_root: PathBuf,
+    /// 保存コーデ（`app_data_dir()/saved_coordinates.json`・#782）。
+    coords_path: PathBuf,
     app: AppHandle,
     /// ②更新命令のジョブ状態（サーバー稼働中のみ保持。停止で捨てる）。
     job: Arc<Mutex<UpdateStatus>>,
@@ -771,6 +776,49 @@ fn respond_file(request: tiny_http::Request, path: &std::path::Path) {
     let _ = request.respond(response);
 }
 
+/// 保存コーデを暗号化して配信する（#782）。保存が無ければ空の一覧を返す。
+///
+/// ETag は暗号化前の JSON の sha256。`encrypt_db` は nonce を毎回変えるので、暗号文から
+/// 作ると内容が同じでも毎回変わり 304 にならない。
+fn respond_coordinates(request: tiny_http::Request, coords_path: &std::path::Path) {
+    let plain = match crate::saved_coordinates::export_bytes(coords_path) {
+        Ok(b) => b,
+        Err(e) => {
+            log::warn!("[companion] 保存コーデの読み込み失敗: {e}");
+            let _ = request.respond(tiny_http::Response::from_string("error").with_status_code(500));
+            return;
+        }
+    };
+    let etag = crate::icon_manifest::hash_bytes(&plain);
+
+    let if_none_match = request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("If-None-Match"))
+        .map(|h| h.value.as_str().to_string());
+    if crate::icon_manifest::etag_matches(if_none_match.as_deref(), &etag) {
+        let _ = request.respond(tiny_http::Response::empty(304));
+        return;
+    }
+
+    let bytes = match crate::gear_crypto::encrypt_db(&plain) {
+        Ok(b) => b,
+        Err(e) => {
+            log::warn!("[companion] 保存コーデの暗号化失敗: {e}");
+            let _ = request.respond(tiny_http::Response::from_string("error").with_status_code(500));
+            return;
+        }
+    };
+    let ctype =
+        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/octet-stream"[..]).unwrap();
+    let etag_header =
+        tiny_http::Header::from_bytes(&b"ETag"[..], format!("\"{etag}\"").as_bytes()).unwrap();
+    let response = tiny_http::Response::from_data(bytes)
+        .with_header(ctype)
+        .with_header(etag_header);
+    let _ = request.respond(response);
+}
+
 /// `images/` 配下の相対パスを安全に解決する（パストラバーサル拒否）。
 ///
 /// リクエストパス（先頭 `/` 込み）を受け取り、実ファイルパスを返す。
@@ -857,7 +905,7 @@ fn handle_request(request: tiny_http::Request, ctx: &ServerCtx) {
             respond_json(request, 200, &status);
         }
         // 静的配信（ping / DB / 画像 / アイコンマニフェスト）は AppHandle 非依存の経路へ。
-        _ => serve_asset(request, &method, &path, &ctx.data_dir, &ctx.images_root),
+        _ => serve_asset(request, &method, &path, &ctx.data_dir, &ctx.images_root, &ctx.coords_path),
     }
 }
 
@@ -872,11 +920,13 @@ fn serve_asset(
     path: &str,
     data_dir: &std::path::Path,
     images_root: &std::path::Path,
+    coords_path: &std::path::Path,
 ) {
     match (method, path) {
         (tiny_http::Method::Get, "/ping") => {
             let _ = request.respond(tiny_http::Response::from_string("pong"));
         }
+        (tiny_http::Method::Get, "/coordinates.bin") => respond_coordinates(request, coords_path),
         (tiny_http::Method::Get, "/gear_db.bin") => {
             respond_file(request, &data_dir.join("gear_db.bin"))
         }
@@ -996,6 +1046,7 @@ pub fn companion_start(
             token: token.clone(),
             data_dir: data_dir.clone(),
             images_root: images_root.clone(),
+            coords_path: crate::saved_coordinates::file_path(&app)?,
             app: app.clone(),
             job: Arc::new(Mutex::new(UpdateStatus::default())),
         };
@@ -1276,7 +1327,8 @@ mod tests {
             let url = request.url().to_string();
             let path = url.split('?').next().unwrap_or("").to_string();
             let method = request.method().clone();
-            serve_asset(request, &method, &path, &data_dir, &images_root);
+            let coords_path = data_dir.join(crate::saved_coordinates::FILE_NAME);
+            serve_asset(request, &method, &path, &data_dir, &images_root, &coords_path);
         });
 
         let mut stream = std::net::TcpStream::connect(addr).unwrap();
@@ -1380,6 +1432,45 @@ mod tests {
         assert!(res.contains("GEAR-DB-V2"), "body missing: {res}");
         let etag = crate::icon_manifest::hash_bytes(b"GEAR-DB-V2");
         assert!(res.contains(&format!("ETag: \"{etag}\"")), "etag missing: {res}");
+    }
+
+    #[test]
+    fn serves_empty_coordinates_when_none_saved() {
+        // #782: 保存が無くても 404 にしない（404 は「古いデスクトップ」の合図に使う）。
+        let data_dir = temp_root("http_data");
+        let images_root = temp_root("http_images");
+        let coords_path = data_dir.join(crate::saved_coordinates::FILE_NAME);
+        let plain = crate::saved_coordinates::export_bytes(&coords_path).unwrap();
+        let etag = crate::icon_manifest::hash_bytes(&plain);
+
+        let res = get("/coordinates.bin", "", data_dir, images_root);
+        assert!(res.starts_with("HTTP/1.1 200 OK"), "unexpected: {res}");
+        assert!(res.contains("application/octet-stream"), "content-type: {res}");
+        // ETag は暗号化前の内容から作る（暗号文は nonce で毎回変わる）。
+        assert!(res.contains(&format!("ETag: \"{etag}\"")), "etag missing: {res}");
+    }
+
+    #[test]
+    fn returns_304_when_coordinates_etag_matches() {
+        let data_dir = temp_root("http_data");
+        let images_root = temp_root("http_images");
+        let coords_path = data_dir.join(crate::saved_coordinates::FILE_NAME);
+        std::fs::write(
+            &coords_path,
+            br#"{"schema":"saved-coordinates-v1","version":1,"coordinates":[]}"#,
+        )
+        .unwrap();
+        let etag = crate::icon_manifest::hash_bytes(
+            &crate::saved_coordinates::export_bytes(&coords_path).unwrap(),
+        );
+
+        let res = get(
+            "/coordinates.bin",
+            &format!("If-None-Match: \"{etag}\"\r\n"),
+            data_dir,
+            images_root,
+        );
+        assert!(res.starts_with("HTTP/1.1 304"), "unexpected: {res}");
     }
 
     #[test]

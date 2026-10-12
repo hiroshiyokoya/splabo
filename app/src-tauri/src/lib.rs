@@ -25,6 +25,7 @@ pub mod image_export;
 pub mod images;
 pub mod locale;
 pub mod migration;
+pub mod saved_coordinates;
 pub mod nxapi;
 pub mod splatnet3;
 pub mod sql_functions;
@@ -154,6 +155,10 @@ pub fn run() {
             gear::delete_gear_data,
             // ギア取得系（Rust GraphQL 経路・Phase A2・gear.rs）
             gear::fetch_gear_full,
+            // 保存コーデ（#782・saved_coordinates.rs）
+            saved_coordinates::list_saved_coordinates,
+            saved_coordinates::save_coordinate,
+            saved_coordinates::delete_saved_coordinate,
             // battle_db エクスポート（モバイルコンパニオン・#325・battle_export.rs）
             battle_export::export_battle_db,
             // コンパニオン同期サーバー（モバイルコンパニオン・#324・companion.rs）
