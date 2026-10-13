@@ -19,6 +19,36 @@ export interface MobileFilter {
 
 export const DEFAULT_FILTER: MobileFilter = { period: '7d', mode: [], rule: [] }
 
+/**
+ * 選んだ絞り込みをスマホのブラウザに覚えておく（次に開いたときも同じ条件で始める）。
+ * 端末ごとの好みなので PC には送らない。読めない・壊れているときは既定に戻す。
+ */
+const FILTER_STORAGE_KEY = 'splabo:mobileFilter'
+
+export function loadMobileFilter(): MobileFilter {
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY)
+    if (!raw) return DEFAULT_FILTER
+    const v = JSON.parse(raw) as Partial<MobileFilter>
+    const strings = (a: unknown) => (Array.isArray(a) ? a.filter((x): x is string => typeof x === 'string') : [])
+    return {
+      period: PERIODS.includes(v.period as Period) ? (v.period as Period) : DEFAULT_FILTER.period,
+      mode: strings(v.mode),
+      rule: strings(v.rule),
+    }
+  } catch {
+    return DEFAULT_FILTER
+  }
+}
+
+export function saveMobileFilter(f: MobileFilter): void {
+  try {
+    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(f))
+  } catch {
+    // プライベートブラウズなどで保存できなくても、その場の絞り込みは効く
+  }
+}
+
 /** コマンドに渡す絞り込みの引数（デスクトップと同じ変換。ルールの turf_war → nawabari など） */
 export function filterArgs(f: MobileFilter): { since: string | null; until: null; mode: string | null; rule: string | null } {
   return {

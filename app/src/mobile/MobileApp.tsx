@@ -5,7 +5,7 @@ import { GearSection } from '../gear/GearSection'
 import { BattleScreen } from './BattleScreen'
 import { WeaponScreen } from './WeaponScreen'
 import { StageScreen } from './StageScreen'
-import { DEFAULT_FILTER } from './parts'
+import { loadMobileFilter, saveMobileFilter } from './parts'
 import type { MobileFilter } from './parts'
 import { requestPcUpdate } from './pcUpdate'
 import { applyPcSettings } from './sharedSettings'
@@ -76,7 +76,9 @@ export function MobileApp({ session }: { session: SessionResult }) {
   )
   const [section, setSection] = useState<Section>('battle')
   // バトル・ブキ・ステージで共有する絞り込み（期間・ロビー・ルール・#801）。画面を移っても同じまま
-  const [filter, setFilter] = useState<MobileFilter>(DEFAULT_FILTER)
+  const [filter, setFilter] = useState<MobileFilter>(loadMobileFilter)
+  // 選んだ絞り込みはスマホに覚えておき、次に開いたときもその条件で始める
+  useEffect(() => { saveMobileFilter(filter) }, [filter])
   const [updating, setUpdating] = useState(false)
   const [updateNote, setUpdateNote] = useState<{ ok: boolean; text: string } | null>(null)
   const hiddenAt = useRef<number | null>(null)
