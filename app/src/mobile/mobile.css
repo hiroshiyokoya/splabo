@@ -123,8 +123,9 @@ html, body {
   font-size: 0.8rem;
 }
 
+/* カードの最小幅を決めて、画面幅に入るだけ並べる（縦持ちの 390px で 2 列、横持ちで 4〜5 列） */
 .m-app .gear-root .gear-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 8px;
 }
 
@@ -222,8 +223,9 @@ html, body {
   width: min(var(--drawer-width), 88vw);
 }
 
+/* 保存コーデのカードも同じ考え方（縦持ちは 1 列、横持ちは 2 列） */
 .m-app .gear-root .coord-list {
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
 }
 
 .m-main {
@@ -472,4 +474,345 @@ html, body {
 .m-more {
   width: 100%;
   margin-top: 8px;
+}
+
+/* ── ブキ・ステージ（#801） ── */
+
+/* 4 つのナビを 390px に収める */
+.m-nav {
+  margin-left: 4px;
+  gap: 3px;
+}
+
+.m-nav__item {
+  padding: 4px 10px;
+}
+
+.m-book {
+  padding: 10px 10px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.m-book-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.m-book-tools--end {
+  justify-content: flex-end;
+}
+
+.m-chips {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.m-chip {
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.m-chip--active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.m-sort {
+  flex-shrink: 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
+/* 一覧の行はボタン（タップで詳細） */
+.m-book-row {
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 8px 0;
+}
+
+.m-book-row:first-child {
+  border-top: none;
+}
+
+.m-icon-blank {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.m-bar-row__label--wide {
+  flex: 1;
+}
+
+.m-bar-row__label--stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.m-bar-row__label--stage img,
+.m-stage-blank {
+  width: 56px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: var(--surface2);
+}
+
+/* 詳細 */
+.m-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.m-back {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.m-detail-head__icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+.m-detail-head__title {
+  font-size: 17px;
+  font-weight: 800;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.m-kit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.m-kit__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.m-kit__item img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.m-stage-hero {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.m-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.m-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--surface2);
+  min-width: 0;
+}
+
+.m-tile__value {
+  font-size: 15px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.m-tile__label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.m-card__note {
+  margin-left: 8px;
+  font-weight: 400;
+  font-size: 11px;
+}
+
+/* ── 絞り込み（期間のボタン + ロビー・ルール・ブキ種・並び替えのプルダウン・#801） ── */
+
+.m-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.m-filter__selects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.m-filter__selects .m-sort {
+  flex: 1 1 calc(50% - 3px);
+  min-width: 0;
+  padding: 6px 8px;
+}
+
+/* 「すべて」以外で絞っているプルダウン */
+.m-sort--active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── 複数選択のプルダウン（ロビー・ルール・ブキ種） ── */
+
+.m-multi {
+  position: relative;
+  flex: 1 1 calc(50% - 3px);
+  min-width: 0;
+}
+
+.m-filter__selects .m-multi .m-sort {
+  width: 100%;
+}
+
+.m-multi__button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  text-align: left;
+}
+
+.m-multi__summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-multi__caret {
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.m-multi__panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 180px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  padding: 4px 0;
+}
+
+/* 右の列のプルダウンは、一覧を右端にそろえて画面からはみ出さないようにする */
+.m-filter__selects .m-multi:nth-child(even) .m-multi__panel {
+  left: auto;
+  right: 0;
+}
+
+.m-multi__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+}
+
+.m-multi__option--on {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.m-multi__check {
+  width: 16px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+/* ── 横持ち（画面の高さが低いとき）: コーデシートを低くして、一覧が見える範囲を広げる ── */
+@media (orientation: landscape) and (max-height: 500px) {
+  .m-app .gear-root .combo-sheet--open {
+    height: 168px;
+  }
+
+  .m-app .gear-root .combo-slot {
+    min-height: 68px;
+    padding: 4px;
+  }
+
+  .m-app .gear-root .combo-slot--filled {
+    flex-direction: row;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .m-app .gear-root .combo-slot__img {
+    width: 44px;
+    height: 44px;
+  }
+
+  .m-app .gear-root .combo-slot__info,
+  .m-app .gear-root .combo-slot--filled .combo-slot__info {
+    width: auto;
+  }
+
+  /* シートの下に一覧の最後が隠れないよう、余白もシートの高さに合わせる */
+  .m-app .gear-root .gear-app--combo-open {
+    padding-bottom: 200px;
+  }
 }

@@ -3,6 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { call, BackendUnauthorizedError, BackendUnreachableError, MOBILE_REFRESH_EVENT } from '../utils/backend'
 import { GearSection } from '../gear/GearSection'
 import { BattleScreen } from './BattleScreen'
+import { WeaponScreen } from './WeaponScreen'
+import { StageScreen } from './StageScreen'
+import { DEFAULT_FILTER } from './parts'
+import type { MobileFilter } from './parts'
 import { requestPcUpdate } from './pcUpdate'
 import { applyPcSettings } from './sharedSettings'
 import type { SessionResult } from './session'
@@ -23,7 +27,16 @@ const REFRESH_AFTER_HIDDEN_MS = 30 * 1000
 /** 更新結果の表示を消すまで */
 const UPDATE_NOTE_MS = 4000
 
-type Section = 'battle' | 'gear'
+type Section = 'battle' | 'weapon' | 'stage' | 'gear'
+
+const SECTIONS: Section[] = ['battle', 'weapon', 'stage', 'gear']
+
+const SECTION_LABEL: Record<Section, string> = {
+  battle: 'mobile.navBattle',
+  weapon: 'mobile.navWeapon',
+  stage: 'mobile.navStage',
+  gear: 'mobile.navGear',
+}
 
 /** つながらないときの案内（#788・設計 #784 §8） */
 export function ConnectionProblem({ connection, onRetry }: { connection: Connection; onRetry: () => void }) {
@@ -62,6 +75,8 @@ export function MobileApp({ session }: { session: SessionResult }) {
     session === 'rejected' ? 'unauthorized' : session === 'unreachable' ? 'unreachable' : 'checking',
   )
   const [section, setSection] = useState<Section>('battle')
+  // バトル・ブキ・ステージで共有する絞り込み（期間・ロビー・ルール・#801）。画面を移っても同じまま
+  const [filter, setFilter] = useState<MobileFilter>(DEFAULT_FILTER)
   const [updating, setUpdating] = useState(false)
   const [updateNote, setUpdateNote] = useState<{ ok: boolean; text: string } | null>(null)
   const hiddenAt = useRef<number | null>(null)
@@ -121,25 +136,22 @@ export function MobileApp({ session }: { session: SessionResult }) {
   return (
     <div className="m-app">
       <header className="m-header">
-        <img src="/splabo-favicon-32.png" alt="" width={24} height={24} />
-        <span className="m-header__title">SpLabo</span>
+        <img src="/splabo-favicon-32.png" alt="SpLabo" width={24} height={24} />
+        {connection !== 'ok' && <span className="m-header__title">SpLabo</span>}
         {connection === 'ok' && (
           <>
+            {/* 4 つのナビを 390px に収めるため、つながったら「SpLabo」の文字は出さない（#801） */}
             <nav className="m-nav">
-              <button
-                type="button"
-                className={`m-nav__item${section === 'battle' ? ' m-nav__item--active' : ''}`}
-                onClick={() => setSection('battle')}
-              >
-                {t('mobile.navBattle')}
-              </button>
-              <button
-                type="button"
-                className={`m-nav__item${section === 'gear' ? ' m-nav__item--active' : ''}`}
-                onClick={() => setSection('gear')}
-              >
-                {t('mobile.navGear')}
-              </button>
+              {SECTIONS.map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`m-nav__item${section === s ? ' m-nav__item--active' : ''}`}
+                  onClick={() => setSection(s)}
+                >
+                  {t(SECTION_LABEL[s])}
+                </button>
+              ))}
             </nav>
             <button
               type="button"
@@ -163,7 +175,9 @@ export function MobileApp({ session }: { session: SessionResult }) {
         {(connection === 'unauthorized' || connection === 'unreachable') && (
           <ConnectionProblem connection={connection} onRetry={check} />
         )}
-        {connection === 'ok' && section === 'battle' && <BattleScreen />}
+        {connection === 'ok' && section === 'battle' && <BattleScreen filter={filter} onFilterChange={setFilter} />}
+        {connection === 'ok' && section === 'weapon' && <WeaponScreen filter={filter} onFilterChange={setFilter} />}
+        {connection === 'ok' && section === 'stage' && <StageScreen filter={filter} onFilterChange={setFilter} />}
         {connection === 'ok' && section === 'gear' && <GearSection />}
       </main>
     </div>
