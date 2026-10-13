@@ -298,6 +298,17 @@
     "customModelId": "Custom model ID",
     "aiPriceNote": "Prices and context length as of May 2026. See each provider’s pricing page for current numbers."
   },
+  "mobile": {
+    "connecting": "Connecting to your PC…",
+    "connected": "Connected to your PC ({{count}} battles)",
+    "unauthorizedTitle": "Scan the QR code again",
+    "unauthorizedBody": "On your PC, open SpLabo Settings → \"View on your phone\" and scan the QR code with your phone camera. This is needed the first time and after the token is reissued.",
+    "unreachableTitle": "Can't reach your PC",
+    "unreachableCheckOn": "SpLabo is running on the PC and \"View on your phone\" is on in Settings",
+    "unreachableCheckWifi": "Your phone and PC are on the same Wi-Fi (same network)",
+    "unreachableCheckPrivate": "The Windows network is not set to Public (set it to Private)",
+    "retry": "Try again"
+  },
   "gear": {
     "tab": {
       "head": "Head",

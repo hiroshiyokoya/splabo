@@ -1,0 +1,59 @@
+/* スマホ Web 版（#788〜）。変数・ボタンなどの部品は App.css と共有する。 */
+
+html, body {
+  background: var(--bg);
+  /* iOS で横向きにしたときの文字の自動拡大を止める */
+  -webkit-text-size-adjust: 100%;
+}
+
+.m-app {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding-top: env(safe-area-inset-top);
+}
+
+.m-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.m-header__title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.m-main {
+  flex: 1;
+  min-height: 0;
+}
+
+.m-status {
+  padding: 48px 16px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.m-problem {
+  margin: 32px 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  line-height: 1.6;
+}
+
+.m-problem__title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.m-problem ul {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  color: var(--text-muted);
+  font-size: 13px;
+}

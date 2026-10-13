@@ -837,6 +837,61 @@ fn is_web_path(path: &str) -> bool {
     path.starts_with("/api/") || path.starts_with("/img/")
 }
 
+/// viewer 用（と ②更新命令）の経路か。これ以外で静的ファイルでもないものは 404。
+fn is_viewer_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/ping"
+            | "/gear_db.bin"
+            | "/battle_db.bin"
+            | "/coordinates.bin"
+            | "/icons/manifest"
+            | "/update"
+            | "/update_status"
+    ) || path.starts_with("/images/")
+}
+
+/// スマホ画面の静的ファイル名（#788）。対象外は None。
+///
+/// - `/m`・`/m/` → `mobile.html`
+/// - `/assets/<ファイル名>`（Vite の出力。1 階層・英数と `._-` だけ）
+/// - マニフェストとアイコン（`app/public` のもの）
+fn static_asset_name(path: &str) -> Option<String> {
+    match path {
+        "/m" | "/m/" | "/m/index.html" => return Some("mobile.html".to_string()),
+        "/mobile.webmanifest" | "/splabo-favicon.png" | "/splabo-favicon-16.png" | "/splabo-favicon-32.png" => {
+            return Some(path[1..].to_string())
+        }
+        _ => {}
+    }
+    let file = path.strip_prefix("/assets/")?;
+    let ok = !file.is_empty()
+        && !file.starts_with('.')
+        && file.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    ok.then(|| format!("assets/{file}"))
+}
+
+/// アプリに同梱のフロント（`dist/`）からファイルを返す（#788）。
+///
+/// リリースでは埋め込み資産、`tauri dev` では `frontendDist`（`app/dist`）を直接読む
+/// （Tauri の `asset_resolver` がそうしている）。dev でスマホ画面を変えたら `npm run build -w app` が要る。
+fn respond_static(request: tiny_http::Request, app: &AppHandle, name: &str) {
+    let Some(asset) = app.asset_resolver().get(name.to_string()) else {
+        let _ = request.respond(tiny_http::Response::from_string("not found").with_status_code(404));
+        return;
+    };
+    let mime = if name.ends_with(".webmanifest") {
+        "application/manifest+json".to_string()
+    } else {
+        asset.mime_type.clone()
+    };
+    // ファイル名にハッシュが入る assets/ は長くキャッシュしてよい。HTML などは毎回確かめる。
+    let cache = if name.starts_with("assets/") { "public, max-age=31536000, immutable" } else { "no-cache" };
+    let ctype = tiny_http::Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap();
+    let cache = tiny_http::Header::from_bytes(&b"Cache-Control"[..], cache.as_bytes()).unwrap();
+    let _ = request.respond(tiny_http::Response::from_data(asset.bytes).with_header(ctype).with_header(cache));
+}
+
 fn header_value(request: &tiny_http::Request, name: &'static str) -> Option<String> {
     request
         .headers()
@@ -1043,8 +1098,23 @@ fn handle_request(request: tiny_http::Request, ctx: &ServerCtx) {
         return;
     }
 
-    // 疎通・認証チェック（viewer 用のエンドポイントは Bearer 検証。②更新命令も同じ検証を通す）。
-    if !authorized(&request, &ctx.token) {
+    // スマホ画面の静的ファイル（#788）。中身はアプリに同梱のフロントだけなので認証しない
+    // （認証は画面が開いたあと、QR のトークンを Cookie に交換してから）。
+    if method == tiny_http::Method::Get {
+        if let Some(name) = static_asset_name(&path) {
+            respond_static(request, &ctx.app, &name);
+            return;
+        }
+    }
+
+    // 知らない経路は認証を求めず 404（unauthorized を返すと、つながっていないように見えて紛らわしい）。
+    if !is_viewer_path(&path) {
+        let _ = request.respond(tiny_http::Response::from_string("not found").with_status_code(404));
+        return;
+    }
+
+    // 疎通・認証チェック（Bearer か Cookie。スマホ Web 版も ②更新命令（/update・/update_status）を使う）。
+    if !web_authorized(&request, &ctx.token) {
         let _ = request.respond(tiny_http::Response::from_string("unauthorized").with_status_code(401));
         return;
     }
@@ -1773,6 +1843,40 @@ mod tests {
         assert!(!is_web_path("/gear_db.bin"));
         assert!(!is_web_path("/images/gear/x.gti"));
         assert!(!is_web_path("/update"));
+    }
+
+    // --- スマホ画面の静的ファイル（#788） ---
+
+    #[test]
+    fn maps_mobile_entry_and_assets() {
+        assert_eq!(static_asset_name("/m").as_deref(), Some("mobile.html"));
+        assert_eq!(static_asset_name("/m/").as_deref(), Some("mobile.html"));
+        assert_eq!(static_asset_name("/assets/mobile-AbC_12.js").as_deref(), Some("assets/mobile-AbC_12.js"));
+        assert_eq!(static_asset_name("/mobile.webmanifest").as_deref(), Some("mobile.webmanifest"));
+        assert_eq!(static_asset_name("/splabo-favicon.png").as_deref(), Some("splabo-favicon.png"));
+    }
+
+    #[test]
+    fn does_not_serve_desktop_page_or_escape_assets() {
+        // デスクトップの画面は配らない。
+        assert_eq!(static_asset_name("/"), None);
+        assert_eq!(static_asset_name("/index.html"), None);
+        // assets/ の外・下の階層・隠しファイルは配らない。
+        assert_eq!(static_asset_name("/assets/../secret"), None);
+        assert_eq!(static_asset_name("/assets/a/b.js"), None);
+        assert_eq!(static_asset_name("/assets/..js"), None);
+        assert_eq!(static_asset_name("/assets/"), None);
+        assert_eq!(static_asset_name("/assets/a%2Fb.js"), None);
+    }
+
+    #[test]
+    fn only_viewer_paths_ask_for_auth() {
+        for p in ["/ping", "/gear_db.bin", "/update", "/update_status", "/images/gear/x.gti", "/icons/manifest"] {
+            assert!(is_viewer_path(p), "{p}");
+        }
+        for p in ["/", "/m/x", "/favicon.ico", "/api"] {
+            assert!(!is_viewer_path(p), "{p}");
+        }
     }
 
     #[test]
