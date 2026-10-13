@@ -329,7 +329,24 @@
     "topWeapons": "よく使うブキ",
     "recentBattles": "直近のバトル",
     "noBattles": "この期間のバトルはありません",
-    "more": "もっと見る"
+    "more": "もっと見る",
+    "navWeapon": "ブキ",
+    "navStage": "ステージ",
+    "back": "戻る",
+    "sort": "並び替え",
+    "sortTotal": "バトル数",
+    "sortWinRate": "勝率",
+    "sortName": "名前",
+    "allCategories": "すべて",
+    "battles": "戦績",
+    "avgKadShort": "平均 K(A)/D",
+    "allTime": "全期間",
+    "noBattlesInPeriod": "この期間のバトルはありません",
+    "bestStages": "勝率の良いステージ {{n}}",
+    "mostUsedWeapons": "よく使うブキ {{n}}",
+    "bestWeapons": "勝率の良いブキ {{n}}",
+    "minBattles": "{{n}} 戦以上",
+    "noMinBattles": "{{n}} 戦以上のものはありません"
   },
   "gear": {
     "tab": {

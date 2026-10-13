@@ -473,3 +473,205 @@ html, body {
   width: 100%;
   margin-top: 8px;
 }
+
+/* ── ブキ・ステージ（#801） ── */
+
+/* 4 つのナビを 390px に収める */
+.m-nav {
+  margin-left: 4px;
+  gap: 3px;
+}
+
+.m-nav__item {
+  padding: 4px 10px;
+}
+
+.m-book {
+  padding: 10px 10px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.m-book-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.m-book-tools--end {
+  justify-content: flex-end;
+}
+
+.m-chips {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.m-chip {
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.m-chip--active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.m-sort {
+  flex-shrink: 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
+/* 一覧の行はボタン（タップで詳細） */
+.m-book-row {
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 8px 0;
+}
+
+.m-book-row:first-child {
+  border-top: none;
+}
+
+.m-icon-blank {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.m-bar-row__label--wide {
+  flex: 1;
+}
+
+.m-bar-row__label--stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.m-bar-row__label--stage img,
+.m-stage-blank {
+  width: 56px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: var(--surface2);
+}
+
+/* 詳細 */
+.m-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.m-back {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.m-detail-head__icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+.m-detail-head__title {
+  font-size: 17px;
+  font-weight: 800;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.m-kit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.m-kit__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.m-kit__item img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.m-stage-hero {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.m-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.m-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--surface2);
+  min-width: 0;
+}
+
+.m-tile__value {
+  font-size: 15px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.m-tile__label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.m-card__note {
+  margin-left: 8px;
+  font-weight: 400;
+  font-size: 11px;
+}

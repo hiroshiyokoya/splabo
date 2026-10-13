@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { call, MOBILE_REFRESH_EVENT } from '../utils/backend'
 import { loadWeaponImageMap } from '../utils/weaponKitImages'
 import { modeLabel, ruleLabel, resultLabel, periodToSince, type Period } from '../types'
+import { PeriodBar, RecordCell, pct } from './parts'
 
 /** db_list_battles の 1 行（スマホで使う分だけ） */
 interface BattleRow {
@@ -51,23 +52,6 @@ interface Summary {
 }
 
 const PAGE = 30
-const PERIODS: Period[] = ['7d', '30d', 'current_season', 'all']
-
-function pct(rate: number | null | undefined): string {
-  return rate == null ? '—' : `${Math.round(rate * 100)}%`
-}
-
-/** 勝率と、その内訳（何戦・何勝何敗）。引き分けは勝ちにも負けにも数えない */
-function RecordCell({ g }: { g: GroupStat }) {
-  const { t } = useTranslation()
-  const losses = g.total - g.wins - g.draws
-  return (
-    <span className="m-record">
-      <span className="m-record__rate">{pct(g.win_rate)}</span>
-      <span className="m-record__detail">{t('mobile.record', { total: g.total, wins: g.wins, losses })}</span>
-    </span>
-  )
-}
 
 function fmtTime(iso: string, locale: string): string {
   return new Date(iso).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -77,11 +61,10 @@ function fmtTime(iso: string, locale: string): string {
  * スマホのバトル画面（#791・設計 #784 §2）。期間で絞ったサマリと、直近のバトルの一覧。
  * データはデスクトップと同じコマンド（db_battle_stats / db_summary / db_list_battles）。
  */
-export function BattleScreen() {
+export function BattleScreen({ period, onPeriodChange }: { period: Period; onPeriodChange: (p: Period) => void }) {
   const { t, i18n } = useTranslation()
   const en = i18n.language.startsWith('en')
   const locale = en ? 'en-US' : 'ja-JP'
-  const [period, setPeriod] = useState<Period>('7d')
   const [stats, setStats] = useState<BattleStats | null>(null)
   const [summary, setSummary] = useState<Summary | null>(null)
   const [battles, setBattles] = useState<BattleRow[]>([])
@@ -139,18 +122,7 @@ export function BattleScreen() {
 
   return (
     <div className="m-battle">
-      <div className="m-periods" role="tablist">
-        {PERIODS.map(p => (
-          <button
-            key={p}
-            type="button"
-            className={`m-period${period === p ? ' m-period--active' : ''}`}
-            onClick={() => setPeriod(p)}
-          >
-            {t(`mobile.period.${p}`)}
-          </button>
-        ))}
-      </div>
+      <PeriodBar period={period} onChange={onPeriodChange} />
 
       {error && <p className="m-note m-note--error">{error}</p>}
 

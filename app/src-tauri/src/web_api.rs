@@ -36,6 +36,7 @@ pub const ALLOWED_COMMANDS: &[&str] = &[
     "db_list_weapons",
     "db_weapons_used",
     "db_stages_used",
+    "db_list_stage_records",
     "list_saved_coordinates",
     // スマホ用: PC の表示設定（スタック型の順など）
     "get_shared_settings",
@@ -241,6 +242,7 @@ pub fn dispatch(app: &AppHandle, cmd: &str, args: Value) -> Result<Value, ApiErr
         "db_list_weapons" => to_json(tauri::async_runtime::block_on(crate::db::db_list_weapons(db()?))),
         "db_weapons_used" => to_json(tauri::async_runtime::block_on(crate::db::db_weapons_used(db()?))),
         "db_stages_used" => to_json(tauri::async_runtime::block_on(crate::db::db_stages_used(db()?))),
+        "db_list_stage_records" => to_json(tauri::async_runtime::block_on(crate::db::db_list_stage_records(db()?))),
         "list_saved_coordinates" => to_json(crate::saved_coordinates::list_saved_coordinates(app.clone())),
         "get_shared_settings" => get_shared_settings(app),
         "save_coordinate" => {
