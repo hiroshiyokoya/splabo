@@ -32,6 +32,7 @@ pub const ALLOWED_COMMANDS: &[&str] = &[
     "db_summary",
     "db_battle_count",
     "db_grouped_stats",
+    "db_grouped_stats_2d",
     "list_seasons",
     "db_list_weapons",
     "db_weapons_used",
@@ -54,6 +55,8 @@ pub const SHARED_SETTING_KEYS: &[&str] = &[
     "splabo:stackableSkillOrder",
     "splabo:comboLimit",
     "splabo:nearLimit",
+    // ダッシュボードのカスタムグラフの定義（#800。スマホでも PC と同じグラフを同じ順に出す）
+    "splabo:shellCustomCharts",
 ];
 
 /// `settings.json` の中身から、スマホに渡すキーだけを取り出す（値は文字列のまま）。
@@ -152,6 +155,22 @@ pub struct GroupedStatsArgs {
     pub filter: FilterArgs,
 }
 
+/// ヒートマップ用の 2 軸集計（`db_grouped_stats_2d`・#800）。
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupedStats2dArgs {
+    pub group_by_x: String,
+    pub group_by_y: String,
+    #[serde(flatten)]
+    pub filter: FilterArgs,
+    #[serde(default)]
+    pub top_n: Option<i64>,
+    #[serde(default)]
+    pub x_bin_width: Option<f64>,
+    #[serde(default)]
+    pub y_bin_width: Option<f64>,
+}
+
 #[derive(Debug, Deserialize)]
 struct SourceArgs {
     source: String,
@@ -233,6 +252,14 @@ pub fn dispatch(app: &AppHandle, cmd: &str, args: Value) -> Result<Value, ApiErr
             let f = a.filter;
             to_json(tauri::async_runtime::block_on(crate::db::db_grouped_stats(
                 db()?, a.group_by, f.since, f.until, f.mode, f.rule, f.result_filter, f.weapon, f.stage,
+            )))
+        }
+        "db_grouped_stats_2d" => {
+            let a: GroupedStats2dArgs = parse_args(args)?;
+            let f = a.filter;
+            to_json(tauri::async_runtime::block_on(crate::db::db_grouped_stats_2d(
+                db()?, a.group_by_x, a.group_by_y, f.since, f.until, f.mode, f.rule, f.result_filter,
+                f.weapon, f.stage, a.top_n, a.x_bin_width, a.y_bin_width,
             )))
         }
         "list_seasons" => {
@@ -324,6 +351,22 @@ mod tests {
         assert_eq!(a.group_by, "weapon");
         assert_eq!(a.filter.since.as_deref(), Some("2026-10-01"));
         assert_eq!(a.filter.weapon, None);
+    }
+
+    #[test]
+    fn grouped_stats_2d_args_are_camel_case_like_invoke() {
+        let a: GroupedStats2dArgs = parse_args(json!({
+            "groupByX": "numeric:kill", "groupByY": "stage", "topN": 20,
+            "xBinWidth": 2.0, "yBinWidth": null, "since": "2026-10-01", "mode": "xmatch"
+        }))
+        .unwrap();
+        assert_eq!(a.group_by_x, "numeric:kill");
+        assert_eq!(a.group_by_y, "stage");
+        assert_eq!(a.top_n, Some(20));
+        assert_eq!(a.x_bin_width, Some(2.0));
+        assert_eq!(a.y_bin_width, None);
+        assert_eq!(a.filter.since.as_deref(), Some("2026-10-01"));
+        assert_eq!(a.filter.mode.as_deref(), Some("xmatch"));
     }
 
     #[test]

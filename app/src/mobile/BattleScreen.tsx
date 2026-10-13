@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { call, MOBILE_REFRESH_EVENT } from '../utils/backend'
 import { loadWeaponImageMap, loadStageImageMap } from '../utils/weaponKitImages'
 import { modeLabel, ruleLabel, resultLabel } from '../types'
+import type { Filters } from '../types'
+import { Dashboard } from '../components/Dashboard'
 import { FilterBar, RecordCell, pct, filterArgs } from './parts'
 import type { MobileFilter } from './parts'
 
@@ -72,6 +74,7 @@ export function BattleScreen({ filter, onFilterChange }: { filter: MobileFilter;
   const { t, i18n } = useTranslation()
   const en = i18n.language.startsWith('en')
   const locale = en ? 'en-US' : 'ja-JP'
+  const [view, setView] = useState<'dashboard' | 'list'>('dashboard')
   const [stats, setStats] = useState<BattleStats | null>(null)
   const [summary, setSummary] = useState<Summary | null>(null)
   const [battles, setBattles] = useState<BattleRow[]>([])
@@ -159,12 +162,42 @@ export function BattleScreen({ filter, onFilterChange }: { filter: MobileFilter;
   const weaponName = (b: BattleRow) => (en ? b.weapon_name_en : b.weapon_name_ja) ?? b.weapon ?? ''
   const stageName = (b: BattleRow) => (en ? b.stage_name_en : b.stage_name) ?? b.stage_name ?? ''
 
+  // デスクトップの Dashboard に渡す絞り込み（スマホの期間・ロビー・ルール。ほかは指定なし）
+  const dashboardFilters = useMemo<Filters>(() => ({
+    period: filter.period,
+    mode: filter.mode,
+    rule: filter.rule,
+    result: null,
+    weapon: [],
+    stage: [],
+    customFrom: null,
+    customTo: null,
+    seasonName: null,
+  }), [filter])
+
   return (
     <div className="m-battle">
       <FilterBar filter={filter} onChange={onFilterChange} />
 
       {error && <p className="m-note m-note--error">{error}</p>}
 
+      {/* デスクトップのバトルタブと同じく「ダッシュボード」「一覧」に分ける（#800） */}
+      <div className="m-views" role="tablist">
+        {(['dashboard', 'list'] as const).map(v => (
+          <button
+            key={v}
+            type="button"
+            role="tab"
+            aria-selected={view === v}
+            className={`m-view${view === v ? ' m-view--active' : ''}`}
+            onClick={() => setView(v)}
+          >
+            {v === 'dashboard' ? `📊 ${t('mobile.viewDashboard')}` : `📋 ${t('mobile.viewList')}`}
+          </button>
+        ))}
+      </div>
+
+      {view === 'dashboard' && <>
       {stats && (
         <section className="m-card m-stats">
           <div className="m-stats__main">
@@ -233,6 +266,14 @@ export function BattleScreen({ filter, onFilterChange }: { filter: MobileFilter;
         </section>
       )}
 
+      {/* デスクトップのダッシュボードのグラフ（固定の 4 つとカスタムグラフ）。見るだけ。
+          数字のカードはスマホの上のサマリと同じ中身なので出さない */}
+      <div className="m-dashboard">
+        <Dashboard filters={dashboardFilters} readOnly hideStats />
+      </div>
+      </>}
+
+      {view === 'list' && (
       <section className="m-card m-battles">
         <h2 className="m-card__title">{t('mobile.recentBattles')}</h2>
         {battles.length === 0 && stats && <p className="m-empty">{t('mobile.noBattles')}</p>}
@@ -263,6 +304,7 @@ export function BattleScreen({ filter, onFilterChange }: { filter: MobileFilter;
           <button type="button" className="btn-secondary m-more" onClick={loadMore}>{t('mobile.more')}</button>
         )}
       </section>
+      )}
     </div>
   )
 }

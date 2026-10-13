@@ -36,6 +36,8 @@ import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelE
 import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import { rankRowsForBarChart, CHART_BAR_TOP_N, type ChartSortDir } from '../utils/chartSort'
 import i18n from '../i18n'
+import { ChartExpandButton } from './ChartExpand'
+import type { ChartExpandProps } from './ChartExpand'
 
 /** 1 バトル単位の散布図メトリクス値を BattleRow から計算する。 */
 function getBattleMetric(b: BattleRow, k: BattleMetricKey): number | null {
@@ -455,7 +457,10 @@ export function CustomChartCard({
   chart, data, data2d, battleData, onEdit, onDelete, weaponImages, weaponMeta,
   subImages, spImages, stageImages,
   since = null, until = null, filterSummary = '',
-}: {
+  readOnly = false, expanded, onExpand, onCollapse,
+}: ChartExpandProps & {
+  /** スマホ Web 版（#800）: 並べ替え・画像保存・編集・削除を出さない（見るだけ） */
+  readOnly?: boolean
   chart:    CustomChart
   data:     GroupedStatsRow[]
   /** shape='heatmap' のときだけ使う 2D データ。 */
@@ -550,10 +555,20 @@ export function CustomChartCard({
   const title = autoChartTitle(chart)
 
   return (
-    <div className={`chart-card custom-chart-card${spanClass ? ` ${spanClass}` : ''}`} ref={setRefs} style={style}>
+    <div
+      className={`chart-card custom-chart-card${spanClass ? ` ${spanClass}` : ''}${expanded ? ' chart-card--expanded' : ''}`}
+      ref={setRefs}
+      style={style}
+    >
       <PanelExportLogo />
       {/* 上段：ドラッグ・設定・削除・画像保存(カスタムグラフ専用)。
-          こうすることで下の chart-card-header は固定 4 グラフと同じ「title | 並び替え」レイアウトになる。 */}
+          こうすることで下の chart-card-header は固定 4 グラフと同じ「title | 並び替え」レイアウトになる。
+          スマホ Web 版（readOnly・#800）は見るだけなので、代わりに「大きく見る」だけを出す。 */}
+      {readOnly ? (
+        <div className="custom-chart-toprow">
+          <ChartExpandButton expanded={expanded} onExpand={onExpand} onCollapse={onCollapse} />
+        </div>
+      ) : (
       <div className={`custom-chart-toprow ${EXPORT_HIDE_CLASS}`}>
         <button
           className="custom-chart-handle"
@@ -566,6 +581,7 @@ export function CustomChartCard({
         <button className="custom-chart-btn" onClick={onEdit}   aria-label={t('common.settingsGear')} title={t('common.settingsGear')}>⚙</button>
         <button className="custom-chart-btn" onClick={onDelete} aria-label={t('common.delete')} title={t('common.delete')}>✕</button>
       </div>
+      )}
       <div className="chart-card-header">
         <h3 className="chart-title">{title}</h3>
         {sortOptions.length > 0 && (

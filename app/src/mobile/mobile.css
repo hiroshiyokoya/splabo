@@ -816,3 +816,74 @@ html, body {
     padding-bottom: 200px;
   }
 }
+
+/* ── ダッシュボード（デスクトップのグラフ・#800） ── */
+
+.m-views {
+  display: flex;
+  gap: 6px;
+}
+
+.m-view {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.m-view--active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* デスクトップは 1 列 420px 以上。スマホは画面幅に入るだけ（縦持ちは 1 列、横持ち・タブレットは 2 列以上） */
+.m-dashboard .chart-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 10px;
+}
+
+.m-dashboard .chart-card--wide,
+.m-dashboard .chart-card--full {
+  grid-column: 1 / -1;
+}
+
+.m-dashboard .chart-card {
+  padding: 10px;
+}
+
+.m-dashboard .chart-card-header {
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.m-dashboard .chart-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* 「大きく見る」: そのグラフだけを画面いっぱいに出す。グラフは幅に追従するので、横持ちにすればさらに大きくなる */
+.m-dashboard .chart-card--expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  margin: 0;
+  border-radius: 0;
+  border: none;
+  overflow: auto;
+  background: var(--bg);
+  padding: calc(env(safe-area-inset-top) + 12px) 12px calc(env(safe-area-inset-bottom) + 12px);
+  transform: none !important;
+}
+
+/* 広げている間は後ろのページをスクロールさせない */
+body:has(.chart-card--expanded) {
+  overflow: hidden;
+}
