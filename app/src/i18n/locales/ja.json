@@ -313,7 +313,23 @@
     "update": "PC に最新データを取りに行かせる",
     "updating": "PC が任天堂から最新データを取得しています…（数十秒かかります）",
     "updateDone": "最新データにしました",
-    "updateFailed": "取得できませんでした: {{detail}}"
+    "updateFailed": "取得できませんでした: {{detail}}",
+    "period": {
+      "7d": "7日",
+      "30d": "30日",
+      "current_season": "今シーズン",
+      "all": "全期間"
+    },
+    "winRate": "勝率",
+    "battlesCount": "{{count}} 戦",
+    "winsLosses": "{{wins}} 勝 {{losses}} 敗",
+    "record": "{{total}}戦（{{wins}}勝{{losses}}敗）",
+    "avgKda": "平均 {{k}}({{a}}) / {{d}}",
+    "byRule": "ルール別",
+    "topWeapons": "よく使うブキ",
+    "recentBattles": "直近のバトル",
+    "noBattles": "この期間のバトルはありません",
+    "more": "もっと見る"
   },
   "gear": {
     "tab": {

@@ -37,10 +37,45 @@ pub const ALLOWED_COMMANDS: &[&str] = &[
     "db_weapons_used",
     "db_stages_used",
     "list_saved_coordinates",
+    // スマホ用: PC の表示設定（スタック型の順など）
+    "get_shared_settings",
     // 書き込み（データの正本が PC の 1 つだけなので、スマホから編集しても競合しない）
     "save_coordinate",
     "delete_saved_coordinate",
 ];
+
+/// スマホにも渡す PC の表示設定（`settings.json` のキー・#789）。
+///
+/// デスクトップはこれらを WebView の localStorage に持ち、`settings.json`（tauri-plugin-store）へ
+/// ミラーしている（`settingsStore.ts`）。スマホのブラウザからは PC の localStorage が見えないので、
+/// ミラーの方を読んで渡す。表示言語・カードの大きさは端末ごとに違ってよいので渡さない。
+pub const SHARED_SETTING_KEYS: &[&str] = &[
+    "splabo:stackableSkillOrder",
+    "splabo:comboLimit",
+    "splabo:nearLimit",
+];
+
+/// `settings.json` の中身から、スマホに渡すキーだけを取り出す（値は文字列のまま）。
+pub fn pick_shared_settings(store: &Value) -> serde_json::Map<String, Value> {
+    SHARED_SETTING_KEYS
+        .iter()
+        .filter_map(|k| store.get(*k).filter(|v| v.is_string()).map(|v| (k.to_string(), v.clone())))
+        .collect()
+}
+
+fn get_shared_settings(app: &AppHandle) -> Result<Value, ApiError> {
+    let path = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| ApiError::Failed(e.to_string()))?
+        .join("settings.json");
+    // 無い・壊れているときは空（スマホは既定の表示になるだけ）
+    let store: Value = std::fs::read(&path)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or(Value::Null);
+    Ok(Value::Object(pick_shared_settings(&store)))
+}
 
 pub fn is_allowed(cmd: &str) -> bool {
     ALLOWED_COMMANDS.contains(&cmd)
@@ -207,6 +242,7 @@ pub fn dispatch(app: &AppHandle, cmd: &str, args: Value) -> Result<Value, ApiErr
         "db_weapons_used" => to_json(tauri::async_runtime::block_on(crate::db::db_weapons_used(db()?))),
         "db_stages_used" => to_json(tauri::async_runtime::block_on(crate::db::db_stages_used(db()?))),
         "list_saved_coordinates" => to_json(crate::saved_coordinates::list_saved_coordinates(app.clone())),
+        "get_shared_settings" => get_shared_settings(app),
         "save_coordinate" => {
             let a: SaveCoordinateArgs = parse_args(args)?;
             to_json(crate::saved_coordinates::save_coordinate(app.clone(), a.input))
@@ -314,6 +350,26 @@ mod tests {
         .unwrap();
         assert_eq!(a.input.title, "コーデ1");
         assert_eq!(a.input.id, None);
+    }
+
+    #[test]
+    fn picks_only_shared_settings() {
+        let store = json!({
+            "splabo:stackableSkillOrder": "[4,8,9]",
+            "splabo:comboLimit": "50",
+            "splabo:localePref": "en",
+            "splabo:densityId": "spacious",
+            "splabo:nearLimit": 10,
+            "_mirroredAt": 1
+        });
+        let picked = pick_shared_settings(&store);
+        assert_eq!(picked.get("splabo:stackableSkillOrder"), Some(&json!("[4,8,9]")));
+        assert_eq!(picked.get("splabo:comboLimit"), Some(&json!("50")));
+        // 端末ごとの設定・文字列でない値は渡さない
+        assert!(!picked.contains_key("splabo:localePref"));
+        assert!(!picked.contains_key("splabo:densityId"));
+        assert!(!picked.contains_key("splabo:nearLimit"));
+        assert!(pick_shared_settings(&Value::Null).is_empty());
     }
 
     #[test]

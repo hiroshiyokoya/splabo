@@ -313,7 +313,23 @@
     "update": "Have the PC fetch the latest data",
     "updating": "Your PC is fetching the latest data from Nintendo… (takes tens of seconds)",
     "updateDone": "Up to date",
-    "updateFailed": "Couldn't fetch: {{detail}}"
+    "updateFailed": "Couldn't fetch: {{detail}}",
+    "period": {
+      "7d": "7 days",
+      "30d": "30 days",
+      "current_season": "Season",
+      "all": "All"
+    },
+    "winRate": "Win rate",
+    "battlesCount": "{{count}} battles",
+    "winsLosses": "{{wins}} W {{losses}} L",
+    "record": "{{total}} ({{wins}}W {{losses}}L)",
+    "avgKda": "Avg {{k}}({{a}}) / {{d}}",
+    "byRule": "By mode",
+    "topWeapons": "Most used weapons",
+    "recentBattles": "Recent battles",
+    "noBattles": "No battles in this period",
+    "more": "Show more"
   },
   "gear": {
     "tab": {
