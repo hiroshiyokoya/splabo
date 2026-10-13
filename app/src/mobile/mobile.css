@@ -887,3 +887,19 @@ html, body {
 body:has(.chart-card--expanded) {
   overflow: hidden;
 }
+
+/* デスクトップのバトルタブと同じ 6 つの数字（縦持ちは 3 列 × 2 段、横持ちは 1 段） */
+.m-statcards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(30%, 120px), 1fr));
+  gap: 6px;
+}
+
+.m-statcards .m-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.m-statcards .m-tile__value {
+  font-size: 14px;
+}

@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { call, MOBILE_REFRESH_EVENT } from '../utils/backend'
 import { loadWeaponImageMap, loadStageImageMap } from '../utils/weaponKitImages'
-import { modeLabel, ruleLabel, resultLabel } from '../types'
+import { modeLabel, ruleLabel, resultLabel, fmtKillWithAssist, fmtKillRatioWithContrib } from '../types'
 import type { Filters } from '../types'
 import { Dashboard } from '../components/Dashboard'
-import { FilterBar, RecordCell, pct, filterArgs } from './parts'
+import { FilterBar, RecordCell, StatTile, filterArgs } from './parts'
+import { winRateColor } from '../utils/heatmapColors'
 import type { MobileFilter } from './parts'
 
 /** db_list_battles の 1 行（スマホで使う分だけ） */
@@ -181,6 +182,25 @@ export function BattleScreen({ filter, onFilterChange }: { filter: MobileFilter;
 
       {error && <p className="m-note m-note--error">{error}</p>}
 
+      {/* デスクトップのバトルタブの数字のカード（6 つ）。ダッシュボードでも一覧でも出す */}
+      {stats && (
+        <section className="m-statcards">
+          <StatTile label={t('dashboard.totalBattles')} value={stats.total.toLocaleString()} />
+          <StatTile
+            label={t('dashboard.winLoseDraw')}
+            value={`${stats.wins} / ${stats.total - stats.wins - stats.draws} (${stats.draws})`}
+          />
+          <StatTile
+            label={t('dashboard.overallWinRate')}
+            value={stats.win_rate != null ? `${(stats.win_rate * 100).toFixed(1)}%` : '-'}
+            valueColor={stats.win_rate != null ? winRateColor(stats.win_rate) : undefined}
+          />
+          <StatTile label={t('dashboard.avgKillAssist')} value={fmtKillWithAssist(stats.avg_kill, stats.avg_assist)} />
+          <StatTile label={t('dashboard.avgDeath')} value={stats.avg_death != null ? stats.avg_death.toFixed(2) : '-'} />
+          <StatTile label={t('dashboard.kdContrib')} value={fmtKillRatioWithContrib(stats.avg_kill, stats.avg_assist, stats.avg_death)} />
+        </section>
+      )}
+
       {/* デスクトップのバトルタブと同じく「ダッシュボード」「一覧」に分ける（#800） */}
       <div className="m-views" role="tablist">
         {(['dashboard', 'list'] as const).map(v => (
@@ -198,25 +218,6 @@ export function BattleScreen({ filter, onFilterChange }: { filter: MobileFilter;
       </div>
 
       {view === 'dashboard' && <>
-      {stats && (
-        <section className="m-card m-stats">
-          <div className="m-stats__main">
-            <span className="m-stats__rate">{pct(stats.win_rate)}</span>
-            <span className="m-stats__label">{t('mobile.winRate')}</span>
-          </div>
-          <div className="m-stats__sub">
-            <span>{t('mobile.battlesCount', { count: stats.total })}</span>
-            <span>{t('mobile.winsLosses', { wins: stats.wins, losses: stats.total - stats.wins - stats.draws })}</span>
-            <span>
-              {t('mobile.avgKda', {
-                k: (stats.avg_kill ?? 0).toFixed(1),
-                a: (stats.avg_assist ?? 0).toFixed(1),
-                d: (stats.avg_death ?? 0).toFixed(1),
-              })}
-            </span>
-          </div>
-        </section>
-      )}
 
       {summary && summary.by_rule.length > 0 && (
         <section className="m-card">

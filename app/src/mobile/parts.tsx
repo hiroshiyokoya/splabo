@@ -291,10 +291,10 @@ export function DetailHeader({ title, onBack, children }: { title: string; onBac
 }
 
 /** 小さな数値パネル（詳細のサマリ・公式の記録） */
-export function StatTile({ label, value }: { label: string; value: string }) {
+export function StatTile({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
   return (
     <div className="m-tile">
-      <span className="m-tile__value">{value}</span>
+      <span className="m-tile__value" style={valueColor ? { color: valueColor } : undefined}>{value}</span>
       <span className="m-tile__label">{label}</span>
     </div>
   )
