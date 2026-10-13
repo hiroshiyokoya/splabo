@@ -41,6 +41,7 @@ splabo/
 - **Save panels** — save Dashboard and Meta Analysis panels as **PNG** or **HTML** (button at the top-right of each panel). Images/HTML include title, filters, the splabo logo, and credit. PNG keeps pixels outside rounded corners transparent. Open HTML in a browser to hover scatter tooltips; weapon-icon scatter plots still spread overlapping points
 - **AI analysis** — ask in natural language; SQL is generated and **aggregated only on this PC**, then shown as tables/charts (OpenAI / Google Gemini / Anthropic Claude / xAI Grok)
 - **Auto-fetch** — fetch battles in the background every 15 minutes–24 hours, then update gear (a gear failure does not undo a successful battle fetch). When enabled, closing the window leaves a tray icon; completion is a system notification. Default is every hour (see [Fetch interval and auth](#fetch-interval-and-auth))
+- **View on your phone** — view battles, weapons, stages, and gear from a phone browser on the same Wi-Fi. Nothing to install on the phone (see [View on your phone](#view-on-your-phone))
 
 > **About filters**: Weapons and Stages also follow the top filters (period, lobby, mode, result). Official-app freshness, total wins, turf inked, Challenge Power, and stage all-time win rates are all-time values, so changing filters does not change them. Dashboard chart axes can use these official values too.
 
@@ -63,6 +64,47 @@ splabo/
     <td>Analyze the meta from public stat.ink data</td>
   </tr>
 </table>
+
+## View on your phone
+
+splabo on your PC acts as a server, so a phone on the same Wi-Fi (same router) can view your data in its browser. Nothing needs to be installed on the phone.
+
+### What the phone can do
+
+- **Battles** — six numbers (total battles, win rate, average kills, and more), the same dashboard charts as the PC (including your custom charts), and recent battles. Charts can be expanded to fill the screen
+- **Weapons and stages** — records per weapon and per stage
+- **Gear** — owned gear, loadouts, and saved loadouts. You can also build and save a loadout on the phone
+- Filter by period, lobby, and mode (the phone remembers your choice)
+- ↻ at the top asks the PC to fetch the latest data from Nintendo
+
+Settings you chose on the PC, such as ordering, also apply on the phone. Change settings on the PC.
+
+### Getting started
+
+1. In splabo on your PC, open **Settings → Accounts → View on your phone** and turn on "Allow viewing on a phone"
+2. Scan the QR code that appears with your phone camera; it opens in the browser
+
+While it is on, it starts automatically the next time splabo launches.
+
+### Add to your home screen
+
+After opening it once, add it to your home screen to open it from an icon next time.
+
+- **iPhone (Safari)**: Share → "Add to Home Screen"
+- **Android (Chrome)**: ︙ at the top right → "Add to Home screen". Tap the full-screen button in the top bar to hide the browser bars
+
+### When it works
+
+- Only while splabo is running on the PC (including when the window is closed and it stays in the tray). It does not work while the PC is asleep
+- Only inside the same Wi-Fi / home network. It does not work from mobile data away from home
+
+### If it does not connect
+
+- **Check that the phone and the PC are on the same Wi-Fi.** Guest Wi-Fi networks often block devices from talking to each other
+- **Windows**: if the network is set to "Public", Windows Firewall blocks connections from the phone. Change it to "Private network" (Settings → Network & internet → current connection → Network profile type). If an allow dialog appears the first time the phone connects, check Private and allow it. The settings screen also shows a warning in this state. If it still does not connect after switching to Private, a rule you allowed earlier while on Public may be the only one. Follow the note on the settings screen and check Private on splabo's inbound rules in Windows Firewall
+- **If the server cannot start because another app uses the port**: change "Port" in the settings (default 47620). The URL changes too, so scan the QR again
+- If the PC has several networks, also try the other URLs shown under the QR code
+- **If someone else saw the URL**: press "Reissue token" and the old URL stops working. Scan the QR again on the phones you use
 
 ## Requirements
 
@@ -223,6 +265,7 @@ Information this tool collects and uses:
   - **① Write SQL**: the question and schema notes (view defs, domain knowledge, counts and date range). **Not battle contents.**
   - **② Choose table/chart layout**: the question, column names, and the **first 20 aggregated rows**. Includes aggregated values such as stage names, weapon names, win rates, and counts (not individual battles or other players’ names).
   - API keys stay in local `localStorage` and are not sent to any other provider. If you never use AI analysis, none of this is sent.
+- **View on your phone**: only when turned on, the PC serves a page for phones inside the same network. Battle and gear data only travel between the PC and the phone, never to the internet. The phone page loads its typeface from Google Fonts.
 - splabo does not otherwise send data out on its own.
 
 ### Personal information

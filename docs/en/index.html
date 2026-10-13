@@ -231,6 +231,69 @@
       color: var(--accent);
     }
 
+    /* ── Mobile ── */
+    .mobile {
+      padding: 3rem 2rem 0;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .mobile-lead {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+    .mobile-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+    .mobile-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+    }
+    .mobile-box h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+    }
+    .mobile-box ul,
+    .mobile-box ol {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .mobile-box ul {
+      list-style: none;
+    }
+    .mobile-box ul li::before {
+      content: "· ";
+      color: var(--accent);
+    }
+    .mobile-box ol {
+      padding-left: 1.2rem;
+    }
+    .mobile-box strong {
+      color: var(--text);
+    }
+    .mobile-notes {
+      list-style: none;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      margin-top: 1.25rem;
+    }
+    .mobile-notes li::before {
+      content: "※ ";
+    }
+
     /* ── Warning ── */
     .warning {
       padding: 3rem 2rem;
@@ -358,6 +421,7 @@
       .hero h1 { font-size: 2rem; }
       .screenshot-grid { grid-template-columns: 1fr; }
       .features-grid { grid-template-columns: 1fr; }
+      .mobile-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -379,7 +443,7 @@
     <p class="hero-desc">
       An open-source Windows / macOS app that fetches Splatoon 3 battles and gear from a Nintendo Account via an unofficial API, then visualizes and analyzes them. Not affiliated with Nintendo Co., Ltd.<br>
       Win rates by weapon, stage, and mode; custom line, bar, scatter, and heatmap charts; meta analysis from public stat.ink data; and gear loadouts.<br>
-      Save panels as PNG or HTML. Successor to chartoon / geartoon.
+      Save panels as PNG or HTML. You can also view it from a phone browser on the same Wi-Fi. Successor to chartoon / geartoon.
     </p>
     <div class="hero-download">
       <a class="btn-download" id="btn-win" href="https://github.com/hiroshiyokoya/splabo/releases/latest">
@@ -464,6 +528,35 @@
     </div>
   </section>
 
+  <!-- Mobile -->
+  <section class="mobile">
+    <h2 class="section-title">View on your phone</h2>
+    <p class="mobile-lead">splabo on your PC acts as a server, so a phone browser on the same Wi-Fi can view your data. Nothing to install on the phone.</p>
+    <div class="mobile-grid">
+      <div class="mobile-box">
+        <h3>What the phone can do</h3>
+        <ul>
+          <li>Battles: win rate and other numbers, the same dashboard charts as the PC, and recent battles</li>
+          <li>Records per weapon and per stage</li>
+          <li>Gear, loadouts, and saved loadouts. Build and save loadouts on the phone too</li>
+          <li>↻ asks the PC to fetch the latest data</li>
+        </ul>
+      </div>
+      <div class="mobile-box">
+        <h3>Getting started</h3>
+        <ol>
+          <li>In splabo on your PC, turn on <strong>Settings → Accounts → View on your phone</strong></li>
+          <li>Scan the QR code that appears with your phone camera</li>
+          <li>Add it to your home screen to open it from an icon next time (iPhone: Share → "Add to Home Screen"; Android: Chrome ︙ → "Add to Home screen")</li>
+        </ol>
+      </div>
+    </div>
+    <ul class="mobile-notes">
+      <li>Works only while splabo is running on the PC (including in the tray) and only inside the same Wi-Fi. Not available away from home.</li>
+      <li>If it does not connect on Windows, set the network to "Private". For other cases, see <a href="https://github.com/hiroshiyokoya/splabo/blob/develop/README_en.md#if-it-does-not-connect">"If it does not connect" in the README</a>.</li>
+    </ul>
+  </section>
+
   <!-- Warning -->
   <section class="warning">
     <h2 class="section-title">Install notes</h2>
@@ -497,6 +590,7 @@
     <h2 class="section-title">Privacy</h2>
     <p>The only data this tool sends off your PC is what Nintendo auth needs (f-token generation per the nxapi flow) and, if you enable it, battle data to stat.ink. It does not collect or store names, email addresses, or other personal information.</p>
     <p>If you use AI analysis, battle aggregates are sent to the provider you chose (OpenAI / Gemini / Anthropic / Grok).</p>
+    <p>With "View on your phone" turned on, battle and gear data only travel between the PC and the phone, inside the same network.</p>
     <p>See the <a href="https://github.com/hiroshiyokoya/splabo/blob/develop/README_en.md#privacy-policy">privacy policy in README_en.md</a> for details.</p>
   </section>
 
