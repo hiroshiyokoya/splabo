@@ -34,19 +34,22 @@ body,
 
 .m-nav {
   display: flex;
-  gap: 4px;
-  margin-left: 8px;
+  gap: 3px;
+  margin-left: 4px;
+  /* 右の丸ボタン（全画面・更新）を右端に寄せる */
+  margin-right: auto;
 }
 
 .m-nav__item {
   background: none;
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 4px 14px;
+  padding: 4px 10px;
   font: inherit;
   font-size: 13px;
   font-weight: 700;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .m-nav__item--active {
@@ -55,19 +58,30 @@ body,
   color: var(--accent-fg);
 }
 
-.m-update-btn {
-  margin-left: auto;
-  width: 36px;
-  height: 36px;
+.m-round-btn {
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   font-size: 18px;
   line-height: 1;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
-.m-update-btn:disabled {
+/* 幅 400px 未満（360px 級の Android など）: ナビ 4 つと丸ボタン 2 つを 1 行に収める */
+@media (max-width: 399px) {
+  .m-header { padding: 10px 12px; gap: 6px; }
+  .m-nav { margin-left: 2px; }
+  .m-nav__item { padding: 4px 7px; }
+}
+
+.m-round-btn:disabled {
   opacity: 0.6;
 }
 
@@ -483,16 +497,6 @@ body,
 }
 
 /* ── ブキ・ステージ（#801） ── */
-
-/* 4 つのナビを 390px に収める */
-.m-nav {
-  margin-left: 4px;
-  gap: 3px;
-}
-
-.m-nav__item {
-  padding: 4px 10px;
-}
 
 .m-book {
   padding: 10px 10px 24px;

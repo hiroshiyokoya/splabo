@@ -38,6 +38,39 @@ const SECTION_LABEL: Record<Section, string> = {
   gear: 'mobile.navGear',
 }
 
+/**
+ * ブラウザのバーを消して全画面にするボタン（Fullscreen API）。
+ * http の PC アドレスでは Android の「ホーム画面に追加」でもバーが残るため、ページ側から全画面にする。
+ * 対応していないブラウザ（iPhone の Safari など）では出さない
+ */
+function FullscreenButton() {
+  const { t } = useTranslation()
+  const [full, setFull] = useState(() => document.fullscreenElement != null)
+
+  useEffect(() => {
+    const onChange = () => setFull(document.fullscreenElement != null)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  if (!document.fullscreenEnabled) return null
+
+  const toggle = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
+    else void document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {})
+  }
+  const label = t(full ? 'mobile.exitFullscreen' : 'mobile.fullscreen')
+  return (
+    <button type="button" className="m-round-btn" onClick={toggle} aria-label={label} title={label}>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        {full
+          ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+          : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
+      </svg>
+    </button>
+  )
+}
+
 /** つながらないときの案内（#788・設計 #784 §8） */
 export function ConnectionProblem({ connection, onRetry }: { connection: Connection; onRetry: () => void }) {
   const { t } = useTranslation()
@@ -155,9 +188,10 @@ export function MobileApp({ session }: { session: SessionResult }) {
                 </button>
               ))}
             </nav>
+            <FullscreenButton />
             <button
               type="button"
-              className="m-update-btn"
+              className="m-round-btn"
               onClick={handleUpdate}
               disabled={updating}
               aria-label={t('mobile.update')}
