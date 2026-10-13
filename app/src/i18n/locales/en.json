@@ -18,7 +18,6 @@
     "sort": "Sort",
     "sortDrag": "Drag to reorder",
     "speciesCount": "{{count}} kinds",
-    "battlesCount": "{{count}} battles",
     "winsCount": "{{count}} wins"
   },
   "app": {
@@ -321,13 +320,8 @@
       "all": "All"
     },
     "winRate": "Win rate",
-    "battlesCount": "{{count}} battles",
-    "winsLosses": "{{wins}} W {{losses}} L",
     "record": "{{total}} ({{wins}}W {{losses}}L)",
-    "avgKda": "Avg {{k}}({{a}}) / {{d}}",
     "byRule": "By mode",
-    "topWeapons": "Most used weapons",
-    "topStages": "Most played stages (top {{n}})",
     "recentBattles": "Recent battles",
     "noBattles": "No battles match these filters",
     "more": "Show more",

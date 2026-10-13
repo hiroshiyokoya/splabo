@@ -18,7 +18,6 @@
     "sort": "並び替え",
     "sortDrag": "ドラッグで並び替え",
     "speciesCount": "{{count}} 種",
-    "battlesCount": "{{count}} 戦",
     "winsCount": "{{count}} 勝"
   },
   "app": {
@@ -321,13 +320,8 @@
       "all": "全期間"
     },
     "winRate": "勝率",
-    "battlesCount": "{{count}} 戦",
-    "winsLosses": "{{wins}} 勝 {{losses}} 敗",
     "record": "{{total}}戦（{{wins}}勝{{losses}}敗）",
-    "avgKda": "平均 {{k}}({{a}}) / {{d}}",
     "byRule": "ルール別",
-    "topWeapons": "よく使うブキ",
-    "topStages": "バトル数の多いステージ {{n}}",
     "recentBattles": "直近のバトル",
     "noBattles": "この条件のバトルはありません",
     "more": "もっと見る",
