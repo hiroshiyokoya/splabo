@@ -18,7 +18,6 @@
     "sort": "Sort",
     "sortDrag": "Drag to reorder",
     "speciesCount": "{{count}} kinds",
-    "battlesCount": "{{count}} battles",
     "winsCount": "{{count}} wins"
   },
   "app": {
@@ -311,6 +310,8 @@
     "navGear": "Gear",
     "navBattle": "Battles",
     "update": "Have the PC fetch the latest data",
+    "fullscreen": "Full screen",
+    "exitFullscreen": "Exit full screen",
     "updating": "Your PC is fetching the latest data from Nintendo… (takes tens of seconds)",
     "updateDone": "Up to date",
     "updateFailed": "Couldn't fetch: {{detail}}",
@@ -321,13 +322,8 @@
       "all": "All"
     },
     "winRate": "Win rate",
-    "battlesCount": "{{count}} battles",
-    "winsLosses": "{{wins}} W {{losses}} L",
     "record": "{{total}} ({{wins}}W {{losses}}L)",
-    "avgKda": "Avg {{k}}({{a}}) / {{d}}",
     "byRule": "By mode",
-    "topWeapons": "Most used weapons",
-    "topStages": "Most played stages (top {{n}})",
     "recentBattles": "Recent battles",
     "noBattles": "No battles match these filters",
     "more": "Show more",
@@ -341,6 +337,8 @@
     "allCategories": "All weapon types",
     "category": "Weapon type",
     "multiSelected": "{{first}} +{{count}}",
+    "viewDashboard": "Dashboard",
+    "viewList": "List",
     "battles": "Record",
     "avgKadShort": "Avg K(A)/D",
     "allTime": "All time",
@@ -797,6 +795,7 @@
   },
   "chart": {
     "metric": "Metric",
+    "expand": "View larger",
     "titleCalendar": "{{metric}} calendar",
     "titleHeatmap": "{{x}} × {{y}}: {{metric}}",
     "titleScatter": "{{y}} × {{x}} by {{unit}}",

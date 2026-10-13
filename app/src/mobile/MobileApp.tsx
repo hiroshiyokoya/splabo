@@ -5,7 +5,7 @@ import { GearSection } from '../gear/GearSection'
 import { BattleScreen } from './BattleScreen'
 import { WeaponScreen } from './WeaponScreen'
 import { StageScreen } from './StageScreen'
-import { DEFAULT_FILTER } from './parts'
+import { loadMobileFilter, saveMobileFilter } from './parts'
 import type { MobileFilter } from './parts'
 import { requestPcUpdate } from './pcUpdate'
 import { applyPcSettings } from './sharedSettings'
@@ -36,6 +36,39 @@ const SECTION_LABEL: Record<Section, string> = {
   weapon: 'mobile.navWeapon',
   stage: 'mobile.navStage',
   gear: 'mobile.navGear',
+}
+
+/**
+ * ブラウザのバーを消して全画面にするボタン（Fullscreen API）。
+ * http の PC アドレスでは Android の「ホーム画面に追加」でもバーが残るため、ページ側から全画面にする。
+ * 対応していないブラウザ（iPhone の Safari など）では出さない
+ */
+function FullscreenButton() {
+  const { t } = useTranslation()
+  const [full, setFull] = useState(() => document.fullscreenElement != null)
+
+  useEffect(() => {
+    const onChange = () => setFull(document.fullscreenElement != null)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  if (!document.fullscreenEnabled) return null
+
+  const toggle = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
+    else void document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {})
+  }
+  const label = t(full ? 'mobile.exitFullscreen' : 'mobile.fullscreen')
+  return (
+    <button type="button" className="m-round-btn" onClick={toggle} aria-label={label} title={label}>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        {full
+          ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+          : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
+      </svg>
+    </button>
+  )
 }
 
 /** つながらないときの案内（#788・設計 #784 §8） */
@@ -76,7 +109,9 @@ export function MobileApp({ session }: { session: SessionResult }) {
   )
   const [section, setSection] = useState<Section>('battle')
   // バトル・ブキ・ステージで共有する絞り込み（期間・ロビー・ルール・#801）。画面を移っても同じまま
-  const [filter, setFilter] = useState<MobileFilter>(DEFAULT_FILTER)
+  const [filter, setFilter] = useState<MobileFilter>(loadMobileFilter)
+  // 選んだ絞り込みはスマホに覚えておき、次に開いたときもその条件で始める
+  useEffect(() => { saveMobileFilter(filter) }, [filter])
   const [updating, setUpdating] = useState(false)
   const [updateNote, setUpdateNote] = useState<{ ok: boolean; text: string } | null>(null)
   const hiddenAt = useRef<number | null>(null)
@@ -153,9 +188,10 @@ export function MobileApp({ session }: { session: SessionResult }) {
                 </button>
               ))}
             </nav>
+            <FullscreenButton />
             <button
               type="button"
-              className="m-update-btn"
+              className="m-round-btn"
               onClick={handleUpdate}
               disabled={updating}
               aria-label={t('mobile.update')}

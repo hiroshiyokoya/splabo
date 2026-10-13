@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { call } from '../utils/backend'
+import { call, MOBILE_REFRESH_EVENT } from '../utils/backend'
+import { isTauri } from '../gear/utils/tauri'
 import { listen } from '@tauri-apps/api/event'
 import {
   BarChart, Bar,
@@ -22,6 +23,8 @@ import {
 } from '../types'
 import { stageSummaryTickLabel, summaryEntryDisplayName } from '../i18n/displayName'
 import { CustomChartCard } from './CustomChartCard'
+import { ChartExpandButton } from './ChartExpand'
+import type { ChartExpandProps } from './ChartExpand'
 import { ChartConfigModal } from './ChartConfigModal'
 import { loadCustomCharts, saveCustomCharts, generateChartId } from '../utils/customCharts'
 import type { WeaponMeta } from '../utils/scatterCategoryColors'
@@ -74,9 +77,16 @@ interface Props {
   onOpenSettings?: () => void
   /** 取得中はボタンを disable + 表示文言を変えるためのフラグ。 */
   fetching?: boolean
+  /**
+   * スマホ Web 版（#800）: 見るだけにする。グラフの追加・編集・削除・並べ替え・画像保存を出さず、
+   * 代わりに各グラフへ「大きく見る」を出す（画面いっぱいに広げる）。
+   */
+  readOnly?: boolean
+  /** スマホ Web 版: 上の数字のカードを出さない（スマホ側に同じ中身のサマリがあるため）。 */
+  hideStats?: boolean
 }
 
-export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }: Props) {
+export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching, readOnly = false, hideStats = false }: Props) {
   const { t, i18n } = useTranslation()
   const [summary, setSummary] = useState<Summary | null>(null)
   const [stats, setStats]     = useState<BattleStats | null>(null)
@@ -190,11 +200,50 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
       .finally(() => setLoading(false))
   }, [refreshKey, filters, customCharts])
 
-  // fetch_complete イベントでデータを自動リフレッシュ
+  // fetch_complete イベントでデータを自動リフレッシュ（Tauri の中だけ）
   useEffect(() => {
+    if (!isTauri()) return
     const unlistenPromise = listen('fetch_complete', () => setRefreshKey(k => k + 1))
     return () => { unlistenPromise.then(fn => fn()) }
   }, [])
+
+  // スマホ Web 版（#800）: 殻の読み直しで、データとカスタムグラフの定義（PC から写したもの）を読み直す
+  useEffect(() => {
+    if (isTauri()) return
+    const onRefresh = () => {
+      setCustomCharts(loadCustomCharts())
+      setRefreshKey(k => k + 1)
+    }
+    window.addEventListener(MOBILE_REFRESH_EVENT, onRefresh)
+    return () => window.removeEventListener(MOBILE_REFRESH_EVENT, onRefresh)
+  }, [])
+
+  // スマホ Web 版（#800）: 「大きく見る」で広げているグラフ。ブラウザの戻る操作でも閉じられるよう履歴に積む
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const expandedPushed = useRef(false)
+  useEffect(() => {
+    if (!readOnly) return
+    const onPop = () => {
+      expandedPushed.current = false
+      setExpanded(null)
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [readOnly])
+  function expand(id: string) {
+    setExpanded(id)
+    if (!expandedPushed.current) {
+      history.pushState({ chartExpanded: true }, '')
+      expandedPushed.current = true
+    }
+  }
+  function collapse() {
+    if (expandedPushed.current) history.back()
+    else setExpanded(null)
+  }
+  const expandProps = (id: string) => (readOnly
+    ? { expanded: expanded === id, onExpand: () => expand(id), onCollapse: collapse }
+    : {})
 
   // Load weapon images once
   useEffect(() => {
@@ -359,7 +408,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
         />
       ) : (
         <>
-          <div className="stat-cards">
+          {!hideStats && <div className="stat-cards">
             <StatCard label={t('dashboard.totalBattles')} value={totalBattles.toLocaleString()} />
             <StatCard label={t('dashboard.winLoseDraw')} value={`${totalWins} / ${totalLosses} (${totalDraws})`} />
             <StatCard
@@ -371,23 +420,23 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
             <StatCard label={t('dashboard.avgKillAssist')} value={fmtKillWithAssist(stats?.avg_kill, stats?.avg_assist)} />
             <StatCard label={t('dashboard.avgDeath')} value={stats?.avg_death != null ? stats.avg_death.toFixed(2) : '-'} />
             <StatCard label={t('dashboard.kdContrib')} value={fmtKillRatioWithContrib(stats?.avg_kill, stats?.avg_assist, stats?.avg_death)} />
-          </div>
+          </div>}
 
           <div className="chart-grid">
-            <ChartCard title={t('dashboard.byWeapon')} sortBy={weaponSort} onSortChange={setWeaponSort} filterSummary={filterSummary}>
+            <ChartCard title={t('dashboard.byWeapon')} sortBy={weaponSort} onSortChange={setWeaponSort} filterSummary={filterSummary} readOnly={readOnly} {...expandProps('fixed:weapon')}>
               <WinRateChart data={rankedWeapons(summary.by_weapon, weaponSort)} height={260} images={weaponImages} hoverImageSize={64} labelLookup={weaponLabelByKey} />
             </ChartCard>
 
-            <ChartCard title={t('dashboard.byStage')} sortBy={stageSort} onSortChange={setStageSort} filterSummary={filterSummary}>
+            <ChartCard title={t('dashboard.byStage')} sortBy={stageSort} onSortChange={setStageSort} filterSummary={filterSummary} readOnly={readOnly} {...expandProps('fixed:stage')}>
               {/* ステージは現状 25 種程度で全件表示が望ましい(ブキのような大量マスターと違い slice 不要)。 */}
               <WinRateChart data={sorted(summary.by_stage, stageSort)} height={260} images={new Map()} nameTransform={stageNameTransform} tickAngle={30} />
             </ChartCard>
 
-            <ChartCard title={t('dashboard.byRule')} sortBy={ruleSort} onSortChange={setRuleSort} filterSummary={filterSummary}>
+            <ChartCard title={t('dashboard.byRule')} sortBy={ruleSort} onSortChange={setRuleSort} filterSummary={filterSummary} readOnly={readOnly} {...expandProps('fixed:rule')}>
               <WinRateChart data={sorted(summary.by_rule, ruleSort)} height={220} images={new Map()} nameTransform={ruleLabel} />
             </ChartCard>
 
-            <ChartCard title={t('dashboard.byLobby')} sortBy={modeSort} onSortChange={setModeSort} filterSummary={filterSummary}>
+            <ChartCard title={t('dashboard.byLobby')} sortBy={modeSort} onSortChange={setModeSort} filterSummary={filterSummary} readOnly={readOnly} {...expandProps('fixed:mode')}>
               <WinRateChart data={sorted(summary.by_mode, modeSort)} height={220} images={new Map()} nameTransform={modeLabel} />
             </ChartCard>
 
@@ -416,6 +465,8 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
                       battleData={c.shape === 'scatter' && c.dotUnit === 'battle' ? battleData : undefined}
                       onEdit={() => handleEdit(c.id)}
                       onDelete={() => handleDelete(c.id)}
+                      readOnly={readOnly}
+                      {...expandProps(c.id)}
                       weaponImages={weaponImages}
                       weaponMeta={weaponMeta}
                       subImages={subImages}
@@ -432,11 +483,13 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching }:
 
           </div>
 
-          <div className="dashboard-add-row">
-            <button className="btn-secondary dashboard-add-btn" onClick={handleAdd}>
-              {t('dashboard.addChart')}
-            </button>
-          </div>
+          {!readOnly && (
+            <div className="dashboard-add-row">
+              <button className="btn-secondary dashboard-add-btn" onClick={handleAdd}>
+                {t('dashboard.addChart')}
+              </button>
+            </div>
+          )}
         </>
       )}
 
@@ -700,7 +753,7 @@ function StatCard({ label, value, valueColor, small }: { label: string; value: s
 }
 
 function ChartCard({
-  title, children, sortBy, onSortChange, filterSummary,
+  title, children, sortBy, onSortChange, filterSummary, readOnly = false, expanded, onExpand, onCollapse,
 }: {
   title: string
   children: React.ReactNode
@@ -708,11 +761,13 @@ function ChartCard({
   onSortChange?: (s: SortBy) => void
   /** 画像保存時に焼き込む絞り込み条件(#500)。 */
   filterSummary: string
-}) {
+  /** スマホ Web 版（#800）: 画像保存を出さない */
+  readOnly?: boolean
+} & ChartExpandProps) {
   const { t } = useTranslation()
   const cardRef = useRef<HTMLDivElement>(null)
   return (
-    <div className="chart-card" ref={cardRef}>
+    <div className={`chart-card${expanded ? ' chart-card--expanded' : ''}`} ref={cardRef}>
       <PanelExportLogo />
       <div className="chart-card-header">
         <h3 className="chart-title">{title}</h3>
@@ -733,7 +788,8 @@ function ChartCard({
               >{t('metrics.win_rate')}</button>
             </div>
           )}
-          <PanelExportButton targetRef={cardRef} screen={t('chart.screenDashboard')} panel={title} />
+          {!readOnly && <PanelExportButton targetRef={cardRef} screen={t('chart.screenDashboard')} panel={title} />}
+          <ChartExpandButton expanded={expanded} onExpand={onExpand} onCollapse={onCollapse} />
         </div>
       </div>
       <PanelExportCaption conditions={filterSummary} />
