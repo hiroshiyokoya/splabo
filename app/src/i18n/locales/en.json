@@ -339,6 +339,7 @@
     "sortName": "Name",
     "allCategories": "All weapon types",
     "category": "Weapon type",
+    "multiSelected": "{{first}} +{{count}}",
     "battles": "Record",
     "avgKadShort": "Avg K(A)/D",
     "allTime": "All time",

@@ -701,3 +701,83 @@ html, body {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* ── 複数選択のプルダウン（ロビー・ルール・ブキ種） ── */
+
+.m-multi {
+  position: relative;
+  flex: 1 1 calc(50% - 3px);
+  min-width: 0;
+}
+
+.m-filter__selects .m-multi .m-sort {
+  width: 100%;
+}
+
+.m-multi__button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  text-align: left;
+}
+
+.m-multi__summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-multi__caret {
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.m-multi__panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 180px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  padding: 4px 0;
+}
+
+/* 右の列のプルダウンは、一覧を右端にそろえて画面からはみ出さないようにする */
+.m-filter__selects .m-multi:nth-child(even) .m-multi__panel {
+  left: auto;
+  right: 0;
+}
+
+.m-multi__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+}
+
+.m-multi__option--on {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.m-multi__check {
+  width: 16px;
+  flex-shrink: 0;
+  text-align: center;
+}

@@ -8,7 +8,7 @@ import {
   groupedStatsDisplayName, weaponCategoryDisplayName, subWeaponDisplayName, specialWeaponDisplayName,
 } from '../i18n/displayName'
 import {
-  RecordCell, FilterBar, FilterSelect, useDetail, DetailHeader, StatTile, SortSelect, sortBook, pct, filterArgs,
+  RecordCell, FilterBar, MultiFilter, useDetail, DetailHeader, StatTile, SortSelect, sortBook, pct, filterArgs,
 } from './parts'
 import type { BookSort, MobileFilter } from './parts'
 
@@ -35,7 +35,7 @@ export function WeaponScreen({ filter, onFilterChange }: { filter: MobileFilter;
   const [records, setRecords] = useState<WeaponRecord[]>([])
   const [stats, setStats] = useState<GroupedStatsRow[] | null>(null)
   const [images, setImages] = useState<Map<string, string>>(new Map())
-  const [category, setCategory] = useState<string | null>(null)
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [sort, setSort] = useState<BookSort>('total')
   const [error, setError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -74,14 +74,17 @@ export function WeaponScreen({ filter, onFilterChange }: { filter: MobileFilter;
   }, [stats, records])
 
   // ブキ種の選択肢は、これまでに使ったことのあるブキから作る（絞り込みで選択肢が消えないように）
-  const categories = useMemo(
+  const categoryOptions = useMemo(
     () => [...new Set(records.filter(r => r.total > 0).map(r => r.category).filter(Boolean))].sort(),
     [records],
   )
 
   const shown = useMemo(
-    () => sortBook(rows.filter(r => !category || r.record?.category === category), sort, groupedStatsDisplayName, locale),
-    [rows, category, sort, locale],
+    () => sortBook(
+      rows.filter(r => selectedCategories.length === 0 || selectedCategories.includes(r.record?.category ?? '')),
+      sort, groupedStatsDisplayName, locale,
+    ),
+    [rows, selectedCategories, sort, locale],
   )
 
   const selectedRow = detail.selected ? rows.find(r => r.key === detail.selected) : undefined
@@ -100,11 +103,11 @@ export function WeaponScreen({ filter, onFilterChange }: { filter: MobileFilter;
   return (
     <div className="m-book">
       <FilterBar filter={filter} onChange={onFilterChange}>
-        <FilterSelect
-          value={category}
+        <MultiFilter
+          values={selectedCategories}
           allLabel={t('mobile.allCategories')}
-          options={categories.map(c => ({ key: c, label: weaponCategoryDisplayName(c) }))}
-          onChange={setCategory}
+          options={categoryOptions.map(c => ({ key: c, label: weaponCategoryDisplayName(c) }))}
+          onChange={setSelectedCategories}
           ariaLabel={t('mobile.category')}
         />
         <SortSelect value={sort} onChange={setSort} />

@@ -339,6 +339,7 @@
     "sortName": "名前",
     "allCategories": "すべてのブキ種",
     "category": "ブキ種",
+    "multiSelected": "{{first}} 他{{count}}",
     "battles": "戦績",
     "avgKadShort": "平均 K(A)/D",
     "allTime": "全期間",

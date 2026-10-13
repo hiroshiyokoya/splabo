@@ -9,27 +9,105 @@ export const PERIODS: Period[] = ['7d', '30d', 'current_season', 'all']
 
 /**
  * バトル・ブキ・ステージで共有する絞り込み（#801）。殻が持ち、画面を移っても同じまま。
- * ロビー・ルールはスマホでは 1 つだけ選ぶ（null = すべて）。値はデスクトップの FilterBar と同じキー。
+ * ロビー・ルールは複数選べる（空 = すべて・選んだものの OR）。値はデスクトップの FilterBar と同じキー。
  */
 export interface MobileFilter {
   period: Period
-  mode: string | null
-  rule: string | null
+  mode: string[]
+  rule: string[]
 }
 
-export const DEFAULT_FILTER: MobileFilter = { period: '7d', mode: null, rule: null }
+export const DEFAULT_FILTER: MobileFilter = { period: '7d', mode: [], rule: [] }
 
 /** コマンドに渡す絞り込みの引数（デスクトップと同じ変換。ルールの turf_war → nawabari など） */
 export function filterArgs(f: MobileFilter): { since: string | null; until: null; mode: string | null; rule: string | null } {
   return {
     since: periodToSince(f.period),
     until: null,
-    mode: modeFilterArg(f.mode ? [f.mode] : []),
-    rule: ruleFilterArg(f.rule ? [f.rule] : []),
+    mode: modeFilterArg(f.mode),
+    rule: ruleFilterArg(f.rule),
   }
 }
 
-/** 畳めるプルダウン（ロビー・ルール・ブキ種・並び替えで同じ見た目） */
+/**
+ * 畳める複数選択（ロビー・ルール・ブキ種）。押すとチェックの一覧が開き、外側を押すと閉じる。
+ * 何も選んでいなければ「すべて」。標準の `<select multiple>` はブラウザで見た目がばらつくので使わない。
+ */
+export function MultiFilter({ values, allLabel, options, onChange, ariaLabel }: {
+  values: string[]
+  allLabel: string
+  options: { key: string; label: string }[]
+  onChange: (v: string[]) => void
+  ariaLabel: string
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', onDown)
+    return () => document.removeEventListener('pointerdown', onDown)
+  }, [open])
+
+  const labelOf = (key: string) => options.find(o => o.key === key)?.label ?? key
+  const summary = values.length === 0
+    ? allLabel
+    : values.length === 1
+      ? labelOf(values[0])
+      : t('mobile.multiSelected', { first: labelOf(values[0]), count: values.length - 1 })
+  const toggle = (key: string) =>
+    onChange(values.includes(key) ? values.filter(v => v !== key) : [...values, key])
+
+  return (
+    <div className="m-multi" ref={rootRef}>
+      <button
+        type="button"
+        className={`m-sort m-multi__button${values.length > 0 ? ' m-sort--active' : ''}`}
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+      >
+        <span className="m-multi__summary">{summary}</span>
+        <span className="m-multi__caret" aria-hidden>▾</span>
+      </button>
+      {open && (
+        <div className="m-multi__panel" role="listbox" aria-multiselectable="true" aria-label={ariaLabel}>
+          <button
+            type="button"
+            className={`m-multi__option${values.length === 0 ? ' m-multi__option--on' : ''}`}
+            onClick={() => onChange([])}
+          >
+            <span className="m-multi__check" aria-hidden>{values.length === 0 ? '✓' : ''}</span>
+            {allLabel}
+          </button>
+          {options.map(o => {
+            const on = values.includes(o.key)
+            return (
+              <button
+                key={o.key}
+                type="button"
+                role="option"
+                aria-selected={on}
+                className={`m-multi__option${on ? ' m-multi__option--on' : ''}`}
+                onClick={() => toggle(o.key)}
+              >
+                <span className="m-multi__check" aria-hidden>{on ? '✓' : ''}</span>
+                {o.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 畳めるプルダウン（1 つだけ選ぶもの。今は並び替え） */
 export function FilterSelect({ value, allLabel, options, onChange, ariaLabel }: {
   value: string | null
   allLabel?: string
@@ -65,15 +143,15 @@ export function FilterBar({ filter, onChange, children }: {
     <div className="m-filter">
       <PeriodBar period={filter.period} onChange={period => onChange({ ...filter, period })} />
       <div className="m-filter__selects">
-        <FilterSelect
-          value={filter.mode}
+        <MultiFilter
+          values={filter.mode}
           allLabel={t('filter.allLobbies')}
           options={LOBBY_OPTIONS.map(o => ({ key: o.key, label: t(`filter.lobby_${o.key}`) }))}
           onChange={mode => onChange({ ...filter, mode })}
           ariaLabel={t('filter.lobby')}
         />
-        <FilterSelect
-          value={filter.rule}
+        <MultiFilter
+          values={filter.rule}
           allLabel={t('filter.allRules')}
           options={RULE_OPTIONS.map(o => ({ key: o.key, label: t(`filter.rule_${o.key}`) }))}
           onChange={rule => onChange({ ...filter, rule })}
