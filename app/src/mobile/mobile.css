@@ -6,6 +6,12 @@ html, body {
   -webkit-text-size-adjust: 100%;
 }
 
+/* スマホは全体を丸ゴシックにする（ギア画面の .gear-root も上書き） */
+body,
+.m-app .gear-root {
+  font-family: 'M PLUS Rounded 1c', system-ui, 'Hiragino Maru Gothic ProN', 'Hiragino Sans', sans-serif;
+}
+
 .m-app {
   min-height: 100dvh;
   display: flex;

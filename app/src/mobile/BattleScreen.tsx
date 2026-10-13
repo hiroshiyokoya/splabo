@@ -176,6 +176,7 @@ export function BattleScreen({ filter, onFilterChange }: { filter: MobileFilter;
           const img = b.weapon ? weaponImages.get(b.weapon) : undefined
           return (
             <div key={b.id} className={`m-battle-row m-battle-row--${r}`}>
+              <span className={`m-result m-result--${r}`}>{resultLabel(b.result)}</span>
               <span className="m-battle-row__weapon">
                 {img ? <img src={img} alt={weaponName(b)} /> : null}
               </span>
@@ -190,7 +191,6 @@ export function BattleScreen({ filter, onFilterChange }: { filter: MobileFilter;
               <span className="m-battle-row__kda">
                 {b.kill ?? 0}<small>({b.assist ?? 0})</small>/{b.death ?? 0}
               </span>
-              <span className={`m-result m-result--${r}`}>{resultLabel(b.result)}</span>
             </div>
           )
         })}
