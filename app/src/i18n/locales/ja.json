@@ -327,6 +327,7 @@
     "avgKda": "平均 {{k}}({{a}}) / {{d}}",
     "byRule": "ルール別",
     "topWeapons": "よく使うブキ",
+    "topStages": "バトル数の多いステージ {{n}}",
     "recentBattles": "直近のバトル",
     "noBattles": "この条件のバトルはありません",
     "more": "もっと見る",

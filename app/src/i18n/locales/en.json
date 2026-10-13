@@ -327,6 +327,7 @@
     "avgKda": "Avg {{k}}({{a}}) / {{d}}",
     "byRule": "By mode",
     "topWeapons": "Most used weapons",
+    "topStages": "Most played stages (top {{n}})",
     "recentBattles": "Recent battles",
     "noBattles": "No battles match these filters",
     "more": "Show more",

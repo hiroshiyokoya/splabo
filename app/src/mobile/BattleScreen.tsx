@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { call, MOBILE_REFRESH_EVENT } from '../utils/backend'
-import { loadWeaponImageMap } from '../utils/weaponKitImages'
+import { loadWeaponImageMap, loadStageImageMap } from '../utils/weaponKitImages'
 import { modeLabel, ruleLabel, resultLabel } from '../types'
 import { FilterBar, RecordCell, pct, filterArgs } from './parts'
 import type { MobileFilter } from './parts'
@@ -50,7 +50,13 @@ interface GroupStat {
 interface Summary {
   by_rule: GroupStat[]
   by_weapon: GroupStat[]
+  /** ステージ別。`name` はステージの日本語名（画像もこれで引く） */
+  by_stage: GroupStat[]
 }
+
+/** ステージの欄の件数と、「勝率の良いステージ」に入れる最低バトル数（ブキの詳細と同じ） */
+const STAGE_TOP_N = 5
+const STAGE_MIN_BATTLES = 5
 
 const PAGE = 30
 
@@ -71,8 +77,41 @@ export function BattleScreen({ filter, onFilterChange }: { filter: MobileFilter;
   const [battles, setBattles] = useState<BattleRow[]>([])
   const [hasMore, setHasMore] = useState(false)
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
+  const [stageImages, setStageImages] = useState<Map<string, string>>(new Map())
   const [error, setError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
+
+  // バトル数の多いステージ・勝率の良いステージ（5 戦以上）
+  const topStages = useMemo(
+    () => [...(summary?.by_stage ?? [])].sort((a, b) => b.total - a.total).slice(0, STAGE_TOP_N),
+    [summary],
+  )
+  const bestStages = useMemo(
+    () => (summary?.by_stage ?? [])
+      .filter(g => g.total >= STAGE_MIN_BATTLES)
+      .sort((a, b) => (b.win_rate ?? 0) - (a.win_rate ?? 0) || b.total - a.total)
+      .slice(0, STAGE_TOP_N),
+    [summary],
+  )
+
+  // ステージの欄に出すものだけ画像を読む。画像が無いステージを何度も読みに行かないよう、頼んだ名前を覚えておく
+  const requestedStageImages = useRef(new Set<string>())
+  useEffect(() => {
+    const names = [...topStages, ...bestStages].map(g => g.name).filter(n => !requestedStageImages.current.has(n))
+    if (names.length === 0) return
+    names.forEach(n => requestedStageImages.current.add(n))
+    void loadStageImageMap(names).then(m => setStageImages(prev => new Map([...prev, ...m])))
+  }, [topStages, bestStages])
+
+  const stageLine = (g: GroupStat) => (
+    <div key={g.name} className="m-bar-row">
+      <span className="m-bar-row__label m-bar-row__label--stage">
+        {stageImages.get(g.name) ? <img src={stageImages.get(g.name)} alt="" /> : <span className="m-stage-blank" />}
+        <span>{(en ? g.name_en : g.name_ja) ?? g.name}</span>
+      </span>
+      <RecordCell g={g} />
+    </div>
+  )
 
   const addWeaponImages = useCallback(async (rows: { weapon?: string | null; name?: string }[]) => {
     const names = rows.map(r => r.weapon ?? r.name ?? '').filter(Boolean)
@@ -173,6 +212,24 @@ export function BattleScreen({ filter, onFilterChange }: { filter: MobileFilter;
               <RecordCell g={g} />
             </div>
           ))}
+        </section>
+      )}
+
+      {topStages.length > 0 && (
+        <section className="m-card">
+          <h2 className="m-card__title">{t('mobile.topStages', { n: STAGE_TOP_N })}</h2>
+          {topStages.map(g => stageLine(g))}
+        </section>
+      )}
+
+      {summary && summary.by_stage.length > 0 && (
+        <section className="m-card">
+          <h2 className="m-card__title">
+            {t('mobile.bestStages', { n: STAGE_TOP_N })}
+            <span className="m-card__note">{t('mobile.minBattles', { n: STAGE_MIN_BATTLES })}</span>
+          </h2>
+          {bestStages.length === 0 && <p className="m-empty">{t('mobile.noMinBattles', { n: STAGE_MIN_BATTLES })}</p>}
+          {bestStages.map(g => stageLine(g))}
         </section>
       )}
 
