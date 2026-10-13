@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { call, MOBILE_REFRESH_EVENT } from '../utils/backend'
 import { loadWeaponImageMap, loadSubSpImageMaps } from '../utils/weaponKitImages'
-import { periodToSince, ruleLabel, METRIC_LABELS, fmtOfficialDate } from '../types'
-import type { GroupedStatsRow, Period, WeaponRecord } from '../types'
+import { ruleLabel, METRIC_LABELS, fmtOfficialDate } from '../types'
+import type { GroupedStatsRow, WeaponRecord } from '../types'
 import {
   groupedStatsDisplayName, weaponCategoryDisplayName, subWeaponDisplayName, specialWeaponDisplayName,
 } from '../i18n/displayName'
-import { RecordCell, PeriodBar, useDetail, DetailHeader, StatTile, SortSelect, sortBook, pct } from './parts'
-import type { BookSort } from './parts'
+import {
+  RecordCell, FilterBar, FilterSelect, useDetail, DetailHeader, StatTile, SortSelect, sortBook, pct, filterArgs,
+} from './parts'
+import type { BookSort, MobileFilter } from './parts'
 
 /** 「勝率の良いステージ」に入れる最低バトル数と件数（デスクトップの WeaponDetailModal と同じ） */
 const STAGE_MIN_BATTLES = 5
@@ -27,7 +29,7 @@ function fmtNum(n: number | null | undefined): string {
  * スマホのブキ画面（#801）。デスクトップの「ブキ」タブの簡略版。
  * 一覧（期間内に使ったブキ・ブキ種で絞る・3 つの並び替え）→ タップで詳細。
  */
-export function WeaponScreen({ period, onPeriodChange }: { period: Period; onPeriodChange: (p: Period) => void }) {
+export function WeaponScreen({ filter, onFilterChange }: { filter: MobileFilter; onFilterChange: (f: MobileFilter) => void }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.language.startsWith('en') ? 'en' : 'ja'
   const [records, setRecords] = useState<WeaponRecord[]>([])
@@ -44,10 +46,10 @@ export function WeaponScreen({ period, onPeriodChange }: { period: Period; onPer
     call<WeaponRecord[]>('db_list_weapons').then(setRecords).catch(() => setRecords([]))
   }, [reloadKey])
 
-  // 期間内の集計
+  // 絞り込み（期間・ロビー・ルール）での集計
   useEffect(() => {
     let cancelled = false
-    call<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'weapon', since: periodToSince(period), until: null })
+    call<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'weapon', ...filterArgs(filter) })
       .then(rows => {
         if (cancelled) return
         setStats(rows)
@@ -58,7 +60,7 @@ export function WeaponScreen({ period, onPeriodChange }: { period: Period; onPer
       })
       .catch(e => { if (!cancelled) setError(String(e)) })
     return () => { cancelled = true }
-  }, [period, reloadKey])
+  }, [filter, reloadKey])
 
   useEffect(() => {
     const onRefresh = () => setReloadKey(k => k + 1)
@@ -71,9 +73,10 @@ export function WeaponScreen({ period, onPeriodChange }: { period: Period; onPer
     return (stats ?? []).filter(s => s.total > 0).map(s => ({ ...s, record: byKey.get(s.key) }))
   }, [stats, records])
 
+  // ブキ種の選択肢は、これまでに使ったことのあるブキから作る（絞り込みで選択肢が消えないように）
   const categories = useMemo(
-    () => [...new Set(rows.map(r => r.record?.category).filter((c): c is string => !!c))].sort(),
-    [rows],
+    () => [...new Set(records.filter(r => r.total > 0).map(r => r.category).filter(Boolean))].sort(),
+    [records],
   )
 
   const shown = useMemo(
@@ -85,9 +88,9 @@ export function WeaponScreen({ period, onPeriodChange }: { period: Period; onPer
   if (detail.selected) {
     return (
       <div className="m-book">
-        <PeriodBar period={period} onChange={onPeriodChange} />
+        <FilterBar filter={filter} onChange={onFilterChange} />
         {selectedRow
-          ? <WeaponDetail row={selectedRow} image={images.get(selectedRow.key)} period={period} onBack={detail.close} />
+          ? <WeaponDetail row={selectedRow} image={images.get(selectedRow.key)} filter={filter} onBack={detail.close} />
           : <DetailHeader title={detail.selected} onBack={detail.close} />}
         {!selectedRow && stats && <p className="m-empty">{t('mobile.noBattlesInPeriod')}</p>}
       </div>
@@ -96,30 +99,17 @@ export function WeaponScreen({ period, onPeriodChange }: { period: Period; onPer
 
   return (
     <div className="m-book">
-      <PeriodBar period={period} onChange={onPeriodChange} />
-      {error && <p className="m-note m-note--error">{error}</p>}
-      <div className="m-book-tools">
-        <div className="m-chips">
-          <button
-            type="button"
-            className={`m-chip${category === null ? ' m-chip--active' : ''}`}
-            onClick={() => setCategory(null)}
-          >
-            {t('mobile.allCategories')}
-          </button>
-          {categories.map(c => (
-            <button
-              key={c}
-              type="button"
-              className={`m-chip${category === c ? ' m-chip--active' : ''}`}
-              onClick={() => setCategory(prev => (prev === c ? null : c))}
-            >
-              {weaponCategoryDisplayName(c)}
-            </button>
-          ))}
-        </div>
+      <FilterBar filter={filter} onChange={onFilterChange}>
+        <FilterSelect
+          value={category}
+          allLabel={t('mobile.allCategories')}
+          options={categories.map(c => ({ key: c, label: weaponCategoryDisplayName(c) }))}
+          onChange={setCategory}
+          ariaLabel={t('mobile.category')}
+        />
         <SortSelect value={sort} onChange={setSort} />
-      </div>
+      </FilterBar>
+      {error && <p className="m-note m-note--error">{error}</p>}
       <section className="m-card">
         {stats && shown.length === 0 && <p className="m-empty">{t('mobile.noBattlesInPeriod')}</p>}
         {shown.map(r => (
@@ -137,17 +127,17 @@ export function WeaponScreen({ period, onPeriodChange }: { period: Period; onPer
 }
 
 /** ブキの詳細（デスクトップの WeaponDetailModal の簡略版） */
-function WeaponDetail({ row, image, period, onBack }: { row: WeaponRow; image?: string; period: Period; onBack: () => void }) {
+function WeaponDetail({ row, image, filter, onBack }: { row: WeaponRow; image?: string; filter: MobileFilter; onBack: () => void }) {
   const { t } = useTranslation()
   const [rules, setRules] = useState<GroupedStatsRow[]>([])
   const [stages, setStages] = useState<GroupedStatsRow[]>([])
   const [subSp, setSubSp] = useState<{ sub?: string; sp?: string }>({})
   const rec = row.record
 
-  // 期間を変えたら詳細を開いたまま読み直す
+  // 絞り込みを変えたら詳細を開いたまま読み直す
   useEffect(() => {
     let cancelled = false
-    const args = { since: periodToSince(period), until: null, weapon: row.key }
+    const args = { ...filterArgs(filter), weapon: row.key }
     Promise.all([
       call<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'rule', ...args }),
       call<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'stage', ...args }),
@@ -155,7 +145,7 @@ function WeaponDetail({ row, image, period, onBack }: { row: WeaponRow; image?: 
       .then(([r, s]) => { if (!cancelled) { setRules(r); setStages(s) } })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [row.key, period])
+  }, [row.key, filter])
 
   useEffect(() => {
     if (!rec) return

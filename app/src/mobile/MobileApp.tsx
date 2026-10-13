@@ -5,7 +5,8 @@ import { GearSection } from '../gear/GearSection'
 import { BattleScreen } from './BattleScreen'
 import { WeaponScreen } from './WeaponScreen'
 import { StageScreen } from './StageScreen'
-import type { Period } from '../types'
+import { DEFAULT_FILTER } from './parts'
+import type { MobileFilter } from './parts'
 import { requestPcUpdate } from './pcUpdate'
 import { applyPcSettings } from './sharedSettings'
 import type { SessionResult } from './session'
@@ -74,8 +75,8 @@ export function MobileApp({ session }: { session: SessionResult }) {
     session === 'rejected' ? 'unauthorized' : session === 'unreachable' ? 'unreachable' : 'checking',
   )
   const [section, setSection] = useState<Section>('battle')
-  // バトル・ブキ・ステージで共有する期間（#801）。画面を移っても同じ期間のまま
-  const [period, setPeriod] = useState<Period>('7d')
+  // バトル・ブキ・ステージで共有する絞り込み（期間・ロビー・ルール・#801）。画面を移っても同じまま
+  const [filter, setFilter] = useState<MobileFilter>(DEFAULT_FILTER)
   const [updating, setUpdating] = useState(false)
   const [updateNote, setUpdateNote] = useState<{ ok: boolean; text: string } | null>(null)
   const hiddenAt = useRef<number | null>(null)
@@ -174,9 +175,9 @@ export function MobileApp({ session }: { session: SessionResult }) {
         {(connection === 'unauthorized' || connection === 'unreachable') && (
           <ConnectionProblem connection={connection} onRetry={check} />
         )}
-        {connection === 'ok' && section === 'battle' && <BattleScreen period={period} onPeriodChange={setPeriod} />}
-        {connection === 'ok' && section === 'weapon' && <WeaponScreen period={period} onPeriodChange={setPeriod} />}
-        {connection === 'ok' && section === 'stage' && <StageScreen period={period} onPeriodChange={setPeriod} />}
+        {connection === 'ok' && section === 'battle' && <BattleScreen filter={filter} onFilterChange={setFilter} />}
+        {connection === 'ok' && section === 'weapon' && <WeaponScreen filter={filter} onFilterChange={setFilter} />}
+        {connection === 'ok' && section === 'stage' && <StageScreen filter={filter} onFilterChange={setFilter} />}
         {connection === 'ok' && section === 'gear' && <GearSection />}
       </main>
     </div>

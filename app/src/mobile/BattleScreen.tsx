@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { call, MOBILE_REFRESH_EVENT } from '../utils/backend'
 import { loadWeaponImageMap } from '../utils/weaponKitImages'
-import { modeLabel, ruleLabel, resultLabel, periodToSince, type Period } from '../types'
-import { PeriodBar, RecordCell, pct } from './parts'
+import { modeLabel, ruleLabel, resultLabel } from '../types'
+import { FilterBar, RecordCell, pct, filterArgs } from './parts'
+import type { MobileFilter } from './parts'
 
 /** db_list_battles の 1 行（スマホで使う分だけ） */
 interface BattleRow {
@@ -61,7 +62,7 @@ function fmtTime(iso: string, locale: string): string {
  * スマホのバトル画面（#791・設計 #784 §2）。期間で絞ったサマリと、直近のバトルの一覧。
  * データはデスクトップと同じコマンド（db_battle_stats / db_summary / db_list_battles）。
  */
-export function BattleScreen({ period, onPeriodChange }: { period: Period; onPeriodChange: (p: Period) => void }) {
+export function BattleScreen({ filter, onFilterChange }: { filter: MobileFilter; onFilterChange: (f: MobileFilter) => void }) {
   const { t, i18n } = useTranslation()
   const en = i18n.language.startsWith('en')
   const locale = en ? 'en-US' : 'ja-JP'
@@ -79,15 +80,14 @@ export function BattleScreen({ period, onPeriodChange }: { period: Period; onPer
     setWeaponImages(prev => new Map([...prev, ...loaded]))
   }, [])
 
-  // 期間を変えたとき・読み直しのとき
+  // 絞り込みを変えたとき・読み直しのとき
   useEffect(() => {
     let cancelled = false
-    const since = periodToSince(period)
-    const filter = { since, until: null }
+    const args = filterArgs(filter)
     Promise.all([
-      call<BattleStats>('db_battle_stats', filter),
-      call<Summary>('db_summary', filter),
-      call<BattleRow[]>('db_list_battles', { ...filter, limit: PAGE, offset: 0 }),
+      call<BattleStats>('db_battle_stats', args),
+      call<Summary>('db_summary', args),
+      call<BattleRow[]>('db_list_battles', { ...args, limit: PAGE, offset: 0 }),
     ])
       .then(([st, sm, rows]) => {
         if (cancelled) return
@@ -100,7 +100,7 @@ export function BattleScreen({ period, onPeriodChange }: { period: Period; onPer
       })
       .catch(e => { if (!cancelled) setError(String(e)) })
     return () => { cancelled = true }
-  }, [period, reloadKey, addWeaponImages])
+  }, [filter, reloadKey, addWeaponImages])
 
   useEffect(() => {
     const onRefresh = () => setReloadKey(k => k + 1)
@@ -110,7 +110,7 @@ export function BattleScreen({ period, onPeriodChange }: { period: Period; onPer
 
   const loadMore = async () => {
     const rows = await call<BattleRow[]>('db_list_battles', {
-      since: periodToSince(period), until: null, limit: PAGE, offset: battles.length,
+      ...filterArgs(filter), limit: PAGE, offset: battles.length,
     })
     setBattles(prev => [...prev, ...rows])
     setHasMore(rows.length === PAGE)
@@ -122,7 +122,7 @@ export function BattleScreen({ period, onPeriodChange }: { period: Period; onPer
 
   return (
     <div className="m-battle">
-      <PeriodBar period={period} onChange={onPeriodChange} />
+      <FilterBar filter={filter} onChange={onFilterChange} />
 
       {error && <p className="m-note m-note--error">{error}</p>}
 

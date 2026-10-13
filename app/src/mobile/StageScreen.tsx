@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { call, MOBILE_REFRESH_EVENT } from '../utils/backend'
 import { loadStageImageMap, loadWeaponImageMap } from '../utils/weaponKitImages'
-import { periodToSince, ruleLabel, fmtOfficialWinRate } from '../types'
-import type { GroupedStatsRow, Period, StageRecord } from '../types'
+import { ruleLabel, fmtOfficialWinRate } from '../types'
+import type { GroupedStatsRow, StageRecord } from '../types'
 import { groupedStatsDisplayName } from '../i18n/displayName'
-import { RecordCell, PeriodBar, useDetail, DetailHeader, StatTile, SortSelect, sortBook, pct } from './parts'
-import type { BookSort } from './parts'
+import { RecordCell, FilterBar, useDetail, DetailHeader, StatTile, SortSelect, sortBook, pct, filterArgs } from './parts'
+import type { BookSort, MobileFilter } from './parts'
 
 /** 「勝率の良いブキ」に入れる最低バトル数と件数（デスクトップの StageDetailModal と同じ） */
 const WEAPON_MIN_BATTLES = 5
@@ -29,7 +29,7 @@ function fmtNum(n: number | null | undefined): string {
  * スマホのステージ画面（#801）。デスクトップの「ステージ」タブの簡略版。
  * 一覧（期間内に遊んだステージ・3 つの並び替え）→ タップで詳細。
  */
-export function StageScreen({ period, onPeriodChange }: { period: Period; onPeriodChange: (p: Period) => void }) {
+export function StageScreen({ filter, onFilterChange }: { filter: MobileFilter; onFilterChange: (f: MobileFilter) => void }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.language.startsWith('en') ? 'en' : 'ja'
   const [stats, setStats] = useState<GroupedStatsRow[] | null>(null)
@@ -49,7 +49,7 @@ export function StageScreen({ period, onPeriodChange }: { period: Period; onPeri
 
   useEffect(() => {
     let cancelled = false
-    call<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'stage', since: periodToSince(period), until: null })
+    call<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'stage', ...filterArgs(filter) })
       .then(rows => {
         if (cancelled) return
         setStats(rows)
@@ -61,7 +61,7 @@ export function StageScreen({ period, onPeriodChange }: { period: Period; onPeri
       })
       .catch(e => { if (!cancelled) setError(String(e)) })
     return () => { cancelled = true }
-  }, [period, reloadKey])
+  }, [filter, reloadKey])
 
   useEffect(() => {
     const onRefresh = () => setReloadKey(k => k + 1)
@@ -78,14 +78,14 @@ export function StageScreen({ period, onPeriodChange }: { period: Period; onPeri
   if (detail.selected) {
     return (
       <div className="m-book">
-        <PeriodBar period={period} onChange={onPeriodChange} />
+        <FilterBar filter={filter} onChange={onFilterChange} />
         {selectedRow
           ? (
             <StageDetail
               row={selectedRow}
               image={images.get(selectedRow.name)}
               official={official.get(selectedRow.name) ?? null}
-              period={period}
+              filter={filter}
               onBack={detail.close}
             />
           )
@@ -97,11 +97,10 @@ export function StageScreen({ period, onPeriodChange }: { period: Period; onPeri
 
   return (
     <div className="m-book">
-      <PeriodBar period={period} onChange={onPeriodChange} />
-      {error && <p className="m-note m-note--error">{error}</p>}
-      <div className="m-book-tools m-book-tools--end">
+      <FilterBar filter={filter} onChange={onFilterChange}>
         <SortSelect value={sort} onChange={setSort} />
-      </div>
+      </FilterBar>
+      {error && <p className="m-note m-note--error">{error}</p>}
       <section className="m-card">
         {stats && shown.length === 0 && <p className="m-empty">{t('mobile.noBattlesInPeriod')}</p>}
         {shown.map(r => (
@@ -119,11 +118,11 @@ export function StageScreen({ period, onPeriodChange }: { period: Period; onPeri
 }
 
 /** ステージの詳細（デスクトップの StageDetailModal の簡略版） */
-function StageDetail({ row, image, official, period, onBack }: {
+function StageDetail({ row, image, official, filter, onBack }: {
   row: GroupedStatsRow
   image?: string
   official: StageRecord | null
-  period: Period
+  filter: MobileFilter
   onBack: () => void
 }) {
   const { t } = useTranslation()
@@ -131,10 +130,10 @@ function StageDetail({ row, image, official, period, onBack }: {
   const [weapons, setWeapons] = useState<GroupedStatsRow[]>([])
   const [weaponImages, setWeaponImages] = useState<Map<string, string>>(new Map())
 
-  // 期間を変えたら詳細を開いたまま読み直す
+  // 絞り込みを変えたら詳細を開いたまま読み直す
   useEffect(() => {
     let cancelled = false
-    const args = { since: periodToSince(period), until: null, stage: row.key }
+    const args = { ...filterArgs(filter), stage: row.key }
     Promise.all([
       call<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'rule', ...args }),
       call<GroupedStatsRow[]>('db_grouped_stats', { groupBy: 'weapon', ...args }),
@@ -147,7 +146,7 @@ function StageDetail({ row, image, official, period, onBack }: {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [row.key, period])
+  }, [row.key, filter])
 
   const mostUsed = [...weapons].sort((a, b) => b.total - a.total).slice(0, WEAPON_TOP_N)
   const best = weapons

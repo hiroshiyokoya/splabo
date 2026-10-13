@@ -675,3 +675,29 @@ html, body {
   font-weight: 400;
   font-size: 11px;
 }
+
+/* ── 絞り込み（期間のボタン + ロビー・ルール・ブキ種・並び替えのプルダウン・#801） ── */
+
+.m-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.m-filter__selects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.m-filter__selects .m-sort {
+  flex: 1 1 calc(50% - 3px);
+  min-width: 0;
+  padding: 6px 8px;
+}
+
+/* 「すべて」以外で絞っているプルダウン */
+.m-sort--active {
+  border-color: var(--accent);
+  color: var(--accent);
+}

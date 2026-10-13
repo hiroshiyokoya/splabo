@@ -1,9 +1,89 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { periodToSince, modeFilterArg, ruleFilterArg } from '../types'
 import type { Period } from '../types'
+import { LOBBY_OPTIONS, RULE_OPTIONS } from '../utils/filterSummary'
 
 /** バトル・ブキ・ステージで共有する期間（#801） */
 export const PERIODS: Period[] = ['7d', '30d', 'current_season', 'all']
+
+/**
+ * バトル・ブキ・ステージで共有する絞り込み（#801）。殻が持ち、画面を移っても同じまま。
+ * ロビー・ルールはスマホでは 1 つだけ選ぶ（null = すべて）。値はデスクトップの FilterBar と同じキー。
+ */
+export interface MobileFilter {
+  period: Period
+  mode: string | null
+  rule: string | null
+}
+
+export const DEFAULT_FILTER: MobileFilter = { period: '7d', mode: null, rule: null }
+
+/** コマンドに渡す絞り込みの引数（デスクトップと同じ変換。ルールの turf_war → nawabari など） */
+export function filterArgs(f: MobileFilter): { since: string | null; until: null; mode: string | null; rule: string | null } {
+  return {
+    since: periodToSince(f.period),
+    until: null,
+    mode: modeFilterArg(f.mode ? [f.mode] : []),
+    rule: ruleFilterArg(f.rule ? [f.rule] : []),
+  }
+}
+
+/** 畳めるプルダウン（ロビー・ルール・ブキ種・並び替えで同じ見た目） */
+export function FilterSelect({ value, allLabel, options, onChange, ariaLabel }: {
+  value: string | null
+  allLabel?: string
+  options: { key: string; label: string }[]
+  onChange: (v: string | null) => void
+  ariaLabel: string
+}) {
+  return (
+    <select
+      // 「すべて」以外で絞っているときだけ目立たせる（並び替えは絞り込みではないので対象外）
+      className={`m-sort${value && allLabel !== undefined ? ' m-sort--active' : ''}`}
+      value={value ?? ''}
+      onChange={e => onChange(e.target.value || null)}
+      aria-label={ariaLabel}
+    >
+      {allLabel !== undefined && <option value="">{allLabel}</option>}
+      {options.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+    </select>
+  )
+}
+
+/**
+ * 絞り込みの帯: 期間のボタンと、ロビー・ルールのプルダウン。
+ * `children` に画面ごとのプルダウン（ブキ種・並び替え）を足せる。
+ */
+export function FilterBar({ filter, onChange, children }: {
+  filter: MobileFilter
+  onChange: (f: MobileFilter) => void
+  children?: React.ReactNode
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="m-filter">
+      <PeriodBar period={filter.period} onChange={period => onChange({ ...filter, period })} />
+      <div className="m-filter__selects">
+        <FilterSelect
+          value={filter.mode}
+          allLabel={t('filter.allLobbies')}
+          options={LOBBY_OPTIONS.map(o => ({ key: o.key, label: t(`filter.lobby_${o.key}`) }))}
+          onChange={mode => onChange({ ...filter, mode })}
+          ariaLabel={t('filter.lobby')}
+        />
+        <FilterSelect
+          value={filter.rule}
+          allLabel={t('filter.allRules')}
+          options={RULE_OPTIONS.map(o => ({ key: o.key, label: t(`filter.rule_${o.key}`) }))}
+          onChange={rule => onChange({ ...filter, rule })}
+          ariaLabel={t('filter.rule')}
+        />
+        {children}
+      </div>
+    </div>
+  )
+}
 
 export function pct(rate: number | null | undefined): string {
   return rate == null ? '—' : `${Math.round(rate * 100)}%`
@@ -118,11 +198,16 @@ export type BookSort = 'total' | 'win_rate' | 'name'
 export function SortSelect({ value, onChange }: { value: BookSort; onChange: (v: BookSort) => void }) {
   const { t } = useTranslation()
   return (
-    <select className="m-sort" value={value} onChange={e => onChange(e.target.value as BookSort)} aria-label={t('mobile.sort')}>
-      <option value="total">{t('mobile.sortTotal')}</option>
-      <option value="win_rate">{t('mobile.sortWinRate')}</option>
-      <option value="name">{t('mobile.sortName')}</option>
-    </select>
+    <FilterSelect
+      value={value}
+      options={[
+        { key: 'total', label: t('mobile.sortTotal') },
+        { key: 'win_rate', label: t('mobile.sortWinRate') },
+        { key: 'name', label: t('mobile.sortName') },
+      ]}
+      onChange={v => onChange((v ?? 'total') as BookSort)}
+      ariaLabel={t('mobile.sort')}
+    />
   )
 }
 
