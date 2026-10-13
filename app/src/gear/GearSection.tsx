@@ -20,7 +20,7 @@ import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY
 import { initAppSettings, loadComboLimit, loadNearLimit } from './utils/appSettings'
 import type { ComboLimitValue, NearLimitValue } from './utils/appSettings'
 import { formatInvokeError } from '../utils/notify'
-import { call } from '../utils/backend'
+import { call, MOBILE_REFRESH_EVENT } from '../utils/backend'
 import { gearBrandDisplayName } from './utils/gearItemDisplayName'
 import './gear.css'
 
@@ -159,6 +159,14 @@ export function GearSection() {
       }).then((fn) => { un = fn })
     )
     return () => { un?.() }
+  }, [reload])
+
+  // スマホ Web 版（#789）では Tauri のイベントが届かないので、殻が投げる refresh イベントで読み直す
+  // （PC に取り直させたあと・ページを前面に戻したとき）。画面は作り直さないのでコーデのスロットは残る。
+  useEffect(() => {
+    if (isTauri()) return
+    window.addEventListener(MOBILE_REFRESH_EVENT, reload)
+    return () => window.removeEventListener(MOBILE_REFRESH_EVENT, reload)
   }, [reload])
 
   // ── 空状態 CTA のギア取得フロー ────────────────────────────
@@ -406,6 +414,14 @@ export function GearSection() {
   }, [t])
 
   useEffect(() => { void reloadSavedCoords() }, [reloadSavedCoords])
+
+  // スマホ Web 版: ほかの端末（PC・別のスマホ）で保存・削除したコーデも、読み直しで反映する
+  useEffect(() => {
+    if (isTauri()) return
+    const onRefresh = () => { void reloadSavedCoords() }
+    window.addEventListener(MOBILE_REFRESH_EVENT, onRefresh)
+    return () => window.removeEventListener(MOBILE_REFRESH_EVENT, onRefresh)
+  }, [reloadSavedCoords])
 
   const handleOpenSaveDialog = useCallback((slots: FullSlots) => {
     setSaveDialogError(null)

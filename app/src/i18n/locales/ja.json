@@ -307,7 +307,13 @@
     "unreachableCheckOn": "PC で SpLabo が起動していて、設定の「スマホで見る」がオンになっているか",
     "unreachableCheckWifi": "スマホと PC が同じ Wi-Fi（同じネットワーク）につながっているか",
     "unreachableCheckPrivate": "Windows のネットワークが「パブリック」になっていないか（「プライベート」にする）",
-    "retry": "もう一度試す"
+    "retry": "もう一度試す",
+    "navGear": "ギア",
+    "navBattle": "バトル",
+    "update": "PC に最新データを取りに行かせる",
+    "updating": "PC が任天堂から最新データを取得しています…（数十秒かかります）",
+    "updateDone": "最新データにしました",
+    "updateFailed": "取得できませんでした: {{detail}}"
   },
   "gear": {
     "tab": {

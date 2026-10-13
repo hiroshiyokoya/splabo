@@ -15,6 +15,12 @@ export async function call<T>(cmd: string, args?: Record<string, unknown>): Prom
   return callHttp<T>(cmd, args)
 }
 
+/**
+ * スマホ Web 版で「データを読み直して」を各画面に伝える window イベント（#789）。
+ * PC に取り直させたあとや、ページを前面に戻したときに殻が投げる（Tauri の `gear_updated` 等の代わり）。
+ */
+export const MOBILE_REFRESH_EVENT = 'splabo:mobile-refresh'
+
 /** PC（コンパニオンサーバー）に届かない。PC が止まっている・別のネットワーク・ファイアウォール */
 export class BackendUnreachableError extends Error {
   /** fetch が投げた元のエラー */
