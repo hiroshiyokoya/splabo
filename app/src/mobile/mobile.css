@@ -86,6 +86,13 @@ body,
   opacity: 0.6;
 }
 
+/* 更新ボタンの色付きの丸矢印（#821）。回すときの中心がずれないよう、アイコンの大きさの箱にする */
+.m-refresh-icon {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+}
+
 .m-spin {
   display: inline-block;
   animation: m-spin 1s linear infinite;
