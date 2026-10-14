@@ -44,10 +44,12 @@ type SaveDialogState =
 type SortKey = 'name' | 'rarity' | 'exp' | 'brand' | 'skill'
 
 function gearTabs(t: (key: string) => string): { key: GearCategory; label: string; icon: string }[] {
+  // スマホは幅が狭いので「ギア」を付けず「頭・服・靴」にする（#807）
+  const ns = isTauri() ? 'gear.tab' : 'gear.cat'
   return [
-    { key: 'head',     label: t('gear.tab.head'),     icon: '🪖' },
-    { key: 'clothing', label: t('gear.tab.clothing'), icon: '👕' },
-    { key: 'shoes',    label: t('gear.tab.shoes'),    icon: '👟' },
+    { key: 'head',     label: t(`${ns}.head`),     icon: '🪖' },
+    { key: 'clothing', label: t(`${ns}.clothing`), icon: '👕' },
+    { key: 'shoes',    label: t(`${ns}.shoes`),    icon: '👟' },
   ]
 }
 
