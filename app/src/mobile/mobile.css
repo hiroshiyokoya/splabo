@@ -933,3 +933,35 @@ body:has(.chart-card--expanded) {
   height: 10px;
   border-radius: 5px;
 }
+
+/* ── ダッシュボードのグラフを直す（#820） ── */
+/* デスクトップはドラッグで並べ替えるのでカードの上でタッチの既定動作を止めているが、
+   スマホはドラッグしない（上へ・下へ）。止めたままだと、グラフに指を置いてもページが動かない */
+.m-app .custom-chart-card {
+  touch-action: auto;
+}
+
+/* 指で押すので、上へ・下へ・編集・削除のボタンを大きくする */
+.m-app .custom-chart-toprow .custom-chart-btn {
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+}
+
+/* グラフの設定画面は画面いっぱいに出す */
+.m-app .modal-overlay:has(.chart-config-modal) {
+  padding: 0;
+  align-items: stretch;
+}
+
+.m-app .modal-panel.chart-config-modal {
+  max-width: none;
+  max-height: none;
+  height: 100dvh;
+  border-radius: 0;
+  border: none;
+}
+
+.m-app .chart-config-body {
+  padding: 16px;
+}

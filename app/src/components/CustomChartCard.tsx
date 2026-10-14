@@ -457,10 +457,15 @@ export function CustomChartCard({
   chart, data, data2d, battleData, onEdit, onDelete, weaponImages, weaponMeta,
   subImages, spImages, stageImages,
   since = null, until = null, filterSummary = '',
-  readOnly = false, expanded, onExpand, onCollapse,
+  readOnly = false, mobileEdit, expanded, onExpand, onCollapse,
 }: ChartExpandProps & {
-  /** スマホ Web 版（#800）: 並べ替え・画像保存・編集・削除を出さない（見るだけ） */
+  /** スマホ Web 版（#800）: ドラッグでの並べ替え・画像保存を出さない */
   readOnly?: boolean
+  /**
+   * スマホ Web 版でグラフを直せるとき（#820）。readOnly のときに、上へ・下へ・編集・削除を出す。
+   * 端のグラフは上へ（下へ）を `undefined` にして押せなくする。
+   */
+  mobileEdit?: { onMoveUp?: () => void; onMoveDown?: () => void }
   chart:    CustomChart
   data:     GroupedStatsRow[]
   /** shape='heatmap' のときだけ使う 2D データ。 */
@@ -566,6 +571,15 @@ export function CustomChartCard({
           スマホ Web 版（readOnly・#800）は見るだけなので、代わりに「大きく見る」だけを出す。 */}
       {readOnly ? (
         <div className="custom-chart-toprow">
+          {/* 広げているときは直す操作を出さない（✕ が「閉じる」と紛らわしいため） */}
+          {mobileEdit && !expanded && (
+            <>
+              <button className="custom-chart-btn" onClick={mobileEdit.onMoveUp} disabled={!mobileEdit.onMoveUp} aria-label={t('common.moveUp')} title={t('common.moveUp')}>↑</button>
+              <button className="custom-chart-btn" onClick={mobileEdit.onMoveDown} disabled={!mobileEdit.onMoveDown} aria-label={t('common.moveDown')} title={t('common.moveDown')}>↓</button>
+              <button className="custom-chart-btn" onClick={onEdit} aria-label={t('common.settingsGear')} title={t('common.settingsGear')}>⚙</button>
+              <button className="custom-chart-btn" onClick={onDelete} aria-label={t('common.delete')} title={t('common.delete')}>✕</button>
+            </>
+          )}
           <ChartExpandButton expanded={expanded} onExpand={onExpand} onCollapse={onCollapse} />
         </div>
       ) : (

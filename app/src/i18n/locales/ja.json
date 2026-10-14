@@ -17,6 +17,8 @@
     "delete": "削除",
     "sort": "並び替え",
     "sortDrag": "ドラッグで並び替え",
+    "moveUp": "上へ",
+    "moveDown": "下へ",
     "speciesCount": "{{count}} 種",
     "winsCount": "{{count}} 勝"
   },
@@ -864,7 +866,9 @@
     "emptyDesc": "SplatNet 3 から最新のバトル・ギアデータを取得すると、ここに勝率グラフ・ブキ/ステージ別の集計が表示されます。",
     "emptyStep1": "初回は {{settings}} から Nintendo アカウントでログイン",
     "emptyStep2": "{{fetch}} ボタンを押す",
-    "addChart": "+ グラフを追加"
+    "addChart": "+ グラフを追加",
+    "deleteChartConfirm": "このグラフを消しますか？ PC のダッシュボードからも消えます。",
+    "chartSaveFailed": "PC に保存できませんでした: {{detail}}"
   },
   "books": {
     "panel": "パネル",
