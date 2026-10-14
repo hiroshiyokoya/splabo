@@ -913,3 +913,15 @@ body:has(.chart-card--expanded) {
 .m-statcards .m-tile__value {
   font-size: 14px;
 }
+
+/* ── コーデシートの引き上げバー（#813） ── */
+/* デスクトップ（gear.css）は 88×5px。スマホは指でつかむので太く長くし、触れる範囲も広げる */
+.m-app .gear-root .combo-sheet__handle-row {
+  padding: 12px 0 10px;
+}
+
+.m-app .gear-root .combo-sheet__handle {
+  width: 120px;
+  height: 10px;
+  border-radius: 5px;
+}
