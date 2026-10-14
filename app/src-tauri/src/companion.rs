@@ -859,7 +859,7 @@ fn is_viewer_path(path: &str) -> bool {
 fn static_asset_name(path: &str) -> Option<String> {
     match path {
         "/m" | "/m/" | "/m/index.html" => return Some("mobile.html".to_string()),
-        "/mobile.webmanifest" | "/splabo-favicon.png" | "/splabo-favicon-16.png" | "/splabo-favicon-32.png" => {
+        "/mobile.webmanifest" | "/splabo-logo.png" | "/splabo-favicon.png" | "/splabo-favicon-16.png" | "/splabo-favicon-32.png" => {
             return Some(path[1..].to_string())
         }
         _ => {}
@@ -1854,6 +1854,7 @@ mod tests {
         assert_eq!(static_asset_name("/assets/mobile-AbC_12.js").as_deref(), Some("assets/mobile-AbC_12.js"));
         assert_eq!(static_asset_name("/mobile.webmanifest").as_deref(), Some("mobile.webmanifest"));
         assert_eq!(static_asset_name("/splabo-favicon.png").as_deref(), Some("splabo-favicon.png"));
+        assert_eq!(static_asset_name("/splabo-logo.png").as_deref(), Some("splabo-logo.png"));
     }
 
     #[test]
