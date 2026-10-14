@@ -31,6 +31,26 @@ type Section = 'battle' | 'weapon' | 'stage' | 'gear'
 
 const SECTIONS: Section[] = ['battle', 'weapon', 'stage', 'gear']
 
+/** 開いていたタブを覚えておくキー（再読み込みしても同じタブで始める・#809） */
+const SECTION_STORAGE_KEY = 'splabo:mobileSection'
+
+function loadSection(): Section {
+  try {
+    const v = localStorage.getItem(SECTION_STORAGE_KEY)
+    return SECTIONS.includes(v as Section) ? (v as Section) : 'battle'
+  } catch {
+    return 'battle'
+  }
+}
+
+function saveSection(s: Section): void {
+  try {
+    localStorage.setItem(SECTION_STORAGE_KEY, s)
+  } catch {
+    // 保存できなくても、その場の切り替えは効く
+  }
+}
+
 const SECTION_LABEL: Record<Section, string> = {
   battle: 'mobile.navBattle',
   weapon: 'mobile.navWeapon',
@@ -107,7 +127,8 @@ export function MobileApp({ session }: { session: SessionResult }) {
   const [connection, setConnection] = useState<Connection>(
     session === 'rejected' ? 'unauthorized' : session === 'unreachable' ? 'unreachable' : 'checking',
   )
-  const [section, setSection] = useState<Section>('battle')
+  const [section, setSection] = useState<Section>(loadSection)
+  useEffect(() => { saveSection(section) }, [section])
   // バトル・ブキ・ステージで共有する絞り込み（期間・ロビー・ルール・#801）。画面を移っても同じまま
   const [filter, setFilter] = useState<MobileFilter>(loadMobileFilter)
   // 選んだ絞り込みはスマホに覚えておき、次に開いたときもその条件で始める
