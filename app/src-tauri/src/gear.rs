@@ -188,10 +188,8 @@ pub struct GearFetchResult {
 
 /// gear_db の生成時刻を UTC ISO8601（`%Y-%m-%dT%H:%M:%SZ`）で返す。
 ///
-/// 書式は **battle_db（`battle_export.rs` の `generated_at`）と同一**にする（#396）。
-/// あちらは SQLite の `strftime('%Y-%m-%dT%H:%M:%SZ','now')` で作っているが、
-/// ギア経路は SQLite プールを持たないので `chrono::Utc`（`companion.rs` の
-/// アイコンマニフェストと同じ作り方）で同じ書式を作る。**秒精度・末尾 Z** まで揃える。
+/// 書式は SQLite の `strftime('%Y-%m-%dT%H:%M:%SZ','now')` と同じにする（#396）。
+/// ギア経路は SQLite プールを持たないので `chrono::Utc` で作る。**秒精度・末尾 Z** まで揃える。
 fn generated_at_now() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
@@ -703,16 +701,15 @@ mod tests {
         assert_eq!(db["shoes"][0]["brand_en"], "Zekko");
     }
 
-    /// #396: `generated_at` は battle_db（`strftime('%Y-%m-%dT%H:%M:%SZ','now')`）と
-    /// 同じ書式でなければならない（viewer は両方を同じパーサで読む）。
+    /// #396: `generated_at` は SQLite の `strftime('%Y-%m-%dT%H:%M:%SZ','now')` と同じ書式。
     #[test]
-    fn generated_at_now_uses_same_format_as_battle_db() {
+    fn generated_at_now_uses_sqlite_utc_format() {
         let now = generated_at_now();
         // "YYYY-MM-DDTHH:MM:SSZ" = 20 文字・秒精度・UTC 表記の Z（ミリ秒やオフセットは付けない）
         assert_eq!(now.len(), 20, "generated_at = {now}");
         assert!(now.ends_with('Z'), "generated_at = {now}");
         assert_eq!(&now[10..11], "T", "generated_at = {now}");
-        // RFC3339 としてパースできる（viewer / battle_export::parse_iso_z と同じ扱い）
+        // RFC3339 としてパースできる
         assert!(
             chrono::DateTime::parse_from_rfc3339(&now).is_ok(),
             "generated_at = {now}"

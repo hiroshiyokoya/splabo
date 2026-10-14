@@ -1,58 +1,33 @@
-//! コンパニオン同期サーバー（#324・設計書 splabo-viewer docs/design.md §4①・§5）。
+//! スマホ Web 版のサーバー（「スマホで見る」・#786〜#788・設計 #784）。
 //!
-//! 同一 LAN 上のペア済みモバイルクライアント（splabo-viewer）へエクスポートファイルを
-//! 配信するオプトイン式 HTTP サーバー。デフォルトは停止。設定トグルで起動する。
-//!
-//! 担うのは「起動 / 停止・ペアリング情報発行・ファイル配信・mDNS 広告」（#324）に加えて、
-//! **②更新命令（任天堂から取り直せ）の受付（#326・設計書 §4②）** と
-//! **ブキ / ステージアイコンの同期供給・差分配信（#327・設計書 §6）**。
+//! 同じ LAN のスマホのブラウザに、PC の SpLabo の画面とデータを配るオプトイン式 HTTP サーバー。
+//! 既定は停止。設定の「スマホで見る」で起動する（オンのままならアプリ起動時に自動で立ち上がる）。
 //!
 //! ## 構成
 //! - HTTP サーバー: `tiny_http`（同期・軽量）を専用スレッドで駆動。tokio ランタイムと独立。
-//!   - `GET /ping`         … トークン検証のみの疎通確認。
-//!   - `GET /gear_db.bin`  … `app_data_dir()/data/gear_db.bin` を配信（不在は 404）。
-//!                           ETag（内容 sha256）対応。`If-None-Match` 一致なら 304（#356）。
-//!   - `GET /battle_db.bin`… `app_data_dir()/data/battle_db.bin` を配信（不在は 404）。
-//!                           ETag（内容 sha256）対応。`If-None-Match` 一致なら 304（#356）。
-//!   - `GET /coordinates.bin` … 保存コーデ（`app_data_dir()/saved_coordinates.json`・#782）を
-//!                           gear_db と同じ方式で暗号化して配信。保存が無ければ空の一覧（404 にしない）。
-//!                           ETag は暗号化前の内容 sha256（暗号化は nonce が毎回変わるため）。
-//!   - `GET /images/...`   … 画像（.gti）を相対パスで配信。`..` 等は 403。**2 系統を振り分ける**:
-//!                           - `images/{weapon,sub_weapon,special_weapon,stage,ability}/...`
-//!                             → `app_data_dir()/images/`（バトルアイコン・`images.rs` が書く／#327）
-//!                           - それ以外（`images/{gear,brand,skill}/...`）
-//!                             → `app_data_dir()/data/images/`（ギア画像・`gear.rs` が書く／#324）
-//!                           gear_db / battle_db の画像パスをそのまま GET できる。
-//!                           ETag（内容 sha256）対応。`If-None-Match` 一致なら 304（再転送しない）。
-//!   - `GET /icons/manifest` … バトルアイコンの差分同期マニフェスト（#327・設計書 §6）。
-//!                           viewer は hash を突き合わせ、変わったものだけ `/images/...` を引く。
-//!   - `POST /update`      … ②更新命令の受付。**受付のみで即応答**（202）し、実処理は裏で走る。
-//!                           ボディ `{"target":"battle"|"gear"|"both"}` で対象を選べる（#395）。
-//!   - `GET /update_status`… ②更新命令の進捗・完了・失敗を問い合わせる（ポーリング用）。
-//!   - いずれも `Authorization: Bearer <token>` 検証必須。不一致・欠落は 401。
-//! - スマホ Web 版（#786・設計 #784）の経路。Cookie（または Bearer）で認証する:
+//! - スマホ画面の静的ファイル（認証なし。中身はアプリに同梱のフロントだけ）:
+//!   - `GET /m/` … `mobile.html`。`/assets/...`・マニフェスト・アイコン・ロゴも返す
+//! - Cookie（`splabo_session`）で認証する経路:
 //!   - `POST /api/session` … 本文 `{"token":"..."}` が合えば `Set-Cookie`（`splabo_session`）。
 //!   - `POST /api/cmd/<名前>` … 許可リストの Tauri コマンドを中継（`web_api.rs`）。
 //!   - `GET  /img/<相対パス>` … 画像（.gti）を PNG に戻して返す。
+//!   - `POST /update` … 更新命令（任天堂から取り直せ）の受付。**受付のみで即応答**（202）し、
+//!     実処理は裏で走る。ボディ `{"target":"battle"|"gear"|"both"}`（省略時 both）。
+//!   - `GET /update_status` … 更新命令の進捗・完了・失敗を問い合わせる（ポーリング用）。
 //!
-//! ## ②更新命令（設計書 §4②）
+//! ## 更新命令
 //! - 「重い・数十秒」処理なので HTTP を掴んだまま待たせない。`POST /update` は受付可否だけを
-//!   即返し、viewer は `GET /update_status` をポーリングして完了を待ち、完了後に①プルする。
-//! - **対象を選べる（#395）**。viewer は「前面表示中の定期プルはバトルのみ / ギアは明示操作のみ」と
-//!   同期の粒度を分けるため、`{"target":"battle"|"gear"|"both"}` を送る。任天堂 API への再取得は
-//!   数十秒かかる重い処理なので、要らない側を取りに行かせないことに実利がある。
-//!   **省略・不正値は `both`**（＝この対応以前の動作）に倒すので、古い viewer もそのまま動く。
+//!   即返し、スマホは `GET /update_status` をポーリングして完了を待つ。
 //! - **認証済みトークン前提**。未ログインなら任天堂 API を一切叩かず `NOT_LOGGED_IN` を返す。
 //! - **多重起動しない**。実行中の更新ジョブ、およびデスクトップ側のバトル取得
 //!   （`FetchInProgress`・手動/起動時/スケジューラー共通）と重なる場合は新規に走らせず、
 //!   進行中である旨を返す。
-//! - モバイルは任天堂 API に触れない。再フェッチはこのデスクトップ側だけで完結する。
-//! - mDNS 広告: `mdns-sd` でサービス型 `_splabo._tcp.local.` を LAN に告知（viewer の NSD 発見用）。
-//!   - **ベストエフォート**。失敗しても HTTP サーバーは動かし続ける（TXT にトークンは載せない）。
+//! - スマホは任天堂 API に触れない。再フェッチはこのデスクトップ側だけで完結する。
 //!
 //! ## セキュリティ
-//! - トークンは起動ごとにランダム（16 バイト = 32 hex）。未ペア端末（トークン不一致）は 401。
-//! - LAN 想定。バインドは `0.0.0.0:<空きポート>`（同一 LAN の viewer から到達可能にするため）。
+//! - トークンは `companion.json` に固定で保存する（「再発行」で作り直す）。スマホは QR の URL の
+//!   `#t=` で受け取り、`/api/session` で Cookie に交換する。不一致・欠落は 401。
+//! - LAN 想定。バインドは `0.0.0.0:<固定ポート>`（同一 LAN のスマホから到達可能にするため）。
 
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
@@ -62,13 +37,8 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, State};
-
-use mdns_sd::{ServiceDaemon, ServiceInfo};
-
-const SERVICE_TYPE: &str = "_splabo._tcp.local.";
-const SERVICE_INSTANCE: &str = "splabo";
-const SERVICE_HOST: &str = "splabo.local.";
 
 /// 稼働中のサーバー一式（停止時に一括で畳む）。
 struct RunningServer {
@@ -76,32 +46,56 @@ struct RunningServer {
     token: String,
     stop: Arc<AtomicBool>,
     handle: Option<JoinHandle<()>>,
-    mdns: Option<ServiceDaemon>,
 }
 
 /// リクエスト処理に必要な一式（HTTP スレッドが保持する）。
 struct ServerCtx {
     token: String,
-    /// ギア画像（`gear.rs` が書く）・`gear_db.bin` / `battle_db.bin` の置き場（`app_data_dir()/data`）。
+    /// ギア画像（`gear.rs` が書く）の置き場の親（`app_data_dir()/data`）。
     data_dir: PathBuf,
-    /// バトルアイコン（`images.rs` が書く）のキャッシュルート（`app_data_dir()/images`・#327）。
-    /// `data_dir` とは別系統。`/images/...` の kind で振り分ける（`resolve_image_path`）。
+    /// バトルアイコン（`images.rs` が書く）のキャッシュルート（`app_data_dir()/images`）。
+    /// `data_dir` とは別系統。`/img/images/...` の kind で振り分ける（`resolve_image_path`）。
     images_root: PathBuf,
-    /// 保存コーデ（`app_data_dir()/saved_coordinates.json`・#782）。
-    coords_path: PathBuf,
     app: AppHandle,
-    /// ②更新命令のジョブ状態（サーバー稼働中のみ保持。停止で捨てる）。
+    /// 更新命令のジョブ状態（サーバー稼働中のみ保持。停止で捨てる）。
     job: Arc<Mutex<UpdateStatus>>,
+}
+
+/// バトルアイコンの kind（`images.rs` の kind と一致させる）。`app_data_dir()/images/<kind>/` に置かれる。
+/// ギア系（gear / brand / skill）は `app_data_dir()/data/images/` 側で、名前が重ならない。
+const BATTLE_ICON_KINDS: [&str; 5] = ["weapon", "sub_weapon", "special_weapon", "stage", "ability"];
+
+/// バイト列の sha256 hex（画像の ETag）。
+fn hash_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
+}
+
+/// `If-None-Match` ヘッダ値と ETag の一致判定（純粋関数・テスト対象）。
+///
+/// tiny_http は生ヘッダを渡すため、クォート有無の両方を許容する（`"abc"` / `abc`）。
+/// `*` は「何かあれば 304」の意味なので一致扱い。複数値（カンマ区切り）にも対応する。
+fn etag_matches(if_none_match: Option<&str>, etag: &str) -> bool {
+    let Some(header) = if_none_match else {
+        return false;
+    };
+    header.split(',').any(|candidate| {
+        let c = candidate.trim();
+        let c = c.strip_prefix("W/").unwrap_or(c);
+        let c = c.trim_matches('"');
+        c == "*" || c == etag
+    })
 }
 
 /// コンパニオンサーバーの状態。デフォルト停止（オプトイン）。
 #[derive(Default)]
 pub struct CompanionState(Mutex<Option<RunningServer>>);
 
-/// `companion_start` の戻り値（viewer のペアリング QR に載せる）。
+/// `companion_start` の戻り値（設定画面の QR・URL に使う）。
 #[derive(Debug, Serialize)]
 pub struct CompanionInfo {
-    /// LAN 側ホスト IP（IPv4・非ループバック）。viewer は到達可能なものを選ぶ。
+    /// LAN 側ホスト IP（IPv4・非ループバック）。先頭を QR に、残りを「ほかの URL」に出す。
     pub host_ips: Vec<String>,
     pub port: u16,
     pub token: String,
@@ -117,10 +111,10 @@ pub struct CompanionStatus {
 }
 
 // ---------------------------------------------------------------------------
-// ②更新命令（#326・設計書 §4②）
+// 更新命令（スマホの更新ボタン・`mobile/pcUpdate.ts`）
 // ---------------------------------------------------------------------------
 
-/// 更新ジョブの状態。viewer は `state` で分岐する。
+/// 更新ジョブの状態。スマホは `state` で分岐する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdateState {
@@ -134,7 +128,7 @@ pub enum UpdateState {
     Failed,
 }
 
-/// 更新ジョブのフェーズ。viewer の進捗表示用。
+/// 更新ジョブのフェーズ（進捗表示用）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdateStep {
@@ -142,19 +136,17 @@ pub enum UpdateStep {
     Battles,
     /// SplatNet3 からギア再フェッチ中（gear_db.bin / .gti 再生成を含む）。
     Gear,
-    /// battle_db.bin エクスポート再生成中。
-    Export,
 }
 
 /// 更新ジョブの対象（#395）。`POST /update` のボディ `{"target": ...}` で指定する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdateTarget {
-    /// バトルのみ（＋ battle_db.bin の再生成）。viewer の前面表示中の定期プル用。
+    /// バトルのみ。
     Battle,
-    /// ギアのみ（gear_db.bin / .gti 再生成）。viewer の設定タブ「ギア更新」用。
+    /// ギアのみ（gear_db.bin / .gti 再生成）。
     Gear,
-    /// 両方。**省略時・不正値のフォールバック**（＝#395 以前の動作）。
+    /// 両方。**省略時・不正値のフォールバック**。スマホの更新ボタンはこれを送る。
     Both,
 }
 
@@ -180,9 +172,7 @@ impl UpdateTarget {
 /// 更新ジョブの結果件数。
 ///
 /// **各件数は `Option`**（#395）。対象から外れて実行しなかったフェーズは `None`（JSON では null）に
-/// なる。`0` で埋めると「取りに行ったが 0 件だった」と区別できず、viewer が「バトルは更新された（0 件）」
-/// と誤って解釈してしまうため、実行しなかったことを型で表す。
-/// `target` 省略（= `both`）なら全フィールドが `Some` になるので、古い viewer から見た形は変わらない。
+/// なる。`0` で埋めると「取りに行ったが 0 件だった」と区別できないため、実行しなかったことを型で表す。
 #[derive(Debug, Clone, Copy, Default, Serialize)]
 pub struct UpdateResult {
     /// 新規に取り込んだバトル数。
@@ -191,8 +181,6 @@ pub struct UpdateResult {
     pub details: Option<usize>,
     /// gear_db.bin に載ったギア数（頭 + 服 + 靴）。
     pub gear: Option<usize>,
-    /// battle_db.bin に載ったバトル行数。
-    pub exported_battles: Option<usize>,
 }
 
 /// `POST /update` / `GET /update_status` が返す状態。
@@ -205,7 +193,7 @@ pub struct UpdateStatus {
     pub started_at: Option<i64>,
     /// 完了・失敗時刻（UNIX 秒）。
     pub finished_at: Option<i64>,
-    /// `state == failed` のときのみ。viewer はこれで UX を分岐する。
+    /// `state == failed` のときのみ。
     pub error_code: Option<&'static str>,
     /// 人間可読の失敗理由（そのまま表示せずログ向け）。
     pub error_message: Option<String>,
@@ -231,7 +219,7 @@ impl UpdateStatus {
     fn running(started_at: i64, target: UpdateTarget) -> Self {
         Self {
             state: UpdateState::Running,
-            // 最初のフェーズは対象で決まる。ギア単独のときに `battles` を出すと、viewer の進捗表示が
+            // 最初のフェーズは対象で決まる。ギア単独のときに `battles` を出すと、
             // 「取りに行かないバトル」を待っているように見えてしまう（#395）。
             step: Some(if target.includes_battle() {
                 UpdateStep::Battles
@@ -260,7 +248,7 @@ fn now_unix() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
-/// エラーメッセージを viewer が分岐できる error_code に写像する。
+/// エラーメッセージを error_code に写像する（ログと、スマホが失敗の種類を見分けるため）。
 ///
 /// 既存コードのエラーは `NOT_LOGGED_IN:` / `FETCH_IN_PROGRESS:` プリフィクス方針
 /// （lib.rs `run_fetch_full` / gear.rs `fetch_gear_full`）に従うため、それを尊重する。
@@ -272,13 +260,11 @@ fn now_unix() -> i64 {
 /// 繰り返すことになる（#399 の症状）。理由が分からないものは `FETCH_FAILED` に倒す。
 ///
 /// 対応する error_code:
-/// - `UPSTREAM_UNAVAILABLE` … **新設**。外部サービスの一時障害。viewer 側は splabo-viewer#112 で対応。
-///   未知コードを受け取る古い viewer は「その他の失敗」として扱えばよい。
-/// - `AUTH_EXPIRED` → 既存の `TOKEN_EXPIRED` を維持（viewer の既存分岐をそのまま使う）。
-/// - `NETWORK` → 既存の `FETCH_FAILED` に寄せる。viewer 側から見れば「デスクトップが取得に失敗した・
-///   再試行して」で挙動は同じなので、viewer に新コードを増やす価値が無い。
+/// - `UPSTREAM_UNAVAILABLE` … 外部サービスの一時障害。
+/// - `AUTH_EXPIRED` → `TOKEN_EXPIRED`。
+/// - `NETWORK` → `FETCH_FAILED`（「デスクトップが取得に失敗した・再試行して」で扱いは同じ）。
 /// - `CORAL_UPGRADE` … 任天堂が NSO の版を上げ、認証側がまだ追いついていない（#765）。
-///   再ログインも再試行も直らない。未知コードを受け取る古い viewer は「その他の失敗」扱い。
+///   再ログインも再試行も直らない。
 fn classify_error(message: &str) -> &'static str {
     if message.starts_with("NOT_LOGGED_IN") {
         "NOT_LOGGED_IN"
@@ -335,10 +321,7 @@ struct UpdateCommandBody {
 /// リクエストボディから更新対象を読み取る（#395）。
 ///
 /// **ボディが空・JSON でない・`target` が無い・知らない値、いずれも `Both` に倒す。**
-/// 400 を返さないのは意図的で、
-/// - 古い viewer は `target` を送らない（＝現行どおり両方取る、が正しい挙動）
-/// - 将来 viewer が増やした値をこちらが知らない場合も、「遅いが正しい」両方取得に落ちるほうが安全
-/// だからである（イシュー #395 の後方互換方針）。
+/// 400 を返さないのは、「遅いが正しい」両方取得に落ちるほうが安全だから（#395）。
 fn parse_update_target(body: &str) -> UpdateTarget {
     let target = serde_json::from_str::<UpdateCommandBody>(body)
         .ok()
@@ -354,16 +337,13 @@ fn parse_update_target(body: &str) -> UpdateTarget {
     }
 }
 
-/// 更新ジョブ本体: SplatNet3 再フェッチ → gear / battle エクスポート再生成。
+/// 更新ジョブ本体: SplatNet3 からバトル・ギアを取り直す。
 ///
-/// モバイルからは触れないデスクトップ側の既存経路をそのまま呼ぶ:
+/// スマホからは触れないデスクトップ側の既存経路をそのまま呼ぶ:
 /// - バトル: `crate::run_fetch_full`（`FetchInProgress` による多重起動防止つき）
 /// - ギア  : `crate::gear::fetch_gear_full`（gear_db.bin / .gti を再生成）
-/// - エクスポート: `crate::battle_export::export_battle_db`（battle_db.bin を再生成）
 ///
-/// `target` で対象を絞る（#395）。**battle_db.bin のエクスポートはバトルを取り直したときだけ走らせる**。
-/// ギア単独ならバトル DB の中身は変わらず、再生成しても同じファイルを作り直すだけで、viewer 側も
-/// ETag 一致で 304 になるため意味が無い（`gear_db.bin` の再生成は `fetch_gear_full` の中で行われる）。
+/// `target` で対象を絞る（#395）。
 async fn run_update_job(
     app: &AppHandle,
     job: &Arc<Mutex<UpdateStatus>>,
@@ -398,18 +378,6 @@ async fn run_update_job(
         result.gear = Some(gear.head + gear.clothing + gear.shoes);
     }
 
-    if target.includes_battle() {
-        // --- battle_db.bin エクスポート再生成 ---
-        set_step(UpdateStep::Export);
-        let export = {
-            let pool = app
-                .try_state::<crate::db::DbPool>()
-                .ok_or_else(|| "DB がまだ初期化されていません。".to_string())?;
-            crate::battle_export::export_battle_db(app.clone(), pool, None).await?
-        };
-        result.exported_battles = Some(export.battles);
-    }
-
     Ok(result)
 }
 
@@ -429,12 +397,12 @@ fn handle_update_command(mut request: tiny_http::Request, ctx: &ServerCtx) {
     // 読めなかった場合もエラーにせず both に倒す（`parse_update_target` の方針と揃える）。
     let mut body = String::new();
     if let Err(e) = request.as_reader().read_to_string(&mut body) {
-        log::warn!("[companion] ②更新命令のボディ読み取り失敗（both として扱う）: {e}");
+        log::warn!("[companion] 更新命令のボディ読み取り失敗（both として扱う）: {e}");
         body.clear();
     }
     let target = parse_update_target(&body);
 
-    // 未ログインなら任天堂 API を一切叩かずに返す（viewer は「デスクトップでログインして」を表示）。
+    // 未ログインなら任天堂 API を一切叩かずに返す（スマホは「PC でログインして」を出す）。
     if !crate::auth::is_logged_in(&ctx.app) {
         let loc = crate::locale::app_locale(&ctx.app);
         let status = UpdateStatus::failed(
@@ -483,7 +451,7 @@ fn handle_update_command(mut request: tiny_http::Request, ctx: &ServerCtx) {
         }
         (true, snapshot) => {
             respond_json(request, 202, &snapshot);
-            log::info!("[companion] ②更新命令を受付。再フェッチ開始 target={}", target.label());
+            log::info!("[companion] 更新命令を受付。再フェッチ開始 target={}", target.label());
             let app = ctx.app.clone();
             let job = Arc::clone(&ctx.job);
             tauri::async_runtime::spawn(async move {
@@ -492,12 +460,11 @@ fn handle_update_command(mut request: tiny_http::Request, ctx: &ServerCtx) {
                     match outcome {
                         Ok(result) => {
                             log::info!(
-                                "[companion] ②更新命令 完了 target={} バトル+{} 詳細+{} ギア{} エクスポート{}行",
+                                "[companion] 更新命令 完了 target={} バトル+{} 詳細+{} ギア{}",
                                 target.label(),
                                 fmt_count(result.battles),
                                 fmt_count(result.details),
-                                fmt_count(result.gear),
-                                fmt_count(result.exported_battles)
+                                fmt_count(result.gear)
                             );
                             s.state = UpdateState::Done;
                             s.step = None;
@@ -507,7 +474,7 @@ fn handle_update_command(mut request: tiny_http::Request, ctx: &ServerCtx) {
                         Err(e) => {
                             let code = classify_error(&e);
                             log::error!(
-                                "[companion] ②更新命令 失敗 target={} [{code}]: {e}",
+                                "[companion] 更新命令 失敗 target={} [{code}]: {e}",
                                 target.label()
                             );
                             let started_at = s.started_at;
@@ -555,7 +522,7 @@ fn looks_virtual_iface(name: &str) -> bool {
     .any(|kw| n.contains(kw))
 }
 
-/// ペアリング QR に載せる IPv4 候補を絞り込み・並べ替える純ロジック（#369）。
+/// 設定画面の QR・URL に載せる IPv4 候補を絞り込み・並べ替える純ロジック（#369）。
 ///
 /// 入力は `(インターフェース名, IPv4)` の列（`if_addrs` が返した順）。
 ///
@@ -564,7 +531,7 @@ fn looks_virtual_iface(name: &str) -> bool {
 ///   アドレスで、原理的に LAN の別端末からは到達できない。載せる意味が無い。
 ///
 /// **除外はこれだけ**。「仮想 NIC らしい」「レンジが怪しい」は一切除外しない。誤除外は
-/// 「繋がらない」に直結するのに対し、余分な候補は viewer 側の `/ping` で落ちるだけだからである。
+/// 「繋がらない」に直結するのに対し、余分な候補は「ほかの URL」として並ぶだけだからである。
 ///
 /// ## 並べ替え（安定ソート・同点は `if_addrs` の順を保つ）
 /// 0. 家庭用 LAN で最も一般的な 192.168.0.0/16 / 10.0.0.0/8 で、仮想 NIC 名でないもの
@@ -634,7 +601,7 @@ fn host_ipv4s() -> Vec<IpAddr> {
     }
 }
 
-/// 接続トラブルの自己診断（#363）。コンパニオンが有効なのに viewer から到達できない
+/// 接続トラブルの自己診断（#363）。「スマホで見る」がオンなのにスマホから到達できない
 /// 典型要因を、フロントが具体的に案内するための材料を返す。**判定のみ**で、ファイアウォール
 /// 規則の変更は一切しない（管理者権限が要る／ユーザーのセキュリティ設定を勝手に変えない）。
 #[derive(Debug, Serialize)]
@@ -717,26 +684,6 @@ fn detect_network_category() -> String {
     "unsupported".to_string()
 }
 
-/// `Authorization` ヘッダ値（無ければ None）が共有トークンと一致するかを判定する。
-///
-/// HTTP に依存しない純粋関数として切り出し、トークン検証をユニットテストする。
-fn token_matches(auth_header: Option<&str>, token: &str) -> bool {
-    match auth_header {
-        Some(value) => value == format!("Bearer {token}"),
-        None => false,
-    }
-}
-
-/// `Authorization: Bearer <token>` を検証する。
-fn authorized(request: &tiny_http::Request, token: &str) -> bool {
-    let header = request
-        .headers()
-        .iter()
-        .find(|h| h.field.equiv("Authorization"))
-        .map(|h| h.value.as_str().to_string());
-    token_matches(header.as_deref(), token)
-}
-
 /// JSON を指定ステータスコードで返す。
 fn respond_json<T: Serialize>(request: tiny_http::Request, status: u16, body: &T) {
     let json = serde_json::to_string(body).unwrap_or_else(|e| {
@@ -746,82 +693,6 @@ fn respond_json<T: Serialize>(request: tiny_http::Request, status: u16, body: &T
     let response = tiny_http::Response::from_string(json)
         .with_header(header)
         .with_status_code(status);
-    let _ = request.respond(response);
-}
-
-/// ファイルを ETag つきで `application/octet-stream` 配信する（不在は 404・`If-None-Match` 一致なら 304）。
-///
-/// ETag はファイル内容の sha256（= アイコンマニフェストの `hash` と同値）。この 1 関数で
-/// **gear_db.bin / battle_db.bin（#356）と画像（.gti・#327）を共通に配信する**。viewer は保存済み
-/// ハッシュを `If-None-Match` で送り、内容が変わっていなければ 304 を受けて再転送を省ける
-/// （設計書 §6「変わったものだけ転送」の HTTP レイヤでの担保）。
-fn respond_file(request: tiny_http::Request, path: &std::path::Path) {
-    let Ok(bytes) = std::fs::read(path) else {
-        let _ = request.respond(tiny_http::Response::from_string("not found").with_status_code(404));
-        return;
-    };
-    let etag = crate::icon_manifest::hash_bytes(&bytes);
-
-    let if_none_match = request
-        .headers()
-        .iter()
-        .find(|h| h.field.equiv("If-None-Match"))
-        .map(|h| h.value.as_str().to_string());
-    if crate::icon_manifest::etag_matches(if_none_match.as_deref(), &etag) {
-        let _ = request.respond(tiny_http::Response::empty(304));
-        return;
-    }
-
-    let ctype =
-        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/octet-stream"[..]).unwrap();
-    let etag_header =
-        tiny_http::Header::from_bytes(&b"ETag"[..], format!("\"{etag}\"").as_bytes()).unwrap();
-    let response = tiny_http::Response::from_data(bytes)
-        .with_header(ctype)
-        .with_header(etag_header);
-    let _ = request.respond(response);
-}
-
-/// 保存コーデを暗号化して配信する（#782）。保存が無ければ空の一覧を返す。
-///
-/// ETag は暗号化前の JSON の sha256。`encrypt_db` は nonce を毎回変えるので、暗号文から
-/// 作ると内容が同じでも毎回変わり 304 にならない。
-fn respond_coordinates(request: tiny_http::Request, coords_path: &std::path::Path) {
-    let plain = match crate::saved_coordinates::export_bytes(coords_path) {
-        Ok(b) => b,
-        Err(e) => {
-            log::warn!("[companion] 保存コーデの読み込み失敗: {e}");
-            let _ = request.respond(tiny_http::Response::from_string("error").with_status_code(500));
-            return;
-        }
-    };
-    let etag = crate::icon_manifest::hash_bytes(&plain);
-
-    let if_none_match = request
-        .headers()
-        .iter()
-        .find(|h| h.field.equiv("If-None-Match"))
-        .map(|h| h.value.as_str().to_string());
-    if crate::icon_manifest::etag_matches(if_none_match.as_deref(), &etag) {
-        let _ = request.respond(tiny_http::Response::empty(304));
-        return;
-    }
-
-    let bytes = match crate::gear_crypto::encrypt_db(&plain) {
-        Ok(b) => b,
-        Err(e) => {
-            log::warn!("[companion] 保存コーデの暗号化失敗: {e}");
-            let _ = request.respond(tiny_http::Response::from_string("error").with_status_code(500));
-            return;
-        }
-    };
-    let ctype =
-        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/octet-stream"[..]).unwrap();
-    let etag_header =
-        tiny_http::Header::from_bytes(&b"ETag"[..], format!("\"{etag}\"").as_bytes()).unwrap();
-    let response = tiny_http::Response::from_data(bytes)
-        .with_header(ctype)
-        .with_header(etag_header);
     let _ = request.respond(response);
 }
 
@@ -837,18 +708,9 @@ fn is_web_path(path: &str) -> bool {
     path.starts_with("/api/") || path.starts_with("/img/")
 }
 
-/// viewer 用（と ②更新命令）の経路か。これ以外で静的ファイルでもないものは 404。
-fn is_viewer_path(path: &str) -> bool {
-    matches!(
-        path,
-        "/ping"
-            | "/gear_db.bin"
-            | "/battle_db.bin"
-            | "/coordinates.bin"
-            | "/icons/manifest"
-            | "/update"
-            | "/update_status"
-    ) || path.starts_with("/images/")
+/// 更新命令の経路か。これ以外で Web の経路でも静的ファイルでもないものは 404。
+fn is_update_path(path: &str) -> bool {
+    matches!(path, "/update" | "/update_status")
 }
 
 /// スマホ画面の静的ファイル名（#788）。対象外は None。
@@ -900,10 +762,9 @@ fn header_value(request: &tiny_http::Request, name: &'static str) -> Option<Stri
         .map(|h| h.value.as_str().to_string())
 }
 
-/// スマホ Web 版の認証。Cookie（`POST /api/session` で受け取る）か Bearer のどちらかが合えば通す。
+/// スマホ Web 版の認証。Cookie（`POST /api/session` で受け取る）が合えば通す。
 fn web_authorized(request: &tiny_http::Request, token: &str) -> bool {
     crate::web_api::session_matches(header_value(request, "Cookie").as_deref(), token)
-        || authorized(request, token)
 }
 
 fn read_body(request: &mut tiny_http::Request) -> Result<String, String> {
@@ -998,8 +859,8 @@ fn respond_png(
     let Ok(bytes) = std::fs::read(&file) else {
         return respond_text(request, 404, "not found");
     };
-    let etag = crate::icon_manifest::hash_bytes(&bytes);
-    if crate::icon_manifest::etag_matches(header_value(&request, "If-None-Match").as_deref(), &etag) {
+    let etag = hash_bytes(&bytes);
+    if etag_matches(header_value(&request, "If-None-Match").as_deref(), &etag) {
         let _ = request.respond(tiny_http::Response::empty(304));
         return;
     }
@@ -1037,7 +898,7 @@ fn resolve_image_path(
     images_root: &std::path::Path,
 ) -> Option<PathBuf> {
     let rel = req_path.trim_start_matches('/');
-    // gear_db / battle_db が参照する画像パスは必ず `images/` 始まり。それ以外は拒否。
+    // ギア・バトルの画像パスは必ず `images/` 始まり（`read_gear_db` などが返すもの）。それ以外は拒否。
     if !rel.starts_with("images/") {
         return None;
     }
@@ -1052,7 +913,7 @@ fn resolve_image_path(
     // `images/<kind>/...` の kind を見て、バトルアイコンなら images_root 側へ回す。
     let kind = safe.iter().nth(1).and_then(|c| c.to_str()).unwrap_or("");
     // #360 で `ability` が BATTLE_ICON_KINDS に入ったので、個別の特別扱いは不要になった。
-    if crate::icon_manifest::BATTLE_ICON_KINDS.contains(&kind) {
+    if BATTLE_ICON_KINDS.contains(&kind) {
         // images_root は既に `images` を含むので、先頭の `images` セグメントを外して join する。
         let stripped: PathBuf = safe.iter().skip(1).collect();
         return Some(images_root.join(stripped));
@@ -1060,36 +921,18 @@ fn resolve_image_path(
     Some(data_dir.join(safe))
 }
 
-/// バトルアイコンの差分同期マニフェストを返す（#327・設計書 §6）。
-fn respond_icon_manifest(request: tiny_http::Request, images_root: &std::path::Path) {
-    let generated_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let manifest = crate::icon_manifest::build_manifest(images_root, generated_at);
-    let json = match serde_json::to_string(&manifest) {
-        Ok(j) => j,
-        Err(e) => {
-            log::warn!("[companion] アイコンマニフェスト生成失敗: {e}");
-            let _ = request
-                .respond(tiny_http::Response::from_string("manifest error").with_status_code(500));
-            return;
-        }
-    };
-    let header =
-        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap();
-    let _ = request.respond(tiny_http::Response::from_string(json).with_header(header));
-}
-
 /// 1 リクエストを捌く。
 ///
-/// 認証（Bearer）を通したうえで、状態を要する②更新命令系（`/update`・`/update_status`／#326）は
-/// `ServerCtx`（`AppHandle` / ジョブ状態）を使って捌き、残りの静的配信ルート（ping / DB / 画像 /
-/// アイコンマニフェスト）は `AppHandle` 非依存の `serve_asset` へ委譲する。
+/// - `/api/...`・`/img/...` は `route_web`（Cookie 認証）
+/// - スマホ画面の静的ファイルは認証なしで返す
+/// - 更新命令（`/update`・`/update_status`）は Cookie 認証のうえ、`ServerCtx`（`AppHandle` / ジョブ状態）で捌く
+/// - それ以外は 404
 fn handle_request(request: tiny_http::Request, ctx: &ServerCtx) {
     // クエリを除いたパス部分で分岐。
     let url = request.url().to_string();
     let path = url.split('?').next().unwrap_or("").to_string();
     let method = request.method().clone();
 
-    // スマホ Web 版（#786）の経路は Cookie でも認証できるので、Bearer 検証より先に振り分ける。
     if is_web_path(&path) {
         let app = ctx.app.clone();
         route_web(request, &method, &path, &ctx.token, &ctx.data_dir, &ctx.images_root, &|cmd, args| {
@@ -1108,20 +951,19 @@ fn handle_request(request: tiny_http::Request, ctx: &ServerCtx) {
     }
 
     // 知らない経路は認証を求めず 404（unauthorized を返すと、つながっていないように見えて紛らわしい）。
-    if !is_viewer_path(&path) {
+    if !is_update_path(&path) {
         let _ = request.respond(tiny_http::Response::from_string("not found").with_status_code(404));
         return;
     }
 
-    // 疎通・認証チェック（Bearer か Cookie。スマホ Web 版も ②更新命令（/update・/update_status）を使う）。
     if !web_authorized(&request, &ctx.token) {
         let _ = request.respond(tiny_http::Response::from_string("unauthorized").with_status_code(401));
         return;
     }
     match (&method, path.as_str()) {
-        // ②更新命令の受付（#326）。受付可否を即返し、実処理は裏で走る。
+        // 更新命令の受付。受付可否を即返し、実処理は裏で走る。
         (tiny_http::Method::Post, "/update") => handle_update_command(request, ctx),
-        // ②更新命令の進捗・完了・失敗の問い合わせ（viewer はこれをポーリングする）。
+        // 更新命令の進捗・完了・失敗の問い合わせ（スマホはこれをポーリングする）。
         (tiny_http::Method::Get, "/update_status") => {
             let status = ctx
                 .job
@@ -1130,86 +972,8 @@ fn handle_request(request: tiny_http::Request, ctx: &ServerCtx) {
                 .unwrap_or_else(|e| UpdateStatus::failed("FETCH_FAILED", format!("状態ロック失敗: {e}"), None));
             respond_json(request, 200, &status);
         }
-        // 静的配信（ping / DB / 画像 / アイコンマニフェスト）は AppHandle 非依存の経路へ。
-        _ => serve_asset(request, &method, &path, &ctx.data_dir, &ctx.images_root, &ctx.coords_path),
-    }
-}
-
-/// 認証済みリクエストを静的配信ルートで捌く（#324 / #327・`AppHandle` 非依存）。
-///
-/// ここに来るのは Bearer 検証済みで、②更新命令系（`/update`・`/update_status`）ではないリクエスト。
-/// `AppHandle` を要さないため、#327 の HTTP テストは `authorized` と本関数を直接駆動して
-/// 画像振り分け・ETag/304・アイコンマニフェストを検証する。
-fn serve_asset(
-    request: tiny_http::Request,
-    method: &tiny_http::Method,
-    path: &str,
-    data_dir: &std::path::Path,
-    images_root: &std::path::Path,
-    coords_path: &std::path::Path,
-) {
-    match (method, path) {
-        (tiny_http::Method::Get, "/ping") => {
-            let _ = request.respond(tiny_http::Response::from_string("pong"));
-        }
-        (tiny_http::Method::Get, "/coordinates.bin") => respond_coordinates(request, coords_path),
-        (tiny_http::Method::Get, "/gear_db.bin") => {
-            respond_file(request, &data_dir.join("gear_db.bin"))
-        }
-        (tiny_http::Method::Get, "/battle_db.bin") => {
-            respond_file(request, &data_dir.join("battle_db.bin"))
-        }
-        // バトルアイコンの差分同期マニフェスト（#327）。
-        (tiny_http::Method::Get, "/icons/manifest") => respond_icon_manifest(request, images_root),
-        // 画像（.gti）を相対パスで配信。viewer は gear_db / battle_db の画像パスをそのまま GET する。
-        (tiny_http::Method::Get, p) if p.starts_with("/images/") => {
-            match resolve_image_path(p, data_dir, images_root) {
-                Some(file) => respond_file(request, &file),
-                None => {
-                    let _ = request
-                        .respond(tiny_http::Response::from_string("forbidden").with_status_code(403));
-                }
-            }
-        }
         _ => {
             let _ = request.respond(tiny_http::Response::from_string("not found").with_status_code(404));
-        }
-    }
-}
-
-/// mDNS 広告を開始する（ベストエフォート）。失敗しても None を返してサーバーは継続。
-fn start_mdns(port: u16, ips: &[IpAddr]) -> Option<ServiceDaemon> {
-    let daemon = match ServiceDaemon::new() {
-        Ok(d) => d,
-        Err(e) => {
-            log::warn!("[companion] mDNS デーモン起動失敗（広告なしで継続）: {e}");
-            return None;
-        }
-    };
-    // TXT レコードはブロードキャストされるためトークンは載せない（バージョンのみ）。
-    let props: [(&str, &str); 1] = [("v", "1")];
-    let service = match ServiceInfo::new(
-        SERVICE_TYPE,
-        SERVICE_INSTANCE,
-        SERVICE_HOST,
-        ips,
-        port,
-        &props[..],
-    ) {
-        Ok(s) => s,
-        Err(e) => {
-            log::warn!("[companion] mDNS ServiceInfo 構築失敗（広告なしで継続）: {e}");
-            return None;
-        }
-    };
-    match daemon.register(service) {
-        Ok(_) => {
-            log::info!("[companion] mDNS 広告開始 {SERVICE_TYPE} port={port}");
-            Some(daemon)
-        }
-        Err(e) => {
-            log::warn!("[companion] mDNS 登録失敗（広告なしで継続）: {e}");
-            None
         }
     }
 }
@@ -1332,9 +1096,13 @@ fn start_locked(app: &AppHandle, guard: &mut Option<RunningServer>) -> Result<Co
     let token = cfg.token.clone();
 
     let data_dir = resolve_data_dir(app)?;
-    // バトルアイコンのキャッシュルート（`app_data_dir()/images`・data_dir とは別系統／#327）。
-    // 未キャッシュでも起動を妨げない（マニフェストが空になるだけ）。
-    let images_root = crate::icon_manifest::resolve_images_root(app)?;
+    // バトルアイコンのキャッシュルート（`app_data_dir()/images`・`images.rs` の置き場・data_dir とは別系統）。
+    // 作成はしない（未キャッシュなら画像が 404 になるだけ）。
+    let images_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("アプリデータディレクトリ解決失敗: {e}"))?
+        .join("images");
 
     // 固定ポートで全インターフェースにバインド（LAN のスマホから到達可能に）。
     let server = tiny_http::Server::http(("0.0.0.0", port)).map_err(|e| {
@@ -1352,7 +1120,6 @@ fn start_locked(app: &AppHandle, guard: &mut Option<RunningServer>) -> Result<Co
             token: token.clone(),
             data_dir: data_dir.clone(),
             images_root: images_root.clone(),
-            coords_path: crate::saved_coordinates::file_path(app)?,
             app: app.clone(),
             job: Arc::new(Mutex::new(UpdateStatus::default())),
         };
@@ -1373,14 +1140,12 @@ fn start_locked(app: &AppHandle, guard: &mut Option<RunningServer>) -> Result<Co
     };
 
     let ips = host_ipv4s();
-    let mdns = start_mdns(port, &ips);
 
     *guard = Some(RunningServer {
         port,
         token: token.clone(),
         stop,
         handle: Some(handle),
-        mdns,
     });
 
     Ok(CompanionInfo {
@@ -1390,13 +1155,10 @@ fn start_locked(app: &AppHandle, guard: &mut Option<RunningServer>) -> Result<Co
     })
 }
 
-/// サーバーを止める（ロック取得済み・HTTP スレッド join + mDNS 広告停止）。
+/// サーバーを止める（ロック取得済み・HTTP スレッド join）。
 fn stop_locked(guard: &mut Option<RunningServer>) {
     if let Some(mut running) = guard.take() {
         running.stop.store(true, Ordering::SeqCst);
-        if let Some(daemon) = running.mdns.take() {
-            let _ = daemon.shutdown();
-        }
         if let Some(handle) = running.handle.take() {
             let _ = handle.join();
         }
@@ -1630,7 +1392,7 @@ mod tests {
     #[test]
     fn routes_battle_icon_kinds_to_images_root() {
         // #327: バトルアイコンは `app_data_dir()/images/<kind>/<sha256(name)>.gti` にある。
-        // battle_db の name から解決した `images/weapon/<hash>.gti` がそのまま引けること。
+        // ブキ名から解決した `images/weapon/<hash>.gti` がそのまま引けること。
         let data = Path::new("/data");
         for kind in ["weapon", "sub_weapon", "special_weapon", "stage", "ability"] {
             let got = resolve_image_path(&format!("/images/{kind}/abc.gti"), data, images_root());
@@ -1678,42 +1440,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
-    }
-
-    /// テスト用サーバーを立て、1 リクエストだけ捌いて生レスポンスを返す。
-    ///
-    /// 静的配信ルート（#324 / #327）は `AppHandle` 非依存なので、本番と同じ `authorized` で
-    /// Bearer を検証し `serve_asset` へ委譲する（②更新命令系は `AppHandle` を要すため対象外）。
-    fn serve_once(raw_request: &str, data_dir: PathBuf, images_root: PathBuf) -> String {
-        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
-        let addr = server.server_addr().to_ip().unwrap();
-        let handle = std::thread::spawn(move || {
-            let request = server.recv().unwrap();
-            if !authorized(&request, "tok") {
-                let _ = request
-                    .respond(tiny_http::Response::from_string("unauthorized").with_status_code(401));
-                return;
-            }
-            let url = request.url().to_string();
-            let path = url.split('?').next().unwrap_or("").to_string();
-            let method = request.method().clone();
-            let coords_path = data_dir.join(crate::saved_coordinates::FILE_NAME);
-            serve_asset(request, &method, &path, &data_dir, &images_root, &coords_path);
-        });
-
-        let mut stream = std::net::TcpStream::connect(addr).unwrap();
-        stream.write_all(raw_request.as_bytes()).unwrap();
-        let mut response = Vec::new();
-        stream.read_to_end(&mut response).unwrap();
-        handle.join().unwrap();
-        String::from_utf8_lossy(&response).into_owned()
-    }
-
-    fn get(path: &str, extra_headers: &str, data_dir: PathBuf, images_root: PathBuf) -> String {
-        let raw = format!(
-            "GET {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer tok\r\n{extra_headers}Connection: close\r\n\r\n"
-        );
-        serve_once(&raw, data_dir, images_root)
     }
 
     // --- スマホ Web 版（#786） ---
@@ -1770,10 +1496,13 @@ mod tests {
     }
 
     #[test]
-    fn cmd_requires_cookie_or_bearer() {
+    fn cmd_requires_cookie() {
         let res = post_web("/api/cmd/db_summary", "", "{}");
         assert!(res.starts_with("HTTP/1.1 401"), "unexpected: {res}");
         let res = post_web("/api/cmd/db_summary", "Cookie: splabo_session=nope\r\n", "{}");
+        assert!(res.starts_with("HTTP/1.1 401"), "unexpected: {res}");
+        // Bearer（Android viewer 用だった）では通さない。
+        let res = post_web("/api/cmd/db_summary", "Authorization: Bearer tok\r\n", "{}");
         assert!(res.starts_with("HTTP/1.1 401"), "unexpected: {res}");
     }
 
@@ -1790,8 +1519,8 @@ mod tests {
     }
 
     #[test]
-    fn cmd_accepts_bearer_and_empty_body() {
-        let res = post_web("/api/cmd/db_list_weapons", "Authorization: Bearer tok\r\n", "");
+    fn cmd_accepts_empty_body() {
+        let res = post_web("/api/cmd/db_list_weapons", "Cookie: splabo_session=tok\r\n", "");
         assert!(res.starts_with("HTTP/1.1 200"), "unexpected: {res}");
         assert!(res.contains(r#""args":null"#), "{res}");
     }
@@ -1836,7 +1565,7 @@ mod tests {
     }
 
     #[test]
-    fn web_paths_are_routed_before_bearer_check() {
+    fn routes_web_paths() {
         assert!(is_web_path("/api/session"));
         assert!(is_web_path("/api/cmd/db_summary"));
         assert!(is_web_path("/img/images/weapon/x.gti"));
@@ -1871,187 +1600,58 @@ mod tests {
     }
 
     #[test]
-    fn only_viewer_paths_ask_for_auth() {
-        for p in ["/ping", "/gear_db.bin", "/update", "/update_status", "/images/gear/x.gti", "/icons/manifest"] {
-            assert!(is_viewer_path(p), "{p}");
+    fn only_update_paths_ask_for_auth() {
+        for p in ["/update", "/update_status"] {
+            assert!(is_update_path(p), "{p}");
         }
-        for p in ["/", "/m/x", "/favicon.ico", "/api"] {
-            assert!(!is_viewer_path(p), "{p}");
+        // Android viewer 用だった経路は 404（認証も求めない）。
+        for p in ["/", "/m/x", "/favicon.ico", "/api", "/ping", "/gear_db.bin", "/battle_db.bin", "/coordinates.bin", "/icons/manifest", "/images/gear/x.gti"] {
+            assert!(!is_update_path(p), "{p}");
         }
     }
 
     #[test]
-    fn serves_battle_icon_from_images_root() {
-        let data_dir = temp_root("http_data");
-        let images_root = temp_root("http_images");
-        std::fs::create_dir_all(images_root.join("weapon")).unwrap();
-        std::fs::write(images_root.join("weapon").join("abc.gti"), b"WEAPON-BYTES").unwrap();
-
-        let res = get("/images/weapon/abc.gti", "", data_dir, images_root);
-        assert!(res.starts_with("HTTP/1.1 200 OK"), "unexpected: {res}");
-        assert!(res.contains("WEAPON-BYTES"), "body missing: {res}");
-        // ETag は内容の sha256（マニフェストの hash と同値）。
-        let etag = crate::icon_manifest::hash_bytes(b"WEAPON-BYTES");
-        assert!(res.contains(&format!("ETag: \"{etag}\"")), "etag missing: {res}");
-    }
-
-    #[test]
-    fn returns_304_when_etag_matches() {
-        let data_dir = temp_root("http_data");
-        let images_root = temp_root("http_images");
+    fn img_returns_304_when_etag_matches() {
+        let data_dir = temp_root("web_etag_data");
+        let images_root = temp_root("web_etag_root");
         std::fs::create_dir_all(images_root.join("stage")).unwrap();
-        std::fs::write(images_root.join("stage").join("s1.gti"), b"STAGE-BYTES").unwrap();
+        let bytes = crate::crypto::scramble_image(b"STAGE-BYTES");
+        std::fs::write(images_root.join("stage").join("s1.gti"), &bytes).unwrap();
 
-        let etag = crate::icon_manifest::hash_bytes(b"STAGE-BYTES");
-        let res = get(
-            "/images/stage/s1.gti",
-            &format!("If-None-Match: \"{etag}\"\r\n"),
-            data_dir,
-            images_root,
+        let etag = hash_bytes(&bytes);
+        let raw = format!(
+            "GET /img/images/stage/s1.gti HTTP/1.1\r\nHost: localhost\r\nCookie: splabo_session=tok\r\nIf-None-Match: \"{etag}\"\r\nConnection: close\r\n\r\n"
         );
-        // 変わっていないので再転送しない（設計書 §6）。
+        let res = serve_web_once(&raw, data_dir, images_root);
+        // 変わっていないので再転送しない。
         assert!(res.starts_with("HTTP/1.1 304"), "unexpected: {res}");
         assert!(!res.contains("STAGE-BYTES"), "body should not be sent: {res}");
     }
 
     #[test]
-    fn serves_gear_db_with_etag() {
-        // #356: gear_db.bin もアイコンと同じく内容 sha256 の ETag を付けて配信する。
-        let data_dir = temp_root("http_data");
-        let images_root = temp_root("http_images");
-        std::fs::write(data_dir.join("gear_db.bin"), b"GEAR-DB-BYTES").unwrap();
-
-        let res = get("/gear_db.bin", "", data_dir, images_root);
-        assert!(res.starts_with("HTTP/1.1 200 OK"), "unexpected: {res}");
-        assert!(res.contains("GEAR-DB-BYTES"), "body missing: {res}");
-        assert!(res.contains("application/octet-stream"), "content-type: {res}");
-        // ETag は内容の sha256（画像・マニフェストの hash と同じ算出）。
-        let etag = crate::icon_manifest::hash_bytes(b"GEAR-DB-BYTES");
-        assert!(res.contains(&format!("ETag: \"{etag}\"")), "etag missing: {res}");
+    fn hashes_are_stable_and_content_sensitive() {
+        assert_eq!(hash_bytes(b"IMG-A"), hash_bytes(b"IMG-A"));
+        assert_ne!(hash_bytes(b"IMG-A"), hash_bytes(b"IMG-B"));
+        // sha256 hex は 64 文字。
+        assert_eq!(hash_bytes(b"IMG-A").len(), 64);
     }
 
     #[test]
-    fn returns_304_when_db_etag_matches() {
-        // #356: viewer が保存済みハッシュを If-None-Match で送り、内容が同じなら 304・本文なし。
-        let data_dir = temp_root("http_data");
-        let images_root = temp_root("http_images");
-        std::fs::write(data_dir.join("battle_db.bin"), b"BATTLE-DB-BYTES").unwrap();
-
-        let etag = crate::icon_manifest::hash_bytes(b"BATTLE-DB-BYTES");
-        let res = get(
-            "/battle_db.bin",
-            &format!("If-None-Match: \"{etag}\"\r\n"),
-            data_dir,
-            images_root,
-        );
-        // 変わっていないので再転送しない（DB ファイルの転送そのものを省く・viewer #47）。
-        assert!(res.starts_with("HTTP/1.1 304"), "unexpected: {res}");
-        assert!(!res.contains("BATTLE-DB-BYTES"), "body should not be sent: {res}");
+    fn etag_matches_quoted_and_bare() {
+        assert!(etag_matches(Some("\"abc123\""), "abc123"));
+        assert!(etag_matches(Some("abc123"), "abc123"));
+        assert!(etag_matches(Some("W/\"abc123\""), "abc123"));
+        // 複数候補のいずれかに一致すれば 304。
+        assert!(etag_matches(Some("\"zzz\", \"abc123\""), "abc123"));
+        // ワイルドカード。
+        assert!(etag_matches(Some("*"), "abc123"));
     }
 
     #[test]
-    fn serves_db_when_etag_differs() {
-        // If-None-Match が古い（不一致）なら通常どおり 200 + 本文 + 現行 ETag。
-        let data_dir = temp_root("http_data");
-        let images_root = temp_root("http_images");
-        std::fs::write(data_dir.join("gear_db.bin"), b"GEAR-DB-V2").unwrap();
-
-        let res = get(
-            "/gear_db.bin",
-            "If-None-Match: \"stale-hash\"\r\n",
-            data_dir,
-            images_root,
-        );
-        assert!(res.starts_with("HTTP/1.1 200 OK"), "unexpected: {res}");
-        assert!(res.contains("GEAR-DB-V2"), "body missing: {res}");
-        let etag = crate::icon_manifest::hash_bytes(b"GEAR-DB-V2");
-        assert!(res.contains(&format!("ETag: \"{etag}\"")), "etag missing: {res}");
-    }
-
-    #[test]
-    fn serves_empty_coordinates_when_none_saved() {
-        // #782: 保存が無くても 404 にしない（404 は「古いデスクトップ」の合図に使う）。
-        let data_dir = temp_root("http_data");
-        let images_root = temp_root("http_images");
-        let coords_path = data_dir.join(crate::saved_coordinates::FILE_NAME);
-        let plain = crate::saved_coordinates::export_bytes(&coords_path).unwrap();
-        let etag = crate::icon_manifest::hash_bytes(&plain);
-
-        let res = get("/coordinates.bin", "", data_dir, images_root);
-        assert!(res.starts_with("HTTP/1.1 200 OK"), "unexpected: {res}");
-        assert!(res.contains("application/octet-stream"), "content-type: {res}");
-        // ETag は暗号化前の内容から作る（暗号文は nonce で毎回変わる）。
-        assert!(res.contains(&format!("ETag: \"{etag}\"")), "etag missing: {res}");
-    }
-
-    #[test]
-    fn returns_304_when_coordinates_etag_matches() {
-        let data_dir = temp_root("http_data");
-        let images_root = temp_root("http_images");
-        let coords_path = data_dir.join(crate::saved_coordinates::FILE_NAME);
-        std::fs::write(
-            &coords_path,
-            br#"{"schema":"saved-coordinates-v1","version":1,"coordinates":[]}"#,
-        )
-        .unwrap();
-        let etag = crate::icon_manifest::hash_bytes(
-            &crate::saved_coordinates::export_bytes(&coords_path).unwrap(),
-        );
-
-        let res = get(
-            "/coordinates.bin",
-            &format!("If-None-Match: \"{etag}\"\r\n"),
-            data_dir,
-            images_root,
-        );
-        assert!(res.starts_with("HTTP/1.1 304"), "unexpected: {res}");
-    }
-
-    #[test]
-    fn serves_icon_manifest() {
-        let data_dir = temp_root("http_data");
-        let images_root = temp_root("http_images");
-        std::fs::create_dir_all(images_root.join("weapon")).unwrap();
-        std::fs::write(images_root.join("weapon").join("abc.gti"), b"W").unwrap();
-
-        let res = get("/icons/manifest", "", data_dir, images_root);
-        assert!(res.starts_with("HTTP/1.1 200 OK"), "unexpected: {res}");
-        assert!(res.contains("application/json"), "content-type: {res}");
-        assert!(res.contains("icon-manifest-v1"), "schema: {res}");
-        assert!(res.contains("images/weapon/abc.gti"), "path: {res}");
-        assert!(
-            res.contains(&crate::icon_manifest::hash_bytes(b"W")),
-            "hash: {res}"
-        );
-    }
-
-    #[test]
-    fn requires_token_for_icon_endpoints() {
-        let data_dir = temp_root("http_data");
-        let images_root = temp_root("http_images");
-        let raw = "GET /icons/manifest HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
-        let res = serve_once(raw, data_dir, images_root);
-        // 未ペア端末にはアイコンもマニフェストも渡さない。
-        assert!(res.starts_with("HTTP/1.1 401"), "unexpected: {res}");
-    }
-
-    // --- トークン検証（②更新命令も同じ検証を通る） ---
-
-    #[test]
-    fn accepts_matching_bearer_token() {
-        assert!(token_matches(Some("Bearer abc123"), "abc123"));
-    }
-
-    #[test]
-    fn rejects_wrong_or_missing_token() {
-        assert!(!token_matches(Some("Bearer wrong"), "abc123"));
-        assert!(!token_matches(None, "abc123"));
-        // スキームなし・小文字スキーム・前後の差異は許さない。
-        assert!(!token_matches(Some("abc123"), "abc123"));
-        assert!(!token_matches(Some("bearer abc123"), "abc123"));
-        assert!(!token_matches(Some("Bearer abc123 "), "abc123"));
-        // 空トークン設定でも「Bearer 」だけで通ってしまわないこと。
-        assert!(!token_matches(Some("Bearer"), ""));
+    fn etag_mismatch_or_absent_transfers() {
+        assert!(!etag_matches(Some("\"other\""), "abc123"));
+        assert!(!etag_matches(None, "abc123"));
+        assert!(!etag_matches(Some(""), "abc123"));
     }
 
     // --- 多重起動防止 ---
@@ -2111,7 +1711,7 @@ mod tests {
 
     #[test]
     fn falls_back_to_both_for_missing_or_invalid_body() {
-        // 古い viewer（ボディ無し）・空ボディ・JSON でないもの・未知の値は、すべて現行動作の both。
+        // ボディ無し・空ボディ・JSON でないもの・未知の値は、すべて both。
         for body in [
             "",
             "{}",
@@ -2126,7 +1726,7 @@ mod tests {
 
     #[test]
     fn ignores_unknown_fields_in_body() {
-        // viewer が将来フィールドを増やしても target だけ読めればよい。
+        // 知らないフィールドがあっても target だけ読めればよい。
         assert_eq!(
             parse_update_target(r#"{"target":"gear","since":"2026-01-01"}"#),
             UpdateTarget::Gear
@@ -2159,7 +1759,7 @@ mod tests {
 
     #[test]
     fn skipped_phase_counts_are_null() {
-        // #395: 実行しなかった側は 0 ではなく null。viewer が「更新して 0 件」と誤読しないため。
+        // #395: 実行しなかった側は 0 ではなく null（「更新して 0 件」と区別するため）。
         let result = UpdateResult {
             gear: Some(10),
             ..UpdateResult::default()
@@ -2168,13 +1768,12 @@ mod tests {
         assert_eq!(json["gear"], 10);
         assert_eq!(json["battles"], serde_json::Value::Null);
         assert_eq!(json["details"], serde_json::Value::Null);
-        assert_eq!(json["exported_battles"], serde_json::Value::Null);
     }
 
-    // --- エラー分類（viewer の異常系 UX 分岐） ---
+    // --- エラー分類 ---
 
     #[test]
-    fn classifies_errors_for_viewer() {
+    fn classifies_errors() {
         assert_eq!(
             classify_error("NOT_LOGGED_IN: Nintendo アカウントでログインしていません。"),
             "NOT_LOGGED_IN"
@@ -2203,7 +1802,7 @@ mod tests {
             classify_error("AUTH_EXPIRED: bullet token 取得失敗: [znca-api] Non-200 status code: 401 (status=401 upstream_error=-)"),
             "TOKEN_EXPIRED"
         );
-        // ローカルのネットワーク断は既存の汎用コードに寄せる（viewer に新コードを増やさない）
+        // ローカルのネットワーク断は汎用コードに寄せる
         assert_eq!(
             classify_error("NETWORK: bullet token 取得失敗: fetch failed (status=- upstream_error=-)"),
             "FETCH_FAILED"
@@ -2241,7 +1840,7 @@ mod tests {
         }
     }
 
-    // --- JSON 形（viewer #34 が読む契約） ---
+    // --- JSON 形（スマホの `pcUpdate.ts` が読む） ---
 
     #[test]
     fn serializes_status_shape() {
@@ -2249,12 +1848,10 @@ mod tests {
         status.state = UpdateState::Done;
         status.step = None;
         status.finished_at = Some(1700000042);
-        // target 省略（= both）のときは全件数が埋まるので、古い viewer から見た形は #395 前と同じ。
         status.result = Some(UpdateResult {
             battles: Some(3),
             details: Some(2),
             gear: Some(10),
-            exported_battles: Some(50),
         });
         let json = serde_json::to_value(&status).unwrap();
         assert_eq!(json["state"], "done");
@@ -2262,7 +1859,6 @@ mod tests {
         assert_eq!(json["started_at"], 1700000000_i64);
         assert_eq!(json["finished_at"], 1700000042_i64);
         assert_eq!(json["result"]["battles"], 3);
-        assert_eq!(json["result"]["exported_battles"], 50);
 
         let failed = UpdateStatus::failed("NOT_LOGGED_IN", "未ログイン", None);
         let json = serde_json::to_value(&failed).unwrap();

@@ -5,7 +5,7 @@ import { call } from '../../utils/backend'
 
 /**
  * 保存コーデ（#782）。実体は Rust 側の `app_data_dir()/saved_coordinates.json`
- * （`saved_coordinates.rs`）。viewer にもコンパニオン経由で配信される。
+ * （`saved_coordinates.rs`）。
  */
 
 export const GEAR_CATEGORIES: GearCategory[] = ['head', 'clothing', 'shoes']

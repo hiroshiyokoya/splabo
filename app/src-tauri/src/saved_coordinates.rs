@@ -12,9 +12,7 @@
 //! メイン・サブの gearPowerId をスナップショットとして持ち、表示側で現在の gear_db と突き合わせる。
 //! ギア名も保存時点のものを持つ（手放したギアを「ギアなし」と出すときの表示用）。
 //!
-//! ## viewer への提供
-//! コンパニオンサーバーの `GET /coordinates.bin` が本ファイルの内容を gear_db と同じ方式
-//! （`gear_crypto::encrypt_db`）で暗号化して配信する（`export_bytes`）。viewer は閲覧のみ。
+//! スマホ Web 版からは、`web_api.rs` が下の 3 コマンドをそのまま中継する。
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -63,7 +61,7 @@ pub struct SavedCoordinate {
     pub gears: CoordinateGears,
 }
 
-/// ファイル全体（= viewer へ配信する JSON の形）。
+/// ファイル全体。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SavedCoordinatesFile {
     pub schema: String,
@@ -196,17 +194,6 @@ pub fn remove(path: &Path, id: &str) -> Result<(), String> {
     write_file(path, &file)
 }
 
-/// viewer へ配信する平文 JSON（ファイルが無ければ空の一覧）。
-///
-/// ETag は暗号化前のこのバイト列から作る（暗号化は nonce が毎回変わるため）。
-pub fn export_bytes(path: &Path) -> Result<Vec<u8>, String> {
-    let file = {
-        let _guard = FILE_LOCK.lock().map_err(|e| e.to_string())?;
-        read_file(path)?
-    };
-    serde_json::to_vec(&file).map_err(|e| e.to_string())
-}
-
 #[tauri::command]
 pub fn list_saved_coordinates(app: AppHandle) -> Result<SavedCoordinatesList, String> {
     let path = file_path(&app)?;
@@ -330,18 +317,5 @@ mod tests {
         std::fs::write(&path, b"{not json").unwrap();
         assert!(upsert(&path, input(None, "a")).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"{not json");
-    }
-
-    #[test]
-    fn export_has_envelope() {
-        let path = temp_path("export");
-        let empty: serde_json::Value = serde_json::from_slice(&export_bytes(&path).unwrap()).unwrap();
-        assert_eq!(empty["schema"], SCHEMA);
-        assert_eq!(empty["version"], VERSION);
-        assert_eq!(empty["coordinates"], serde_json::json!([]));
-
-        upsert(&path, input(None, "a")).unwrap();
-        let v: serde_json::Value = serde_json::from_slice(&export_bytes(&path).unwrap()).unwrap();
-        assert_eq!(v["coordinates"][0]["gears"]["head"]["subs"], serde_json::json!([0, -1, 4]));
     }
 }

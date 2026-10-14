@@ -1,8 +1,8 @@
 /**
  * スマホから PC に「任天堂から取り直して」と頼む（#789・設計 #784 §8）。
  *
- * コンパニオンの ②更新命令（`POST /update` → `GET /update_status` をポーリング）をそのまま使う。
- * viewer と同じ経路で、認証はスマホ Web 版の Cookie で通る（#788）。
+ * PC の更新命令（`POST /update` → `GET /update_status` をポーリング・`companion.rs`）を使う。
+ * 認証はスマホ Web 版の Cookie で通る（#788）。
  */
 
 /** `GET /update_status` の形（companion.rs `UpdateStatus` のうち使う分） */

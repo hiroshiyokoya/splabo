@@ -11,7 +11,6 @@ pub mod ai_views;
 pub mod season;
 pub mod wording;
 pub mod auth;
-pub mod battle_export;
 pub mod companion;
 pub mod custom_charts;
 pub mod crypto;
@@ -21,7 +20,6 @@ pub mod gear;
 pub mod gear_crypto;
 pub mod gear_static;
 pub mod http;
-pub mod icon_manifest;
 pub mod image_export;
 pub mod images;
 pub mod locale;
@@ -161,9 +159,7 @@ pub fn run() {
             saved_coordinates::list_saved_coordinates,
             saved_coordinates::save_coordinate,
             saved_coordinates::delete_saved_coordinate,
-            // battle_db エクスポート（モバイルコンパニオン・#325・battle_export.rs）
-            battle_export::export_battle_db,
-            // コンパニオン同期サーバー（モバイルコンパニオン・#324・companion.rs）
+            // スマホで見る（スマホ Web 版のサーバー・companion.rs）
             companion::companion_start,
             companion::companion_stop,
             companion::companion_status,
@@ -316,24 +312,21 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-/// バトル取得 → 詳細取得 → ブキ補完 → 画像キャッシュ → battle_db エクスポート を一括実行し、
+/// バトル取得 → 詳細取得 → ブキ補完 → 画像キャッシュ を一括実行し、
 /// その**後**に stat.ink 自動アップロードを best-effort で行う。
 /// 開始時に "fetch_start"、終了時に "fetch_finish" イベントを emit する（成功・失敗共通）。
 /// 成功時はさらに "fetch_complete" を emit する（既存の lastFetchedAt 更新リスナー用）。
 ///
 /// ギア取得は含めない。起動時・自動取得・サイドバーは呼び出し側で `fetch_gear_best_effort`
-/// を後続実行する（#440）。コンパニオンの battle-only 経路を壊さないため本体には入れない。
+/// を後続実行する（#440）。スマホの更新命令の battle-only 経路を壊さないため本体には入れない。
 ///
 /// # 「取得中」表示とアップロードの分離（#402）
 /// stat.ink アップロードは取得そのものとは別物（すでに DB へ保存済みのバトルを送るだけ）。
 /// 以前はこれを取得処理の最後のステップとして `FetchInProgress` を握ったまま同期実行して
 /// いたため、stat.ink がダウンして HTTP がハングすると**バトル取得は終わっているのに
 /// 「取得中」が永久化**した（#402 の主症状）。
-/// そこでフラグ解放・`fetch_finish` は「取得＋エクスポート完了」時点で行い、
-/// stat.ink アップロードはその後の後処理に回す。エクスポートは #367 の意図どおり
-/// フラグ内に残す（コンパニオンの更新命令が中途半端な状態に割り込まないように）。
-/// アップロードは battle_db の中身に影響しない（未送信でもエクスポートされる）ので、
-/// フラグ外へ出しても安全。
+/// そこでフラグ解放・`fetch_finish` は取得完了時点で行い、stat.ink アップロードは
+/// その後の後処理に回す。
 ///
 /// 未ログイン時はサイドカー呼び出しの前に明示的に `NOT_LOGGED_IN:` プリフィクス付き
 /// エラーを返し、フロントが「設定からログインしてください」UI を出せるようにする。
@@ -347,13 +340,6 @@ pub(crate) async fn run_fetch_full(app: &AppHandle, db: &db::DbPool) -> Result<(
     }
     let _ = app.emit("fetch_start", ());
     let result = run_fetch_full_inner(app, db).await;
-    // 取得が成功したら battle_db.bin を再生成する（#367）。
-    // ここに置くのは手動取得・起動時取得・スケジューラーの共通経路だから。
-    // FetchInProgress を握ったまま実行し、「取得完了 = エクスポート済み」の状態で
-    // フラグを解放する（コンパニオンの更新命令が中途半端な状態に割り込まないように）。
-    if result.is_ok() {
-        export_battle_db_best_effort(app).await;
-    }
     // ここで「取得中」を終える。stat.ink アップロードのハング／遅延に取得完了表示を
     // 巻き込まないため、フラグ解放と fetch_finish はアップロードの**前**に出す（#402）。
     flag.0.store(false, Ordering::SeqCst);
@@ -396,42 +382,6 @@ async fn upload_to_statink_best_effort(app: &AppHandle, db: &db::DbPool) -> usiz
     }
 }
 
-/// `battle_db.bin` の再生成を **best-effort** で実行する（#367）。
-///
-/// エクスポートはあくまで viewer 連携のための副次処理なので、失敗しても
-/// 呼び出し元（バトル取得）を失敗させない。警告ログだけ出して続行する。
-/// DB がまだ初期化されていない場合（コンパニオン未使用でも同様）は何もしない。
-async fn export_battle_db_best_effort(app: &AppHandle) {
-    let Some(pool) = app.try_state::<db::DbPool>() else {
-        log::warn!("[battle_export] DB 未初期化のため battle_db.bin の再生成をスキップしました");
-        return;
-    };
-    let started = std::time::Instant::now();
-    let outcome = battle_export::export_battle_db(app.clone(), pool, None).await;
-    absorb_export_error(outcome, started.elapsed());
-}
-
-/// エクスポート結果を best-effort として畳み込む。
-///
-/// 成否にかかわらず所要時間をログに出し、失敗は `warn` に落として `None` を返す
-/// （呼び出し元へ `Err` を伝播させない）。副作用がログだけの純粋関数なので、
-/// `AppHandle` 抜きで「失敗が伝播しないこと」をユニットテストできる。
-fn absorb_export_error<T>(result: Result<T, String>, elapsed: std::time::Duration) -> Option<T> {
-    match result {
-        Ok(v) => {
-            log::info!("[battle_export] battle_db.bin 再生成 完了 ({} ms)", elapsed.as_millis());
-            Some(v)
-        }
-        Err(e) => {
-            log::warn!(
-                "[battle_export] battle_db.bin 再生成に失敗しました（バトル取得は成功扱いで続行）: {e} ({} ms)",
-                elapsed.as_millis()
-            );
-            None
-        }
-    }
-}
-
 /// バトル取得・詳細取得・ブキ補完・画像キャッシュを行う（stat.ink アップロードは含まない）。
 /// アップロードは `run_fetch_full` がフラグ解放後に best-effort で行う（#402）。
 /// 戻り値の 3 要素目 `uploaded` はここでは常に 0（実際の件数は `run_fetch_full` が後段で埋める）。
@@ -456,7 +406,7 @@ async fn run_fetch_full_inner(app: &AppHandle, db: &db::DbPool) -> Result<(usize
     let scan = Some(detail_ids.as_slice());
     splatnet3::cache_sub_special_images(db, app, &client, scan).await?;
     splatnet3::cache_ability_images(db, app, &client, scan).await?;
-    // 全ギアパワーを登場依存なしで先回りキャッシュ（viewer の全スキル表示のアイコン欠け対策・#360）
+    // 全ギアパワーを登場依存なしで先回りキャッシュ（全スキルを並べる画面でアイコンが欠けないように・#360）
     splatnet3::cache_all_ability_images(app, &client).await?;
     splatnet3::cache_all_weapon_images(db, app, &client, scan).await?;
 
@@ -775,55 +725,15 @@ fn send_notification_error(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
-
-    /// エクスポート失敗が `Err` として伝播せず `None` に畳み込まれること（#367 の肝）。
-    #[test]
-    fn absorb_export_error_swallows_failure() {
-        let r: Option<u32> = absorb_export_error(Err("書き込み失敗".to_string()), Duration::from_millis(3));
-        assert!(r.is_none());
-    }
-
-    /// 成功時は値がそのまま取り出せること。
-    #[test]
-    fn absorb_export_error_passes_through_success() {
-        let r = absorb_export_error(Ok(42u32), Duration::from_millis(1));
-        assert_eq!(r, Some(42));
-    }
-
-    /// `run_fetch_full` の制御フロー（取得結果 → best-effort エクスポート → 戻り値）を模した検証。
-    /// エクスポートがどう転んでも取得件数はそのまま返ること。
-    #[test]
-    fn fetch_result_is_unaffected_by_export_outcome() {
-        fn simulate(
-            fetch: Result<(usize, usize, usize), String>,
-            export: Result<(), String>,
-        ) -> Result<(usize, usize, usize), String> {
-            if fetch.is_ok() {
-                absorb_export_error(export, Duration::from_millis(0));
-            }
-            fetch
-        }
-
-        let ok = (7usize, 3usize, 0usize);
-        assert_eq!(simulate(Ok(ok), Err("boom".into())), Ok(ok));
-        assert_eq!(simulate(Ok(ok), Ok(())), Ok(ok));
-        // 取得自体が失敗した場合はそのエラーがそのまま返る（エクスポートで塗り潰さない）。
-        assert_eq!(
-            simulate(Err("NOT_LOGGED_IN: ...".into()), Ok(())),
-            Err("NOT_LOGGED_IN: ...".to_string())
-        );
-    }
 
     /// 多重起動防止フラグの挙動: 取得中フラグが立っている間は再入できず、
-    /// エクスポートを内包しても解放後は再び取得できること。
+    /// 解放後は再び取得できること。
     #[test]
     fn fetch_in_progress_flag_round_trip() {
         use std::sync::atomic::Ordering;
         let flag = FetchInProgress::default();
         assert!(!flag.0.swap(true, Ordering::SeqCst), "最初の取得は開始できる");
         assert!(flag.0.swap(true, Ordering::SeqCst), "取得中は再入できない");
-        // エクスポートはフラグを握ったまま走り、その後に解放される
         flag.0.store(false, Ordering::SeqCst);
         assert!(!flag.0.swap(true, Ordering::SeqCst), "解放後は再び取得できる");
     }
