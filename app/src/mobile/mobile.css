@@ -19,28 +19,36 @@ body,
   padding-top: env(safe-area-inset-top);
 }
 
+/* 上のバー: 1 段目にロゴと丸ボタン、2 段目にタブ（#815） */
 .m-header {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
-  padding: 10px 16px;
+  padding: 8px 16px 10px;
   border-bottom: 1px solid var(--border);
 }
 
-.m-header__title {
-  font-size: 16px;
-  font-weight: 700;
+.m-header__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.m-nav {
-  display: flex;
-  gap: 3px;
-  margin-left: 4px;
+.m-header__logo {
+  height: 32px;
+  width: auto;
   /* 右の丸ボタン（全画面・更新）を右端に寄せる */
   margin-right: auto;
 }
 
+/* タブは 4 つを同じ幅で横いっぱいに並べる */
+.m-nav {
+  display: flex;
+  gap: 6px;
+}
+
 .m-nav__item {
+  flex: 1;
   background: none;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -72,13 +80,6 @@ body,
   align-items: center;
   justify-content: center;
   padding: 0;
-}
-
-/* 幅 400px 未満（360px 級の Android など）: ナビ 4 つと丸ボタン 2 つを 1 行に収める */
-@media (max-width: 399px) {
-  .m-header { padding: 10px 12px; gap: 6px; }
-  .m-nav { margin-left: 2px; }
-  .m-nav__item { padding: 4px 7px; }
 }
 
 .m-round-btn:disabled {

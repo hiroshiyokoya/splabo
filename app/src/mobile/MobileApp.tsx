@@ -191,36 +191,39 @@ export function MobileApp({ session }: { session: SessionResult }) {
 
   return (
     <div className="m-app">
+      {/* 1 段目にロゴと丸ボタン（全画面・更新）、2 段目にタブ（#815） */}
       <header className="m-header">
-        <img src="/splabo-favicon-32.png" alt="SpLabo" width={24} height={24} />
-        {connection !== 'ok' && <span className="m-header__title">SpLabo</span>}
+        <div className="m-header__top">
+          <img className="m-header__logo" src="/splabo-logo.png" alt="SpLabo" />
+          {connection === 'ok' && (
+            <>
+              <FullscreenButton />
+              <button
+                type="button"
+                className="m-round-btn"
+                onClick={handleUpdate}
+                disabled={updating}
+                aria-label={t('mobile.update')}
+                title={t('mobile.update')}
+              >
+                <span className={updating ? 'm-spin' : undefined} aria-hidden>↻</span>
+              </button>
+            </>
+          )}
+        </div>
         {connection === 'ok' && (
-          <>
-            {/* 4 つのナビを 390px に収めるため、つながったら「SpLabo」の文字は出さない（#801） */}
-            <nav className="m-nav">
-              {SECTIONS.map(s => (
-                <button
-                  key={s}
-                  type="button"
-                  className={`m-nav__item${section === s ? ' m-nav__item--active' : ''}`}
-                  onClick={() => setSection(s)}
-                >
-                  {t(SECTION_LABEL[s])}
-                </button>
-              ))}
-            </nav>
-            <FullscreenButton />
-            <button
-              type="button"
-              className="m-round-btn"
-              onClick={handleUpdate}
-              disabled={updating}
-              aria-label={t('mobile.update')}
-              title={t('mobile.update')}
-            >
-              <span className={updating ? 'm-spin' : undefined} aria-hidden>↻</span>
-            </button>
-          </>
+          <nav className="m-nav">
+            {SECTIONS.map(s => (
+              <button
+                key={s}
+                type="button"
+                className={`m-nav__item${section === s ? ' m-nav__item--active' : ''}`}
+                onClick={() => setSection(s)}
+              >
+                {t(SECTION_LABEL[s])}
+              </button>
+            ))}
+          </nav>
         )}
       </header>
       {updating && <p className="m-note">{t('mobile.updating')}</p>}
