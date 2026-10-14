@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { periodToSince, modeFilterArg, ruleFilterArg } from '../types'
 import type { Period } from '../types'
 import { LOBBY_OPTIONS, RULE_OPTIONS } from '../utils/filterSummary'
+import { winRateColor } from '../utils/heatmapColors'
 
 /** バトル・ブキ・ステージで共有する期間（#801） */
 export const PERIODS: Period[] = ['7d', '30d', 'current_season', 'all']
@@ -205,13 +206,13 @@ export interface RecordLike {
   win_rate: number | null
 }
 
-/** 勝率と、その内訳（何戦・何勝何敗）。引き分けは勝ちにも負けにも数えない */
+/** 勝率と、その内訳（何戦・何勝何敗）。引き分けは勝ちにも負けにも数えない。勝率はデスクトップと同じ色にする（#817） */
 export function RecordCell({ g }: { g: RecordLike }) {
   const { t } = useTranslation()
   const losses = g.total - g.wins - g.draws
   return (
     <span className="m-record">
-      <span className="m-record__rate">{pct(g.win_rate)}</span>
+      <span className="m-record__rate" style={g.win_rate != null ? { color: winRateColor(g.win_rate) } : undefined}>{pct(g.win_rate)}</span>
       <span className="m-record__detail">{t('mobile.record', { total: g.total, wins: g.wins, losses })}</span>
     </span>
   )
