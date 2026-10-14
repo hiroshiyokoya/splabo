@@ -20,7 +20,7 @@ Nintendo アカウントから [nxapi](https://github.com/samuelthomas2774/nxapi
 splabo/
 ├─ app/          # Tauri アプリ本体（Vite + React + recharts + Rust/SQLite）
 │  ├─ src/       #   フロント（戦績 components/ ＋ ギア gear/・.gear-root スコープ）
-│  └─ src-tauri/ #   Rust（auth / statink / gear.rs / gear_crypto.rs / migration.rs / companion.rs / battle_export.rs + SQLite）
+│  └─ src-tauri/ #   Rust（auth / statink / gear.rs / gear_crypto.rs / migration.rs / companion.rs / web_api.rs + SQLite）
 ├─ tools/        # nxapi サイドカーのビルド環境（nxapi-wrapper）
 ├─ docs/         # GitHub Pages（splaboon.pages.dev）
 ├─ .github/      # CI（ci.yml）+ リリース（splabo-release.yml）

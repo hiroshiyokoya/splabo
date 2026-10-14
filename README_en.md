@@ -20,7 +20,7 @@ Bug reports, feature requests, and feedback are welcome via the [feedback form](
 splabo/
 ├─ app/          # Tauri app (Vite + React + recharts + Rust/SQLite)
 │  ├─ src/       #   frontend (battle components/ + gear gear/ with .gear-root scope)
-│  └─ src-tauri/ #   Rust (auth / statink / gear.rs / gear_crypto.rs / migration.rs / companion.rs / battle_export.rs + SQLite)
+│  └─ src-tauri/ #   Rust (auth / statink / gear.rs / gear_crypto.rs / migration.rs / companion.rs / web_api.rs + SQLite)
 ├─ tools/        # nxapi sidecar build (nxapi-wrapper)
 ├─ docs/         # GitHub Pages (splaboon.pages.dev)
 ├─ .github/      # CI (ci.yml) + release (splabo-release.yml)
