@@ -106,8 +106,9 @@ function RefreshIcon() {
           <stop offset="1" stopColor="#f58a1c" />
         </linearGradient>
       </defs>
-      {/* 右（3 時）から時計回りに 315° 回る円弧。終わり（右上）に矢じりを付ける */}
-      <path d="M20 12a8 8 0 1 1-2.34-5.66" fill="none" stroke={`url(#${id})`} strokeWidth="4.6" strokeLinecap="round" />
+      {/* 3 時から少し下（20°）を始まりに、時計回りに 295° 回る円弧。終わり（右上）に矢じりを付ける。
+          3 時から始めると、太い線の端の丸みが矢じりと重なる */}
+      <path d="M19.52 14.74A8 8 0 1 1 17.66 6.34" fill="none" stroke={`url(#${id})`} strokeWidth="4.6" strokeLinecap="round" />
       <path d="M21.2 2.8v7.1h-7.1z" fill={`url(#${id})`} stroke={`url(#${id})`} strokeWidth="1.6" strokeLinejoin="round" />
     </svg>
   )
