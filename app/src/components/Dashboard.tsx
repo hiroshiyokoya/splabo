@@ -26,7 +26,7 @@ import { CustomChartCard } from './CustomChartCard'
 import { ChartExpandButton } from './ChartExpand'
 import type { ChartExpandProps } from './ChartExpand'
 import { ChartConfigModal } from './ChartConfigModal'
-import { loadCustomCharts, saveCustomCharts, generateChartId } from '../utils/customCharts'
+import { loadCustomCharts, saveCustomCharts, generateChartId, CUSTOM_CHARTS_CHANGED_EVENT } from '../utils/customCharts'
 import type { WeaponMeta } from '../utils/scatterCategoryColors'
 import { loadSubSpImageMaps, loadStageImageMap } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
@@ -205,6 +205,14 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching, r
     if (!isTauri()) return
     const unlistenPromise = listen('fetch_complete', () => setRefreshKey(k => k + 1))
     return () => { unlistenPromise.then(fn => fn()) }
+  }, [])
+
+  // デスクトップ（#819）: スマホで保存されたカスタムグラフの定義（App が localStorage に写したもの）を読み直す
+  useEffect(() => {
+    if (!isTauri()) return
+    const onChanged = () => setCustomCharts(loadCustomCharts())
+    window.addEventListener(CUSTOM_CHARTS_CHANGED_EVENT, onChanged)
+    return () => window.removeEventListener(CUSTOM_CHARTS_CHANGED_EVENT, onChanged)
   }, [])
 
   // スマホ Web 版（#800）: 殻の読み直しで、データとカスタムグラフの定義（PC から写したもの）を読み直す

@@ -21,7 +21,7 @@ pub const SESSION_COOKIE: &str = "splabo_session";
 
 /// 中継してよいコマンド（設計 #784 §4）。これ以外は 404。
 ///
-/// 載せないもの: ログイン・認証、取得系（`fetch_*`。取り直しは `/update`）、設定の書き込み、
+/// 載せないもの: ログイン・認証、取得系（`fetch_*`。取り直しは `/update`）、設定の書き込み（カスタムグラフは除く・#819）、
 /// AI 分析（API キーを扱う）、stat.ink、データ削除、コンパニオンの操作、ファイル保存、環境データの取り込み。
 pub const ALLOWED_COMMANDS: &[&str] = &[
     // 読み取り
@@ -44,6 +44,10 @@ pub const ALLOWED_COMMANDS: &[&str] = &[
     // 書き込み（データの正本が PC の 1 つだけなので、スマホから編集しても競合しない）
     "save_coordinate",
     "delete_saved_coordinate",
+    // ダッシュボードのカスタムグラフ（#819）。1 つずつの操作なので、PC と同時に別のグラフを触っても消えない
+    "custom_chart_save",
+    "custom_chart_delete",
+    "custom_charts_reorder",
 ];
 
 /// スマホにも渡す PC の表示設定（`settings.json` のキー・#789）。
@@ -192,6 +196,16 @@ struct IdArgs {
     id: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct ChartArgs {
+    chart: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct IdsArgs {
+    ids: Vec<String>,
+}
+
 /// 引数 JSON を読む。本文が空・`null` のときは `{}` とみなす（引数の無いコマンド用）。
 pub fn parse_args<T: DeserializeOwned>(args: Value) -> Result<T, ApiError> {
     let args = if args.is_null() { Value::Object(Default::default()) } else { args };
@@ -279,6 +293,18 @@ pub fn dispatch(app: &AppHandle, cmd: &str, args: Value) -> Result<Value, ApiErr
         "delete_saved_coordinate" => {
             let a: IdArgs = parse_args(args)?;
             to_json(crate::saved_coordinates::delete_saved_coordinate(app.clone(), a.id))
+        }
+        "custom_chart_save" => {
+            let a: ChartArgs = parse_args(args)?;
+            to_json(crate::custom_charts::apply(app, crate::custom_charts::ChartOp::Upsert(a.chart)))
+        }
+        "custom_chart_delete" => {
+            let a: IdArgs = parse_args(args)?;
+            to_json(crate::custom_charts::apply(app, crate::custom_charts::ChartOp::Delete(a.id)))
+        }
+        "custom_charts_reorder" => {
+            let a: IdsArgs = parse_args(args)?;
+            to_json(crate::custom_charts::apply(app, crate::custom_charts::ChartOp::Reorder(a.ids)))
         }
         // is_allowed を通ったのにここに来るのは、許可リストと分岐の書き漏れ。
         _ => Err(ApiError::NotFound),
@@ -426,6 +452,18 @@ mod tests {
         assert!(!session_matches(None, "tok"));
         // トークンが空のときは何とも一致させない。
         assert!(!session_matches(Some("splabo_session="), ""));
+    }
+
+    #[test]
+    fn parses_custom_chart_args() {
+        let a: ChartArgs = parse_args(json!({"chart": {"id": "x", "shape": "bar"}})).unwrap();
+        assert_eq!(a.chart["id"], "x");
+        let a: IdsArgs = parse_args(json!({"ids": ["b", "a"]})).unwrap();
+        assert_eq!(a.ids, ["b", "a"]);
+        assert!(parse_args::<ChartArgs>(json!({})).is_err());
+        assert!(is_allowed("custom_chart_save"));
+        assert!(is_allowed("custom_chart_delete"));
+        assert!(is_allowed("custom_charts_reorder"));
     }
 
     #[test]

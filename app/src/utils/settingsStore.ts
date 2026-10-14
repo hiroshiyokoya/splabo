@@ -140,6 +140,15 @@ export async function mirrorToStore(): Promise<void> {
 }
 
 /**
+ * PC 側（スマホからの保存・#819）が store に書いた値を、localStorage へ写す。
+ * store とそろっているので、ミラー時刻も store の時刻にそろえる（次の起動で取り込み直さない）。
+ */
+export function applyStoreWrite(key: string, raw: string, mirroredAt: number): void {
+  localStorage.setItem(key, raw)
+  localStorage.setItem(LS_MIRRORED_AT_KEY, String(mirroredAt))
+}
+
+/**
  * 起動時に store が localStorage より新しければ、store の値を localStorage へ書き戻す。
  * 識別子変更（D）後は localStorage が空になるため、migration でコピーされた
  * `settings.json` からこの経路で設定が復元される。
