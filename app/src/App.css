@@ -262,7 +262,7 @@ body {
 
 .sidebar-last-fetched {
   /* sidebar-fetch-btn が margin-top: auto を取るので、こちらの auto は不要に */
-  padding: 4px 16px 4px;
+  padding: 4px 20px 4px;           /* 左右は取得ボタン（.sidebar-fetch-btn の margin）とそろえる */
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.4;
