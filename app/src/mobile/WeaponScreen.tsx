@@ -4,6 +4,7 @@ import { call, MOBILE_REFRESH_EVENT } from '../utils/backend'
 import { loadWeaponImageMap, loadSubSpImageMaps } from '../utils/weaponKitImages'
 import { ruleLabel, METRIC_LABELS, fmtOfficialDate } from '../types'
 import type { GroupedStatsRow, WeaponRecord } from '../types'
+import { winRateColor } from '../utils/heatmapColors'
 import {
   groupedStatsDisplayName, weaponCategoryDisplayName, subWeaponDisplayName, specialWeaponDisplayName,
 } from '../i18n/displayName'
@@ -186,7 +187,7 @@ function WeaponDetail({ row, image, filter, onBack }: { row: WeaponRow; image?: 
 
       <section className="m-card">
         <div className="m-tiles">
-          <StatTile label={t('mobile.winRate')} value={pct(row.win_rate)} />
+          <StatTile label={t('mobile.winRate')} value={pct(row.win_rate)} valueColor={row.win_rate != null ? winRateColor(row.win_rate) : undefined} />
           <StatTile label={t('mobile.battles')} value={t('mobile.record', { total: row.total, wins: row.wins, losses: row.total - row.wins - row.draws })} />
           <StatTile label={t('mobile.avgKadShort')} value={`${(row.avg_kill ?? 0).toFixed(1)}(${(row.avg_assist ?? 0).toFixed(1)}) / ${(row.avg_death ?? 0).toFixed(1)}`} />
           <StatTile label={t('books.avgInked')} value={fmtNum(row.avg_inked)} />
@@ -212,7 +213,7 @@ function WeaponDetail({ row, image, filter, onBack }: { row: WeaponRow; image?: 
           {rules.map(g => (
             <div key={g.key} className="m-bar-row">
               <span className="m-bar-row__label">{ruleLabel(g.key)}</span>
-              <span className="m-bar"><span className="m-bar__fill" style={{ width: `${Math.round(g.win_rate * 100)}%` }} /></span>
+              <span className="m-bar"><span className="m-bar__fill" style={{ width: `${Math.round(g.win_rate * 100)}%`, background: winRateColor(g.win_rate) }} /></span>
               <RecordCell g={g} />
             </div>
           ))}
