@@ -107,8 +107,8 @@ function RefreshIcon() {
         </linearGradient>
       </defs>
       {/* 右（3 時）から時計回りに 315° 回る円弧。終わり（右上）に矢じりを付ける */}
-      <path d="M20 12a8 8 0 1 1-2.34-5.66" fill="none" stroke={`url(#${id})`} strokeWidth="3.4" strokeLinecap="round" />
-      <path d="M21.3 3.2v6.1h-6.1z" fill={`url(#${id})`} stroke={`url(#${id})`} strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M20 12a8 8 0 1 1-2.34-5.66" fill="none" stroke={`url(#${id})`} strokeWidth="4.6" strokeLinecap="round" />
+      <path d="M21.2 2.8v7.1h-7.1z" fill={`url(#${id})`} stroke={`url(#${id})`} strokeWidth="1.6" strokeLinejoin="round" />
     </svg>
   )
 }
