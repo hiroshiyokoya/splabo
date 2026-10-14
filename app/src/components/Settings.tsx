@@ -77,14 +77,6 @@ interface CompanionDiagnostics {
 }
 
 /**
- * ペアリング QR に載せるペイロード(viewer と共有する契約)。
- * viewer は hosts を順に /ping して到達可能なホストを採用する。
- */
-function pairingPayload(info: CompanionInfo): string {
-  return JSON.stringify({ v: 1, hosts: info.host_ips, port: info.port, token: info.token })
-}
-
-/**
  * スマホ Web 版の URL(#787・設計 #784 §5)。トークンは `#` 以降に載せる
  * (サーバーに送られず、ログにも残らない。ページが読んで Cookie に交換する)。
  */
@@ -660,24 +652,6 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
           </p>
         </div>
 
-        {/* splabo-viewer(Android アプリ)用。viewer はしばらく置いておくので、QR も残す */}
-        {companionInfo && (
-          <details style={{ marginTop: 16 }}>
-            <summary style={{ cursor: 'pointer', fontSize: 13 }}>{t('settings.companionViewerQr')}</summary>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '8px 0' }}>
-              {t('settings.companionViewerQrHint')}
-            </p>
-            <div style={{ display: 'inline-block', padding: 12, background: '#fff', borderRadius: 8 }}>
-              <QRCodeSVG value={pairingPayload(companionInfo)} size={160} level="M" />
-            </div>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '8px 0 0' }}>
-              {t('settings.companionEndpoint', {
-                hosts: companionInfo.host_ips.length > 0 ? companionInfo.host_ips.join(', ') : t('common.unknownIp'),
-                port: companionInfo.port,
-              })}
-            </p>
-          </details>
-        )}
       </section>
       )}
 
