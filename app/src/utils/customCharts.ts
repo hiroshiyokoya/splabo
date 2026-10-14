@@ -109,6 +109,13 @@ export function loadCustomCharts(): CustomChart[] {
   }
 }
 
+/**
+ * カスタムグラフの定義が外から変わったときに window へ流すイベント（#819）。
+ * デスクトップではスマホからの保存（`custom_charts_changed`）を localStorage に写したあとに流し、
+ * ダッシュボードが読み直す。
+ */
+export const CUSTOM_CHARTS_CHANGED_EVENT = 'splabo:customChartsChanged'
+
 /** localStorage に保存。store（settings.json）へもミラーする（#241）。 */
 export function saveCustomCharts(charts: CustomChart[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(charts))

@@ -24,9 +24,12 @@ import {
   LAST_FETCHED_KEY,
   LAST_WEAPONS_FETCH_KEY as LAST_WEAPONS_FETCH_K,
   lsGet,
+  CUSTOM_CHARTS_KEY,
   mirrorToStore,
   importFromStoreIfNewer,
+  applyStoreWrite,
 } from './utils/settingsStore'
+import { CUSTOM_CHARTS_CHANGED_EVENT } from './utils/customCharts'
 import './App.css'
 
 initAppSettings()
@@ -324,6 +327,17 @@ export default function App() {
     })
     return () => { unlistenPromise.then(fn => fn()) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // スマホでカスタムグラフを保存したら（#819）、PC 側が settings.json に書いた値を localStorage
+  // （デスクトップの正本）へ写し、ダッシュボードに読み直させる。ダッシュボードを開いていなくても
+  // 写しておかないと、次にデスクトップで保存したときに古い並びで上書きしてしまう。
+  useEffect(() => {
+    const unlistenPromise = listen<{ raw: string; mirroredAt: number }>('custom_charts_changed', e => {
+      applyStoreWrite(CUSTOM_CHARTS_KEY, e.payload.raw, e.payload.mirroredAt)
+      window.dispatchEvent(new Event(CUSTOM_CHARTS_CHANGED_EVENT))
+    })
+    return () => { unlistenPromise.then(fn => fn()) }
   }, [])
 
   function saveSettings(s: AppSettings) {

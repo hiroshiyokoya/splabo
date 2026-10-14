@@ -13,6 +13,7 @@ pub mod wording;
 pub mod auth;
 pub mod battle_export;
 pub mod companion;
+pub mod custom_charts;
 pub mod crypto;
 pub mod db;
 pub mod env_import;
