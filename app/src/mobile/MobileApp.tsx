@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { call, BackendUnauthorizedError, BackendUnreachableError, MOBILE_REFRESH_EVENT } from '../utils/backend'
 import { GearSection } from '../gear/GearSection'
@@ -88,6 +88,28 @@ function FullscreenButton() {
           : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
       </svg>
     </button>
+  )
+}
+
+/**
+ * 更新ボタンのアイコン（#821）。太い丸矢印を、ロゴと同じ緑 → 黄 → 橙のグラデーションで塗る。
+ * 外部の画像は使わず、ここで描く（ライセンスの心配がなく、PC から余計なファイルを配らなくてよい）。
+ */
+function RefreshIcon() {
+  const id = useId()
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden>
+      <defs>
+        <linearGradient id={id} x1="3" y1="21" x2="21" y2="3" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#22e83a" />
+          <stop offset="0.55" stopColor="#e8f028" />
+          <stop offset="1" stopColor="#f58a1c" />
+        </linearGradient>
+      </defs>
+      {/* 右（3 時）から時計回りに 315° 回る円弧。終わり（右上）に矢じりを付ける */}
+      <path d="M20 12a8 8 0 1 1-2.34-5.66" fill="none" stroke={`url(#${id})`} strokeWidth="3.4" strokeLinecap="round" />
+      <path d="M21.3 3.2v6.1h-6.1z" fill={`url(#${id})`} stroke={`url(#${id})`} strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
   )
 }
 
@@ -206,7 +228,7 @@ export function MobileApp({ session }: { session: SessionResult }) {
                 aria-label={t('mobile.update')}
                 title={t('mobile.update')}
               >
-                <span className={updating ? 'm-spin' : undefined} aria-hidden>↻</span>
+                <span className={`m-refresh-icon${updating ? ' m-spin' : ''}`}><RefreshIcon /></span>
               </button>
             </>
           )}
