@@ -43,7 +43,7 @@
     "fetch": "Fetch latest data",
     "fetching": "Fetching…",
     "fetchTitle": "Fetch the latest battles and gear from SplatNet 3",
-    "lastFetched": "Last updated: {{time}}",
+    "lastFetched": "Updated {{time}}",
     "neverFetched": "Not fetched yet"
   },
   "battles": {

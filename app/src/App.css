@@ -266,6 +266,10 @@ body {
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.4;
+  /* サイドバー幅（180px）で 1 行に収める。収まらないときは … で切る */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .content {
