@@ -434,6 +434,13 @@ body {
   border-color: var(--border);
   background: var(--surface2);
 }
+/* スマホの上へ・下へで、端のグラフは押せない（#820） */
+.custom-chart-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+  border-color: transparent;
+  background: transparent;
+}
 .custom-chart-card { touch-action: none; }
 
 /* ---------------------------------------------------------------------------
@@ -604,6 +611,13 @@ body {
 .dashboard-add-btn {
   padding: 8px 24px;
   font-size: 13px;
+}
+/* スマホから PC に保存できなかったとき（#820） */
+.dashboard-chart-error {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--lose);
 }
 
 /* ── ChartConfigModal ── */

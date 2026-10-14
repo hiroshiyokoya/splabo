@@ -17,6 +17,8 @@
     "delete": "Delete",
     "sort": "Sort",
     "sortDrag": "Drag to reorder",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
     "speciesCount": "{{count}} kinds",
     "winsCount": "{{count}} wins"
   },
@@ -864,7 +866,9 @@
     "emptyDesc": "Fetch the latest battles and gear from SplatNet 3 to see win-rate charts and breakdowns by weapon and stage.",
     "emptyStep1": "First, sign in with a Nintendo Account in {{settings}}",
     "emptyStep2": "Tap {{fetch}}",
-    "addChart": "+ Add chart"
+    "addChart": "+ Add chart",
+    "deleteChartConfirm": "Delete this chart? It is also removed from the PC dashboard.",
+    "chartSaveFailed": "Could not save to the PC: {{detail}}"
   },
   "books": {
     "panel": "Panel",

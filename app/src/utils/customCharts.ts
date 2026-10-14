@@ -1,4 +1,5 @@
 import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey } from '../types'
+import { call } from './backend'
 
 // splabo v0.8 統合(#241): キーは `splabo:shellCustomCharts`。
 // 読み出しは新キー優先・旧 `chartoon:customCharts` フォールバック、書き込みは常に新キー。
@@ -120,6 +121,25 @@ export const CUSTOM_CHARTS_CHANGED_EVENT = 'splabo:customChartsChanged'
 export function saveCustomCharts(charts: CustomChart[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(charts))
   void import('./settingsStore').then(m => m.mirrorToStore())
+}
+
+/** スマホから PC へのグラフの操作（#820。PC 側は `custom_charts.rs`） */
+export type RemoteChartOp =
+  | { kind: 'save'; chart: CustomChart }
+  | { kind: 'delete'; id: string }
+  | { kind: 'reorder'; ids: string[] }
+
+/**
+ * スマホ Web 版: グラフの操作を PC に送って保存させる（#820）。
+ * PC が返した新しい並びを、このブラウザの写し（localStorage）にも入れ、正規化して返す。
+ */
+export async function applyRemoteChartOp(op: RemoteChartOp): Promise<CustomChart[]> {
+  const charts =
+    op.kind === 'save'   ? await call<unknown[]>('custom_chart_save', { chart: op.chart }) :
+    op.kind === 'delete' ? await call<unknown[]>('custom_chart_delete', { id: op.id }) :
+                           await call<unknown[]>('custom_charts_reorder', { ids: op.ids })
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(charts))
+  return loadCustomCharts()
 }
 
 /** ランダムな ID を生成。crypto.randomUUID が無い環境向けにフォールバックも用意。 */

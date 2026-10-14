@@ -163,7 +163,7 @@ export function BattleScreen({ filter, onFilterChange }: { filter: MobileFilter;
         // デスクトップのダッシュボードのグラフ（固定の 4 つとカスタムグラフ）。見るだけ。
         // 数字のカードは上の 6 つと同じ中身なので出さない
         <div className="m-dashboard">
-          <Dashboard filters={dashboardFilters} readOnly hideStats />
+          <Dashboard filters={dashboardFilters} readOnly hideStats mobileEdit />
         </div>
       )}
 

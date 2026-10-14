@@ -26,7 +26,8 @@ import { CustomChartCard } from './CustomChartCard'
 import { ChartExpandButton } from './ChartExpand'
 import type { ChartExpandProps } from './ChartExpand'
 import { ChartConfigModal } from './ChartConfigModal'
-import { loadCustomCharts, saveCustomCharts, generateChartId, CUSTOM_CHARTS_CHANGED_EVENT } from '../utils/customCharts'
+import { loadCustomCharts, saveCustomCharts, generateChartId, applyRemoteChartOp, CUSTOM_CHARTS_CHANGED_EVENT } from '../utils/customCharts'
+import type { RemoteChartOp } from '../utils/customCharts'
 import type { WeaponMeta } from '../utils/scatterCategoryColors'
 import { loadSubSpImageMaps, loadStageImageMap } from '../utils/weaponKitImages'
 import { PanelExportButton, PanelExportCaption, PanelExportLogo } from './PanelExport'
@@ -84,9 +85,14 @@ interface Props {
   readOnly?: boolean
   /** スマホ Web 版: 上の数字のカードを出さない（スマホ側に同じ中身のサマリがあるため）。 */
   hideStats?: boolean
+  /**
+   * スマホ Web 版（#820）: readOnly のまま、カスタムグラフの追加・編集・削除・並べ替え（上へ・下へ）を出す。
+   * 保存は PC に送る（`applyRemoteChartOp`）。
+   */
+  mobileEdit?: boolean
 }
 
-export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching, readOnly = false, hideStats = false }: Props) {
+export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching, readOnly = false, hideStats = false, mobileEdit = false }: Props) {
   const { t, i18n } = useTranslation()
   const [summary, setSummary] = useState<Summary | null>(null)
   const [stats, setStats]     = useState<BattleStats | null>(null)
@@ -360,6 +366,18 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching, r
   }
 
   // ---- カスタムグラフ操作 ----
+  // スマホ（mobileEdit・#820）は PC に 1 つずつ送って保存させ、PC が返した並びを出す
+  const [chartError, setChartError] = useState<string | null>(null)
+  async function remote(op: RemoteChartOp): Promise<boolean> {
+    try {
+      setCustomCharts(await applyRemoteChartOp(op))
+      setChartError(null)
+      return true
+    } catch (e) {
+      setChartError(t('dashboard.chartSaveFailed', { detail: String(e) }))
+      return false
+    }
+  }
   function persist(charts: CustomChart[]) {
     setCustomCharts(charts)
     saveCustomCharts(charts)
@@ -372,17 +390,32 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching, r
     if (c) setModalState({ chart: c })
   }
   function handleDelete(id: string) {
+    if (mobileEdit) {
+      // 指で押し間違えやすく、PC からも消えるので確かめる
+      if (window.confirm(t('dashboard.deleteChartConfirm'))) void remote({ kind: 'delete', id })
+      return
+    }
     persist(customCharts.filter(c => c.id !== id))
   }
-  function handleSaveFromModal(saved: CustomChart) {
-    if (saved.id) {
-      // 編集モード：同じ ID で置換
-      persist(customCharts.map(c => c.id === saved.id ? saved : c))
-    } else {
-      // 新規モード：ID を生成して末尾に追加
-      persist([...customCharts, { ...saved, id: generateChartId() }])
+  async function handleSaveFromModal(saved: CustomChart) {
+    // 新規は ID を作って末尾に足す。編集は同じ ID で置き換える
+    const chart = saved.id ? saved : { ...saved, id: generateChartId() }
+    if (mobileEdit) {
+      // 失敗したら設定画面を閉じない（入れた内容をなくさない）
+      if (await remote({ kind: 'save', chart })) setModalState(null)
+      return
     }
+    persist(saved.id
+      ? customCharts.map(c => c.id === saved.id ? saved : c)
+      : [...customCharts, chart])
     setModalState(null)
+  }
+  /** スマホの上へ・下へ（ドラッグの代わり・#820） */
+  function handleMove(id: string, delta: -1 | 1) {
+    const i = customCharts.findIndex(c => c.id === id)
+    const j = i + delta
+    if (i < 0 || j < 0 || j >= customCharts.length) return
+    void remote({ kind: 'reorder', ids: arrayMove(customCharts, i, j).map(c => c.id) })
   }
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
@@ -451,7 +484,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching, r
             {/* #86 PR B: カスタムグラフ。ドラッグで並び替え可能、⚙で編集・✕で削除 */}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={customCharts.map(c => c.id)} strategy={rectSortingStrategy}>
-                {customCharts.map(c => {
+                {customCharts.map((c, idx) => {
                   // 2D キャッシュキーは fetch 時と同じ規則で再構築。
                   let data2d: GroupedStatsRow2D[] | undefined
                   if (c.shape === 'heatmap' && (c.groupBy2 || c.xNumericMetric || c.yNumericMetric)) {
@@ -474,6 +507,10 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching, r
                       onEdit={() => handleEdit(c.id)}
                       onDelete={() => handleDelete(c.id)}
                       readOnly={readOnly}
+                      mobileEdit={mobileEdit ? {
+                        onMoveUp: idx > 0 ? () => handleMove(c.id, -1) : undefined,
+                        onMoveDown: idx < customCharts.length - 1 ? () => handleMove(c.id, 1) : undefined,
+                      } : undefined}
                       {...expandProps(c.id)}
                       weaponImages={weaponImages}
                       weaponMeta={weaponMeta}
@@ -491,7 +528,8 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching, r
 
           </div>
 
-          {!readOnly && (
+          {chartError && <p className="dashboard-chart-error" role="alert">{chartError}</p>}
+          {(!readOnly || mobileEdit) && (
             <div className="dashboard-add-row">
               <button className="btn-secondary dashboard-add-btn" onClick={handleAdd}>
                 {t('dashboard.addChart')}
