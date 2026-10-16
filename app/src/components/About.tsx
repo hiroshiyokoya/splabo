@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getVersion } from '@tauri-apps/api/app'
-import { displayVersion } from '../utils/version'
+import { displayVersion, sourceUrl } from '../utils/version'
 import { openUrl } from '@tauri-apps/plugin-opener'
 
 const FEEDBACK_FORM_URL =
@@ -11,15 +11,53 @@ interface Props {
   onClose: () => void
 }
 
+/**
+ * 同梱ソフトウェアのライセンス（#534）。`app/public/third-party-licenses.txt` を出す
+ * （`tools/licenses/generate.mjs` が作る。リリースはビルドのたびに作り直す）。
+ */
+function ThirdPartyLicenses({ onClose }: Props) {
+  const { t } = useTranslation()
+  const [text, setText] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/third-party-licenses.txt')
+      .then(r => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then(setText)
+      .catch(e => setError(String(e)))
+  }, [])
+
+  return (
+    <div className="modal-overlay" onClick={e => { e.stopPropagation(); onClose() }}>
+      <div className="modal-panel licenses-panel" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-title">{t('about.thirdParty')}</div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {error && <p className="licenses-error">{t('about.thirdPartyLoadFailed', { detail: error })}</p>}
+          {text !== null && <pre className="licenses-text">{text}</pre>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function About({ onClose }: Props) {
   const { t } = useTranslation()
   const [version, setVersion] = useState('')
+  const [showLicenses, setShowLicenses] = useState(false)
 
   useEffect(() => {
     getVersion().then(setVersion).catch(() => setVersion(''))
   }, [])
 
-  const handleKey = useCallback((e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }, [onClose])
+  // ライセンスを開いているときの Esc は、ライセンスだけ閉じる
+  const handleKey = useCallback((e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return
+    if (showLicenses) setShowLicenses(false)
+    else onClose()
+  }, [onClose, showLicenses])
   useEffect(() => {
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
@@ -61,11 +99,31 @@ export function About({ onClose }: Props) {
               {t('about.feedback')}
             </a>
           </div>
+          <div className="about-license">
+            <p>{t('about.license')}</p>
+            <div className="about-links">
+              <a
+                className="about-link"
+                href={sourceUrl(version)}
+                onClick={e => { e.preventDefault(); openUrl(sourceUrl(version)).catch(console.error) }}
+              >
+                {t('about.source')}
+              </a>
+              <a
+                className="about-link"
+                href="#"
+                onClick={e => { e.preventDefault(); setShowLicenses(true) }}
+              >
+                {t('about.thirdParty')}
+              </a>
+            </div>
+          </div>
           <div className="about-notice">
             {t('about.notice')}
           </div>
         </div>
       </div>
+      {showLicenses && <ThirdPartyLicenses onClose={() => setShowLicenses(false)} />}
     </div>
   )
 }

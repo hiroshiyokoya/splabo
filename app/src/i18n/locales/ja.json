@@ -140,7 +140,11 @@
     "title": "splabo について",
     "desc": "Splatoon 3 のバトルデータを記録・分析するデスクトップアプリです。",
     "feedback": "フィードバック",
-    "notice": "本アプリは非公式ツールです。Nintendo / スプラトゥーンとは無関係です。"
+    "notice": "本アプリは非公式ツールです。Nintendo / スプラトゥーンとは無関係です。",
+    "license": "SpLabo は MIT License です。同梱の nxapi サイドカー（nxapi の改変版を含む）は GNU AGPL v3.0 以降です。",
+    "source": "ソースコード（この版）",
+    "thirdParty": "同梱ソフトウェアのライセンス",
+    "thirdPartyLoadFailed": "読み込めませんでした: {{detail}}"
   },
   "toast": {
     "region": "通知"

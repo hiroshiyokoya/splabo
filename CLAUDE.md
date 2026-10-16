@@ -36,6 +36,8 @@ develop への push / PR で走る。`dorny/paths-filter` で `app/**` / `tools/
 | `splabo-vX.Y.Z` | `.github/workflows/splabo-release.yml` |
 
 - 旧 per-app タグ（`chartoon-v*` / `geartoon-v*`）および monorepo 化以前の `vX.Y.Z` は凍結扱い。トリガーには含めない。
+- **ライセンス（#534）**: 本体は MIT、`tools/nxapi-wrapper`（nxapi の改変版を含むサイドカー）は AGPL-3.0-or-later。配布物に入る部品のライセンス一覧 `app/public/third-party-licenses.txt` は、リリース WF が各 OS のビルドの前に `tools/licenses/generate.mjs` で作り直す。リポジトリの版は手元（Windows）で作ったもので、依存を大きく変えたときは手元でも作り直す（サイドカーのビルド済み `dist/bundle.cjs` が要る）。
+- **古いリリースを消してもタグは消さない**。AGPL のサイドカーの「対応するソース」を、各版のタグで入手できるようにしておくため。
 - CHANGELOG は ルート `CHANGELOG.md`。
 
 ---

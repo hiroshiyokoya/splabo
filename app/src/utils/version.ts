@@ -29,3 +29,14 @@ export function displayVersion(version: string): string {
   if (!isDevVersion(version) || !__GIT_SHA__) return version
   return `${version} (${__GIT_SHA__})`
 }
+
+/**
+ * この版のソースコードの場所（#534・AGPL のサイドカーのソースの案内）。
+ *
+ * リリースはそのバージョンのタグ、開発ビルドはコミット（取れなければ develop）を指す。
+ */
+export function sourceUrl(version: string): string {
+  const base = 'https://github.com/hiroshiyokoya/splabo/tree/'
+  if (version && !isDevVersion(version)) return `${base}splabo-v${version}`
+  return `${base}${__GIT_SHA__ || 'develop'}`
+}

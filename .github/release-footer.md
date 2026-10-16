@@ -31,6 +31,16 @@ xattr -cr /Applications/splabo.app
 
 ---
 
+## ライセンスとソースコード
+
+SpLabo は MIT License です。同梱の nxapi サイドカー（nxapi の改変版を含む）は GNU Affero General Public License v3.0 以降です。
+
+- この版のソースコード（サイドカーを含む）: https://github.com/hiroshiyokoya/splabo/tree/splabo-vVERSION
+- サイドカーの改変の内容: [tools/nxapi-wrapper/README.md](https://github.com/hiroshiyokoya/splabo/blob/splabo-vVERSION/tools/nxapi-wrapper/README.md)
+- 同梱ソフトウェアのライセンス: アプリの「このアプリについて」→「同梱ソフトウェアのライセンス」
+
+---
+
 📄 [README](https://github.com/hiroshiyokoya/splabo/blob/splabo-vVERSION/README.md)
 
 <br>

@@ -21,7 +21,7 @@ splabo/
 ├─ app/          # Tauri app (Vite + React + recharts + Rust/SQLite)
 │  ├─ src/       #   frontend (battle components/ + gear gear/ with .gear-root scope)
 │  └─ src-tauri/ #   Rust (auth / statink / gear.rs / gear_crypto.rs / migration.rs / companion.rs / web_api.rs + SQLite)
-├─ tools/        # nxapi sidecar build (nxapi-wrapper)
+├─ tools/        # nxapi sidecar build (nxapi-wrapper, AGPL-3.0-or-later) and license list generator (licenses)
 ├─ docs/         # GitHub Pages (splaboon.pages.dev)
 ├─ .github/      # CI (ci.yml) + release (splabo-release.yml)
 ├─ package.json  # npm workspaces (app)
@@ -283,10 +283,13 @@ Used while implementing Nintendo Switch Online auth, SplatNet 3 access, and stat
 
 ## Disclaimer
 
-This software is provided under the MIT License with no warranty. See [`LICENSE`](LICENSE).
+This software is provided with no warranty. See each license under "License" below.
 
 This project is not affiliated with or endorsed by Nintendo. "Splatoon" is a trademark of Nintendo Co., Ltd.
 
 ## License
 
-[MIT](LICENSE)
+- **SpLabo** (the source code in this repository, except `tools/nxapi-wrapper`) is licensed under the [MIT License](LICENSE).
+- **The nxapi sidecar** (`tools/nxapi-wrapper`, shipped in the installers as `nxapi-sidecar`) is licensed under the [GNU Affero General Public License v3.0 or later](tools/nxapi-wrapper/LICENSE), because it includes a **modified** version of [nxapi](https://github.com/samuelthomas2774/nxapi) (AGPL-3.0-or-later). The modifications and the corresponding source are described in [`tools/nxapi-wrapper/README.md`](tools/nxapi-wrapper/README.md). The source of each release is available at its version tag (`splabo-vX.Y.Z`).
+- SpLabo and the sidecar are separate programs that only talk through command-line arguments and standard input/output.
+- Licenses of the other components in the distribution (Rust crates, the UI's JavaScript, the sidecar's dependencies, and the Node.js runtime) are shown in the app under About → Third-party licenses (`app/public/third-party-licenses.txt`, regenerated for every release build by [`tools/licenses/generate.mjs`](tools/licenses/generate.mjs)).
