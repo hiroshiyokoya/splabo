@@ -118,6 +118,21 @@ jobs:
             fs.writeFileSync(path, updated);
             console.log('Cargo.toml updated');
           "
+          # 書き換えが空振りしていないか確かめる（#537）。空振りすると 0.0.0-dev のまま
+          # 出荷され、開発ビルド扱い（stat.ink 送信が無効など）のアプリが配られてしまう。
+          node -e "
+            const fs = require('fs');
+            const want = '${NUMERIC_VERSION}';
+            const fail = msg => { console.error('::error::' + msg); process.exit(1); };
+            if (!/^\d+\.\d+\.\d+$/.test(want)) fail('タグから数値の版が取れません: ' + want);
+            const conf = JSON.parse(fs.readFileSync('app/src-tauri/tauri.conf.json', 'utf8'));
+            if (conf.version !== want) fail('tauri.conf.json の version が ' + conf.version + '（期待 ' + want + '）');
+            const cargo = fs.readFileSync('app/src-tauri/Cargo.toml', 'utf8');
+            const pkg = cargo.split(/^\[/m).find(s => s.startsWith('package]'));
+            const got = pkg && (pkg.match(/^version = \"([^\"]*)\"/m) || [])[1];
+            if (got !== want) fail('Cargo.toml の [package] version が ' + got + '（期待 ' + want + '）');
+            console.log('version check ok:', want);
+          "
 
       # Linux: Tauri が必要とするシステムライブラリ
       - name: Install Linux dependencies
