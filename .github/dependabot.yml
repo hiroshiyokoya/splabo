@@ -1,0 +1,22 @@
+# Dependabot の設定（#842）。
+#
+# セキュリティ更新（脆弱性の修正）は今までどおり PR にしてもらう。
+# 通常の版の更新の PR は出さない（open-pull-requests-limit: 0。この上限はセキュリティ更新には効かない）。
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /tools/nxapi-wrapper
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    ignore:
+      # nxapi は手で上げる（#769 と同じ）。作者が更新を next の開発版（1.6.1-next.N）で出していて、
+      # semver ではそれが正式版 1.6.1（2023-03-01）より前と扱われる。Dependabot は「1.6.1 へ上げる」
+      # （実際は古い版へ戻す）PR を出してくるので対象外にする（#838）。
+      - dependency-name: nxapi
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
