@@ -25,7 +25,7 @@
 - [README](https://github.com/hiroshiyokoya/splabo/blob/develop/README.md): 機能・セットアップ・技術メモ・プライバシーポリシー
 - [紹介・ダウンロード](https://splaboon.pages.dev/): 紹介ページ（Windows / macOS）。[English](https://splaboon.pages.dev/en/)
 - [CHANGELOG](https://github.com/hiroshiyokoya/splabo/blob/develop/CHANGELOG.md): バージョン履歴
-- [LICENSE](https://github.com/hiroshiyokoya/splabo/blob/develop/LICENSE): MIT License
+- [LICENSE](https://github.com/hiroshiyokoya/splabo/blob/develop/LICENSE): MIT License（本体）。同梱の nxapi サイドカー（`tools/nxapi-wrapper`・nxapi の改変版を含む）は [AGPL-3.0-or-later](https://github.com/hiroshiyokoya/splabo/blob/develop/tools/nxapi-wrapper/LICENSE)
 
 ## Repository
 

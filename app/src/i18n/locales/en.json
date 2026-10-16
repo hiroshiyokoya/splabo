@@ -140,7 +140,11 @@
     "title": "About splabo",
     "desc": "A desktop app for recording and analyzing Splatoon 3 battles.",
     "feedback": "Feedback",
-    "notice": "This is an unofficial tool. Not affiliated with Nintendo or Splatoon."
+    "notice": "This is an unofficial tool. Not affiliated with Nintendo or Splatoon.",
+    "license": "SpLabo is licensed under the MIT License. The bundled nxapi sidecar (including a modified nxapi) is licensed under the GNU AGPL v3.0 or later.",
+    "source": "Source code (this version)",
+    "thirdParty": "Third-party licenses",
+    "thirdPartyLoadFailed": "Could not load: {{detail}}"
   },
   "toast": {
     "region": "Notifications"

@@ -1,7 +1,8 @@
 {
   "name": "nxapi-wrapper",
   "version": "0.1.0",
-  "description": "nxapi sidecar wrapper for chartoon Tauri app",
+  "description": "nxapi sidecar wrapper for the splabo Tauri app (bundles a modified nxapi)",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "bundle": "node build.mjs",

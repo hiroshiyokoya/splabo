@@ -21,7 +21,7 @@ splabo/
 ├─ app/          # Tauri アプリ本体（Vite + React + recharts + Rust/SQLite）
 │  ├─ src/       #   フロント（戦績 components/ ＋ ギア gear/・.gear-root スコープ）
 │  └─ src-tauri/ #   Rust（auth / statink / gear.rs / gear_crypto.rs / migration.rs / companion.rs / web_api.rs + SQLite）
-├─ tools/        # nxapi サイドカーのビルド環境（nxapi-wrapper）
+├─ tools/        # nxapi サイドカーのビルド環境（nxapi-wrapper・AGPL-3.0-or-later）とライセンス一覧の生成（licenses）
 ├─ docs/         # GitHub Pages（splaboon.pages.dev）
 ├─ .github/      # CI（ci.yml）+ リリース（splabo-release.yml）
 ├─ package.json  # npm workspaces（app）
@@ -283,10 +283,13 @@ Nintendo Switch Online 認証・SplatNet 3 API アクセス・stat.ink 連携の
 
 ## 免責事項
 
-本ソフトウェアは MIT License の下で無保証で提供されます。詳細は [`LICENSE`](LICENSE) を参照してください。
+本ソフトウェアは無保証で提供されます。詳細は下の「ライセンス」の各ライセンスを参照してください。
 
 This project is not affiliated with or endorsed by Nintendo. "Splatoon" is a trademark of Nintendo Co., Ltd.
 
-## License
+## ライセンス
 
-[MIT](LICENSE)
+- **SpLabo 本体**（このリポジトリのソースコード。`tools/nxapi-wrapper` を除く）は [MIT License](LICENSE) です。
+- **nxapi サイドカー**（`tools/nxapi-wrapper`。インストーラーに同梱する `nxapi-sidecar`）は [GNU Affero General Public License v3.0 or later](tools/nxapi-wrapper/LICENSE) です。[nxapi](https://github.com/samuelthomas2774/nxapi)（AGPL-3.0-or-later）の**改変版**を含むためです。改変の内容と対応するソースは [`tools/nxapi-wrapper/README.md`](tools/nxapi-wrapper/README.md) にあります。各リリースのソースは、そのバージョンのタグ（`splabo-vX.Y.Z`）で入手できます。
+- 本体はサイドカーと、コマンドライン引数と標準入出力だけでやり取りする別のプログラムです。
+- 配布物に入るほかの部品（Rust の crate・画面の JavaScript・サイドカーの依存・Node.js ランタイム）のライセンスは、アプリの「このアプリについて」→「同梱ソフトウェアのライセンス」で見られます（`app/public/third-party-licenses.txt`。リリースのビルドのたびに [`tools/licenses/generate.mjs`](tools/licenses/generate.mjs) が作り直します）。

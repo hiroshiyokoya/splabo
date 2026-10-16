@@ -156,6 +156,17 @@ jobs:
           rm -f package-lock.json
           npm install --no-audit --no-fund
 
+      # 配布物に入る部品のライセンス一覧（app/public/third-party-licenses.txt）を、
+      # このプラットフォームの依存で作り直す（#534）。crate のライセンスファイルを読むので先に取ってくる。
+      # サイドカー（dist/bundle.cjs）とルートの node_modules は上の手順で用意済み。
+      - name: Generate third-party licenses
+        shell: bash
+        run: |
+          TARGET_ARGS=""
+          if [ -n "${{ matrix.rust-target }}" ]; then TARGET_ARGS="--target ${{ matrix.rust-target }}"; fi
+          cargo fetch --manifest-path Cargo.toml $TARGET_ARGS
+          node tools/licenses/generate.mjs $TARGET_ARGS
+
       # Tauri ビルド & リリースへアップロード
       - name: Build and upload
         uses: tauri-apps/tauri-action@v0

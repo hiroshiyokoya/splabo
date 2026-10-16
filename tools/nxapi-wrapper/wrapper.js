@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-or-later（nxapi とまとめて配るため。README.md 参照）
 /**
  * nxapi-wrapper — chartoon Tauri サイドカー
  *
