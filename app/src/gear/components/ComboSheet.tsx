@@ -7,6 +7,7 @@ import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStac
 import { skillDisplayName } from '../utils/skillDisplayName'
 import { gearItemDisplayName, gearBrandDisplayName } from '../utils/gearItemDisplayName'
 import type { FullSlots } from '../utils/savedCoordinates'
+import { GearIcon } from './GearIcon'
 
 export type ComboSlots = {
   head:     GearItem | null
@@ -838,11 +839,11 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                       {isBest && <span className="combo-result-row__badge">{t('gear.combo.best')}</span>}
                       {isNear && <span className="combo-result-row__badge combo-result-row__badge--near">{t('gear.combo.near')}</span>}
                       <div className="combo-result-row__gears">
-                        <img src={combo.head.image}     alt={gearItemDisplayName(combo.head)}     title={gearItemDisplayName(combo.head)} />
+                        <GearIcon gear={combo.head} />
                         <span className="combo-result-row__plus">+</span>
-                        <img src={combo.clothing.image} alt={gearItemDisplayName(combo.clothing)} title={gearItemDisplayName(combo.clothing)} />
+                        <GearIcon gear={combo.clothing} />
                         <span className="combo-result-row__plus">+</span>
-                        <img src={combo.shoes.image}    alt={gearItemDisplayName(combo.shoes)}    title={gearItemDisplayName(combo.shoes)} />
+                        <GearIcon gear={combo.shoes} />
                       </div>
                       <div className="combo-result-row__ap">
                         {Object.entries(combo.allApBySkill)

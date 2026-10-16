@@ -1783,10 +1783,9 @@
     flex-shrink: 0;
   }
 
-  .combo-result-row__gears img {
+  .combo-result-row__gears .gear-icon {
     width: 28px;
     height: 28px;
-    object-fit: contain;
     border-radius: 4px;
     background: #000;
   }
@@ -2468,10 +2467,36 @@
     border: 1.5px solid transparent;
   }
 
-  .coord-card__gear img {
+  .coord-card__gear .gear-icon {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ── ギアのアイコン＋ブランドのアイコン（#833・GearIcon.tsx）。大きさは親が決める ── */
+  .gear-icon {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  .gear-icon__img {
     width: 100%;
     height: 100%;
     object-fit: contain;
+    display: block;
+  }
+
+  /* ブランドは右下に、ギアの 3 分の 1 くらいの大きさで重ねる（白地はスロットのブランドのロゴと同じ） */
+  .gear-icon__brand {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 34%;
+    height: 34%;
+    object-fit: contain;
+    background: #fff;
+    border-radius: 22%;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
   }
 
   .coord-card__gear--changed {
