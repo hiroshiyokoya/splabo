@@ -6,6 +6,7 @@ import { GEAR_CATEGORIES, resolveCoordinate, sortApEntries, totalApBySkill } fro
 import { isMainOnly } from '../constants/gearPowerMeta'
 import { skillDisplayName } from '../utils/skillDisplayName'
 import { gearItemDisplayName } from '../utils/gearItemDisplayName'
+import { GearIcon } from './GearIcon'
 
 /** 削除ボタンの「もう一度押すと削除」を保つ時間(ms) */
 const DELETE_CONFIRM_MS = 3000
@@ -88,7 +89,7 @@ export function SavedCoordinateList({ data, coordinates, onApply, onEdit, onDele
                   const name = gearItemDisplayName(gear)
                   return (
                     <div key={cat} className={`coord-card__gear${changed ? ' coord-card__gear--changed' : ''}`} title={name}>
-                      <img src={gear.image} alt={name} />
+                      <GearIcon gear={gear} />
                     </div>
                   )
                 })}
