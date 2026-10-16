@@ -1788,6 +1788,7 @@
     height: 28px;
     border-radius: 4px;
     background: #000;
+    --gear-brand-size: 8px;
   }
 
   .combo-result-row__plus {
@@ -2470,6 +2471,7 @@
   .coord-card__gear .gear-icon {
     width: 100%;
     height: 100%;
+    --gear-brand-size: 14px;
   }
 
   /* ── ギアのアイコン＋ブランドのアイコン（#833・GearIcon.tsx）。大きさは親が決める ── */
@@ -2486,13 +2488,14 @@
     display: block;
   }
 
-  /* ブランドは右下に、ギアの 3 分の 1 くらいの大きさで重ねる（白地はスロットのブランドのロゴと同じ） */
+  /* ブランドは右下に重ねる（白地はスロットのブランドのロゴと同じ）。
+     大きさは使う場所ごとに `--gear-brand-size` で決める（保存コーデ 14px・候補 8px） */
   .gear-icon__brand {
     position: absolute;
     right: 0;
     bottom: 0;
-    width: 34%;
-    height: 34%;
+    width: var(--gear-brand-size, 14px);
+    height: var(--gear-brand-size, 14px);
     object-fit: contain;
     background: #fff;
     border-radius: 22%;
