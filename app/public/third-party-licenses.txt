@@ -296,9 +296,9 @@ Rust の部品（SpLabo 本体に組み込み）
   rsa 0.9.10 — MIT OR Apache-2.0
   rust_decimal 1.42.1 — MIT
   rustc-hash 2.1.3 — Apache-2.0 OR MIT
-  rustls 0.23.41 — Apache-2.0 OR ISC OR MIT
+  rustls 0.23.46 — Apache-2.0 OR ISC OR MIT
   rustls-pki-types 1.15.0 — MIT OR Apache-2.0
-  rustls-webpki 0.103.13 — ISC
+  rustls-webpki 0.103.15 — ISC
   ryu 1.0.23 — Apache-2.0 OR BSL-1.0
   same-file 1.0.6 — Unlicense/MIT
   schemars 0.8.22 — MIT
@@ -16877,7 +16877,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-適用: hyper-rustls 0.27.9, rustls 0.23.41
+適用: hyper-rustls 0.27.9, rustls 0.23.46
 ------------------------------------------------------------------------------
 
 [LICENSE-APACHE]
@@ -26882,7 +26882,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-適用: rustls-webpki 0.103.13
+適用: rustls-webpki 0.103.15
 ------------------------------------------------------------------------------
 
 Except as otherwise noted, this project is licensed under the following
