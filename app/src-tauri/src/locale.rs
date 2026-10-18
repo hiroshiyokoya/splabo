@@ -41,7 +41,7 @@ pub fn resolve_locale(pref: &str) -> AppLocale {
 pub fn detect_os_locale() -> AppLocale {
     #[cfg(target_os = "windows")]
     {
-        return detect_os_locale_windows();
+        detect_os_locale_windows()
     }
     #[cfg(not(target_os = "windows"))]
     {

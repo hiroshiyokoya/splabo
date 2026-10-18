@@ -83,6 +83,8 @@ npm ci                     # ルートで workspace 全体
 npm run build -w app       # フロント: tsc + vite build
 npm run tauri -w app -- dev  # dev 版を起動（app/ で `npx tauri dev` と同じ）
 cargo check                # workspace 全体の Rust 型チェック
+cargo clippy --manifest-path app/src-tauri/Cargo.toml --all-targets -- -D warnings  # CI と同じ（警告で落ちる）
+cargo test --manifest-path app/src-tauri/Cargo.toml --lib                           # Rust のテスト（CI でも走る）
 ```
 
 - Windows では Node.js が PATH に無いことがある（`$env:ProgramFiles\nodejs` を前置する）。

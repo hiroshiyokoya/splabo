@@ -67,7 +67,7 @@ jobs:
       - name: Build (typecheck + vite)
         run: npm run build -w app
 
-  # ── splabo: cargo check（Tauri バックエンド）───────────────────
+  # ── splabo: cargo clippy + cargo test（Tauri バックエンド）─────
   splabo-rust:
     needs: changes
     if: needs.changes.outputs.splabo == 'true'
@@ -89,7 +89,7 @@ jobs:
             patchelf
 
       # nxapi-sidecar をビルド（tauri.conf.json の externalBin として要求されるため、
-      # 存在しないと build.rs の存在チェックで cargo check が失敗する）
+      # 存在しないと build.rs の存在チェックで clippy・test が失敗する）
       - name: Build nxapi-wrapper sidecar (linux)
         working-directory: tools/nxapi-wrapper
         run: |
@@ -97,11 +97,20 @@ jobs:
           npm run build:linux
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: app/src-tauri
 
-      - name: cargo check
+      # clippy は型チェック（cargo check）を含む。警告が 1 つでもあれば落とす（#536）。
+      # 許している lint は lib.rs の先頭に理由つきで書いてある
+      - name: cargo clippy
         working-directory: app/src-tauri
-        run: cargo check --all-targets
+        run: cargo clippy --all-targets -- -D warnings
+
+      # Rust のテスト（#536）。`#[ignore]` のもの（プロンプトの計測など）は走らせない
+      - name: cargo test
+        working-directory: app/src-tauri
+        run: cargo test --lib

@@ -158,7 +158,7 @@ fn build_team_players(members: Option<&Value>) -> Vec<Value> {
 }
 
 /// stat.ink battle JSON から自分のプレイヤーを探す。
-fn find_myself<'a>(b: &'a Value) -> Option<&'a Value> {
+fn find_myself(b: &Value) -> Option<&Value> {
     b.pointer("/our_team_members")
         .and_then(|v| v.as_array())
         .and_then(|arr| arr.iter().find(|p| p.get("me").and_then(|m| m.as_bool()).unwrap_or(false)))

@@ -68,7 +68,7 @@ pub async fn init_db(app: &AppHandle) -> Result<DbPool, String> {
         .map_err(|e| e.to_string())?;
     sqlx::query(SCHEMA).execute(&pool).await.map_err(|e| e.to_string())?;
     for sql in LEGACY_ALTERS {
-        let _ = sqlx::query(*sql).execute(&pool).await;
+        let _ = sqlx::query(sql).execute(&pool).await;
     }
     Ok(Arc::new(pool))
 }
@@ -2043,7 +2043,7 @@ pub async fn db_grouped_stats_2d(
             *counts.entry(key).or_default() += t;
         }
         let mut pairs: Vec<(String, i64)> = counts.into_iter().collect();
-        pairs.sort_by(|a, b| b.1.cmp(&a.1));
+        pairs.sort_by_key(|p| std::cmp::Reverse(p.1));
         pairs.into_iter().take(top_n_value).map(|(k, _)| k).collect()
     });
 
@@ -2282,7 +2282,7 @@ async fn db_grouped_stats_2d_with_bp(
             *counts.entry(key).or_default() += t;
         }
         let mut pairs: Vec<(String, i64)> = counts.into_iter().collect();
-        pairs.sort_by(|a, b| b.1.cmp(&a.1));
+        pairs.sort_by_key(|p| std::cmp::Reverse(p.1));
         pairs.into_iter().take(n).map(|(k, _)| k).collect()
     }
     let kept_x: Option<std::collections::HashSet<String>> =
@@ -5089,7 +5089,7 @@ pub async fn env_versions(db: tauri::State<'_, DbPool>) -> Result<Vec<EnvVersion
         })
         .collect();
     // セマンティックバージョンの降順（新しい順）。
-    result.sort_by(|a, b| version_key(&b.game_ver).cmp(&version_key(&a.game_ver)));
+    result.sort_by_key(|r| std::cmp::Reverse(version_key(&r.game_ver)));
     Ok(result)
 }
 

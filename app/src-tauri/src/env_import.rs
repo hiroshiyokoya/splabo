@@ -462,7 +462,7 @@ async fn import_csv_bytes(
         } else {
             let mapped = csv_lobby_to_key(lobby_key);
             let id = if let Some(k) = mapped {
-                resolve_lobby_id(&mut *tx, k).await?
+                resolve_lobby_id(&mut tx, k).await?
             } else {
                 None
             };
@@ -477,7 +477,7 @@ async fn import_csv_bytes(
         } else {
             let mapped = csv_mode_to_rule_key(mode_key);
             let id = if let Some(k) = mapped {
-                resolve_rule_id(&mut *tx, k).await?
+                resolve_rule_id(&mut tx, k).await?
             } else {
                 None
             };
@@ -493,7 +493,7 @@ async fn import_csv_bytes(
             let id = if stage_key.is_empty() {
                 None
             } else {
-                resolve_map_id(&mut *tx, stage_key).await?
+                resolve_map_id(&mut tx, stage_key).await?
             };
             map_cache.insert(stage_key.to_string(), id);
             id
@@ -504,7 +504,7 @@ async fn import_csv_bytes(
         for cols in &SLOTS {
             let slug = fields.get(cols.weapon).copied().unwrap_or("").trim();
             if !slug.is_empty() && !weapon_cache.contains_key(slug) {
-                let id = resolve_weapon_id(&mut *tx, slug).await?;
+                let id = resolve_weapon_id(&mut tx, slug).await?;
                 weapon_cache.insert(slug.to_string(), id);
             }
         }
@@ -548,11 +548,11 @@ async fn import_csv_bytes(
 
         batch.push(row);
         if batch.len() >= BATCH_SIZE {
-            inserted += flush_batch(&mut *tx, &mut batch).await?;
+            inserted += flush_batch(&mut tx, &mut batch).await?;
         }
     }
     if !batch.is_empty() {
-        inserted += flush_batch(&mut *tx, &mut batch).await?;
+        inserted += flush_batch(&mut tx, &mut batch).await?;
     }
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(inserted)
@@ -714,7 +714,7 @@ async fn import_env_zip(
     // しかも実行後プールへ返却されてしまうため、書き込みごとに別コネクションへ散って
     // journal_mode が混在し "database is locked" を誘発していた。専用コネクション固定で解消する。
     let mut conn = db.acquire().await.map_err(|e| format!("DB コネクション取得失敗: {e}"))?;
-    begin_env_replace(&mut *conn).await?;
+    begin_env_replace(&mut conn).await?;
 
     // ZIP 解凍 + CSV インポート
     let mut archive = ZipArchive::new(Cursor::new(bytes.as_ref()))
@@ -759,7 +759,7 @@ async fn import_env_zip(
         };
 
         let inserted = import_csv_bytes(
-            &mut *conn, &csv_bytes, source_date,
+            &mut conn, &csv_bytes, source_date,
             &mut lobby_cache, &mut rule_cache, &mut map_cache, &mut weapon_cache,
         ).await?;
         total_inserted += inserted;
@@ -769,7 +769,7 @@ async fn import_env_zip(
         }
     }
 
-    finish_env_replace(&app, &mut *conn, total_days).await?;
+    finish_env_replace(&app, &mut conn, total_days).await?;
     drop(conn);
 
     emit_progress(&app, total_days, total_days, "import");
@@ -793,18 +793,18 @@ async fn import_env_from_date(
     sync_statink_masters(&db, &client).await?;
 
     let mut conn = db.acquire().await.map_err(|e| format!("DB コネクション取得失敗: {e}"))?;
-    begin_env_replace(&mut *conn).await?;
+    begin_env_replace(&mut conn).await?;
 
     let mut lobby_cache:  std::collections::HashMap<String, Option<i64>> = Default::default();
     let mut rule_cache:   std::collections::HashMap<String, Option<i64>> = Default::default();
     let mut map_cache:    std::collections::HashMap<String, Option<i64>> = Default::default();
     let mut weapon_cache: std::collections::HashMap<String, Option<i64>> = Default::default();
     let total_inserted = import_daily_csvs(
-        &app, &client, &mut *conn, &dates,
+        &app, &client, &mut conn, &dates,
         &mut lobby_cache, &mut rule_cache, &mut map_cache, &mut weapon_cache,
     ).await?;
 
-    finish_env_replace(&app, &mut *conn, dates.len()).await?;
+    finish_env_replace(&app, &mut conn, dates.len()).await?;
     drop(conn);
     emit_progress(&app, dates.len(), dates.len(), "import");
     log::info!("[env_import] 完了: 合計 {total_inserted} 行挿入 (since={since})");
@@ -844,7 +844,7 @@ pub async fn import_env_delta(
     // 差分取り込みも専用コネクション 1 本に固定し、書き込みを散らさない。
     let mut conn = db.acquire().await.map_err(|e| format!("DB コネクション取得失敗: {e}"))?;
     let total_inserted = import_daily_csvs(
-        &app, &client, &mut *conn, &dates,
+        &app, &client, &mut conn, &dates,
         &mut lobby_cache, &mut rule_cache, &mut map_cache, &mut weapon_cache,
     ).await?;
 

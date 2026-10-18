@@ -25,7 +25,7 @@
 
 ### CI（`.github/workflows/ci.yml`）
 
-develop への push / PR で走る。`dorny/paths-filter` で `app/**` / `tools/**` またはルート共通ファイル（`package.json` / `package-lock.json` / `Cargo.toml` / `Cargo.lock` / `ci.yml`）に変更があれば frontend build（tsc + vite）と `cargo check` を実行する。
+develop への push / PR で走る。`dorny/paths-filter` で `app/**` / `tools/**` またはルート共通ファイル（`package.json` / `package-lock.json` / `Cargo.toml` / `Cargo.lock` / `ci.yml`）に変更があれば frontend build（tsc + vite）と、Rust の `cargo clippy --all-targets -- -D warnings`（警告で落とす）・`cargo test --lib` を実行する（#536）。
 
 ### リリース
 

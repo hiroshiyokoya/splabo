@@ -1,3 +1,9 @@
+// clippy の方針（#536）。CI は `cargo clippy --all-targets -- -D warnings` で警告を落とす。
+// - too_many_arguments: Tauri コマンドは絞り込みを 1 つずつの引数で受ける（画面の invoke と同じ形）。
+//   束ねると画面側の呼び方まで変わるので許す
+// - type_complexity: sqlx の行の型（タプル）など。読みやすさのために別名を作るほどではない
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
+
 use tauri::{
     AppHandle, Emitter, Manager, State,
     menu::{Menu, MenuItem},
@@ -271,7 +277,7 @@ pub fn run() {
                     use chrono::Timelike;
                     let now = chrono::Local::now();
                     let minutes_today: u32 = now.hour() * 60 + now.minute();
-                    let is_boundary    = minutes_today % interval_min == 0;
+                    let is_boundary    = minutes_today.is_multiple_of(interval_min);
                     let recently_fired = last_fired_at
                         .map(|t| (now - t).num_seconds() < 90)
                         .unwrap_or(false);

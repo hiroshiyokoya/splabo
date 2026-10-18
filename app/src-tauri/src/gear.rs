@@ -11,10 +11,9 @@
 //!
 //! 取得系コマンド（Phase A2・splabo v0.8）:
 //! - `fetch_gear_full`  : bullet_token → GraphQL → 画像 DL → gear_db.json 構築 → 暗号化して
-//!                        gear_db.bin / .gti 化。geartoon サイドカー fetch_gear を Rust に置換。
-//!                        出力フォーマットは現行 geartoon 出力（gear-export-v1）と互換。
-//!                        トップレベルに `generated_at`（UTC ISO8601）を持つ（#396・追加のみ。
-//!                        古い viewer は未知フィールドとして無視する）。
+//!   gear_db.bin / .gti 化。geartoon サイドカー fetch_gear を Rust に置換。
+//!   出力フォーマットは現行 geartoon 出力（gear-export-v1）と互換。
+//!   トップレベルに `generated_at`（UTC ISO8601）を持つ（#396）。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
