@@ -808,7 +808,7 @@ mod tests {
         // 複数文なので raw_sql（query は 1 文しか実行しない）。
         sqlx::raw_sql(crate::db::SCHEMA).execute(&pool).await.unwrap();
         for sql in crate::db::LEGACY_ALTERS {
-            let _ = sqlx::query(*sql).execute(&pool).await;
+            let _ = sqlx::query(sql).execute(&pool).await;
         }
         let pool: DbPool = Arc::new(pool);
         crate::db::migrate_battle_ids(&pool).await.unwrap();
