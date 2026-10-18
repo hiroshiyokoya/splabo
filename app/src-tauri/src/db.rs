@@ -5522,7 +5522,7 @@ pub async fn insert_imported_battle(pool: &DbPool, row: &ImportedBattleRow) -> R
     else {
         log::warn!(
             "[import] battle スキップ uuid={} (lobby={} result={} weapon={} stage={})",
-            &row.uuid,
+            row.uuid,
             row.lobby_key,
             row.result_key,
             row.weapon_key,
