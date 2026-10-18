@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { CustomChart, ChartShape, YComposition, GroupByKey, MetricKey, BattleNumericMetric, ScatterDotUnit, ScatterPointStyle, ScatterImageSize } from '../types'
 import {
   GROUP_BY_LABELS, METRIC_LABELS, HEATMAP_METRICS, SUM_METRICS, CHART_SHAPE_LABELS, Y_COMPOSITION_LABELS,
-  IMPLEMENTED_SHAPES, TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, scatterMetricOptions, SCATTER_DOT_UNITS,
+  TIME_BUCKET_GROUP_BYS, isTimeBucketGroupBy, scatterMetricOptions, SCATTER_DOT_UNITS,
   scatterDotUnitLabel, canScatterUseImages, SCATTER_IMAGE_SIZE_LABELS,
   BATTLE_NUMERIC_METRIC_LABELS, BATTLE_NUMERIC_DEFAULT_BIN, axisGroupOf, AXIS_GROUP_LABELS, chartMetrics,
   LOCAL_METRIC_KEYS, officialMetricsForGroup, isOfficialRateMetric, OFFICIAL_METRICS,
@@ -31,10 +31,8 @@ interface Props {
  * カスタムグラフの追加・編集モーダル(v2 モデル)。
  *
  * v2 では「グラフの形 (shape)」と「Y 軸の構成 (yComposition)」を独立に選ぶ：
- *   - shape: 棒 / 線 / 散布図 / ヒートマップ(v1.0.0 は bar のみ実装)
+ *   - shape: 棒 / 線 / 散布図 / ヒートマップ / カレンダー
  *   - yComposition: 単一メトリクス / 勝負分積み上げ+勝率 / 攻撃 vs デス
- *
- * UI 上、未実装の shape も選択肢に出すが disabled にして「(未実装)」ラベルを付ける。
  */
 export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   const { t } = useTranslation()
@@ -225,8 +223,6 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
     onSave(chart)
   }
 
-  const shapeIsImplemented = IMPLEMENTED_SHAPES.includes(shape)
-
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-panel chart-config-modal" onClick={e => e.stopPropagation()}>
@@ -239,20 +235,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
           <div className="form-field">
             <label className="form-label">{t('chartConfig.shape')}</label>
             <select className="form-input" value={shape} onChange={e => setShape(e.target.value as ChartShape)}>
-              {(Object.keys(CHART_SHAPE_LABELS) as ChartShape[]).map(s => {
-                const implemented = IMPLEMENTED_SHAPES.includes(s)
-                return (
-                  <option key={s} value={s} disabled={!implemented}>
-                    {CHART_SHAPE_LABELS[s]}{implemented ? '' : t('chart.unimplemented')}
-                  </option>
-                )
-              })}
+              {(Object.keys(CHART_SHAPE_LABELS) as ChartShape[]).map(s => (
+                <option key={s} value={s}>{CHART_SHAPE_LABELS[s]}</option>
+              ))}
             </select>
-            {!shapeIsImplemented && (
-              <p className="form-hint form-hint--warn">
-                {t('chartConfig.unimplementedHint')}
-              </p>
-            )}
           </div>
 
           {/* scatter は X 軸 (集計キー) と Y 軸の構成・メトリクスを使わないので、shape ごとに分岐。
@@ -622,7 +608,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             <button
               className="btn-primary"
               onClick={handleSave}
-              disabled={!shapeIsImplemented || (shape === 'line' && lineMetrics.length === 0)}
+              disabled={shape === 'line' && lineMetrics.length === 0}
             >
               {initial ? t('common.update') : t('common.add')}
             </button>
