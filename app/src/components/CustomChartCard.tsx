@@ -779,14 +779,7 @@ function renderChartBody(
     )
   }
 
-  if (chart.shape !== 'bar') {
-    return (
-      <div className="chart-not-implemented">
-        {i18n.t('chart.notImplemented', { shape: chart.shape })}<br />
-        {i18n.t('chart.notImplementedLater')}
-      </div>
-    )
-  }
+  // ここまでで線・カレンダー・散布図・ヒートマップを返しているので、残りは棒
   if (chart.yComposition === 'single_metric' && chart.metric) {
     return <SimpleBarChart data={data} metric={chart.metric} nameTransform={nameTransform} tickAngle={tickAngle} images={images} />
   }

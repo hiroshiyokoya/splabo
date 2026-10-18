@@ -703,14 +703,13 @@ export type MetricKey =
  *   - shape: 視覚的プリミティブ。棒・線・散布図・ヒートマップ
  *   - yComposition: Y 軸データの組み立て方。単一メトリクス / 勝/負/分 積み上げ+勝率 / 攻撃 vs デス
  *
- * v1.0.0 で実装する組み合わせは `shape='bar'` の 3 構成のみ。
- * 線・散布図・ヒートマップは UI には出すが v1.1+ で実装予定。
+ * 形は 5 種類（棒・線・散布図・ヒートマップ・カレンダー）。棒は yComposition の 3 構成を持つ。
  */
 export type ChartShape =
   | 'bar'              // 棒
   | 'line'             // 線
-  | 'scatter'          // 散布図(後続 PR)
-  | 'heatmap'          // ヒートマップ(後続 PR)
+  | 'scatter'          // 散布図
+  | 'heatmap'          // ヒートマップ
   | 'calendar_heatmap' // カレンダーヒートマップ
 
 export type YComposition =
@@ -1037,10 +1036,6 @@ export const Y_COMPOSITION_LABELS: Record<YComposition, string> = liveLabels('yC
   stacked_winrate: 'バトル数 & 勝率',
   attack_defense:  'キル vs デス',
 })
-
-/** 実装済みの shape。それ以外は UI で disabled。
- *  v1.0.0: bar / line / calendar_heatmap / heatmap / scatter。 */
-export const IMPLEMENTED_SHAPES: ChartShape[] = ['bar', 'line', 'calendar_heatmap', 'heatmap', 'scatter']
 
 /**
  * メトリクスを「色スケールのグループ」に分類する。
