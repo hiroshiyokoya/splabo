@@ -19,10 +19,12 @@ interface Props {
   onDelete: (coord: SavedCoordinate) => void
   /** 今のギアパワーでスナップショットを取り直す */
   onResave: (coord: SavedCoordinate, resolved: ResolvedCoordinate) => void
+  /** 保存したときのギアパワーで組み合わせを探す（#860） */
+  onSearchOriginal: (coord: SavedCoordinate) => void
 }
 
 /** 保存コーデの一覧（ギアタブの「保存コーデ」・#782） */
-export function SavedCoordinateList({ data, coordinates, onApply, onEdit, onDelete, onResave }: Props) {
+export function SavedCoordinateList({ data, coordinates, onApply, onEdit, onDelete, onResave, onSearchOriginal }: Props) {
   const { t } = useTranslation()
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -117,6 +119,11 @@ export function SavedCoordinateList({ data, coordinates, onApply, onEdit, onDele
               {anyChanged && !anyMissing && (
                 <button type="button" className="coord-btn" onClick={() => onResave(coord, resolved)}>
                   {t('gear.saved.resave')}
+                </button>
+              )}
+              {(anyChanged || anyMissing) && (
+                <button type="button" className="coord-btn" onClick={() => onSearchOriginal(coord)}>
+                  {t('gear.saved.searchOriginal')}
                 </button>
               )}
               <button type="button" className="coord-btn" onClick={() => onEdit(coord)}>
