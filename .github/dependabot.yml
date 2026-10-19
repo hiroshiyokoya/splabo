@@ -14,6 +14,9 @@ updates:
       # semver ではそれが正式版 1.6.1（2023-03-01）より前と扱われる。Dependabot は「1.6.1 へ上げる」
       # （実際は古い版へ戻す）PR を出してくるので対象外にする（#838）。
       - dependency-name: nxapi
+      # sharp は nxapi の依存（Discord のプレゼンス画像用）で、サイドカーのバンドルには入らない。
+      # 脆弱性の修正として「sharp を消す」PR が、nxapi ごと古い版へ戻す形で出てくるので対象外にする（#859・#862）。
+      - dependency-name: sharp
 
   - package-ecosystem: npm
     directory: /
