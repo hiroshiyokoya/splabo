@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>スプラボ (splabo) — Splatoon 3 戦績可視化・分析とギアコーデ</title>
-  <meta name="description" content="Splatoon 3 の戦績とギアを取得して可視化・分析する、非公式の OSS PC アプリ。勝率、カスタムグラフ、環境分析、ギアコーデ。Windows / macOS。任天堂とは無関係です。">
+  <meta name="description" content="Splatoon 3 の戦績とギアを取得して可視化・分析する、非公式の OSS PC アプリ。勝率、カスタムグラフ、環境分析、ギアコーデ。Windows / macOS / Linux。任天堂とは無関係です。">
   <meta name="keywords" content="Splatoon 3, スプラトゥーン3, バトル可視化, 勝率, ダッシュボード, stat.ink, nxapi, OSS, デスクトップアプリ, Tauri">
   <link rel="canonical" href="https://splaboon.pages.dev/">
   <link rel="alternate" hreflang="ja" href="https://splaboon.pages.dev/">
@@ -452,6 +452,9 @@
       <a class="btn-download" id="btn-mac" href="https://github.com/hiroshiyokoya/splabo/releases/latest">
         macOS
       </a>
+      <a class="btn-download" id="btn-linux" href="https://github.com/hiroshiyokoya/splabo/releases/latest" style="display:none">
+        Linux
+      </a>
     </div>
     <p class="hero-note"><span id="btn-version"></span><span id="btn-version-sep" style="display:none"> &nbsp;·&nbsp; </span>無料 &nbsp;·&nbsp; オープンソース</p>
     <p class="hero-release-link">
@@ -570,6 +573,13 @@
         <code>xattr -cr /Applications/splabo.app</code>
       </p>
     </div>
+    <div class="warning-box">
+      <h3>Linux — AppImage が起動しない場合</h3>
+      <p>実行できるようにしてから起動してください：<br>
+        <code>chmod +x splabo_*_amd64.AppImage</code><br>
+        Ubuntu 22.04 以降で起動しないときは <code>libfuse2</code>（24.04 は <code>libfuse2t64</code>）を入れてください。Debian / Ubuntu では <code>.deb</code> も使えます。
+      </p>
+    </div>
   </section>
 
   <!-- Notes -->
@@ -626,12 +636,19 @@
           if (sep) sep.style.display = 'inline';
         }
 
-        // アセットから Windows(.exe) と macOS(.dmg) を探す
+        // アセットから Windows(.exe)・macOS(.dmg)・Linux(.AppImage) を探す
         const winAsset = data.assets.find(a => a.name.endsWith('x64-setup.exe'));
         const macAsset = data.assets.find(a => a.name.endsWith('aarch64.dmg'));
+        const linuxAsset = data.assets.find(a => a.name.endsWith('amd64.AppImage'));
 
         if (winAsset) document.getElementById('btn-win').href = winAsset.browser_download_url;
         if (macAsset) document.getElementById('btn-mac').href = macAsset.browser_download_url;
+        // Linux 版を含まないリリースでは、ボタンを出さない
+        if (linuxAsset) {
+          const btn = document.getElementById('btn-linux');
+          btn.href = linuxAsset.browser_download_url;
+          btn.style.display = '';
+        }
       })
       .catch(() => {});
 

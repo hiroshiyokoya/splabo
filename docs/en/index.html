@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>splabo — Splatoon 3 battle stats, analysis, and gear loadouts</title>
-  <meta name="description" content="An unofficial open-source Windows / macOS app that fetches Splatoon 3 battles and gear, then visualizes and analyzes them. Win rates, custom charts, meta analysis, gear loadouts. Not affiliated with Nintendo.">
+  <meta name="description" content="An unofficial open-source Windows / macOS / Linux app that fetches Splatoon 3 battles and gear, then visualizes and analyzes them. Win rates, custom charts, meta analysis, gear loadouts. Not affiliated with Nintendo.">
   <meta name="keywords" content="Splatoon 3, battle stats, win rate, dashboard, stat.ink, nxapi, OSS, desktop app, Tauri">
   <link rel="canonical" href="https://splaboon.pages.dev/en/">
   <link rel="alternate" hreflang="ja" href="https://splaboon.pages.dev/">
@@ -16,7 +16,7 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="splabo">
   <meta property="og:title" content="splabo — Splatoon 3 battle stats, analysis, and gear loadouts">
-  <meta property="og:description" content="An unofficial open-source Windows / macOS app that fetches Splatoon 3 battles and gear, then visualizes and analyzes them. Not affiliated with Nintendo.">
+  <meta property="og:description" content="An unofficial open-source Windows / macOS / Linux app that fetches Splatoon 3 battles and gear, then visualizes and analyzes them. Not affiliated with Nintendo.">
   <meta property="og:url" content="https://splaboon.pages.dev/en/">
   <meta property="og:locale" content="en_US">
   <meta property="og:locale:alternate" content="ja_JP">
@@ -25,7 +25,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="splabo — Splatoon 3 battle stats, analysis, and gear loadouts">
-  <meta name="twitter:description" content="An unofficial open-source Windows / macOS app that fetches Splatoon 3 battles and gear, then visualizes and analyzes them. Not affiliated with Nintendo.">
+  <meta name="twitter:description" content="An unofficial open-source Windows / macOS / Linux app that fetches Splatoon 3 battles and gear, then visualizes and analyzes them. Not affiliated with Nintendo.">
   <meta name="twitter:image" content="https://raw.githubusercontent.com/hiroshiyokoya/splabo/develop/app/public/splabo-logo.png">
 
   <style>
@@ -441,7 +441,7 @@
     <h1>splabo</h1>
     <p class="hero-tagline">Splatoon 3 battle stats, analysis, and gear loadouts</p>
     <p class="hero-desc">
-      An open-source Windows / macOS app that fetches Splatoon 3 battles and gear from a Nintendo Account via an unofficial API, then visualizes and analyzes them. Not affiliated with Nintendo Co., Ltd.<br>
+      An open-source Windows / macOS / Linux app that fetches Splatoon 3 battles and gear from a Nintendo Account via an unofficial API, then visualizes and analyzes them. Not affiliated with Nintendo Co., Ltd.<br>
       Win rates by weapon, stage, and mode; custom line, bar, scatter, and heatmap charts; meta analysis from public stat.ink data; and gear loadouts.<br>
       Save panels as PNG or HTML. You can also view it from a phone browser on the same Wi-Fi. Successor to chartoon / geartoon.
     </p>
@@ -451,6 +451,9 @@
       </a>
       <a class="btn-download" id="btn-mac" href="https://github.com/hiroshiyokoya/splabo/releases/latest">
         macOS
+      </a>
+      <a class="btn-download" id="btn-linux" href="https://github.com/hiroshiyokoya/splabo/releases/latest" style="display:none">
+        Linux
       </a>
     </div>
     <p class="hero-note"><span id="btn-version"></span><span id="btn-version-sep" style="display:none"> &nbsp;·&nbsp; </span>Free &nbsp;·&nbsp; Open source</p>
@@ -570,6 +573,13 @@
         <code>xattr -cr /Applications/splabo.app</code>
       </p>
     </div>
+    <div class="warning-box">
+      <h3>Linux — if the AppImage does not start</h3>
+      <p>Make it executable first:<br>
+        <code>chmod +x splabo_*_amd64.AppImage</code><br>
+        On Ubuntu 22.04 or later, install <code>libfuse2</code> (<code>libfuse2t64</code> on 24.04) if it still does not start. On Debian / Ubuntu you can also use the <code>.deb</code>.
+      </p>
+    </div>
   </section>
 
   <!-- Notes -->
@@ -626,12 +636,19 @@
           if (sep) sep.style.display = 'inline';
         }
 
-        // アセットから Windows(.exe) と macOS(.dmg) を探す
+        // アセットから Windows(.exe)・macOS(.dmg)・Linux(.AppImage) を探す
         const winAsset = data.assets.find(a => a.name.endsWith('x64-setup.exe'));
         const macAsset = data.assets.find(a => a.name.endsWith('aarch64.dmg'));
+        const linuxAsset = data.assets.find(a => a.name.endsWith('amd64.AppImage'));
 
         if (winAsset) document.getElementById('btn-win').href = winAsset.browser_download_url;
         if (macAsset) document.getElementById('btn-mac').href = macAsset.browser_download_url;
+        // Linux 版を含まないリリースでは、ボタンを出さない
+        if (linuxAsset) {
+          const btn = document.getElementById('btn-linux');
+          btn.href = linuxAsset.browser_download_url;
+          btn.style.display = '';
+        }
       })
       .catch(() => {});
 

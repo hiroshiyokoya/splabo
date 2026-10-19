@@ -6,6 +6,9 @@
 |---|---|
 | Windows | splabo_VERSION_x64-setup.exe（推奨）または .msi（下記「更新時の注意」も参照） |
 | macOS (Apple Silicon) | splabo_VERSION_aarch64.dmg |
+| Linux (x64) | splabo_VERSION_amd64.AppImage、または splabo_VERSION_amd64.deb（Debian / Ubuntu）・splabo-VERSION-1.x86_64.rpm（Fedora など） |
+
+Intel Mac 版はありません。
 
 ## ⚠️ インストール時の警告について
 
@@ -28,6 +31,13 @@
 ```
 xattr -cr /Applications/splabo.app
 ```
+
+### Linux — AppImage が起動しない場合
+実行できるようにしてから起動してください。
+```
+chmod +x splabo_VERSION_amd64.AppImage
+```
+Ubuntu 22.04 以降で起動しないときは `libfuse2`（24.04 は `libfuse2t64`）を入れてください。`.deb` / `.rpm` ならこの手順は要りません。
 
 ---
 
