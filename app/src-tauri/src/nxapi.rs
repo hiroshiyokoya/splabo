@@ -292,6 +292,23 @@ pub async fn nxapi_fetch_weapon_records(app: &AppHandle) -> Result<serde_json::V
     Ok(result["data"].clone())
 }
 
+/// nxapi のキャッシュ（`nxapi-data`）を丸ごと消す。ログアウトのときに呼ぶ（#854）。
+/// 無ければ何もしない。
+pub fn clear_nxapi_data(app: &AppHandle) -> Result<(), String> {
+    remove_dir_if_exists(std::path::Path::new(&nxapi_data_dir(app)?))
+}
+
+fn remove_dir_if_exists(dir: &std::path::Path) -> Result<(), String> {
+    match std::fs::remove_dir_all(dir) {
+        Ok(()) => {
+            log::info!("[logout] nxapi のキャッシュを消しました");
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("nxapi のキャッシュ削除失敗: {e}")),
+    }
+}
+
 fn nxapi_data_dir(app: &AppHandle) -> Result<String, NxapiError> {
     app.path()
         .app_data_dir()
@@ -302,6 +319,19 @@ fn nxapi_data_dir(app: &AppHandle) -> Result<String, NxapiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remove_dir_if_exists_removes_cache_and_tolerates_missing() {
+        // ログアウトで nxapi のキャッシュ（persist/ 以下のファイル）を丸ごと消す（#854）
+        let dir = std::env::temp_dir().join(format!("splabo-nxapi-data-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("persist")).unwrap();
+        std::fs::write(dir.join("persist").join("token"), "{}").unwrap();
+
+        assert_eq!(remove_dir_if_exists(&dir), Ok(()));
+        assert!(!dir.exists());
+        // 無いときは何もしない（一度もログインしていない・2 回押した）
+        assert_eq!(remove_dir_if_exists(&dir), Ok(()));
+    }
 
     fn failure(json: serde_json::Value) -> NxapiError {
         sidecar_failure("bullet token 取得失敗", &json)
