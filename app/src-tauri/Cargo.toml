@@ -55,3 +55,8 @@ windows = { workspace = true, features = [
     "Win32_Networking_NetworkListManager",
     "Win32_System_Com",
 ] }
+
+# Linux のみ: トレイアイコンに要る appindicator のライブラリが読めるかを、トレイを作る前に確かめる（#835）。
+# 読めないまま作ると libappindicator-sys が panic して起動できない。版は libappindicator-sys と同じ。
+[target.'cfg(target_os = "linux")'.dependencies]
+libloading = "0.7"
