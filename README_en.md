@@ -243,9 +243,21 @@ Payload construction is a Rust reimplementation of [**s3s**](https://github.com/
 ## Notes
 
 - This tool is intended for personal use.
-- SplatNet 3 is not a public Nintendo API. Nintendo-side changes may break it without notice.
-- Credentials are stored only in the app’s AppData directory (Windows: `%APPDATA%\com.splabo.app\`, macOS: `~/Library/Application Support/com.splabo.app/`, Linux: `~/.local/share/com.splabo.app/`). Data from old chartoon / geartoon is copied non-destructively on first launch. Do not commit it.
-- The in-app UI is Japanese-only for now (English UI is planned).
+- Battles, settings and other data are stored in the app’s data folder (Windows: `%APPDATA%\com.splabo.app\`, macOS: `~/Library/Application Support/com.splabo.app/`, Linux: `~/.local/share/com.splabo.app/`). Data from old chartoon / geartoon is copied non-destructively on first launch.
+- The UI language can be Japanese or English (Settings → Display → Language; defaults to the OS language).
+
+## Known limitations
+
+- **It uses unofficial APIs.** The SplatNet 3 and Nintendo Switch Online APIs are not published by Nintendo. Changes on Nintendo’s side can break the app without notice, and Nintendo restricting your account cannot be ruled out. Use it at your own risk.
+- **Sign-in data and API keys are stored on the PC without encryption.**
+  - Nintendo Account sign-in data: the `splatoon-gear` folder (Windows: `%APPDATA%\splatoon-gear\`, macOS: `~/Library/Application Support/splatoon-gear/`, Linux: `~/.config/splatoon-gear/`) and `nxapi-data` in the data folder
+  - stat.ink and AI analysis API keys: the app settings
+  - Other user accounts on the same PC cannot read them, but anyone who copies the folders can use them. Before giving the PC or the folders to someone, press "Sign out" in Settings. It deletes the Nintendo Account sign-in data.
+- **"View on your phone" is not encrypted** (plain HTTP inside the same network). Devices without the QR code URL cannot open it, but others on the same network may see the traffic. Use it on a network you trust, such as at home.
+- **The app is not code-signed.** Windows SmartScreen and macOS show warnings when installing (see the end of the release notes for how to get past them).
+- **No auto-update.** When a new version is out, a note appears in the sidebar. Download it from the release page and install it again.
+- **Supported OS**: Windows (x64), macOS (Apple Silicon), Linux (x64, `.deb` / `.rpm`). There is no Intel Mac build.
+- **Image copyrights**: copyrights of weapon, stage, gear and other images belong to Nintendo Co., Ltd. When you save panels as PNG / HTML and show them to others, keep it within personal use.
 
 ## Privacy policy
 
@@ -254,7 +266,7 @@ Information this tool collects and uses:
 ### Collected
 
 - **Nintendo Account session token (`session_token`)**
-  - Stored only in the local AppData directory.
+  - Stored only on the PC, without encryption (see [Known limitations](#known-limitations)).
   - Never sent or uploaded to an external server by splabo itself.
 - **Battle history**
   - Battles fetched from SplatNet 3 are stored only in the local SQLite DB.

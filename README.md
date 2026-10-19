@@ -243,9 +243,21 @@ OpenAI / Google Gemini / Anthropic Claude / xAI Grok を **2 段**で使いま�
 ## 注意事項
 
 - 本ツールは個人の利用を目的としています。
-- SplatNet 3 は任天堂が公式に公開している API ではありません。任天堂側の仕様変更により、予告なく動作しなくなる可能性があります。
-- 認証情報はアプリの AppData ディレクトリにのみ保存されます（Windows: `%APPDATA%\com.splabo.app\`、macOS: `~/Library/Application Support/com.splabo.app/`、Linux: `~/.local/share/com.splabo.app/`）。旧 chartoon / geartoon からのデータは初回起動時に非破壊コピーで移行されます。コミットしないでください。
+- 戦績・設定などのデータは、アプリのデータフォルダ（Windows: `%APPDATA%\com.splabo.app\`、macOS: `~/Library/Application Support/com.splabo.app/`、Linux: `~/.local/share/com.splabo.app/`）に保存されます。旧 chartoon / geartoon からのデータは初回起動時に非破壊コピーで移行されます。
 - 表示言語は日本語 / English から選べます（設定 → 表示 → 表示言語。既定は OS の言語に合わせます）。
+
+## 既知の制限
+
+- **非公式の API を使っています。** SplatNet 3 と Nintendo Switch Online の API は、任天堂が公開しているものではありません。任天堂の仕様変更で予告なく動かなくなることがあります。任天堂からアカウントの利用を制限される可能性もないとは言えません。利用は自己責任でお願いします。
+- **ログイン情報と API キーは、PC の中に暗号化せずに保存しています。**
+  - Nintendo アカウントのログイン情報: `splatoon-gear` フォルダ（Windows: `%APPDATA%\splatoon-gear\`、macOS: `~/Library/Application Support/splatoon-gear/`、Linux: `~/.config/splatoon-gear/`）と、データフォルダの `nxapi-data`
+  - stat.ink と AI 分析の API キー: アプリの設定
+  - 同じ PC のほかのユーザーアカウントからは読めませんが、フォルダをコピーした人は使えます。PC を人に譲るときやフォルダを人に渡すときは、先に設定の「認証解除」をしてください。Nintendo アカウントのログイン情報が消えます。
+- **「スマホで見る」の通信は暗号化していません**（同じネットワークの中の HTTP）。QR コードの URL を知らない端末からは開けませんが、同じネットワークの中では通信の中身を見られることがあります。家など、信頼できるネットワークで使ってください。
+- **コード署名をしていません。** インストールのときに、Windows の SmartScreen や macOS の警告が出ます（避け方はリリースノートの末尾にあります）。
+- **自動更新はありません。** 新しい版が出たら、アプリのサイドバーに案内が出ます。リリースのページからダウンロードして入れ直してください。
+- **対応 OS**: Windows（x64）・macOS（Apple Silicon）・Linux（x64・`.deb` / `.rpm`）。Intel Mac 版はありません。
+- **画像の著作権**: ブキ・ステージ・ギアなどの画像の著作権は任天堂株式会社に帰属します。パネルを PNG / HTML に保存して人に見せるときも、個人利用の範囲にとどめてください。
 
 ## プライバシーポリシー
 
@@ -254,7 +266,7 @@ OpenAI / Google Gemini / Anthropic Claude / xAI Grok を **2 段**で使いま�
 ### 収集する情報
 
 - **Nintendo アカウントのセッショントークン（session_token）**
-  - ローカルの AppData ディレクトリにのみ保存されます。
+  - PC の中にだけ、暗号化せずに保存されます（[既知の制限](#既知の制限)）。
   - 外部サーバーへ送信・アップロードすることはありません。
 - **バトル履歴データ**
   - SplatNet 3 から取得したバトルデータはローカルの SQLite DB にのみ保存されます。
