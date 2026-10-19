@@ -1,7 +1,7 @@
 SpLabo — 同梱ソフトウェアのライセンス
 
 ソースコード: https://github.com/hiroshiyokoya/splabo（各リリースのソースは、そのバージョンのタグ splabo-vX.Y.Z）
-作成: 2026-10-16・Rust のターゲット x86_64-pc-windows-msvc・tools/licenses/generate.mjs が自動で作る
+作成: 2026-10-18・Rust のターゲット x86_64-pc-windows-msvc・tools/licenses/generate.mjs が自動で作る
 
 SpLabo は 2 つのプログラムでできています。
 
@@ -296,9 +296,9 @@ Rust の部品（SpLabo 本体に組み込み）
   rsa 0.9.10 — MIT OR Apache-2.0
   rust_decimal 1.42.1 — MIT
   rustc-hash 2.1.3 — Apache-2.0 OR MIT
-  rustls 0.23.41 — Apache-2.0 OR ISC OR MIT
+  rustls 0.23.46 — Apache-2.0 OR ISC OR MIT
   rustls-pki-types 1.15.0 — MIT OR Apache-2.0
-  rustls-webpki 0.103.13 — ISC
+  rustls-webpki 0.103.15 — ISC
   ryu 1.0.23 — Apache-2.0 OR BSL-1.0
   same-file 1.0.6 — Unlicense/MIT
   schemars 0.8.22 — MIT
@@ -16877,7 +16877,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-適用: hyper-rustls 0.27.9, rustls 0.23.41
+適用: hyper-rustls 0.27.9, rustls 0.23.46
 ------------------------------------------------------------------------------
 
 [LICENSE-APACHE]
@@ -26882,7 +26882,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-適用: rustls-webpki 0.103.13
+適用: rustls-webpki 0.103.15
 ------------------------------------------------------------------------------
 
 Except as otherwise noted, this project is licensed under the following
@@ -38396,10 +38396,10 @@ esbuild のバンドルに実際に入ったパッケージと、pkg が埋め�
   ms 2.1.3 — MIT
   node-persist 3.1.3 — MIT
   Node.js（サイドカーに埋め込むランタイム） v24.15.0 — MIT（同梱のサードパーティ部品はそれぞれのライセンス。本文参照）
-  nxapi 1.6.1-next.254+sha.ec69f58 — AGPL-3.0-or-later
+  nxapi 1.6.1-next.257+sha.47c9d35 — AGPL-3.0-or-later
   splatnet3-types 0.2.20231119210145+sha.f2c30a8 — (記載なし)
   supports-color 9.4.0 — MIT
-  undici 6.25.0 — MIT
+  undici 6.29.1 — MIT
 
 ------------------------------------------------------------------------------
 適用: debug 4.4.3
@@ -38548,7 +38548,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-適用: nxapi 1.6.1-next.254+sha.ec69f58
+適用: nxapi 1.6.1-next.257+sha.47c9d35
 ------------------------------------------------------------------------------
 
 GNU AFFERO GENERAL PUBLIC LICENSE
@@ -39214,7 +39214,7 @@ For more information on this, and how to apply and follow the GNU AGPL, see
 <https://www.gnu.org/licenses/>.
 
 ------------------------------------------------------------------------------
-適用: undici 6.25.0
+適用: undici 6.29.1
 ------------------------------------------------------------------------------
 
 MIT License
