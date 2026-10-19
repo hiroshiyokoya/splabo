@@ -386,6 +386,8 @@ export interface AppSettings {
   /** 自動取得の実行間隔(分)。例: 15, 30, 60, 120, 360, 720, 1440 */
   autoFetchIntervalMin: number
   statink: StatinkSettings
+  /** 起動時に新しい版があるか GitHub で確かめる（#542） */
+  updateCheckEnabled: boolean
 }
 
 const STAGE_ABBR_OVERRIDE: Record<string, string> = {

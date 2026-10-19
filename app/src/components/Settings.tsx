@@ -689,6 +689,21 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
 
       {subTab === 'data' && (
       <section className="settings-section">
+        <h3>{t('settings.updateCheck')}</h3>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={settings.updateCheckEnabled}
+            onChange={(e) => update({ updateCheckEnabled: e.target.checked })}
+          />
+          {t('settings.updateCheckEnable')}
+        </label>
+        <div className="settings-help">{t('settings.updateCheckHint')}</div>
+      </section>
+      )}
+
+      {subTab === 'data' && (
+      <section className="settings-section">
         <h3>{t('settings.master')}</h3>
         <div className="settings-help" style={{ marginBottom: 12 }}>
           {t('settings.masterHint')}

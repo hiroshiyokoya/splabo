@@ -38,6 +38,7 @@ pub mod sql_functions;
 pub mod stage_static;
 pub mod statink;
 pub mod statink_import;
+pub mod update_check;
 pub mod weapon_static;
 
 /// スケジューラー設定（フロントエンドから set_scheduler_config で更新される）
@@ -134,6 +135,7 @@ pub fn run() {
             image_export::save_panel_image,
             fetch_battles_full,
             is_fetching,
+            update_check::check_for_update,
             fetch_weapons,
             set_scheduler_config,
             set_statink_config,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getVersion } from '@tauri-apps/api/app'
 import { displayVersion, sourceUrl } from '../utils/version'
+import type { NewerRelease } from '../utils/version'
 import { openUrl } from '@tauri-apps/plugin-opener'
 
 const FEEDBACK_FORM_URL =
@@ -43,7 +44,12 @@ function ThirdPartyLicenses({ onClose }: Props) {
   )
 }
 
-export function About({ onClose }: Props) {
+interface AboutProps extends Props {
+  /** 今より新しいリリース。無ければ null（#542） */
+  newerRelease: NewerRelease | null
+}
+
+export function About({ onClose, newerRelease }: AboutProps) {
   const { t } = useTranslation()
   const [version, setVersion] = useState('')
   const [showLicenses, setShowLicenses] = useState(false)
@@ -73,6 +79,15 @@ export function About({ onClose }: Props) {
         <div className="modal-body about-body">
           <img className="about-logo" src="/splabo-logo.png" alt="splabo" />
           {version && <div className="about-version">v{displayVersion(version)}</div>}
+          {newerRelease && (
+            <a
+              className="about-link about-update"
+              href={newerRelease.url}
+              onClick={e => { e.preventDefault(); openUrl(newerRelease.url).catch(console.error) }}
+            >
+              {t('about.updateAvailable', { version: newerRelease.version })}
+            </a>
+          )}
           <p className="about-desc">
             {t('about.desc')}
           </p>

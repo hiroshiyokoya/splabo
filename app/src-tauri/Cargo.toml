@@ -46,6 +46,8 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 tiny_http = { workspace = true }
 if-addrs = { workspace = true }
 tauri-plugin-dialog = "2"
+# 最新リリースの版と今の版を比べる（#542）。tauri の package_info().version と同じ型
+semver = "1"
 
 # Windows のみ: コンパニオン接続の自己診断（#363・companion.rs の detect_network_category）。
 # Network List Manager（COM）でネットワークプロファイル（Public/Private/Domain）を判定する。

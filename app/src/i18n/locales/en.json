@@ -45,7 +45,9 @@
     "fetching": "Fetching…",
     "fetchTitle": "Fetch the latest battles and gear from SplatNet 3",
     "lastFetched": "Updated {{time}}",
-    "neverFetched": "Not fetched yet"
+    "neverFetched": "Not fetched yet",
+    "updateAvailable": "🆕 New version v{{version}}",
+    "updateTitle": "Open the release page"
   },
   "battles": {
     "title": "Battles",
@@ -144,7 +146,8 @@
     "license": "SpLabo is licensed under the MIT License. The bundled nxapi sidecar (including a modified nxapi) is licensed under the GNU AGPL v3.0 or later.",
     "source": "Source code (this version)",
     "thirdParty": "Third-party licenses",
-    "thirdPartyLoadFailed": "Could not load: {{detail}}"
+    "thirdPartyLoadFailed": "Could not load: {{detail}}",
+    "updateAvailable": "New version v{{version}} is available"
   },
   "toast": {
     "region": "Notifications"
@@ -242,6 +245,9 @@
     "autoFetch": "Auto-fetch (stays in the tray when on)",
     "autoFetchEnable": "Automatically fetch battles and gear",
     "interval": "Interval",
+    "updateCheck": "Update check",
+    "updateCheckEnable": "Check for a new version at startup",
+    "updateCheckHint": "Asks GitHub for the latest release (a plain request; no battle or account data is sent). If a new version exists, a note appears in the sidebar and in About. To update, download it from the release page and install it again.",
     "intervalMin": "Every {{count}} min",
     "intervalHour": "Every {{count}} h",
     "master": "Master data",

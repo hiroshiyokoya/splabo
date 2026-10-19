@@ -45,7 +45,9 @@
     "fetching": "取得中...",
     "fetchTitle": "SplatNet3 から最新のバトル結果・ギアデータを取得",
     "lastFetched": "最終更新 {{time}}",
-    "neverFetched": "未取得"
+    "neverFetched": "未取得",
+    "updateAvailable": "🆕 新しい版 v{{version}}",
+    "updateTitle": "リリースのページを開きます"
   },
   "battles": {
     "title": "バトル",
@@ -144,7 +146,8 @@
     "license": "SpLabo は MIT License です。同梱の nxapi サイドカー（nxapi の改変版を含む）は GNU AGPL v3.0 以降です。",
     "source": "ソースコード（この版）",
     "thirdParty": "同梱ソフトウェアのライセンス",
-    "thirdPartyLoadFailed": "読み込めませんでした: {{detail}}"
+    "thirdPartyLoadFailed": "読み込めませんでした: {{detail}}",
+    "updateAvailable": "新しい版 v{{version}} があります"
   },
   "toast": {
     "region": "通知"
@@ -242,6 +245,9 @@
     "autoFetch": "自動取得(有効時はトレイに常駐)",
     "autoFetchEnable": "自動でバトル・ギアデータを取得する",
     "interval": "取得間隔",
+    "updateCheck": "新しい版の確認",
+    "updateCheckEnable": "起動時に新しい版があるか確かめる",
+    "updateCheckHint": "GitHub に最新のリリースを問い合わせます（送るのは普通の通信だけで、戦績やアカウントの情報は送りません）。新しい版があれば、サイドバーと「splabo について」に案内を出します。更新は、リリースのページからダウンロードして入れ直してください。",
     "intervalMin": "{{count}}分ごと",
     "intervalHour": "{{count}}時間ごと",
     "master": "マスターデータ",
