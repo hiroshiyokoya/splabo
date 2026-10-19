@@ -255,7 +255,7 @@ Payload construction is a Rust reimplementation of [**s3s**](https://github.com/
   - Other user accounts on the same PC cannot read them, but anyone who copies the folders can use them. Before giving the PC or the folders to someone, press "Sign out" in Settings. It deletes the Nintendo Account sign-in data.
 - **"View on your phone" is not encrypted** (plain HTTP inside the same network). Devices without the QR code URL cannot open it, but others on the same network may see the traffic. Use it on a network you trust, such as at home.
 - **The app is not code-signed.** Windows SmartScreen and macOS show warnings when installing (see the end of the release notes for how to get past them).
-- **No auto-update.** When a new version is out, a note appears in the sidebar. Download it from the release page and install it again.
+- **No auto-update.** When a new version is out, a blue dot appears at the top right of the logo (click the logo for a link to the release page). Download it from the release page and install it again.
 - **Supported OS**: Windows (x64), macOS (Apple Silicon), Linux (x64, `.deb` / `.rpm`). There is no Intel Mac build.
 - **Image copyrights**: copyrights of weapon, stage, gear and other images belong to Nintendo Co., Ltd. When you save panels as PNG / HTML and show them to others, keep it within personal use.
 
