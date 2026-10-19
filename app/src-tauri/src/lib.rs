@@ -93,7 +93,8 @@ pub fn run() {
                     .try_state::<SchedulerConfig>()
                     .map(|c| c.0.lock().unwrap().0)
                     .unwrap_or(false);
-                if enabled {
+                // トレイが無いと隠したウィンドウを戻せないので、そのときは閉じる
+                if enabled && TRAY_AVAILABLE.load(std::sync::atomic::Ordering::Relaxed) {
                     api.prevent_close();
                     let _ = window.hide();
                 } else {
@@ -196,6 +197,12 @@ pub fn run() {
             // deep-link
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
+                // Linux は .deb・.rpm が入れる .desktop の Exec に %u が無く、URL がアプリに渡らないので、
+                // 起動のたびに自分の実行ファイルをスキームに登録する（#835）。失敗してもアプリは動かす。
+                #[cfg(target_os = "linux")]
+                if let Err(e) = app.deep_link().register_all() {
+                    log::warn!("[deep-link] スキームの登録に失敗: {e}");
+                }
                 let handle = app.handle().clone();
                 app.deep_link().on_open_url(move |event| {
                     for url in event.urls() {
@@ -310,7 +317,12 @@ pub fn run() {
             });
 
             // システムトレイ
-            setup_tray(app.handle())?;
+            if tray_supported() {
+                setup_tray(app.handle())?;
+                TRAY_AVAILABLE.store(true, std::sync::atomic::Ordering::Relaxed);
+            } else {
+                log::warn!("[トレイ] appindicator のライブラリが無いので、トレイアイコンを出さずに起動します");
+            }
 
             Ok(())
         })
@@ -616,6 +628,32 @@ fn log_weapon_records_skip(e: &str) {
 fn set_scheduler_config(config: State<'_, SchedulerConfig>, enabled: bool, interval_min: u32) {
     *config.0.lock().unwrap() = (enabled, interval_min);
     log::info!("[スケジューラー] 設定更新: enabled={enabled} interval={interval_min}min");
+}
+
+/// トレイアイコンを出せたか。出せていないときは、ウィンドウを閉じたらトレイに隠さず終了する（#835）。
+static TRAY_AVAILABLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// トレイアイコンを出せる環境か。
+///
+/// Linux のトレイは appindicator のライブラリを実行時に読み込み、無いと libappindicator-sys が
+/// panic して起動できない（AppImage には同梱されず、入っていないディストリもある）。
+/// そこで同じ名前のライブラリを先に読めるか確かめる（名前は libappindicator-sys と同じ順）。
+#[cfg(target_os = "linux")]
+fn tray_supported() -> bool {
+    [
+        "libayatana-appindicator3.so.1",
+        "libappindicator3.so.1",
+        "libayatana-appindicator3.so",
+        "libappindicator3.so",
+    ]
+    .iter()
+    // SAFETY: 読めるかを確かめるだけで、シンボルは使わずにすぐ閉じる
+    .any(|name| unsafe { libloading::Library::new(name) }.is_ok())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn tray_supported() -> bool {
+    true
 }
 
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {

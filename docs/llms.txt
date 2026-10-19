@@ -1,6 +1,6 @@
 # splabo
 
-> Nintendo アカウントから非公式 API（nxapi が解析した SplatNet 3 / GraphQL）経由で Splatoon 3 の戦績とギアを取得し、可視化・分析する OSS の PC アプリ。Windows / macOS（Tauri）。Linux は未検証。**任天堂株式会社とは無関係の非公式アプリ**。
+> Nintendo アカウントから非公式 API（nxapi が解析した SplatNet 3 / GraphQL）経由で Splatoon 3 の戦績とギアを取得し、可視化・分析する OSS の PC アプリ。Windows / macOS（Apple Silicon）/ Linux（x64）（Tauri）。**任天堂株式会社とは無関係の非公式アプリ**。
 
 主な機能:
 - ダッシュボード: 主要指標（バトル数・勝率・キル/デス・キルレシオ）と、ブキ・ステージ・ルール・ロビー別の集計グラフ
@@ -23,7 +23,7 @@
 ## Docs
 
 - [README](https://github.com/hiroshiyokoya/splabo/blob/develop/README.md): 機能・セットアップ・技術メモ・プライバシーポリシー
-- [紹介・ダウンロード](https://splaboon.pages.dev/): 紹介ページ（Windows / macOS）。[English](https://splaboon.pages.dev/en/)
+- [紹介・ダウンロード](https://splaboon.pages.dev/): 紹介ページ（Windows / macOS / Linux）。[English](https://splaboon.pages.dev/en/)
 - [CHANGELOG](https://github.com/hiroshiyokoya/splabo/blob/develop/CHANGELOG.md): バージョン履歴
 - [LICENSE](https://github.com/hiroshiyokoya/splabo/blob/develop/LICENSE): MIT License（本体）。同梱の nxapi サイドカー（`tools/nxapi-wrapper`・nxapi の改変版を含む）は [AGPL-3.0-or-later](https://github.com/hiroshiyokoya/splabo/blob/develop/tools/nxapi-wrapper/LICENSE)
 

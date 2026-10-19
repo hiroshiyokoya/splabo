@@ -102,6 +102,7 @@ PC の splabo をサーバーにして、同じ Wi-Fi（同じルーター）に
 
 - **スマホと PC が同じ Wi-Fi につながっているか**確認してください。ゲスト用 Wi-Fi は、ほかの端末と通信できない設定になっていることがあります
 - **Windows**: ネットワークが「パブリック」だと、Windows ファイアウォールがスマホからの接続を止めます。「プライベート ネットワーク」に変えてください（設定 → ネットワークとインターネット → 現在の接続 → ネットワーク プロファイルの種類）。初めてスマホからつないだときに許可ダイアログが出たら、プライベートにチェックして許可します。設定画面にも、この状態のときは注意が出ます。プライベートにしてもつながらないときは、以前パブリックのまま許可した規則が残っていることがあります。設定画面の説明に沿って、Windows ファイアウォールの受信の規則（splabo）でプライベートにチェックしてください
+- **Linux**: ファイアウォール（ufw など）を有効にしているときは、ポート（既定 47620）への受信を許可してください（例: `sudo ufw allow from 192.168.0.0/16 to any port 47620 proto tcp`）
 - **ほかのアプリとポートが重なって始まらないとき**: 設定の「ポート」を変えます（既定は 47620）。変えると URL も変わるので、QR を読み直してください
 - PC に複数のネットワークがあるときは、QR の下に出るほかの URL も試してください
 - **知らない人に URL を見られたとき**: 「トークンを再発行」を押すと、それまでの URL では開けなくなります。使うスマホで QR を読み直してください
@@ -113,7 +114,7 @@ PC の splabo をサーバーにして、同じ Wi-Fi（同じルーター）に
 | Node.js 20+  | アプリ開発・ビルド              |
 | Rust + Cargo | Tauri デスクトップアプリのビルド |
 
-Windows / macOS（WSL 不要）。Linux は未検証。
+Windows / macOS / Linux（WSL 不要）。Linux でビルドするときは、Tauri が必要とするシステムライブラリ（`libwebkit2gtk-4.1-dev` など。`.github/workflows/splabo-release.yml` の「Install Linux dependencies」を参照）を入れてください。
 
 ---
 
@@ -141,6 +142,7 @@ cd tools/nxapi-wrapper
 npm install
 ./build.sh mac-arm    # macOS Apple Silicon
 # ./build.sh mac-x64  # macOS Intel
+# ./build.sh linux    # Linux (x64)
 # build.bat           # Windows
 ```
 
@@ -160,11 +162,11 @@ cd app
 npx tauri build    # インストーラーを生成（初回は Rust のフルビルドで数分かかります）
 ```
 
-生成物は `app/src-tauri/target/release/bundle/` に出力されます（Windows: `.msi` / `.exe`、macOS: `.dmg`）。
+生成物は `app/src-tauri/target/release/bundle/` に出力されます（Windows: `.msi` / `.exe`、macOS: `.dmg`、Linux: `.deb` / `.rpm`）。Linux では `npx tauri build --bundles deb,rpm` を使ってください（AppImage は、作る途中でサイドカーのバイナリが壊れるため使いません）。
 
 ## リリース
 
-単一 `splabo-vX.Y.Z` タグを push すると `.github/workflows/splabo-release.yml` がドラフトリリースを作成します（Windows `.exe` / `.msi`・macOS `.dmg`）。CHANGELOG は [`CHANGELOG.md`](CHANGELOG.md) で継続します。旧 per-app タグ（`chartoon-v*` / `geartoon-v*`）および monorepo 化以前の `vX.Y.Z` は凍結扱いで、ワークフローのトリガーからは外しています。
+単一 `splabo-vX.Y.Z` タグを push すると `.github/workflows/splabo-release.yml` がドラフトリリースを作成します（Windows `.exe` / `.msi`・macOS `.dmg`・Linux `.deb` / `.rpm`）。CHANGELOG は [`CHANGELOG.md`](CHANGELOG.md) で継続します。旧 per-app タグ（`chartoon-v*` / `geartoon-v*`）および monorepo 化以前の `vX.Y.Z` は凍結扱いで、ワークフローのトリガーからは外しています。
 
 ---
 
@@ -242,7 +244,7 @@ OpenAI / Google Gemini / Anthropic Claude / xAI Grok を **2 段**で使いま�
 
 - 本ツールは個人の利用を目的としています。
 - SplatNet 3 は任天堂が公式に公開している API ではありません。任天堂側の仕様変更により、予告なく動作しなくなる可能性があります。
-- 認証情報はアプリの AppData ディレクトリにのみ保存されます（Windows: `%APPDATA%\com.splabo.app\`、macOS: `~/Library/Application Support/com.splabo.app/`）。旧 chartoon / geartoon からのデータは初回起動時に非破壊コピーで移行されます。コミットしないでください。
+- 認証情報はアプリの AppData ディレクトリにのみ保存されます（Windows: `%APPDATA%\com.splabo.app\`、macOS: `~/Library/Application Support/com.splabo.app/`、Linux: `~/.local/share/com.splabo.app/`）。旧 chartoon / geartoon からのデータは初回起動時に非破壊コピーで移行されます。コミットしないでください。
 - 表示言語は日本語 / English から選べます（設定 → 表示 → 表示言語。既定は OS の言語に合わせます）。
 
 ## プライバシーポリシー

@@ -4,7 +4,7 @@
 
 [日本語 README](README.md)
 
-An open-source Windows / macOS app that fetches Splatoon 3 battle history and owned gear via the unofficial API reverse-engineered by [nxapi](https://github.com/samuelthomas2774/nxapi) (Nintendo Account), then visualizes and analyzes it. Not affiliated with Nintendo Co., Ltd.
+An open-source Windows / macOS / Linux app that fetches Splatoon 3 battle history and owned gear via the unofficial API reverse-engineered by [nxapi](https://github.com/samuelthomas2774/nxapi) (Nintendo Account), then visualizes and analyzes it. Not affiliated with Nintendo Co., Ltd.
 
 > ## 📢 chartoon is now splabo
 >
@@ -102,6 +102,7 @@ After opening it once, add it to your home screen to open it from an icon next t
 
 - **Check that the phone and the PC are on the same Wi-Fi.** Guest Wi-Fi networks often block devices from talking to each other
 - **Windows**: if the network is set to "Public", Windows Firewall blocks connections from the phone. Change it to "Private network" (Settings → Network & internet → current connection → Network profile type). If an allow dialog appears the first time the phone connects, check Private and allow it. The settings screen also shows a warning in this state. If it still does not connect after switching to Private, a rule you allowed earlier while on Public may be the only one. Follow the note on the settings screen and check Private on splabo's inbound rules in Windows Firewall
+- **Linux**: if a firewall (ufw etc.) is on, allow incoming connections to the port (default 47620), e.g. `sudo ufw allow from 192.168.0.0/16 to any port 47620 proto tcp`
 - **If the server cannot start because another app uses the port**: change "Port" in the settings (default 47620). The URL changes too, so scan the QR again
 - If the PC has several networks, also try the other URLs shown under the QR code
 - **If someone else saw the URL**: press "Reissue token" and the old URL stops working. Scan the QR again on the phones you use
@@ -113,7 +114,7 @@ After opening it once, add it to your home screen to open it from an icon next t
 | Node.js 20+    | App development and build                |
 | Rust + Cargo   | Tauri desktop app build                  |
 
-Windows / macOS (no WSL). Linux is untested.
+Windows / macOS / Linux (no WSL). To build on Linux, install the system libraries Tauri needs (`libwebkit2gtk-4.1-dev` and others; see "Install Linux dependencies" in `.github/workflows/splabo-release.yml`).
 
 ---
 
@@ -141,6 +142,7 @@ cd tools/nxapi-wrapper
 npm install
 ./build.sh mac-arm    # macOS Apple Silicon
 # ./build.sh mac-x64  # macOS Intel
+# ./build.sh linux    # Linux (x64)
 # build.bat           # Windows
 ```
 
@@ -160,11 +162,11 @@ cd app
 npx tauri build    # produces an installer (first run is a full Rust build)
 ```
 
-Output is under `app/src-tauri/target/release/bundle/` (Windows: `.msi` / `.exe`, macOS: `.dmg`).
+Output is under `app/src-tauri/target/release/bundle/` (Windows: `.msi` / `.exe`, macOS: `.dmg`, Linux: `.deb` / `.rpm`). On Linux, use `npx tauri build --bundles deb,rpm` (AppImage is not used because building it breaks the sidecar binary).
 
 ## Release
 
-Pushing a single `splabo-vX.Y.Z` tag runs `.github/workflows/splabo-release.yml` and creates a draft release (Windows `.exe` / `.msi`, macOS `.dmg`). Changelog continues in [`CHANGELOG.md`](CHANGELOG.md) (Japanese). Old per-app tags (`chartoon-v*` / `geartoon-v*`) and pre-monorepo `vX.Y.Z` are frozen and not workflow triggers.
+Pushing a single `splabo-vX.Y.Z` tag runs `.github/workflows/splabo-release.yml` and creates a draft release (Windows `.exe` / `.msi`, macOS `.dmg`, Linux `.deb` / `.rpm`). Changelog continues in [`CHANGELOG.md`](CHANGELOG.md) (Japanese). Old per-app tags (`chartoon-v*` / `geartoon-v*`) and pre-monorepo `vX.Y.Z` are frozen and not workflow triggers.
 
 ---
 
@@ -242,7 +244,7 @@ Payload construction is a Rust reimplementation of [**s3s**](https://github.com/
 
 - This tool is intended for personal use.
 - SplatNet 3 is not a public Nintendo API. Nintendo-side changes may break it without notice.
-- Credentials are stored only in the app’s AppData directory (Windows: `%APPDATA%\com.splabo.app\`, macOS: `~/Library/Application Support/com.splabo.app/`). Data from old chartoon / geartoon is copied non-destructively on first launch. Do not commit it.
+- Credentials are stored only in the app’s AppData directory (Windows: `%APPDATA%\com.splabo.app\`, macOS: `~/Library/Application Support/com.splabo.app/`, Linux: `~/.local/share/com.splabo.app/`). Data from old chartoon / geartoon is copied non-destructively on first launch. Do not commit it.
 - The in-app UI is Japanese-only for now (English UI is planned).
 
 ## Privacy policy

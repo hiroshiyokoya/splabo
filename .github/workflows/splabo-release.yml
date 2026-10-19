@@ -79,9 +79,10 @@ jobs:
             rust-target: aarch64-apple-darwin
             tauri-args: --target aarch64-apple-darwin
 
-          # Linux は動作未検証のため一時的に無効化
-          # - platform: ubuntu-22.04
-          #   sidecar-build: build:linux
+          # AppImage は作らない。linuxdeploy がサイドカーのバイナリを書き換え、pkg が埋め込んだ中身が壊れるため
+          - platform: ubuntu-22.04
+            sidecar-build: build:linux
+            tauri-args: --bundles deb,rpm
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -143,6 +144,8 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
             patchelf
 
       # nxapi-wrapper サイドカーをビルド

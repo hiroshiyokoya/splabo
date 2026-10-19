@@ -30,6 +30,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "category": "Game",
     "externalBin": [
       "binaries/nxapi-sidecar"
     ],
@@ -43,6 +44,14 @@
     "windows": {
       "nsis": {
         "installerHooks": "installer-hooks.nsh"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libayatana-appindicator3-1 | libappindicator3-1"]
+      },
+      "rpm": {
+        "depends": ["libappindicator-gtk3"]
       }
     }
   },

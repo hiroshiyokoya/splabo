@@ -6,6 +6,9 @@
 |---|---|
 | Windows | splabo_VERSION_x64-setup.exe（推奨）または .msi（下記「更新時の注意」も参照） |
 | macOS (Apple Silicon) | splabo_VERSION_aarch64.dmg |
+| Linux (x64) | splabo_VERSION_amd64.deb（Debian / Ubuntu）または splabo-VERSION-1.x86_64.rpm（Fedora など） |
+
+Intel Mac 版はありません。
 
 ## ⚠️ インストール時の警告について
 
@@ -27,6 +30,13 @@
 ターミナルで以下を実行してください。
 ```
 xattr -cr /Applications/splabo.app
+```
+
+### Linux — インストールのしかた
+ダウンロードしたフォルダで、次のどちらかを実行してください。
+```
+sudo apt install ./splabo_VERSION_amd64.deb      # Debian / Ubuntu
+sudo dnf install ./splabo-VERSION-1.x86_64.rpm   # Fedora など
 ```
 
 ---
