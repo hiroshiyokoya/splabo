@@ -245,7 +245,7 @@
     "interval": "Interval",
     "updateCheck": "Update check",
     "updateCheckEnable": "Check for a new version at startup",
-    "updateCheckHint": "Asks GitHub for the latest release (a plain request; no battle or account data is sent). If a new version exists, a note appears in the sidebar and in About. To update, download it from the release page and install it again.",
+    "updateCheckHint": "Asks GitHub for the latest release (a plain request; no battle or account data is sent). If a new version exists, a blue dot appears at the top right of the logo (click the logo to see the version and a link to the release page). To update, download it from the release page and install it again.",
     "intervalMin": "Every {{count}} min",
     "intervalHour": "Every {{count}} h",
     "master": "Master data",
