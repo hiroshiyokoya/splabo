@@ -98,6 +98,14 @@ export function About({ onClose }: Props) {
             >
               {t('about.feedback')}
             </a>
+            {/* 非公式 API の利用・平文での保存などの既知の制限（#541） */}
+            <a
+              className="about-link"
+              href={t('about.limitationsUrl')}
+              onClick={e => { e.preventDefault(); openUrl(t('about.limitationsUrl')).catch(console.error) }}
+            >
+              {t('about.limitations')}
+            </a>
           </div>
           <div className="about-license">
             <p>{t('about.license')}</p>
