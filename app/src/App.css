@@ -224,8 +224,8 @@ body {
   position: absolute;
   top: 0;
   right: 0;
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: #3b82f6;
   box-shadow: 0 0 0 2px var(--surface);  /* サイドバーの地の色で縁取って、ロゴから浮かせる */
