@@ -196,6 +196,12 @@ pub fn run() {
             // deep-link
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
+                // Linux はインストーラが関連付けを作らない形式（AppImage）があるので、起動のたびに
+                // 自分の実行ファイルをスキームに登録する（#835）。失敗してもアプリは動かす。
+                #[cfg(target_os = "linux")]
+                if let Err(e) = app.deep_link().register_all() {
+                    log::warn!("[deep-link] スキームの登録に失敗: {e}");
+                }
                 let handle = app.handle().clone();
                 app.deep_link().on_open_url(move |event| {
                     for url in event.urls() {
