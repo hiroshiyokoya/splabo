@@ -213,6 +213,23 @@ body {
   height: auto;
 }
 .logo:hover { opacity: 0.8; }
+/* 点をロゴの右上に重ねるための枠（ロゴと同じ大きさ） */
+.logo-mark {
+  position: relative;
+  display: block;
+  max-width: 160px;
+}
+/* 新しい版があるときの印（#542）。ロゴの黄緑に紛れないよう青にする */
+.logo-update-dot {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 0 2px var(--surface);  /* サイドバーの地の色で縁取って、ロゴから浮かせる */
+}
 
 .nav-item {
   display: flex;
@@ -2670,6 +2687,8 @@ body {
   font-size: 13px;
 }
 .about-link:hover { text-decoration: underline; }
+/* 新しい版の案内（#542） */
+.about-update { font-weight: 700; }
 /* ライセンスとソースの案内（#534） */
 .about-license {
   font-size: 12px;

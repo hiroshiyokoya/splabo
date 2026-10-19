@@ -40,3 +40,11 @@ export function sourceUrl(version: string): string {
   if (version && !isDevVersion(version)) return `${base}splabo-v${version}`
   return `${base}${__GIT_SHA__ || 'develop'}`
 }
+
+/** 今より新しいリリース（#542・Rust の `update_check::check_for_update` が返す）。 */
+export interface NewerRelease {
+  /** 版（`1.0.1`） */
+  version: string
+  /** リリースのページ */
+  url: string
+}

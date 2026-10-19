@@ -17,6 +17,7 @@ import type { ViewToggleOption } from './components/ViewToggle'
 import type { Tab, BattlesView, SettingsTab, AppSettings, Filters } from './types'
 import { DEFAULT_FILTERS } from './types'
 import { loadViewPrefs, saveViewPrefs } from './utils/viewPrefs'
+import type { NewerRelease } from './utils/version'
 import { initAppSettings } from './utils/appSettings'
 import { useNotify, parseFetchError } from './utils/notify'
 import {
@@ -56,7 +57,10 @@ const DEFAULT_SETTINGS: AppSettings = {
    */
   autoFetchIntervalMin: 60,
   statink: { apiKey: '', autoUpload: false, screenName: null },
+  updateCheckEnabled: true,
 }
+/** 新しい版を確かめ直すインターバル(ミリ秒)。トレイに常駐したままの人にも届くように 24 時間(#542)。 */
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
 /** ブキマスターを再取得するインターバル(ミリ秒)。24 時間。 */
 const WEAPONS_FETCH_INTERVAL_MS = 24 * 60 * 60 * 1000
 
@@ -108,6 +112,7 @@ export default function App() {
   const [loginVersion, setLoginVersion] = useState(0)
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
   const [showAbout, setShowAbout] = useState(false)
+  const [newerRelease, setNewerRelease] = useState<NewerRelease | null>(null)
   const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(
     () => lsGet(LAST_FETCHED_KEY)
   )
@@ -115,6 +120,20 @@ export default function App() {
   // バトル/ブキ/ステージ上部の絞り込み＋見出しを sticky にするとき、
   // ブキ・ステージの見出し行が FilterBar の下に来るよう高さを測る(#450)。
   const stickyChromeRef = useRef<HTMLDivElement>(null)
+
+  // 新しい版があるか(#542)。起動時と、その後 1 日ごとに確かめる。通信に失敗しても何も出さない
+  useEffect(() => {
+    if (!settings.updateCheckEnabled) {
+      setNewerRelease(null)
+      return
+    }
+    const check = () => {
+      call<NewerRelease | null>('check_for_update').then(setNewerRelease).catch(() => {})
+    }
+    check()
+    const id = window.setInterval(check, UPDATE_CHECK_INTERVAL_MS)
+    return () => window.clearInterval(id)
+  }, [settings.updateCheckEnabled])
 
   useEffect(() => {
     const el = stickyChromeRef.current
@@ -377,8 +396,19 @@ export default function App() {
   return (
     <div className="app">
       <nav className="sidebar">
-        <button className="logo" onClick={() => setShowAbout(true)} aria-label={t('nav.aboutAria')}>
-          <img src="/splabo-logo.png" alt="splabo" />
+        <button
+          className="logo"
+          onClick={() => setShowAbout(true)}
+          aria-label={newerRelease
+            ? `${t('nav.aboutAria')}（${t('about.updateAvailable', { version: newerRelease.version })}）`
+            : t('nav.aboutAria')}
+          title={newerRelease ? t('about.updateAvailable', { version: newerRelease.version }) : undefined}
+        >
+          <span className="logo-mark">
+            <img src="/splabo-logo.png" alt="splabo" />
+            {/* 新しい版があるときの印(#542)。中身は「splabo について」に出す */}
+            {newerRelease && <span className="logo-update-dot" aria-hidden />}
+          </span>
         </button>
         {/* 並び順: バトル → ブキ → ステージ → ギア → 環境分析 → AI分析 → 設定
             扱う対象をそのまま名前にする。旧アプリ由来の 2 つ(バトル / ギア)は
@@ -452,7 +482,7 @@ export default function App() {
         {tab === 'settings' && <Settings settings={settings} onSave={saveSettings} loginVersion={loginVersion} focus={settingsFocus} />}
       </main>
 
-      {showAbout && <About onClose={() => setShowAbout(false)} />}
+      {showAbout && <About onClose={() => setShowAbout(false)} newerRelease={newerRelease} />}
     </div>
   )
 }

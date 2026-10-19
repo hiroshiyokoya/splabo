@@ -280,6 +280,7 @@ Information this tool collects and uses:
   - **② Choose table/chart layout**: the question, column names, and the **first 20 aggregated rows**. Includes aggregated values such as stage names, weapon names, win rates, and counts (not individual battles or other players’ names).
   - API keys stay in local `localStorage` and are not sent to any other provider. If you never use AI analysis, none of this is sent.
 - **View on your phone**: only when turned on, the PC serves a page for phones inside the same network. Battle and gear data only travel between the PC and the phone, never to the internet. The phone page loads its typeface from Google Fonts.
+- **Update check (GitHub, `api.github.com`)**: at startup and once a day, splabo asks GitHub for the latest release to tell you when a new version is out. It is a plain request with no battle or account data. You can turn it off in Settings → Data → "Update check".
 - splabo does not otherwise send data out on its own.
 
 ### Personal information
