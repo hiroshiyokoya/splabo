@@ -7,9 +7,9 @@ import { SavedCoordinateList } from './components/SavedCoordinateList'
 import { SaveCoordinateDialog } from './components/SaveCoordinateDialog'
 import {
   listSavedCoordinates, saveCoordinate, deleteSavedCoordinate,
-  toCoordinateGears, resolveCoordinate,
+  toCoordinateGears, resolveCoordinate, conditionsFromSnapshot,
 } from './utils/savedCoordinates'
-import type { FullSlots, ResolvedCoordinate, SavedCoordinate } from './utils/savedCoordinates'
+import type { ComboConditions, FullSlots, ResolvedCoordinate, SavedCoordinate } from './utils/savedCoordinates'
 import { useGearDB, saveLastFetchedAt } from './hooks/useGearDB'
 import { isTauri } from './utils/tauri'
 import type { FilterState } from './components/FilterDrawer'
@@ -233,6 +233,7 @@ export function GearSection() {
   const [comboOpen, setComboOpen]   = useState(false)
   const [comboSlots, setComboSlots] = useState<ComboSlots>(emptySlots)
   const [comboOpenRequest, setComboOpenRequest] = useState(0)
+  const [comboSearchRequest, setComboSearchRequest] = useState<{ nonce: number; conditions: ComboConditions } | null>(null)
   const [showSaved, setShowSaved]   = useState(false)
   const [savedCoords, setSavedCoords] = useState<SavedCoordinate[]>([])
   const [nextNumber, setNextNumber] = useState(1)
@@ -458,6 +459,11 @@ export function GearSection() {
     setComboOpenRequest(n => n + 1)
   }, [])
 
+  /** 保存したときのギアパワーで組み合わせを探す（#860）。結果はコーデシートに出る */
+  const handleSearchOriginal = useCallback((coord: SavedCoordinate) => {
+    setComboSearchRequest(prev => ({ nonce: (prev?.nonce ?? 0) + 1, conditions: conditionsFromSnapshot(coord) }))
+  }, [])
+
   const handleDeleteSaved = useCallback(async (coord: SavedCoordinate) => {
     try {
       await deleteSavedCoordinate(coord.id)
@@ -638,6 +644,7 @@ export function GearSection() {
               }}
               onDelete={handleDeleteSaved}
               onResave={handleResaveSaved}
+              onSearchOriginal={handleSearchOriginal}
             />
           </>
         ) : <>
@@ -723,6 +730,7 @@ export function GearSection() {
           nearLimit={nearLimit}
           onSaveCombo={handleOpenSaveDialog}
           openRequest={comboOpenRequest}
+          searchRequest={comboSearchRequest}
         />
 
         {saveDialog && (

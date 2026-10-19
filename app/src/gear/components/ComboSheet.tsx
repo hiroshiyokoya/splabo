@@ -6,7 +6,7 @@ import type { ComboResult, ComboSortKey } from '../utils/findCombo'
 import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank, makeSkillDisplayComparator } from '../constants/gearPowerMeta'
 import { skillDisplayName } from '../utils/skillDisplayName'
 import { gearItemDisplayName, gearBrandDisplayName } from '../utils/gearItemDisplayName'
-import type { FullSlots } from '../utils/savedCoordinates'
+import type { ComboConditions, FullSlots } from '../utils/savedCoordinates'
 import { GearIcon } from './GearIcon'
 
 export type ComboSlots = {
@@ -91,9 +91,11 @@ interface Props {
   onSaveCombo?:     (slots: FullSlots) => void
   /** 値が変わるたびに、閉じていればシートを開く(保存コーデをスロットに入れたとき・#782) */
   openRequest?:     number
+  /** nonce が変わるたびに、この条件で探す(保存コーデの「元のパワーで探す」・#860) */
+  searchRequest?:   { nonce: number; conditions: ComboConditions } | null
 }
 
-export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '', comboLimit = 50, nearLimit = 10, onSaveCombo, openRequest = 0 }: Props) {
+export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '', comboLimit = 50, nearLimit = 10, onSaveCombo, openRequest = 0, searchRequest = null }: Props) {
   const { t } = useTranslation()
   const emptyLabel = t('gear.empty')
   const [isOpen, setIsOpen]             = useState(false)
@@ -375,13 +377,16 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
     }
   }
 
-  const handleGenerate = () => {
-    if (searching || activeRequirements === 0) return
-
+  /** 条件を渡して組み合わせを探す（画面の条件のほか、保存コーデの元のギアパワーでも呼ぶ・#860） */
+  const runSearch = (
+    points: Map<number, number>,
+    mainSel: Record<GearCategory, number | null>,
+    aki: number,
+  ) => {
     const requirements = [
       // 発動型
       ...(['head', 'clothing', 'shoes'] as GearCategory[])
-        .map(cat => mainOnlySel[cat])
+        .map(cat => mainSel[cat])
         .filter((id): id is number => id !== null)
         .map(skillId => {
           const skills = Object.values(mainOnlyByCategory).flat()
@@ -389,7 +394,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
           return { skillId, skillName: skill?.name ?? '', minAp: MAIN_AP }
         }),
       // スタック型
-      ...[...skillPoints.entries()]
+      ...[...points.entries()]
         .filter(([, pts]) => pts > 0)
         .map(([skillId, minAp]) => {
           const skill = stackableSkills.find(s => s.id === skillId)
@@ -399,11 +404,28 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
 
     setSearching(true)
     setTimeout(() => {
-      const results = findCombo(data, requirements, comboLimit, akiTarget, nearLimit)
+      const results = findCombo(data, requirements, comboLimit, aki, nearLimit)
       setComboResults(results)
       setSearching(false)
     }, 0)
   }
+
+  const handleGenerate = () => {
+    if (searching || activeRequirements === 0) return
+    runSearch(skillPoints, mainOnlySel, akiTarget)
+  }
+
+  // 外からの「この条件で探して」（保存コーデの「元のパワーで探す」・#860）。条件を入れ替えてシートを広げ、探す
+  useEffect(() => {
+    if (!searchRequest) return
+    const { stackable, mainOnly } = searchRequest.conditions
+    setSkillPoints(new Map(stackable))
+    setMainOnlySel({ ...mainOnly })
+    setAkiTarget(0)
+    setIsOpen(true)
+    setSnapExpanded(true)
+    runSearch(stackable, mainOnly, 0)
+  }, [searchRequest?.nonce])
 
   const handleClearRequirements = () => {
     setSkillPoints(new Map())

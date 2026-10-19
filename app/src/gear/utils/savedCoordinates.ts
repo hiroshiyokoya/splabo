@@ -1,6 +1,6 @@
 import type { GearCategory, GearDB, GearItem } from '../types'
 import { MAIN_AP, SUB_AP } from './findCombo'
-import { makeSkillDisplayComparator } from '../constants/gearPowerMeta'
+import { MAIN_ONLY_SKILL_CATEGORY, isMainOnly, makeSkillDisplayComparator } from '../constants/gearPowerMeta'
 import { call } from '../../utils/backend'
 
 /**
@@ -120,6 +120,34 @@ export function totalApBySkill(gears: (GearItem | null)[]): Map<number, number> 
     for (const s of gear.additional_skills) add(s.id, SUB_AP)
   }
   return result
+}
+
+/** 組み合わせ検索の条件（コーデシートの「スタック型の AP」と「発動型」） */
+export interface ComboConditions {
+  /** スタック型のスキル ID → 最低 AP */
+  stackable: Map<number, number>
+  /** 部位ごとの発動型のスキル ID（無ければ null） */
+  mainOnly: Record<GearCategory, number | null>
+}
+
+/**
+ * 保存したときのギアパワーから、組み合わせ検索の条件を作る（#860）。
+ * ギアのサブを付け替えたり手放したりしたあと、元のギアパワーのコーデを組み直すのに使う。
+ */
+export function conditionsFromSnapshot(coord: SavedCoordinate): ComboConditions {
+  const stackable = new Map<number, number>()
+  const mainOnly: Record<GearCategory, number | null> = { head: null, clothing: null, shoes: null }
+  const add = (id: number, ap: number) => {
+    if (id === -1) return
+    stackable.set(id, (stackable.get(id) ?? 0) + ap)
+  }
+  for (const cat of GEAR_CATEGORIES) {
+    const ref = coord.gears[cat]
+    if (isMainOnly(ref.main)) mainOnly[MAIN_ONLY_SKILL_CATEGORY[ref.main] ?? cat] = ref.main
+    else add(ref.main, MAIN_AP)
+    for (const id of ref.subs) add(id, SUB_AP)
+  }
+  return { stackable, mainOnly }
 }
 
 /** 合計 AP の表示順（発動型が先、そのあと AP の高い順） */
