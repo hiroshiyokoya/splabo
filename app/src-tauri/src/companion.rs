@@ -613,6 +613,10 @@ pub struct CompanionDiagnostics {
     pub network_category: String,
     /// LAN 側 IPv4 が 1 つでも見えているか（false なら Wi-Fi 未接続などで到達以前の問題）。
     pub has_lan_ip: bool,
+    /// 今のネットワークのプロファイル（`network_category`）で、Windows ファイアウォールが
+    /// splabo への受信を許可しているか（#370）。判定できないとき（Windows 以外・プロファイル不明・
+    /// COM の失敗）は `None` で、断定しない。
+    pub inbound_allowed: Option<bool>,
 }
 
 /// 現在のネットワークプロファイル種別を返す（#363）。
@@ -682,6 +686,155 @@ fn detect_network_category() -> String {
 #[cfg(not(target_os = "windows"))]
 fn detect_network_category() -> String {
     "unsupported".to_string()
+}
+
+/// 今のネットワークのプロファイルで、Windows ファイアウォールが splabo への受信を許可しているか（#370）。
+///
+/// 以前パブリックの状態で許可ダイアログに答えると、パブリック用の許可規則だけができる。
+/// そのあとプライベートに変えると、プライベート用の規則が無いので受信は止まったままになる。
+/// `network_category` は "private" なので、パブリックの警告も出ない。これを見つけるために、
+/// ファイアウォールの規則（`INetFwPolicy2`・読むだけなら管理者権限は要らない）を読む。
+///
+/// - 対象のプロファイルは `network_category`（NLM）から決める。ファイアウォールの
+///   `CurrentProfileTypes` は WSL・Hyper-V の仮想アダプタでパブリックも立つので使わない
+/// - 規則は実行ファイルのパスで探す（許可ダイアログはそのとき動いている exe に規則を作る）
+/// - 規則の追加・変更はしない（検出と案内だけ・#363 の方針）
+#[cfg(target_os = "windows")]
+fn detect_inbound_allowed(category: &str) -> Option<bool> {
+    let exe = std::env::current_exe().ok()?.to_string_lossy().to_string();
+    inbound_allowed_for_exe(category, &exe)
+}
+
+/// `detect_inbound_allowed` の本体。`exe` に対する規則を見る。
+#[cfg(target_os = "windows")]
+fn inbound_allowed_for_exe(category: &str, exe: &str) -> Option<bool> {
+    use windows::core::Interface;
+    use windows::Win32::NetworkManagement::WindowsFirewall::{
+        INetFwPolicy2, INetFwRule, NetFwPolicy2, NET_FW_ACTION_ALLOW, NET_FW_PROFILE_TYPE2,
+        NET_FW_RULE_DIR_IN,
+    };
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::System::Ole::IEnumVARIANT;
+    use windows::Win32::System::Variant::{VariantClear, VARIANT, VT_DISPATCH};
+
+    let bit = profile_bit(category)?;
+
+    unsafe {
+        // 既に別モードで初期化済みでも致命ではない（detect_network_category と同じ）。
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+
+        let policy: INetFwPolicy2 = match CoCreateInstance(&NetFwPolicy2, None, CLSCTX_ALL) {
+            Ok(p) => p,
+            Err(e) => {
+                log::warn!("[companion] NetFwPolicy2 生成失敗: {e}");
+                return None;
+            }
+        };
+        // このプロファイルでファイアウォールが切れていれば、規則が無くても通る
+        if !bool::from(policy.get_FirewallEnabled(NET_FW_PROFILE_TYPE2(bit)).ok()?) {
+            return Some(true);
+        }
+
+        let rules: IEnumVARIANT = match policy.Rules().and_then(|r| r._NewEnum()).and_then(|u| u.cast()) {
+            Ok(e) => e,
+            Err(e) => {
+                log::warn!("[companion] ファイアウォール規則の列挙失敗: {e}");
+                return None;
+            }
+        };
+        let mut mine = Vec::new();
+        loop {
+            let mut item = [VARIANT::default()];
+            let mut fetched = 0u32;
+            if rules.Next(&mut item, &mut fetched).is_err() || fetched == 0 {
+                break;
+            }
+            let inner = &item[0].Anonymous.Anonymous;
+            let rule = if inner.vt == VT_DISPATCH {
+                inner.Anonymous.pdispVal.as_ref().and_then(|d| d.cast::<INetFwRule>().ok())
+            } else {
+                None
+            };
+            let _ = VariantClear(&mut item[0]);
+            let Some(rule) = rule else { continue };
+
+            // 規則は数百あるので、先に exe で絞ってから残りを読む
+            let app = rule.ApplicationName().map(|s| s.to_string()).unwrap_or_default();
+            if !same_exe(&app, exe) {
+                continue;
+            }
+            mine.push(FwRule {
+                inbound: rule.Direction().is_ok_and(|d| d == NET_FW_RULE_DIR_IN),
+                enabled: rule.Enabled().is_ok_and(bool::from),
+                allow: rule.Action().is_ok_and(|a| a == NET_FW_ACTION_ALLOW),
+                profiles: rule.Profiles().unwrap_or(0),
+            });
+        }
+        Some(inbound_allowed(&mine, bit))
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn detect_inbound_allowed(_category: &str) -> Option<bool> {
+    None
+}
+
+/// splabo の実行ファイルに対するファイアウォール規則のうち、判定に使う項目。
+#[cfg(any(target_os = "windows", test))]
+struct FwRule {
+    inbound: bool,
+    enabled: bool,
+    allow: bool,
+    /// 効くプロファイルのビット（ドメイン 1・プライベート 2・パブリック 4・すべて 0x7FFFFFFF）
+    profiles: i32,
+}
+
+/// `network_category` をファイアウォールのプロファイルのビットにする。分からなければ `None`。
+#[cfg(any(target_os = "windows", test))]
+fn profile_bit(category: &str) -> Option<i32> {
+    match category {
+        "domain" => Some(1),
+        "private" => Some(2),
+        "public" => Some(4),
+        _ => None,
+    }
+}
+
+/// 規則のプログラムのパスが、この exe を指しているか。大文字小文字は区別しない。
+/// 規則のパスに環境変数（`%ProgramFiles%` など）が入っていれば展開してから比べる。
+#[cfg(any(target_os = "windows", test))]
+fn same_exe(rule_app: &str, exe: &str) -> bool {
+    let normalize = |s: &str| expand_env_vars(s.trim_start_matches(r"\\?\")).to_lowercase();
+    !rule_app.is_empty() && normalize(rule_app) == normalize(exe)
+}
+
+/// `%NAME%` を環境変数の値に置き換える。値が無ければそのまま残す。
+#[cfg(any(target_os = "windows", test))]
+fn expand_env_vars(s: &str) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(start) = rest.find('%') {
+        let Some(len) = rest[start + 1..].find('%') else { break };
+        let name = &rest[start + 1..start + 1 + len];
+        out.push_str(&rest[..start]);
+        match std::env::var(name) {
+            Ok(v) if !name.is_empty() => out.push_str(&v),
+            _ => out.push_str(&rest[start..start + len + 2]),
+        }
+        rest = &rest[start + len + 2..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// splabo の規則（exe で絞り込み済み）から、プロファイル `bit` で受信が通るかを決める。
+/// 有効な受信のブロック規則が 1 つでもあれば通らない（Windows ではブロックが許可より強い）。
+#[cfg(any(target_os = "windows", test))]
+fn inbound_allowed(rules: &[FwRule], bit: i32) -> bool {
+    let applicable = || rules.iter().filter(|r| r.inbound && r.enabled && r.profiles & bit != 0);
+    !applicable().any(|r| !r.allow) && applicable().any(|r| r.allow)
 }
 
 /// JSON を指定ステータスコードで返す。
@@ -1253,9 +1406,11 @@ pub fn companion_status(app: AppHandle, state: State<'_, CompanionState>) -> Res
 /// ネットワークプロファイルが Public のとき「プライベートに変更してください」等を案内する。
 #[tauri::command]
 pub fn companion_diagnostics() -> CompanionDiagnostics {
+    let network_category = detect_network_category();
     CompanionDiagnostics {
         os: std::env::consts::OS.to_string(),
-        network_category: detect_network_category(),
+        inbound_allowed: detect_inbound_allowed(&network_category),
+        network_category,
         has_lan_ip: !host_ipv4s().is_empty(),
     }
 }
@@ -1943,4 +2098,59 @@ mod tests {
         // 判定は Windows(NLM) 専用。非 Windows は誤判定せず "unsupported" を返す。
         assert_eq!(detect_network_category(), "unsupported");
     }
+
+    fn rule(allow: bool, profiles: i32) -> FwRule {
+        FwRule { inbound: true, enabled: true, allow, profiles }
+    }
+
+    #[test]
+    fn inbound_allowed_needs_rule_for_the_current_profile() {
+        let (private, public) = (profile_bit("private").unwrap(), profile_bit("public").unwrap());
+        // #370 の状態: パブリック用の許可しか無いまま、プライベートに変えた
+        let public_only = [rule(true, 4), rule(true, 4)];
+        assert!(!inbound_allowed(&public_only, private));
+        assert!(inbound_allowed(&public_only, public));
+        // プライベートにチェックを足した・すべてのプロファイル
+        assert!(inbound_allowed(&[rule(true, 4 | 2)], private));
+        assert!(inbound_allowed(&[rule(true, 0x7FFF_FFFF)], private));
+        // 規則が無い
+        assert!(!inbound_allowed(&[], private));
+    }
+
+    #[test]
+    fn inbound_allowed_ignores_disabled_and_outbound_and_blocks_win() {
+        let private = profile_bit("private").unwrap();
+        let disabled = FwRule { enabled: false, ..rule(true, 2) };
+        let outbound = FwRule { inbound: false, ..rule(true, 2) };
+        assert!(!inbound_allowed(&[disabled, outbound], private));
+        // 許可ダイアログでキャンセルすると、ブロックの規則ができる。ブロックは許可より強い
+        assert!(!inbound_allowed(&[rule(true, 2), rule(false, 2)], private));
+    }
+
+    #[test]
+    fn profile_bit_maps_only_known_categories() {
+        assert_eq!(profile_bit("domain"), Some(1));
+        assert_eq!(profile_bit("unknown"), None);
+        assert_eq!(profile_bit("unsupported"), None);
+    }
+
+    #[test]
+    fn same_exe_compares_paths_loosely() {
+        let exe = r"C:\Users\me\AppData\Local\splabo\splabo.exe";
+        assert!(same_exe(r"c:\users\me\appdata\local\splabo\SPLABO.EXE", exe));
+        assert!(same_exe(r"\\?\C:\Users\me\AppData\Local\splabo\splabo.exe", exe));
+        assert!(!same_exe(r"C:\Users\me\AppData\Local\other\other.exe", exe));
+        // プログラムを指定しない規則（ポートだけの規則など）は splabo の規則とみなさない
+        assert!(!same_exe("", exe));
+    }
+
+    #[test]
+    fn expand_env_vars_replaces_known_and_keeps_unknown() {
+        // SAFETY: このテストだけが使う名前の環境変数
+        unsafe { std::env::set_var("SPLABO_TEST_DIR", r"C:\Apps") };
+        assert_eq!(expand_env_vars(r"%SPLABO_TEST_DIR%\splabo.exe"), r"C:\Apps\splabo.exe");
+        assert_eq!(expand_env_vars(r"%SPLABO_NO_SUCH%\x.exe"), r"%SPLABO_NO_SUCH%\x.exe");
+        assert_eq!(expand_env_vars("100%"), "100%");
+    }
 }
+

@@ -56,6 +56,10 @@ windows = { workspace = true, features = [
     "Win32_Globalization",
     "Win32_Networking_NetworkListManager",
     "Win32_System_Com",
+    # ファイアウォールの受信規則を読む（#370・companion.rs の detect_inbound_allowed）
+    "Win32_NetworkManagement_WindowsFirewall",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
 ] }
 
 # Linux のみ: トレイアイコンに要る appindicator のライブラリが読めるかを、トレイを作る前に確かめる（#835）。
