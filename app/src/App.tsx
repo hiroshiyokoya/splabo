@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { call } from './utils/backend'
 import { listen } from '@tauri-apps/api/event'
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { Dashboard } from './components/Dashboard'
 import { BattleLog } from './components/BattleLog'
 import { FilterBar } from './components/FilterBar'
@@ -397,8 +396,19 @@ export default function App() {
   return (
     <div className="app">
       <nav className="sidebar">
-        <button className="logo" onClick={() => setShowAbout(true)} aria-label={t('nav.aboutAria')}>
-          <img src="/splabo-logo.png" alt="splabo" />
+        <button
+          className="logo"
+          onClick={() => setShowAbout(true)}
+          aria-label={newerRelease
+            ? `${t('nav.aboutAria')}（${t('about.updateAvailable', { version: newerRelease.version })}）`
+            : t('nav.aboutAria')}
+          title={newerRelease ? t('about.updateAvailable', { version: newerRelease.version }) : undefined}
+        >
+          <span className="logo-mark">
+            <img src="/splabo-logo.png" alt="splabo" />
+            {/* 新しい版があるときの印(#542)。中身は「splabo について」に出す */}
+            {newerRelease && <span className="logo-update-dot" aria-hidden />}
+          </span>
         </button>
         {/* 並び順: バトル → ブキ → ステージ → ギア → 環境分析 → AI分析 → 設定
             扱う対象をそのまま名前にする。旧アプリ由来の 2 つ(バトル / ギア)は
@@ -423,15 +433,6 @@ export default function App() {
             ? t('nav.lastFetched', { time: formatLastFetched(lastFetchedAt, i18n.language) })
             : t('nav.neverFetched')}
         </div>
-        {newerRelease && (
-          <button
-            className="sidebar-update"
-            onClick={() => openUrl(newerRelease.url).catch(console.error)}
-            title={t('nav.updateTitle')}
-          >
-            {t('nav.updateAvailable', { version: newerRelease.version })}
-          </button>
-        )}
       </nav>
 
       <main className="content">

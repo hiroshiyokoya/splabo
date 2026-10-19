@@ -45,9 +45,7 @@
     "fetching": "Fetching…",
     "fetchTitle": "Fetch the latest battles and gear from SplatNet 3",
     "lastFetched": "Updated {{time}}",
-    "neverFetched": "Not fetched yet",
-    "updateAvailable": "🆕 New version v{{version}}",
-    "updateTitle": "Open the release page"
+    "neverFetched": "Not fetched yet"
   },
   "battles": {
     "title": "Battles",

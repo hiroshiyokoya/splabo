@@ -45,9 +45,7 @@
     "fetching": "取得中...",
     "fetchTitle": "SplatNet3 から最新のバトル結果・ギアデータを取得",
     "lastFetched": "最終更新 {{time}}",
-    "neverFetched": "未取得",
-    "updateAvailable": "🆕 新しい版 v{{version}}",
-    "updateTitle": "リリースのページを開きます"
+    "neverFetched": "未取得"
   },
   "battles": {
     "title": "バトル",
