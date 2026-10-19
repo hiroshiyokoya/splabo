@@ -162,11 +162,11 @@ cd app
 npx tauri build    # インストーラーを生成（初回は Rust のフルビルドで数分かかります）
 ```
 
-生成物は `app/src-tauri/target/release/bundle/` に出力されます（Windows: `.msi` / `.exe`、macOS: `.dmg`、Linux: `.AppImage` / `.deb` / `.rpm`）。
+生成物は `app/src-tauri/target/release/bundle/` に出力されます（Windows: `.msi` / `.exe`、macOS: `.dmg`、Linux: `.deb` / `.rpm`）。Linux では `npx tauri build --bundles deb,rpm` を使ってください（AppImage は、作る途中でサイドカーのバイナリが壊れるため使いません）。
 
 ## リリース
 
-単一 `splabo-vX.Y.Z` タグを push すると `.github/workflows/splabo-release.yml` がドラフトリリースを作成します（Windows `.exe` / `.msi`・macOS `.dmg`・Linux `.AppImage` / `.deb` / `.rpm`）。CHANGELOG は [`CHANGELOG.md`](CHANGELOG.md) で継続します。旧 per-app タグ（`chartoon-v*` / `geartoon-v*`）および monorepo 化以前の `vX.Y.Z` は凍結扱いで、ワークフローのトリガーからは外しています。
+単一 `splabo-vX.Y.Z` タグを push すると `.github/workflows/splabo-release.yml` がドラフトリリースを作成します（Windows `.exe` / `.msi`・macOS `.dmg`・Linux `.deb` / `.rpm`）。CHANGELOG は [`CHANGELOG.md`](CHANGELOG.md) で継続します。旧 per-app タグ（`chartoon-v*` / `geartoon-v*`）および monorepo 化以前の `vX.Y.Z` は凍結扱いで、ワークフローのトリガーからは外しています。
 
 ---
 

@@ -79,8 +79,10 @@ jobs:
             rust-target: aarch64-apple-darwin
             tauri-args: --target aarch64-apple-darwin
 
+          # AppImage は作らない。linuxdeploy がサイドカーのバイナリを書き換え、pkg が埋め込んだ中身が壊れるため
           - platform: ubuntu-22.04
             sidecar-build: build:linux
+            tauri-args: --bundles deb,rpm
 
     runs-on: ${{ matrix.platform }}
     steps:

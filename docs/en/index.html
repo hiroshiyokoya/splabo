@@ -574,10 +574,10 @@
       </p>
     </div>
     <div class="warning-box">
-      <h3>Linux — if the AppImage does not start</h3>
-      <p>Make it executable first:<br>
-        <code>chmod +x splabo_*_amd64.AppImage</code><br>
-        On Ubuntu 22.04 or later, install <code>libfuse2</code> (<code>libfuse2t64</code> on 24.04) if it still does not start. On Debian / Ubuntu you can also use the <code>.deb</code>.
+      <h3>Linux — how to install</h3>
+      <p>On Debian / Ubuntu, install the <code>.deb</code> from the button. On Fedora and others, use the <code>.rpm</code> from the <a href="https://github.com/hiroshiyokoya/splabo/releases/latest">release</a>:<br>
+        <code>sudo apt install ./splabo_*_amd64.deb</code><br>
+        <code>sudo dnf install ./splabo-*.x86_64.rpm</code>
       </p>
     </div>
   </section>
@@ -636,10 +636,10 @@
           if (sep) sep.style.display = 'inline';
         }
 
-        // アセットから Windows(.exe)・macOS(.dmg)・Linux(.AppImage) を探す
+        // アセットから Windows(.exe)・macOS(.dmg)・Linux(.deb) を探す
         const winAsset = data.assets.find(a => a.name.endsWith('x64-setup.exe'));
         const macAsset = data.assets.find(a => a.name.endsWith('aarch64.dmg'));
-        const linuxAsset = data.assets.find(a => a.name.endsWith('amd64.AppImage'));
+        const linuxAsset = data.assets.find(a => a.name.endsWith('amd64.deb'));
 
         if (winAsset) document.getElementById('btn-win').href = winAsset.browser_download_url;
         if (macAsset) document.getElementById('btn-mac').href = macAsset.browser_download_url;

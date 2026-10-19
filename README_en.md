@@ -162,11 +162,11 @@ cd app
 npx tauri build    # produces an installer (first run is a full Rust build)
 ```
 
-Output is under `app/src-tauri/target/release/bundle/` (Windows: `.msi` / `.exe`, macOS: `.dmg`, Linux: `.AppImage` / `.deb` / `.rpm`).
+Output is under `app/src-tauri/target/release/bundle/` (Windows: `.msi` / `.exe`, macOS: `.dmg`, Linux: `.deb` / `.rpm`). On Linux, use `npx tauri build --bundles deb,rpm` (AppImage is not used because building it breaks the sidecar binary).
 
 ## Release
 
-Pushing a single `splabo-vX.Y.Z` tag runs `.github/workflows/splabo-release.yml` and creates a draft release (Windows `.exe` / `.msi`, macOS `.dmg`, Linux `.AppImage` / `.deb` / `.rpm`). Changelog continues in [`CHANGELOG.md`](CHANGELOG.md) (Japanese). Old per-app tags (`chartoon-v*` / `geartoon-v*`) and pre-monorepo `vX.Y.Z` are frozen and not workflow triggers.
+Pushing a single `splabo-vX.Y.Z` tag runs `.github/workflows/splabo-release.yml` and creates a draft release (Windows `.exe` / `.msi`, macOS `.dmg`, Linux `.deb` / `.rpm`). Changelog continues in [`CHANGELOG.md`](CHANGELOG.md) (Japanese). Old per-app tags (`chartoon-v*` / `geartoon-v*`) and pre-monorepo `vX.Y.Z` are frozen and not workflow triggers.
 
 ---
 
