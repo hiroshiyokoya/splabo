@@ -107,6 +107,8 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
 
   const [loggedIn, setLoggedIn] = useState(false)
   const [authLoading, setAuthLoading] = useState(false)
+  // ログアウトできなかった理由（取得中など・#854）
+  const [logoutError, setLogoutError] = useState<string | null>(null)
   const [themeId, setThemeId] = useState(getThemeId)
   const [localePref, setLocalePref] = useState<LocalePref>(loadLocalePref)
   const [uploading, setUploading] = useState(false)
@@ -216,11 +218,13 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
 
   async function handleLogout() {
     setAuthLoading(true)
+    setLogoutError(null)
     try {
       await call('logout')
       setLoggedIn(false)
     } catch (e) {
       console.error('ログアウト失敗:', e)
+      setLogoutError(failText(e))
     } finally {
       setAuthLoading(false)
     }
@@ -431,6 +435,9 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
             <button className="btn-danger" onClick={handleLogout} disabled={authLoading}>
               {authLoading ? t('common.processing') : t('settings.unlink')}
             </button>
+            {logoutError && (
+              <span style={{ fontSize: 13, color: 'var(--accent2)' }}>{logoutError}</span>
+            )}
           </div>
         ) : (
           <div>

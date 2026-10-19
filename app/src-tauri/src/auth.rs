@@ -765,9 +765,21 @@ pub fn check_auth_status(app: AppHandle) -> Result<bool, String> {
 }
 
 /// 保存済みトークンを削除してログアウトする。
+///
+/// nxapi のキャッシュ（`nxapi-data`）も消す（#854）。session_token と、そこから作ったトークンが
+/// 平文で入っているので、`auth.json` だけ消してもログイン情報が PC に残ってしまう。
+/// 取得の途中だとサイドカーがキャッシュを書き戻すので、そのときはログアウトしない。
 #[tauri::command]
 pub fn logout(app: AppHandle) -> Result<(), String> {
-    delete_session_token(&app)
+    use std::sync::atomic::Ordering;
+    if app.state::<crate::FetchInProgress>().0.load(Ordering::SeqCst) {
+        return Err("FETCH_IN_PROGRESS: バトル取得中はログアウトできません。".to_string());
+    }
+    if app.state::<crate::gear::GearFetchInProgress>().0.load(Ordering::SeqCst) {
+        return Err("GEAR_FETCH_IN_PROGRESS: ギア取得中はログアウトできません。".to_string());
+    }
+    delete_session_token(&app)?;
+    crate::nxapi::clear_nxapi_data(&app)
 }
 
 /// `now_unix` は将来のトークン有効期限管理用。現状は未使用警告抑制のため公開。
