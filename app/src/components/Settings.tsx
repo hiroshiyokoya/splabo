@@ -74,6 +74,8 @@ interface CompanionDiagnostics {
   network_category: string
   /** LAN 側 IPv4 が 1 つでも見えているか。 */
   has_lan_ip: boolean
+  /** 今のプロファイルで Windows ファイアウォールが受信を許可しているか(#370)。判定できなければ null。 */
+  inbound_allowed: boolean | null
 }
 
 /**
@@ -611,9 +613,20 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
                 {t('settings.companionPublicNet')}
               </div>
             )}
-            <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '8px 0 0', lineHeight: 1.6 }}>
-              {t('settings.companionFwHint')}
-            </p>
+            {/* プライベートなのに、受信の許可がパブリック用にしか無い(#370) */}
+            {companionDiag && companionDiag.network_category !== 'public' && companionDiag.inbound_allowed === false && (
+              <div style={{ color: 'var(--lose)', fontSize: 12, margin: '8px 0 0', lineHeight: 1.6 }}>
+                {t('settings.companionNoFwRule', {
+                  profile: t(companionDiag.network_category === 'domain' ? 'settings.profileDomain' : 'settings.profilePrivate'),
+                })}
+              </div>
+            )}
+            {/* 許可を確かめられなかったときだけ、起こりうることとして案内する */}
+            {companionDiag?.inbound_allowed == null && (
+              <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '8px 0 0', lineHeight: 1.6 }}>
+                {t('settings.companionFwHint')}
+              </p>
+            )}
           </div>
         )}
 
