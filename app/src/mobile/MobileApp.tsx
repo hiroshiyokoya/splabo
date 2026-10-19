@@ -51,6 +51,14 @@ function saveSection(s: Section): void {
   }
 }
 
+/** タブのアイコン（デスクトップのサイドバーと同じ・#850） */
+const SECTION_ICON: Record<Section, string> = {
+  battle: '⚔️',
+  weapon: '🔫',
+  stage: '🗺️',
+  gear: '👕',
+}
+
 const SECTION_LABEL: Record<Section, string> = {
   battle: 'mobile.navBattle',
   weapon: 'mobile.navWeapon',
@@ -212,12 +220,35 @@ export function MobileApp({ session }: { session: SessionResult }) {
     setTimeout(() => setUpdateNote(null), UPDATE_NOTE_MS)
   }
 
+  // 上のバーは画面の上に残す（#850）。その高さを CSS に渡し、ギア画面の上の帯をその下に付ける
+  const headerRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const el = headerRef.current
+    if (!el) return
+    const apply = () => document.documentElement.style.setProperty('--m-header-h', `${el.offsetHeight}px`)
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' })
+
+  // 開いているタブをもう一度押したら一番上へ（#850）
+  const handleSection = (s: Section) => {
+    if (s === section) scrollToTop()
+    else setSection(s)
+  }
+
   return (
     <div className="m-app">
-      {/* 1 段目にロゴと丸ボタン（全画面・更新）、2 段目にタブ（#815） */}
-      <header className="m-header">
+      {/* 1 段目にロゴと丸ボタン（全画面・更新）、2 段目にタブ（#815）。スクロールしても上に残す（#850） */}
+      <header className="m-header" ref={headerRef}>
         <div className="m-header__top">
-          <img className="m-header__logo" src="/splabo-logo.png" alt="SpLabo" />
+          {/* ロゴを押すと一番上へ戻る（#850） */}
+          <button type="button" className="m-header__logo-btn" onClick={scrollToTop} aria-label={t('mobile.scrollTop')} title={t('mobile.scrollTop')}>
+            <img className="m-header__logo" src="/splabo-logo.png" alt="SpLabo" />
+          </button>
           {connection === 'ok' && (
             <>
               <FullscreenButton />
@@ -241,8 +272,10 @@ export function MobileApp({ session }: { session: SessionResult }) {
                 key={s}
                 type="button"
                 className={`m-nav__item${section === s ? ' m-nav__item--active' : ''}`}
-                onClick={() => setSection(s)}
+                onClick={() => handleSection(s)}
+                aria-current={section === s ? 'page' : undefined}
               >
+                <span className="m-nav__icon" aria-hidden>{SECTION_ICON[s]}</span>
                 {t(SECTION_LABEL[s])}
               </button>
             ))}

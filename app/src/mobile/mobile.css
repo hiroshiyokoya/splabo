@@ -16,16 +16,23 @@ body,
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  padding-top: env(safe-area-inset-top);
 }
 
-/* 上のバー: 1 段目にロゴと丸ボタン、2 段目にタブ（#815） */
+/* 上のバー: 1 段目にロゴと丸ボタン、2 段目にタブ（#815）。
+   スクロールしても画面の上に残す（#850）。iPhone のノッチの分はここで空ける。
+   コーデシート（z-index 150）・グラフを広げた表示（300）・設定画面（100）はこの上にかぶさる */
 .m-header {
+  position: sticky;
+  top: 0;
+  z-index: 90;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 8px 16px 10px;
+  padding: calc(8px + env(safe-area-inset-top)) 16px 10px;
   border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .m-header__top {
@@ -34,14 +41,23 @@ body,
   gap: 8px;
 }
 
+/* ロゴを押すと一番上に戻る（#850） */
+.m-header__logo-btn {
+  /* 右の丸ボタン（全画面・更新）を右端に寄せる */
+  margin-right: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  line-height: 0;
+  cursor: pointer;
+}
+
 .m-header__logo {
   height: 32px;
   width: auto;
-  /* 右の丸ボタン（全画面・更新）を右端に寄せる */
-  margin-right: auto;
 }
 
-/* タブは 4 つを同じ幅で横いっぱいに並べる */
+/* タブは 4 つを同じ幅で横いっぱいに並べる。太い角丸にアイコンと文字の 2 段（#850） */
 .m-nav {
   display: flex;
   gap: 6px;
@@ -49,21 +65,42 @@ body,
 
 .m-nav__item {
   flex: 1;
-  background: none;
+  min-width: 0;
+  height: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 4px 10px;
+  border-radius: 14px;
+  padding: 0 4px;
   font: inherit;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
   color: var(--text-muted);
   white-space: nowrap;
+  transition: transform 0.1s, box-shadow 0.1s;
 }
 
+.m-nav__icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* 選んでいるタブは塗って、下に影を付けて少し浮かせる */
 .m-nav__item--active {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-fg);
+  box-shadow: 0 3px 0 color-mix(in srgb, var(--accent) 60%, #000);
+  transform: translateY(-1px);
+}
+
+/* ギア画面の上の帯（ブキ種のタブ・絞り込み）も上に残る。固定した上のバーの下に付ける */
+.m-app .gear-root .app-top--sticky {
+  top: var(--m-header-h, 0px);
 }
 
 .m-round-btn {
