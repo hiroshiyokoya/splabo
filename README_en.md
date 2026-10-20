@@ -51,17 +51,26 @@ splabo/
   <tr>
     <th>Dashboard</th>
     <th>Gear loadouts</th>
-    <th>Meta analysis</th>
   </tr>
   <tr>
     <td><img src="docs/screenshots/dashboard.png" alt="Dashboard" height="240"></td>
     <td><img src="docs/screenshots/gear-code.png" alt="Gear loadout generation" height="240"></td>
-    <td><img src="docs/screenshots/env-analysis.png" alt="Meta analysis" height="240"></td>
   </tr>
   <tr valign="top">
     <td>Analyze battle results on the dashboard</td>
     <td>Generate loadouts from target abilities</td>
+  </tr>
+  <tr>
+    <th>Meta analysis</th>
+    <th>View on your phone</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/env-analysis.png" alt="Meta analysis" height="240"></td>
+    <td><img src="docs/screenshots/mobile-phone.png" alt="View on your phone" height="240"></td>
+  </tr>
+  <tr valign="top">
     <td>Analyze the meta from public stat.ink data</td>
+    <td>Scan the Settings QR to open on the same Wi-Fi</td>
   </tr>
 </table>
 
