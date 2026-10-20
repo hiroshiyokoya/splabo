@@ -326,7 +326,7 @@
     "fullscreen": "全画面にする",
     "scrollTop": "一番上へ",
     "exitFullscreen": "全画面をやめる",
-    "updating": "PC が任天堂から最新データを取得しています…（数十秒かかります）",
+    "updating": "PC が最新データを取得しています…（数十秒かかります）",
     "updateDone": "最新データにしました",
     "updateFailed": "取得できませんでした: {{detail}}",
     "period": {

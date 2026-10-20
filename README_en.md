@@ -84,7 +84,7 @@ splabo on your PC acts as a server, so a phone on the same network (same router)
 - **Weapons and stages** — records per weapon and per stage
 - **Gear** — owned gear, loadouts, and saved loadouts. You can also build and save a loadout on the phone
 - Filter by period, lobby, and mode (the phone remembers your choice and the tab you had open)
-- The update button (circular arrow) at the top right asks the PC to fetch the latest data from Nintendo
+- The update button (circular arrow) at the top right asks the PC to fetch the latest data
 
 Settings you chose on the PC, such as ordering, also apply on the phone. Apart from charts, change settings on the PC.
 
