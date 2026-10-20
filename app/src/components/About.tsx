@@ -142,8 +142,9 @@ export function About({ onClose, newerRelease }: AboutProps) {
               </a>
             </div>
           </div>
+          {/* 非公式の注記と、商標・著作権で 1 行ずつ（#869） */}
           <div className="about-notice">
-            {t('about.notice')}
+            {t('about.notice')}<br />{t('about.noticeRights')}
           </div>
         </div>
       </div>

@@ -2719,7 +2719,7 @@ body {
 .about-notice {
   font-size: 11px;
   color: var(--text-muted);
-  white-space: nowrap;
+  /* 1 行ずつ <br> で分けている。収まらないときは、横にはみ出さずに折り返す（#869） */
   line-height: 1.5;
   padding-top: 8px;
   border-top: 1px solid var(--border);
