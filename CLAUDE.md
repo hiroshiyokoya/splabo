@@ -86,6 +86,15 @@ git tag splabo-vX.Y.Z
 git push origin splabo-vX.Y.Z
 ```
 
+**リリース準備の PR を出したら、タグ打ちのコマンドを毎回コピペできる形で出す。** 版番号は実際の値で埋め、develop に切り替えて最新にする行から書く（リリース準備のあと、メインのフォルダは `release/vX.Y.Z` のままになっているため）。そのまま貼って実行できるように、1 つのコードブロックにまとめる。
+
+```bash
+git -C D:/develop/splatoon-gear/splabo checkout develop
+git -C D:/develop/splatoon-gear/splabo pull
+git -C D:/develop/splatoon-gear/splabo tag splabo-v0.12.2
+git -C D:/develop/splatoon-gear/splabo push origin splabo-v0.12.2
+```
+
 ビルドが終わったら GitHub でドラフトを **Publish** する。Publish すると Slack に X 用の告知文が届く（#648）。2 通目のコードブロックをコピーして X に貼る（改行付き、#704）。プレリリースでは飛ばない。タグ push や CI 完了だけでは飛ばない。
 
 **英語版の投稿も作る（#688 以降、英語 UI 対応済みのため）。** CHANGELOG.md は日本語一本のまま維持し（英語版 CHANGELOG は作らない）、Slack に届いた日本語の投稿文をその都度英訳する。自動化はせず、リリースのたびに Claude が訳す。
