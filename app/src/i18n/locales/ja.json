@@ -317,7 +317,7 @@
     "unauthorizedBody": "PC の SpLabo の 設定 →「スマホで見る」に出ている QR コードを、スマホのカメラで読み取ってください。トークンを再発行したときや、初めて開くときに必要です。",
     "unreachableTitle": "PC に接続できません",
     "unreachableCheckOn": "PC で SpLabo が起動していて、設定の「スマホで見る」がオンになっているか",
-    "unreachableCheckWifi": "スマホと PC が同じ Wi-Fi（同じネットワーク）につながっているか",
+    "unreachableCheckWifi": "スマホと PC が同じネットワーク（同じルーター）につながっているか（PC が有線でも可）",
     "unreachableCheckPrivate": "Windows のネットワークが「パブリック」になっていないか（「プライベート」にする）",
     "retry": "もう一度試す",
     "navGear": "ギア",

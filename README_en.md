@@ -41,7 +41,7 @@ splabo/
 - **Save panels** — save Dashboard and Meta Analysis panels as **PNG** or **HTML** (button at the top-right of each panel). Images/HTML include title, filters, the splabo logo, and credit. PNG keeps pixels outside rounded corners transparent. Open HTML in a browser to hover scatter tooltips; weapon-icon scatter plots still spread overlapping points
 - **AI analysis** — ask in natural language; SQL is generated and **aggregated only on this PC**, then shown as tables/charts (OpenAI / Google Gemini / Anthropic Claude / xAI Grok)
 - **Auto-fetch** — fetch battles in the background every 15 minutes–24 hours, then update gear (a gear failure does not undo a successful battle fetch). When enabled, closing the window leaves a tray icon; completion is a system notification. Default is every hour (see [Fetch interval and auth](#fetch-interval-and-auth))
-- **View on your phone** — view battles, weapons, stages, and gear from a phone browser on the same Wi-Fi. Nothing to install on the phone (see [View on your phone](#view-on-your-phone))
+- **View on your phone** — view battles, weapons, stages, and gear from a phone browser on the same network. Nothing to install on the phone (see [View on your phone](#view-on-your-phone))
 
 > **About filters**: Weapons and Stages also follow the top filters (period, lobby, mode, result). Official-app freshness, total wins, turf inked, Challenge Power, and stage all-time win rates are all-time values, so changing filters does not change them. Dashboard chart axes can use these official values too.
 
@@ -70,13 +70,13 @@ splabo/
   </tr>
   <tr valign="top">
     <td>Analyze the meta from public stat.ink data</td>
-    <td>Scan the Settings QR to open on the same Wi-Fi</td>
+    <td>Scan the Settings QR to open on the same network</td>
   </tr>
 </table>
 
 ## View on your phone
 
-splabo on your PC acts as a server, so a phone on the same Wi-Fi (same router) can view your data in its browser. Nothing needs to be installed on the phone.
+splabo on your PC acts as a server, so a phone on the same network (same router) can view your data in its browser. A wired PC is fine. Nothing needs to be installed on the phone.
 
 ### What the phone can do
 
@@ -105,11 +105,11 @@ After opening it once, add it to your home screen to open it from an icon next t
 ### When it works
 
 - Only while splabo is running on the PC (including when the window is closed and it stays in the tray). It does not work while the PC is asleep
-- Only inside the same Wi-Fi / home network. It does not work from mobile data away from home
+- Only inside the same network (under the same home router). It does not work from mobile data away from home
 
 ### If it does not connect
 
-- **Check that the phone and the PC are on the same Wi-Fi.** Guest Wi-Fi networks often block devices from talking to each other
+- **Check that the phone and the PC are on the same network (same router).** A wired PC is fine. Guest Wi-Fi networks often block devices from talking to each other
 - **Windows**: if the network is set to "Public", Windows Firewall blocks connections from the phone. Change it to "Private network" (Settings → Network & internet → current connection → Network profile type). If an allow dialog appears the first time the phone connects, check Private and allow it. The settings screen also shows a warning in this state. If it still does not connect after switching to Private, a rule you allowed earlier while on Public may be the only one. The settings screen detects this and shows a note; follow it and check Private on splabo's inbound rules in Windows Firewall (two rules: TCP and UDP)
 - **Linux**: if a firewall (ufw etc.) is on, allow incoming connections to the port (default 47620), e.g. `sudo ufw allow from 192.168.0.0/16 to any port 47620 proto tcp`
 - **If the server cannot start because another app uses the port**: change "Port" in the settings (default 47620). The URL changes too, so scan the QR again
