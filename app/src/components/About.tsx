@@ -123,7 +123,8 @@ export function About({ onClose, newerRelease }: AboutProps) {
             </a>
           </div>
           <div className="about-license">
-            <p>{t('about.license')}</p>
+            {/* 本体とサイドカーで 1 行ずつ（#866） */}
+            <p>{t('about.licenseApp')}<br />{t('about.licenseSidecar')}</p>
             <div className="about-links">
               <a
                 className="about-link"
