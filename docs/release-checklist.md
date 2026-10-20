@@ -48,4 +48,3 @@ CI（clippy / `cargo test --lib`）が通っていることは前提。このリ
 - コード署名・公証・Tauri 自動更新の確認（入れない方針）
 - Android viewer のペアリング
 - AppImage / Intel Mac 向けビルド
-
