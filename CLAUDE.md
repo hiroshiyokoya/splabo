@@ -66,6 +66,10 @@ CHANGELOG の書き方の要点は [`AGENTS.md`](./AGENTS.md) 参照。リリー
 - 機能説明・注意事項が最新か確認
 - 大きな変更があれば更新
 
+### 2b. リリース前スモーク（#540）
+
+タグを打つ前に、[`docs/release-checklist.md`](./docs/release-checklist.md) を出荷バイナリ（または同等の release ビルド）で確認する。開発ビルドだけでは足りない。
+
 ### 3. ブランチ・PR を作成してマージ
 
 ```bash
