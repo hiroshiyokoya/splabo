@@ -317,7 +317,7 @@
     "unauthorizedBody": "PC の SpLabo の 設定 →「スマホで見る」に出ている QR コードを、スマホのカメラで読み取ってください。トークンを再発行したときや、初めて開くときに必要です。",
     "unreachableTitle": "PC に接続できません",
     "unreachableCheckOn": "PC で SpLabo が起動していて、設定の「スマホで見る」がオンになっているか",
-    "unreachableCheckWifi": "スマホと PC が同じ Wi-Fi（同じネットワーク）につながっているか",
+    "unreachableCheckWifi": "スマホと PC が同じネットワーク（同じルーター）につながっているか（PC が有線でも可）",
     "unreachableCheckPrivate": "Windows のネットワークが「パブリック」になっていないか（「プライベート」にする）",
     "retry": "もう一度試す",
     "navGear": "ギア",
@@ -326,7 +326,7 @@
     "fullscreen": "全画面にする",
     "scrollTop": "一番上へ",
     "exitFullscreen": "全画面をやめる",
-    "updating": "PC が任天堂から最新データを取得しています…（数十秒かかります）",
+    "updating": "PC が最新データを取得しています…（数十秒かかります）",
     "updateDone": "最新データにしました",
     "updateFailed": "取得できませんでした: {{detail}}",
     "period": {

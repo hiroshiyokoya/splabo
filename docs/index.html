@@ -128,7 +128,7 @@
     }
     .screenshot-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 1.25rem;
     }
     .screenshot-item img {
@@ -443,7 +443,7 @@
     <p class="hero-desc">
       Nintendo アカウントから非公式 API 経由で Splatoon 3 の戦績とギアを取得し、可視化・分析する OSS の PC アプリです。任天堂株式会社とは無関係です。<br>
       ブキ・ステージ・ルール別の勝率、線・棒・散布図・ヒートマップのカスタムグラフ、stat.ink 公開データによる環境分析、ギアコーデができます。<br>
-      パネルは PNG や HTML に保存できます。同じ Wi-Fi のスマホのブラウザからも見られます。旧 chartoon / geartoon の後継です。
+      パネルは PNG や HTML に保存できます。同じネットワークのスマホのブラウザからも見られます。旧 chartoon / geartoon の後継です。
     </p>
     <div class="hero-download">
       <a class="btn-download" id="btn-win" href="https://github.com/hiroshiyokoya/splabo/releases/latest">
@@ -477,6 +477,10 @@
       <div class="screenshot-item">
         <img src="screenshots/env-analysis.png" alt="環境分析" onclick="openLightbox(this)">
         <p>stat.ink の公開データで環境を分析</p>
+      </div>
+      <div class="screenshot-item">
+        <img src="screenshots/mobile-phone.png" alt="スマホで見る" onclick="openLightbox(this)">
+        <p>設定の QR で同じネットワークのスマホから見る</p>
       </div>
     </div>
   </section>
@@ -534,7 +538,7 @@
   <!-- Mobile -->
   <section class="mobile">
     <h2 class="section-title">スマホで見る</h2>
-    <p class="mobile-lead">PC の splabo をサーバーにして、同じ Wi-Fi のスマホのブラウザから見られます。スマホにアプリを入れる必要はありません。</p>
+    <p class="mobile-lead">PC の splabo をサーバーにして、同じネットワーク（同じルーター）のスマホのブラウザから見られます。PC が有線でも大丈夫です。スマホにアプリを入れる必要はありません。</p>
     <div class="mobile-grid">
       <div class="mobile-box">
         <h3>スマホでできること</h3>
@@ -555,7 +559,7 @@
       </div>
     </div>
     <ul class="mobile-notes">
-      <li>PC で splabo が起動している間（トレイ常駐中を含む）、同じ Wi-Fi の中でだけ使えます。外出先からは見られません。</li>
+      <li>PC で splabo が起動している間（トレイ常駐中を含む）、同じネットワークの中でだけ使えます。外出先からは見られません。</li>
       <li>Windows でつながらないときは、ネットワークを「プライベート」にしてください。そのほかは <a href="https://github.com/hiroshiyokoya/splabo#つながらないとき">README の「つながらないとき」</a>を見てください。</li>
     </ul>
   </section>
