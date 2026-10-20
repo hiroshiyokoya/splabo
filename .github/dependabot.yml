@@ -1,7 +1,9 @@
-# Dependabot の設定（#842）。
+# Dependabot の設定（#842・#864）。
 #
-# セキュリティ更新（脆弱性の修正）は今までどおり PR にしてもらう。
-# 通常の版の更新の PR は出さない（open-pull-requests-limit: 0。この上限はセキュリティ更新には効かない）。
+# 自動 PR は出さない。脆弱性はアラート（Security タブ）だけで知らせてもらい、直すときは手で直す。
+# - セキュリティ更新の自動 PR: リポジトリの設定でオフ（nxapi を古い版へ戻す PR が続いたため・#838・#848・#859）
+# - 通常の版の更新の PR: open-pull-requests-limit: 0 で出さない
+# 下の対象外（ignore）は、セキュリティ更新の自動 PR をオンに戻したときのために残している。
 version: 2
 updates:
   - package-ecosystem: npm
