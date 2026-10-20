@@ -125,6 +125,31 @@ CHANGELOG は **前回リリースを使っていた人が、今回何が変わ�
 
 ---
 
+## リリース（要点）
+
+手順の正典は [`CLAUDE.md`](./CLAUDE.md) の「リリースルーチン」。依頼されたら必ずそちらに従う。Cursor が外しやすい要点だけここに書く。
+
+- **タグはリリース準備 PR が `develop` にマージされたあとに打つ。** `## [X.Y.Z]` がまだ `[Unreleased]` のコミットにタグを付けると、告知文とリリース本文が空になる（v0.11.4 で実際に起きた）
+- リリース準備 PR を出したら、**タグ打ちコマンドを版番号入り・コピペできる 1 ブロックで出す**（`checkout develop` → `pull` → `tag` → `push`）。メイン作業ツリーが `release/vX.Y.Z` のままになりやすい
+- タグ push はユーザーが実施。ドラフト Publish もユーザー。Publish 後に Slack の X 告知文が届く
+- 古い GitHub リリースを消しても **タグは消さない**（AGPL サイドカーの対応ソースのため）
+- CI は frontend build に加え `cargo clippy --all-targets -- -D warnings` と `cargo test --lib`（#536）
+
+---
+
+## 最新状況の確認
+
+「現状どう？」「最新を確認して」と言われたら、答える前に必ず同期する。
+
+```bash
+git fetch --all --tags --prune
+git checkout develop && git pull origin develop
+```
+
+そのうえでタグ・open PR / Issue・トラッキング #15 を見る。stale なローカルで答えない。
+
+---
+
 ## 実装メモ・ハマりどころ
 
 コード上の非自明な落とし穴を記録する。追記歓迎。
