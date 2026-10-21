@@ -593,4 +593,3 @@ Splatoon 3 のバトル履歴を取得・可視化する OSS の PC アプリ。
 ### その他
 - アプリアイコン・ロゴデザイン
 - README + Cloudflare Pages 紹介ページ（SEO / OGP / llms.txt 対応）
-- リリース自動化 CI、PR 検証 CI
