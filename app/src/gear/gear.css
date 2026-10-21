@@ -1843,9 +1843,9 @@
     box-shadow: 0 0 0 1.5px rgba(140, 175, 210, 0.75);
   }
 
-  /* 惜しい: 目標を超えた pt は灰青（#876） */
+  /* 惜しい: 目標を超えた pt は灰青（#876）。薄すぎると読めないのでやや濃く */
   .combo-result-ap-chip--surplus span:not(.combo-result-ap-chip__id) {
-    color: rgba(160, 190, 220, 0.9);
+    color: rgba(110, 155, 200, 0.95);
   }
 
   .combo-result-ap-chip__id {
