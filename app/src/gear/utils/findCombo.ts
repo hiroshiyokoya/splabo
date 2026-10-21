@@ -31,6 +31,8 @@ export interface ComboResult {
   nearPenalty?: number
   /** matchKind === 'near' のとき: 目標に届かないスキルの skillId → 不足AP */
   shortfallBySkill?: Record<number, number>
+  /** matchKind === 'near' のとき: 目標を超えているスキルの skillId → 余分AP */
+  surplusBySkill?: Record<number, number>
   /** matchKind === 'near' のとき: 指定アキ数に対する不足枠数 */
   akiShortfall?: number
 }
@@ -181,6 +183,16 @@ function shortfallBySkill(requirements: SkillRequirement[], h: GAp, c: GAp, sh: 
   for (const r of requirements) {
     const short = r.minAp - (h.ap[r.skillId] + c.ap[r.skillId] + sh.ap[r.skillId])
     if (short > 0) out[r.skillId] = short
+  }
+  return out
+}
+
+/** 目標を超えているスキルごとの余分AP（#876） */
+function surplusBySkill(requirements: SkillRequirement[], h: GAp, c: GAp, sh: GAp): Record<number, number> {
+  const out: Record<number, number> = {}
+  for (const r of requirements) {
+    const over = (h.ap[r.skillId] + c.ap[r.skillId] + sh.ap[r.skillId]) - r.minAp
+    if (over > 0) out[r.skillId] = over
   }
   return out
 }
@@ -380,7 +392,11 @@ export function findCombo(
   const byGear = new Map<GearItem, GAp>([...heads, ...clothings, ...shoesAll].map(x => [x.gear, x]))
   const nearPicks = pickNearGroups(nearHeap.sorted(), effectiveNearLimit)
   const nearTagged: ComboResult[] = nearPicks.map(({ combo, deficit }) => {
-    const shortfall = shortfallBySkill(requirements, byGear.get(combo.head)!, byGear.get(combo.clothing)!, byGear.get(combo.shoes)!)
+    const hAp = byGear.get(combo.head)!
+    const cAp = byGear.get(combo.clothing)!
+    const shAp = byGear.get(combo.shoes)!
+    const shortfall = shortfallBySkill(requirements, hAp, cAp, shAp)
+    const surplus = surplusBySkill(requirements, hAp, cAp, shAp)
     const aki = countEmptySlots(combo.head) + countEmptySlots(combo.clothing) + countEmptySlots(combo.shoes)
     const akiShortfall = Math.max(0, minAkiSlots - aki)
     return {
@@ -389,6 +405,7 @@ export function findCombo(
       deficitSum: Object.values(shortfall).reduce((s, v) => s + v, 0) + akiShortfall * SUB_AP,
       nearPenalty: deficit,
       shortfallBySkill: shortfall,
+      surplusBySkill: surplus,
       akiShortfall,
     }
   })

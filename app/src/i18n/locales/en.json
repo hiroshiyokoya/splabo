@@ -440,6 +440,8 @@
       "near": "Close",
       "points": "{{count}} pt",
       "shortBy": "{{count}} pt short",
+      "surplusBy": "{{count}} pt over",
+      "offTarget": "Not a target",
       "missingPoints": "−{{count}} pt",
       "missingSlots": "−{{count}} slot(s)"
     },

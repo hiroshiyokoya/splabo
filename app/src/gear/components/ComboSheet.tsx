@@ -876,15 +876,28 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                             const info = skillInfoById.get(sid)
                             const displayName = info ? skillDisplayName({ id: sid, name: info.name }, t) : null
                             const short = combo.shortfallBySkill?.[sid]
-                            const shortCls = short ? ' combo-result-ap-chip--short' : ''
-                            const shortTitle = short ? t('gear.combo.shortBy', { count: short }) : undefined
+                            const surplus = isNear ? combo.surplusBySkill?.[sid] : undefined
+                            // 惜しい: 目標外スキルは灰青枠、目標超えは灰青 pt（#876）。不足（赤）を優先
+                            const offTarget = isNear && short == null && !(sid in combo.totalAp)
+                            const chipExtra = [
+                              short ? 'combo-result-ap-chip--short' : '',
+                              offTarget ? 'combo-result-ap-chip--off-target' : '',
+                              !short && surplus ? 'combo-result-ap-chip--surplus' : '',
+                            ].filter(Boolean).join(' ')
+                            const tip = short
+                              ? t('gear.combo.shortBy', { count: short })
+                              : surplus
+                                ? t('gear.combo.surplusBy', { count: surplus })
+                                : offTarget
+                                  ? t('gear.combo.offTarget')
+                                  : undefined
                             return info ? (
-                              <div key={skillIdStr} className={`combo-result-ap-chip${shortCls}`} title={shortTitle}>
-                                <img src={info.image} alt={displayName ?? ''} title={displayName ?? ''} />
+                              <div key={skillIdStr} className={`combo-result-ap-chip${chipExtra ? ` ${chipExtra}` : ''}`} title={tip}>
+                                <img src={info.image} alt={displayName ?? ''} title={displayName ?? tip ?? ''} />
                                 {!mainOnly && <span>{t('gear.combo.points', { count: ap })}</span>}
                               </div>
                             ) : (
-                              <div key={skillIdStr} className={`combo-result-ap-chip combo-result-ap-chip--unknown${shortCls}`} title={shortTitle ?? `id=${sid}`}>
+                              <div key={skillIdStr} className={`combo-result-ap-chip combo-result-ap-chip--unknown${chipExtra ? ` ${chipExtra}` : ''}`} title={tip ?? `id=${sid}`}>
                                 <span className="combo-result-ap-chip__id">{sid}</span>
                                 {!mainOnly && <span>{t('gear.combo.points', { count: ap })}</span>}
                               </div>
