@@ -440,6 +440,8 @@
       "near": "惜しい",
       "points": "{{count}}pt",
       "shortBy": "あと{{count}}pt",
+      "surplusBy": "{{count}}pt余分",
+      "offTarget": "目標外",
       "missingPoints": "−{{count}}pt",
       "missingSlots": "−{{count}}枠"
     },

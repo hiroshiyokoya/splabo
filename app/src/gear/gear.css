@@ -1837,6 +1837,17 @@
     box-shadow: 0 0 0 1.5px rgba(255, 90, 90, 0.75);
   }
 
+  /* 惜しい: 目標外スキルは灰青枠（#876） */
+  .combo-result-ap-chip--off-target img,
+  .combo-result-ap-chip--off-target .combo-result-ap-chip__id {
+    box-shadow: 0 0 0 1.5px rgba(140, 175, 210, 0.75);
+  }
+
+  /* 惜しい: 目標を超えた pt は灰青（#876）。薄すぎると読めないのでやや濃く */
+  .combo-result-ap-chip--surplus span:not(.combo-result-ap-chip__id) {
+    color: rgba(110, 155, 200, 0.95);
+  }
+
   .combo-result-ap-chip__id {
     display: inline-flex;
     align-items: center;
