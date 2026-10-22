@@ -2489,8 +2489,8 @@
   }
 
   .coord-card__gear {
-    width: 68px;
-    height: 68px;
+    width: 72px;
+    height: 72px;
     border-radius: 10px;
     background: #000;
     display: flex;
@@ -2502,7 +2502,7 @@
   .coord-card__gear .gear-icon {
     width: 100%;
     height: 100%;
-    --gear-brand-size: 16px;
+    --gear-brand-size: 17px;
   }
 
   /* ── ギアのアイコン＋ブランドのアイコン（#833・GearIcon.tsx）。大きさは親が決める ── */
@@ -2581,15 +2581,15 @@
     gap: 0.35rem 0.6rem;
   }
 
-  /* ギア 68px に対してパワーが小さくなりすぎないよう、このカード内だけ大きく（#878） */
+  /* ギア 72px に対してパワーが小さくなりすぎないよう、このカード内だけ大きく（#878） */
   .coord-card__ap .combo-result-ap-chip {
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     gap: 0.25rem;
   }
 
   .coord-card__ap .combo-result-ap-chip img {
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
   }
 
   .coord-card__warn {
