@@ -2736,6 +2736,64 @@
     gap: 0.5rem;
   }
 
+  /* コーデ PNG 書き出し用（画面外・#880） */
+  .coord-png-export {
+    position: fixed;
+    left: -9999px;
+    top: 0;
+    width: 340px;
+    padding: 16px 16px 28px;
+    box-sizing: border-box;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    color: var(--text);
+  }
+
+  .coord-png-export__gears {
+    display: flex;
+    gap: 0.55rem;
+    justify-content: center;
+  }
+
+  .coord-png-export__gear {
+    width: 96px;
+    height: 96px;
+    border-radius: 10px;
+    background: #000;
+    overflow: hidden;
+  }
+
+  .coord-png-export__gear .gear-icon {
+    width: 100%;
+    height: 100%;
+    --gear-brand-size: 20px;
+  }
+
+  .coord-png-export__ap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-top: 0.75rem;
+  }
+
+  .coord-png-export__ap-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+
+  .coord-png-export__ap-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.45rem;
+  }
+
+  .coord-png-export .combo-ap-chip__icon {
+    width: 22px;
+    height: 22px;
+  }
+
   /* ── Mobile responsive ──
      @media (max-width: 600px) の中身はヘッダー（.app-header 一式）専用の
      打ち消しだけだったので、ヘッダーの撤去（#419 / #424）に伴いブロックごと削除した。 */

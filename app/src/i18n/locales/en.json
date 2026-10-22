@@ -451,6 +451,8 @@
       "defaultTitle": "Loadout {{n}}",
       "empty": "No saved loadouts yet. Fill all three slots in the loadout sheet, or use Save on a suggestion.",
       "saveButton": "Save",
+      "downloadPng": "Download",
+      "downloadingPng": "Exporting…",
       "saveCombo": "Save this loadout",
       "saveHeading": "Save loadout",
       "editHeading": "Edit loadout",

@@ -339,6 +339,26 @@ export async function savePanelAsPng(node: HTMLElement, screen: string, panel: s
   }
 }
 
+/**
+ * 任意の DOM を PNG にして保存ダイアログへ渡す（コーデ書き出しなど・#880）。
+ * キャンセルされたら null。
+ */
+export async function saveElementAsPng(node: HTMLElement, filename: string): Promise<string | null> {
+  node.classList.add(EXPORTING_CLASS)
+  try {
+    fillExportCredit(node, buildExportCredit(await appVersion()))
+    await nextFrames()
+    const dataUrl = await toPng(node, {
+      pixelRatio: 2,
+      skipFonts: true,
+    })
+    const dataBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+    return await invokeSave(filename, dataBase64, 'png')
+  } finally {
+    node.classList.remove(EXPORTING_CLASS)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // HTML 単体書き出し(#505)
 // ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ import { skillDisplayName } from '../utils/skillDisplayName'
 import { gearItemDisplayName, gearBrandDisplayName } from '../utils/gearItemDisplayName'
 import type { ComboConditions, FullSlots } from '../utils/savedCoordinates'
 import { GearIcon } from './GearIcon'
+import { buildPanelExportFilename, saveElementAsPng } from '../../utils/panelExport'
 
 export type ComboSlots = {
   head:     GearItem | null
@@ -98,6 +99,8 @@ interface Props {
 export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '', comboLimit = 50, nearLimit = 10, onSaveCombo, openRequest = 0, searchRequest = null }: Props) {
   const { t } = useTranslation()
   const emptyLabel = t('gear.empty')
+  const exportRef = useRef<HTMLDivElement>(null)
+  const [exportingPng, setExportingPng] = useState(false)
   const [isOpen, setIsOpen]             = useState(false)
   const [snapExpanded, setSnapExpanded] = useState(false)
   const [skillPoints, setSkillPoints]   = useState<Map<number, number>>(new Map())
@@ -594,6 +597,27 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
               {t('gear.saved.saveButton')}
             </button>
           )}
+          {fullSlots && (
+            <button
+              type="button"
+              className="combo-sheet__clear-btn combo-sheet__save-btn"
+              disabled={exportingPng}
+              onClick={() => {
+                const node = exportRef.current
+                if (!node || exportingPng) return
+                setExportingPng(true)
+                void saveElementAsPng(
+                  node,
+                  buildPanelExportFilename(t('gear.saved.tab'), t('gear.combo.title'), 'png'),
+                )
+                  .catch(err => console.error('[coord png]', err))
+                  .finally(() => setExportingPng(false))
+              }}
+              title={t('gear.saved.downloadPng')}
+            >
+              {exportingPng ? t('gear.saved.downloadingPng') : t('gear.saved.downloadPng')}
+            </button>
+          )}
           {anyFilled && (
             <button
               type="button"
@@ -949,6 +973,36 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
 
         </div>
       </div>
+
+      {/* PNG 用の写し（× なし・合計 AP 付き・画面外・#880） */}
+      {fullSlots && (
+        <div ref={exportRef} className="coord-png-export" aria-hidden="true">
+          <div className="coord-png-export__gears">
+            {(['head', 'clothing', 'shoes'] as GearCategory[]).map(cat => (
+              <div key={cat} className="coord-png-export__gear">
+                <GearIcon gear={fullSlots[cat]} />
+              </div>
+            ))}
+          </div>
+          <div className="coord-png-export__ap">
+            <span className="coord-png-export__ap-label">{t('gear.combo.totalAp')}</span>
+            <div className="coord-png-export__ap-chips">
+              {[...totalAp.entries()]
+                .sort(([aId], [bId]) => compareSkill(aId, bId))
+                .map(([id, { name, ap, image }]) => {
+                  const displayName = skillDisplayName({ id, name }, t)
+                  return (
+                    <div key={id} className={`combo-ap-chip${isMainOnly(id) ? ' combo-ap-chip--main-only' : ''}`}>
+                      <img className="combo-ap-chip__icon" src={image} alt={displayName} />
+                      {!isMainOnly(id) && <span className="combo-ap-chip__val">{t('gear.combo.points', { count: ap })}</span>}
+                    </div>
+                  )
+                })}
+            </div>
+          </div>
+          <div className="panel-export-credit" />
+        </div>
+      )}
     </div>
   )
 }
