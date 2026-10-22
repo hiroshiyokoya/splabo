@@ -341,21 +341,56 @@ export async function savePanelAsPng(node: HTMLElement, screen: string, panel: s
 
 /**
  * 任意の DOM を PNG にして保存ダイアログへ渡す（コーデ書き出しなど・#880）。
+ * 画面外ノードは html-to-image が真っ黒になることがあるので、撮るあいだだけ画面内へ出す。
  * キャンセルされたら null。
  */
 export async function saveElementAsPng(node: HTMLElement, filename: string): Promise<string | null> {
+  const prev = {
+    position: node.style.position,
+    left: node.style.left,
+    top: node.style.top,
+    right: node.style.right,
+    bottom: node.style.bottom,
+    opacity: node.style.opacity,
+    zIndex: node.style.zIndex,
+    pointerEvents: node.style.pointerEvents,
+    visibility: node.style.visibility,
+  }
   node.classList.add(EXPORTING_CLASS)
+  // 画面内に置く（一瞬フラッシュしうるが、真っ黒よりマシ。pointer-events なし）
+  node.style.position = 'fixed'
+  node.style.left = '16px'
+  node.style.top = '16px'
+  node.style.right = 'auto'
+  node.style.bottom = 'auto'
+  node.style.opacity = '1'
+  node.style.visibility = 'visible'
+  node.style.zIndex = '2147483646'
+  node.style.pointerEvents = 'none'
   try {
     fillExportCredit(node, buildExportCredit(await appVersion()))
     await nextFrames()
+    const bg = getComputedStyle(node).backgroundColor
     const dataUrl = await toPng(node, {
       pixelRatio: 2,
       skipFonts: true,
+      // 背景が透明扱いに落ちるのを防ぐ
+      backgroundColor: bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent' ? bg : cssVar('--surface', '#17172a'),
+      cacheBust: true,
     })
     const dataBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
     return await invokeSave(filename, dataBase64, 'png')
   } finally {
     node.classList.remove(EXPORTING_CLASS)
+    node.style.position = prev.position
+    node.style.left = prev.left
+    node.style.top = prev.top
+    node.style.right = prev.right
+    node.style.bottom = prev.bottom
+    node.style.opacity = prev.opacity
+    node.style.zIndex = prev.zIndex
+    node.style.pointerEvents = prev.pointerEvents
+    node.style.visibility = prev.visibility
   }
 }
 

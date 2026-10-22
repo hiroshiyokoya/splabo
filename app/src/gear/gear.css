@@ -2736,10 +2736,10 @@
     gap: 0.5rem;
   }
 
-  /* コーデ PNG 書き出し用（画面外・#880） */
+  /* コーデ PNG 書き出し用（通常は隠す。撮るときだけ JS が画面内へ出す・#880） */
   .coord-png-export {
     position: fixed;
-    left: -9999px;
+    left: 0;
     top: 0;
     width: 340px;
     padding: 16px 16px 28px;
@@ -2748,6 +2748,10 @@
     border: 1.5px solid var(--border);
     border-radius: 12px;
     color: var(--text);
+    /* 画面内に置くが不可視。viewport 外だと html-to-image が真っ黒になる */
+    opacity: 0;
+    pointer-events: none;
+    z-index: -1;
   }
 
   .coord-png-export__gears {
