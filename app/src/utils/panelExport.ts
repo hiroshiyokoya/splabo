@@ -352,11 +352,10 @@ function applyGearThemeVars(node: HTMLElement): () => void {
     ?? null
   if (!src) return () => {}
   const cs = getComputedStyle(src)
-  const keys = [
-    '--bg', '--surface', '--surface-hover', '--border', '--text', '--text-muted',
-    '--accent', '--accent-dim', '--accent-dark',
-    '--chip-bg', '--chip-border', '--chip-text',
-  ]
+  // テーマは `.gear-root` のインライン style に入っている（applyTheme）。それを全部写す。
+  // ただしカードの大きさ（--card-*・密度設定）は写さない。画像のカードは CSS で「標準」に固定している
+  const keys = Array.from(src.style)
+    .filter(k => k.startsWith('--') && !k.startsWith('--card-'))
   const prev = keys.map(k => ({ k, v: node.style.getPropertyValue(k) }))
   for (const k of keys) {
     const v = cs.getPropertyValue(k).trim()

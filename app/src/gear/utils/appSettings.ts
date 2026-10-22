@@ -131,7 +131,7 @@ export const DENSITIES: Density[] = [
     label: 'コンパクト',
     vars: {
       '--card-width':      '160px',
-      '--card-image-size': '80px',
+      '--card-image-size': '110px',
       '--card-font-size':  '0.75rem',
     },
   },
@@ -140,7 +140,7 @@ export const DENSITIES: Density[] = [
     label: '標準',
     vars: {
       '--card-width':      '200px',
-      '--card-image-size': '108px',
+      '--card-image-size': '140px',
       '--card-font-size':  '0.85rem',
     },
   },
@@ -149,7 +149,7 @@ export const DENSITIES: Density[] = [
     label: 'ゆったり',
     vars: {
       '--card-width':      '260px',
-      '--card-image-size': '140px',
+      '--card-image-size': '190px',
       '--card-font-size':  '0.95rem',
     },
   },

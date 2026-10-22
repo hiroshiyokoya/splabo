@@ -9,6 +9,8 @@ interface Props {
   selected?: boolean
   /** コーデモードでタップ時のコールバック */
   onSelect?: () => void
+  /** コーデ PNG 用（#883）。ケイケン値を出さず、画像は遅延読み込みしない（写る前に撮らないため） */
+  forExport?: boolean
 }
 
 const MAX_RARITY = 5
@@ -34,7 +36,7 @@ function SkillIcon({ image, skill, size }: { image: string; skill: Skill; size: 
   )
 }
 
-export function GearCard({ gear, selected, onSelect }: Props) {
+export function GearCard({ gear, selected, onSelect, forExport = false }: Props) {
   const { t } = useTranslation()
   const subSlots = Array.from({ length: 3 }, (_, i) => gear.additional_skills[i] ?? null)
   const name = gearItemDisplayName(gear)
@@ -49,7 +51,7 @@ export function GearCard({ gear, selected, onSelect }: Props) {
       onKeyDown={onSelect ? (e) => { if (e.key === 'Enter' || e.key === ' ') onSelect() } : undefined}
     >
 
-      {/* 上段: ブランドロゴ（左）・レアリティ（右） */}
+      {/* 上段: ブランドロゴ（左）・ギア名（ロゴの右、下端を揃える）・レアリティ（右上）（#883） */}
       <div className="gear-card__header">
         <img
           className="gear-card__brand-logo"
@@ -57,6 +59,7 @@ export function GearCard({ gear, selected, onSelect }: Props) {
           alt={brand}
           title={brand}
         />
+        <div className="gear-card__name" title={name}>{name}</div>
         <Stars rarity={gear.rarity} />
       </div>
 
@@ -66,15 +69,9 @@ export function GearCard({ gear, selected, onSelect }: Props) {
           className="gear-card__image"
           src={gear.image}
           alt={name}
-          loading="lazy"
+          loading={forExport ? 'eager' : 'lazy'}
         />
       </div>
-
-      {/* ギア名（中央） */}
-      <div className="gear-card__name" title={name}>{name}</div>
-
-      {/* ケイケン値（右寄り） */}
-      <div className="gear-card__exp">{t('gear.exp', { value: gear.exp.toLocaleString() })}</div>
 
       {/* スキル: メイン + サブ3つ（横幅いっぱい） */}
       <div className="gear-card__skills">
@@ -87,6 +84,11 @@ export function GearCard({ gear, selected, onSelect }: Props) {
           )
         )}
       </div>
+
+      {/* ケイケン値（パワーの下・右寄り） */}
+      {!forExport && (
+        <div className="gear-card__exp">{t('gear.exp', { value: gear.exp.toLocaleString() })}</div>
+      )}
 
     </div>
   )

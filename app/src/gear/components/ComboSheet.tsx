@@ -8,6 +8,7 @@ import { skillDisplayName } from '../utils/skillDisplayName'
 import { gearItemDisplayName, gearBrandDisplayName } from '../utils/gearItemDisplayName'
 import type { ComboConditions, FullSlots } from '../utils/savedCoordinates'
 import { GearIcon } from './GearIcon'
+import { GearCard } from './GearCard'
 import { isTauri } from '../utils/tauri'
 import { buildPanelExportFilename, saveElementAsPng } from '../../utils/panelExport'
 
@@ -996,43 +997,11 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
         <div ref={exportRef} className="gear-root coord-png-export-scope" lang={i18n.language} aria-hidden="true">
           <div className="coord-png-export">
             <div className="coord-png-export__card">
+              {/* ギア一覧と同じカードを 3 枚（ケイケン値なし・#883） */}
               <div className="coord-png-export__gears">
-                {(['head', 'clothing', 'shoes'] as GearCategory[]).map(cat => {
-                  const gear = fullSlots[cat]
-                  const gearName = gearItemDisplayName(gear)
-                  const mainName = skillDisplayName(gear.primary_skill, t)
-                  return (
-                    <div key={cat} className="coord-png-export__col">
-                      <div className="coord-png-export__name" title={gearName}>
-                        {gear.brand_image && (
-                          <img
-                            className="coord-png-export__brand"
-                            src={gear.brand_image}
-                            alt={gearBrandDisplayName(gear)}
-                          />
-                        )}
-                        {/* 数文字だけ 2 行目に落ちるなら縮めて 1 行に（#880） */}
-                        <span className="coord-png-export__name-text" data-export-shrink="0.85">{gearName}</span>
-                      </div>
-                      <div className="coord-png-export__gear">
-                        <GearIcon gear={gear} />
-                      </div>
-                      <div className="coord-png-export__skills">
-                        <div className="coord-png-export__skill coord-png-export__skill--main" title={mainName}>
-                          <img src={gear.primary_skill.image} alt={mainName} />
-                        </div>
-                        {gear.additional_skills.map((s, i) => {
-                          const subName = skillDisplayName(s, t)
-                          return (
-                            <div key={i} className="coord-png-export__skill coord-png-export__skill--sub" title={subName}>
-                              <img src={s.image} alt={subName} />
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
+                {(['head', 'clothing', 'shoes'] as GearCategory[]).map(cat => (
+                  <GearCard key={cat} gear={fullSlots[cat]} forExport />
+                ))}
               </div>
               <div className="coord-png-export__ap">
                 <span className="coord-png-export__ap-label">{t('gear.combo.totalAp')}</span>

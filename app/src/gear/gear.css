@@ -50,7 +50,7 @@
     --card-radius:    12px;
     --card-min-width: 180px;
     --card-width:      200px;
-    --card-image-size: 108px;
+    --card-image-size: 140px;
     --card-font-size:  0.85rem;
 
     /* ── Background dot grid ── */
@@ -375,7 +375,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--card-radius);
-    padding: 0.6rem 0.75rem 0.7rem;
+    padding: 0.6rem 0.75rem 5px;
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
@@ -387,18 +387,29 @@
     transform: translateY(-2px);
   }
 
-  /* ── Header: ブランドロゴ（左）・レアリティ（右） ── */
+  /* ── Header: ブランドロゴ（左）・ギア名（ロゴの右、下端を揃える）・レアリティ（右上、上端をロゴに揃える）（#883） ──
+     ロゴの一辺を「レアリティ 1 行 + ギア名 2 行」にして、ヘッダーの高さ＝ロゴにする。
+     2 行の名前でもレアリティとぶつからず、同じ段のカードでギア画像の位置も揃う */
 
   .gear-card__header {
+    --gear-card-logo: calc(0.72rem + 2.4 * var(--card-font-size));
+    position: relative;
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 0;
+    align-items: flex-end;
+    gap: 0.45rem;
+  }
+
+  .gear-card__header .gear-stars {
+    position: absolute;
+    top: 0;
+    right: 0;
+    line-height: 1;
   }
 
   .gear-card__brand-logo {
-    width: 40px;
-    height: 40px;
+    width: var(--gear-card-logo);
+    height: var(--gear-card-logo);
+    flex-shrink: 0;
     object-fit: contain;
     background: #fff;
     border-radius: 8px;
@@ -426,6 +437,7 @@
   .gear-card__image-wrap {
     display: flex;
     justify-content: center;
+    margin: 0.35rem 0 0;
   }
 
   .gear-card__image {
@@ -436,17 +448,28 @@
 
   /* ── Card text ── */
 
+  /* 2 行まで折り返す（ヘッダーの下端に寄せる） */
   .gear-card__name {
+    flex: 1;
+    min-width: 0;
     font-size: var(--card-font-size);
     font-weight: 700;
-    text-align: center;
-    white-space: nowrap;
+    line-height: 1.2;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     overflow: hidden;
-    text-overflow: ellipsis;
-    line-height: 1.3;
+    overflow-wrap: anywhere;
+    /* 小書きの仮名（ォ・ッ など）を行頭に置かない */
+    line-break: strict;
+    /* 2 行目に 1〜2 文字だけ落ちないよう、行の長さを揃える */
+    text-wrap: balance;
   }
 
   .gear-card__exp {
+    /* パワーとの間を 10px に（カードの gap 0.15rem を差し引く） */
+    margin-top: calc(10px - 0.15rem);
     font-size: 0.7rem;
     color: var(--text-muted);
     text-align: right;
@@ -458,7 +481,8 @@
   .gear-card__skills {
     display: flex;
     gap: 5px;
-    margin-top: 0.25rem;
+    /* ギア画像との間を 1px に（カードの gap 0.15rem を差し引く） */
+    margin-top: calc(1px - 0.15rem);
     align-items: flex-end;
   }
 
@@ -2744,8 +2768,8 @@
     gap: 0.5rem;
   }
 
-  /* コーデ PNG 書き出し（#880）。アプリアイコンは右下クレジットの頭に置く。
-     幅はギア3列に固定し、AP チップは折り返す（max-content で広がって欠けないように）。 */
+  /* コーデ PNG 書き出し（#880・#883）。ギアカード 3 枚・合計 AP・クレジット。
+     幅はカード 3 枚で決め、AP チップはその幅で折り返す。 */
   .coord-png-export {
     width: max-content;
   }
@@ -2756,8 +2780,9 @@
     box-sizing: border-box;
     /* 下はクレジットを端に寄せるため薄く。枠は border ではなく内側の box-shadow
        （html-to-image が右下の border を落としやすいため） */
-    padding: 12px 10px 5px;
-    background: var(--surface);
+    padding: 12px 12px 5px;
+    /* 中のギアカードが --surface なので、外は一覧の背景と同じ --bg にして浮かせる */
+    background: var(--bg);
     border: none;
     border-radius: 16px;
     box-shadow: inset 0 0 0 2px var(--border);
@@ -2773,114 +2798,38 @@
     flex-shrink: 0;
   }
 
-  /* 3 列 × (名前 / ギア絵 / パワー) のグリッド。名前の行は 3 列で一番高いものに揃うので、
-     誰かが 2 行になってもギア絵の上端は揃い、全員 1 行なら余白も出ない */
+  /* ギア一覧と同じカード（GearCard）を 3 枚横に並べる（#883）。
+     カードの大きさは一覧の密度設定に関係なく「標準」で固定する */
   .coord-png-export__gears {
-    display: grid;
-    grid-template-columns: repeat(3, 100px);
-    grid-template-rows: auto auto auto;
-    grid-auto-flow: column;
-    justify-items: center;
-    justify-content: center;
-    gap: 5px 12px;
-    /* ギア絵の一辺。パワー列（メイン 26 + サブ 18×3 + 間隔 3×3）の左右端に揃える */
-    --coord-png-gear: calc(26px + 18px * 3 + 3px * 3);
-  }
-
-  .coord-png-export__col {
-    display: contents;
-  }
-
-  /* 名前は 2 行まで折り返す */
-  .coord-png-export__name {
+    --card-width:      200px;
+    --card-image-size: 140px;
+    --card-font-size:  0.85rem;
     display: flex;
-    align-items: flex-start;
-    gap: 0.25em;
-    /* 左端をギア絵のフチに揃える */
-    width: var(--coord-png-gear);
-    font-size: 0.68rem;
-    font-weight: 700;
-    color: var(--text);
-    line-height: 1.25;
+    gap: 10px;
   }
 
-  /* ブランドはギア名の頭に、文字と同じ高さで（ギア絵の上には重ねない）。白地は .gear-icon__brand と同じ */
-  .coord-png-export__brand {
-    width: 1.4em;
-    height: 1.4em;
-    object-fit: contain;
-    flex-shrink: 0;
-    /* 1 行目の中央に合わせる（行の高さ 1.25em との差の半分） */
-    margin-top: -0.075em;
-    background: #fff;
-    border-radius: 22%;
+  /* ケイケン値を出さないので、下の余白を上（0.6rem）に揃える */
+  .coord-png-export__gears .gear-card {
+    width: var(--card-width);
+    box-sizing: border-box;
+    padding-bottom: 0.6rem;
   }
 
-  .coord-png-export__name-text {
-    min-width: 0;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    overflow: hidden;
-    overflow-wrap: anywhere;
-    /* 小書きの仮名（ォ・ッ など）を行頭に置かない */
-    line-break: strict;
-  }
-
-  .coord-png-export__gear {
-    width: var(--coord-png-gear);
-    height: var(--coord-png-gear);
-    border-radius: 12px;
-    background: #000;
-    overflow: hidden;
-  }
-
-  .coord-png-export__gear .gear-icon {
-    width: 100%;
-    height: 100%;
-  }
-
-  .coord-png-export__gear .gear-icon__brand {
-    display: none;
-  }
-
-  .coord-png-export__skills {
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    gap: 3px;
-  }
-
-  .coord-png-export__skill {
-    border-radius: 50%;
-    overflow: hidden;
-    background: #000;
-    flex-shrink: 0;
-  }
-
-  .coord-png-export__skill--main {
-    width: 26px;
-    height: 26px;
-  }
-
-  .coord-png-export__skill--sub {
-    width: 18px;
-    height: 18px;
-  }
-
-  .coord-png-export__skill img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    display: block;
+  /* テーマ色は撮る直前に写すので、色のアニメーション（.gear-card の transition など）が
+     効くと、変わりきる前の色で撮れてしまう */
+  .coord-png-export,
+  .coord-png-export * {
+    transition: none !important;
   }
 
   .coord-png-export__ap {
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
-    margin-top: 0.7rem;
+    margin-top: 0.4rem;
+    /* 幅の計算に加わらない（カード 3 枚の幅に合わせて折り返す） */
+    width: 0;
+    min-width: 100%;
   }
 
   .coord-png-export__ap-label {
@@ -2922,7 +2871,7 @@
     align-items: center;
     justify-content: flex-end;
     gap: 0.3em;
-    margin: 0.45rem 0 0;
+    margin: 0.75rem 0 0;
     padding: 0;
     text-align: right;
     font-size: 0.58rem;
