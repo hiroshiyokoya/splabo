@@ -49,7 +49,7 @@ export function GearCard({ gear, selected, onSelect }: Props) {
       onKeyDown={onSelect ? (e) => { if (e.key === 'Enter' || e.key === ' ') onSelect() } : undefined}
     >
 
-      {/* 上段: ブランドロゴ（左）・その右にレアリティとギア名（#883） */}
+      {/* 上段: ブランドロゴ（左）・ギア名（ロゴの右、下端を揃える）・レアリティ（右上）（#883） */}
       <div className="gear-card__header">
         <img
           className="gear-card__brand-logo"
@@ -57,10 +57,8 @@ export function GearCard({ gear, selected, onSelect }: Props) {
           alt={brand}
           title={brand}
         />
-        <div className="gear-card__title">
-          <Stars rarity={gear.rarity} />
-          <div className="gear-card__name" title={name}>{name}</div>
-        </div>
+        <div className="gear-card__name" title={name}>{name}</div>
+        <Stars rarity={gear.rarity} />
       </div>
 
       {/* ギア画像（中央） */}
@@ -73,9 +71,6 @@ export function GearCard({ gear, selected, onSelect }: Props) {
         />
       </div>
 
-      {/* ケイケン値（右寄り） */}
-      <div className="gear-card__exp">{t('gear.exp', { value: gear.exp.toLocaleString() })}</div>
-
       {/* スキル: メイン + サブ3つ（横幅いっぱい） */}
       <div className="gear-card__skills">
         <SkillIcon image={gear.primary_skill.image} skill={gear.primary_skill} size="main" />
@@ -87,6 +82,9 @@ export function GearCard({ gear, selected, onSelect }: Props) {
           )
         )}
       </div>
+
+      {/* ケイケン値（パワーの下・右寄り） */}
+      <div className="gear-card__exp">{t('gear.exp', { value: gear.exp.toLocaleString() })}</div>
 
     </div>
   )

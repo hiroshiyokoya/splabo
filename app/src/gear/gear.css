@@ -50,7 +50,7 @@
     --card-radius:    12px;
     --card-min-width: 180px;
     --card-width:      200px;
-    --card-image-size: 108px;
+    --card-image-size: 140px;
     --card-font-size:  0.85rem;
 
     /* ── Background dot grid ── */
@@ -375,7 +375,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--card-radius);
-    padding: 0.6rem 0.75rem 0.7rem;
+    padding: 0.6rem 0.75rem 5px;
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
@@ -387,31 +387,33 @@
     transform: translateY(-2px);
   }
 
-  /* ── Header: ブランドロゴ（左）・その右にレアリティとギア名（#883） ── */
+  /* ── Header: ブランドロゴ（左）・ギア名（ロゴの右、下端を揃える）・レアリティ（右上、上端をロゴに揃える）（#883） ──
+     ロゴの一辺を「レアリティ 1 行 + ギア名 2 行」にして、ヘッダーの高さ＝ロゴにする。
+     2 行の名前でもレアリティとぶつからず、同じ段のカードでギア画像の位置も揃う */
 
   .gear-card__header {
+    --gear-card-logo: calc(0.72rem + 2.4 * var(--card-font-size));
+    position: relative;
     display: flex;
-    align-items: flex-start;
+    align-items: flex-end;
     gap: 0.45rem;
-    margin-bottom: 0.2rem;
+  }
+
+  .gear-card__header .gear-stars {
+    position: absolute;
+    top: 0;
+    right: 0;
+    line-height: 1;
   }
 
   .gear-card__brand-logo {
-    width: 40px;
-    height: 40px;
+    width: var(--gear-card-logo);
+    height: var(--gear-card-logo);
     flex-shrink: 0;
     object-fit: contain;
     background: #fff;
     border-radius: 8px;
     padding: 0;
-  }
-
-  .gear-card__title {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.05rem;
   }
 
   /* ── Stars ── */
@@ -435,6 +437,7 @@
   .gear-card__image-wrap {
     display: flex;
     justify-content: center;
+    margin: 0.35rem 0 0;
   }
 
   .gear-card__image {
@@ -445,12 +448,13 @@
 
   /* ── Card text ── */
 
-  /* 2 行まで折り返す。高さは 2 行分とっておき、同じ段のカードでギア画像の位置を揃える */
+  /* 2 行まで折り返す（ヘッダーの下端に寄せる） */
   .gear-card__name {
+    flex: 1;
+    min-width: 0;
     font-size: var(--card-font-size);
     font-weight: 700;
-    line-height: 1.3;
-    min-height: 2.6em;
+    line-height: 1.2;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
@@ -464,6 +468,8 @@
   }
 
   .gear-card__exp {
+    /* パワーとの間を 10px に（カードの gap 0.15rem を差し引く） */
+    margin-top: calc(10px - 0.15rem);
     font-size: 0.7rem;
     color: var(--text-muted);
     text-align: right;
@@ -475,7 +481,8 @@
   .gear-card__skills {
     display: flex;
     gap: 5px;
-    margin-top: 0.25rem;
+    /* ギア画像との間を 1px に（カードの gap 0.15rem を差し引く） */
+    margin-top: calc(1px - 0.15rem);
     align-items: flex-end;
   }
 
