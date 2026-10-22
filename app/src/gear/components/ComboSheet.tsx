@@ -608,7 +608,8 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                 setExportingPng(true)
                 void saveElementAsPng(
                   node,
-                  buildPanelExportFilename(t('gear.saved.tab'), t('gear.combo.title'), 'png'),
+                  // gear.combo.title は 🎮 付きなので、ファイル名には使わない（#880）
+                  buildPanelExportFilename(t('gear.saved.tab'), t('gear.saved.heading'), 'png'),
                 )
                   .catch(err => console.error('[coord png]', err))
                   .finally(() => setExportingPng(false))
