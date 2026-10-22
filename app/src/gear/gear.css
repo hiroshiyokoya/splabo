@@ -2741,24 +2741,32 @@
     gap: 0.5rem;
   }
 
-  /* コーデ PNG 書き出し用（通常は隠す。撮るときだけ JS が画面内へ出す・#880） */
+  /* コーデ PNG 書き出し用（通常は隠す。撮るときだけ JS が画面内へ出す・#880）
+     外側に余白を取り、枠線がクリップされないようにする */
   .coord-png-export {
     position: fixed;
     left: 0;
     top: 0;
-    /* 固定幅だと右が欠ける。中身に合わせて広げる */
     width: max-content;
-    min-width: 360px;
-    max-width: 520px;
-    padding: 20px 22px 16px;
+    padding: 10px;
+    box-sizing: border-box;
+    background: transparent;
+    opacity: 0;
+    pointer-events: none;
+    z-index: -1;
+    overflow: visible;
+  }
+
+  .coord-png-export__card {
+    width: max-content;
+    /* ギア 100×3 + gap 12×2 + 内側 padding */
+    min-width: 364px;
+    padding: 20px 24px 16px;
     box-sizing: border-box;
     background: var(--surface);
     border: 1.5px solid var(--border);
     border-radius: 14px;
     color: var(--text);
-    opacity: 0;
-    pointer-events: none;
-    z-index: -1;
     overflow: visible;
   }
 
@@ -2775,7 +2783,6 @@
     border-radius: 12px;
     background: #000;
     overflow: hidden;
-    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
   }
 
   .coord-png-export__gear .gear-icon {
@@ -2802,7 +2809,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.35rem 0.4rem;
-    /* シート上の .combo-ap-chips の nowrap / 横スクロールを打ち消す */
     overflow: visible;
   }
 

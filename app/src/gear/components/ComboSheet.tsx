@@ -986,35 +986,37 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
         </div>
       </div>
 
-      {/* PNG 用の写し（× なし・合計 AP・右下ブランド・#880） */}
+      {/* PNG 用の写し。外側に余白を取り枠全体が入るようにする（#880） */}
       {fullSlots && (
         <div ref={exportRef} className="coord-png-export" aria-hidden="true">
-          <div className="coord-png-export__gears">
-            {(['head', 'clothing', 'shoes'] as GearCategory[]).map(cat => (
-              <div key={cat} className="coord-png-export__gear">
-                <GearIcon gear={fullSlots[cat]} />
-              </div>
-            ))}
-          </div>
-          <div className="coord-png-export__ap">
-            <span className="coord-png-export__ap-label">{t('gear.combo.totalAp')}</span>
-            <div className="coord-png-export__ap-chips">
-              {[...totalAp.entries()]
-                .sort(([aId], [bId]) => compareSkill(aId, bId))
-                .map(([id, { name, ap, image }]) => {
-                  const displayName = skillDisplayName({ id, name }, t)
-                  return (
-                    <div key={id} className={`combo-ap-chip${isMainOnly(id) ? ' combo-ap-chip--main-only' : ''}`}>
-                      <img className="combo-ap-chip__icon" src={image} alt={displayName} />
-                      {!isMainOnly(id) && <span className="combo-ap-chip__val">{t('gear.combo.points', { count: ap })}</span>}
-                    </div>
-                  )
-                })}
+          <div className="coord-png-export__card">
+            <div className="coord-png-export__gears">
+              {(['head', 'clothing', 'shoes'] as GearCategory[]).map(cat => (
+                <div key={cat} className="coord-png-export__gear">
+                  <GearIcon gear={fullSlots[cat]} />
+                </div>
+              ))}
             </div>
-          </div>
-          <div className="coord-png-export__brand">
-            <img className="coord-png-export__logo" src="/splabo-logo.png" alt="" draggable={false} />
-            <span className="coord-png-export__legacy">(geartoon)</span>
+            <div className="coord-png-export__ap">
+              <span className="coord-png-export__ap-label">{t('gear.combo.totalAp')}</span>
+              <div className="coord-png-export__ap-chips">
+                {[...totalAp.entries()]
+                  .sort(([aId], [bId]) => compareSkill(aId, bId))
+                  .map(([id, { name, ap, image }]) => {
+                    const displayName = skillDisplayName({ id, name }, t)
+                    return (
+                      <div key={id} className={`combo-ap-chip${isMainOnly(id) ? ' combo-ap-chip--main-only' : ''}`}>
+                        <img className="combo-ap-chip__icon" src={image} alt={displayName} />
+                        {!isMainOnly(id) && <span className="combo-ap-chip__val">{t('gear.combo.points', { count: ap })}</span>}
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+            <div className="coord-png-export__brand">
+              <img className="coord-png-export__logo" src="/splabo-logo.png" alt="" draggable={false} />
+              <span className="coord-png-export__legacy">(geartoon)</span>
+            </div>
           </div>
         </div>
       )}
