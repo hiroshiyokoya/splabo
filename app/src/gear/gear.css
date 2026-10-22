@@ -387,22 +387,31 @@
     transform: translateY(-2px);
   }
 
-  /* ── Header: ブランドロゴ（左）・レアリティ（右） ── */
+  /* ── Header: ブランドロゴ（左）・その右にレアリティとギア名（#883） ── */
 
   .gear-card__header {
     display: flex;
-    justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 0;
+    gap: 0.45rem;
+    margin-bottom: 0.2rem;
   }
 
   .gear-card__brand-logo {
     width: 40px;
     height: 40px;
+    flex-shrink: 0;
     object-fit: contain;
     background: #fff;
     border-radius: 8px;
     padding: 0;
+  }
+
+  .gear-card__title {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.05rem;
   }
 
   /* ── Stars ── */
@@ -436,14 +445,22 @@
 
   /* ── Card text ── */
 
+  /* 2 行まで折り返す。高さは 2 行分とっておき、同じ段のカードでギア画像の位置を揃える */
   .gear-card__name {
     font-size: var(--card-font-size);
     font-weight: 700;
-    text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     line-height: 1.3;
+    min-height: 2.6em;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    /* 小書きの仮名（ォ・ッ など）を行頭に置かない */
+    line-break: strict;
+    /* 2 行目に 1〜2 文字だけ落ちないよう、行の長さを揃える */
+    text-wrap: balance;
   }
 
   .gear-card__exp {
