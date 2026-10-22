@@ -435,6 +435,18 @@ function bakeLineClampEllipsis(node: HTMLElement): () => void {
 
 /**
  * 任意の DOM を PNG にして保存ダイアログへ渡す（コーデ書き出しなど・#880）。
+ * キャンセルされたら null。
+ */
+export async function saveElementAsPng(node: HTMLElement, filename: string): Promise<string | null> {
+  const dataUrl = await renderElementToPng(node)
+  const dataBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+  return await invokeSave(filename, dataBase64, 'png')
+}
+
+/**
+ * 任意の DOM を PNG の data URL にする（#880・#882）。
+ * PC はこれを保存ダイアログへ渡し、スマホ Web 版はプレビューに出して長押し・ダウンロードで保存する。
+ *
  * 画面外ノードは html-to-image が真っ黒になることがあるので、撮るあいだだけ画面内へ出す。
  *
  * 右下が欠けていた原因:
@@ -443,9 +455,13 @@ function bakeLineClampEllipsis(node: HTMLElement): () => void {
  * クローンの位置指定は options.style で消す。余白は html-to-image に任せず、
  * 実寸で撮ったキャンバスを一回り大きいキャンバスの中央に描いて付ける。
  *
- * キャンセルされたら null。
+ * `warmUp` を付けると一度空撮りしてから撮る。iOS の Safari は、foreignObject 内の画像が
+ * 初回だけ描かれないことがある（html-to-image の既知の問題）ため。
  */
-export async function saveElementAsPng(node: HTMLElement, filename: string): Promise<string | null> {
+export async function renderElementToPng(
+  node: HTMLElement,
+  { warmUp = false }: { warmUp?: boolean } = {},
+): Promise<string> {
   const prev = {
     position: node.style.position,
     left: node.style.left,
@@ -486,7 +502,7 @@ export async function saveElementAsPng(node: HTMLElement, filename: string): Pro
     const w = Math.ceil(rect.width)
     const h = Math.ceil(rect.height)
     const ratio = 2
-    const inner = await toCanvas(node, {
+    const options = {
       pixelRatio: ratio,
       skipFonts: true,
       cacheBust: true,
@@ -503,7 +519,9 @@ export async function saveElementAsPng(node: HTMLElement, filename: string): Pro
         bottom: 'auto',
         margin: '0',
       },
-    })
+    }
+    if (warmUp) await toCanvas(node, options)
+    const inner = await toCanvas(node, options)
     // 四辺に同じ透明余白
     const pad = 12
     const canvas = document.createElement('canvas')
@@ -512,9 +530,7 @@ export async function saveElementAsPng(node: HTMLElement, filename: string): Pro
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('canvas 2d context unavailable')
     ctx.drawImage(inner, pad * ratio, pad * ratio, w * ratio, h * ratio)
-    const dataUrl = canvas.toDataURL('image/png')
-    const dataBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
-    return await invokeSave(filename, dataBase64, 'png')
+    return canvas.toDataURL('image/png')
   } finally {
     unbake?.()
     unshrink?.()
