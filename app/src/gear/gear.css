@@ -2751,11 +2751,13 @@
     position: relative;
     width: max-content;
     box-sizing: border-box;
-    /* 下はクレジットを端に寄せるため薄く */
-    padding: 12px 10px 4px;
+    /* 下はクレジットを端に寄せるため薄く。枠は border ではなく内側の box-shadow
+       （html-to-image が右下の border を落としやすいため） */
+    padding: 12px 10px 5px;
     background: var(--surface);
-    border: 2px solid var(--border);
+    border: none;
     border-radius: 16px;
+    box-shadow: inset 0 0 0 2px var(--border);
     color: var(--text);
     overflow: hidden;
   }
@@ -2902,8 +2904,7 @@
 }
 
 /* キャプチャ根。クローンは祖先を持たないので、ここ自体を .gear-root にしてネスト CSS を効かせる。
-   ※ `.gear-root * { box-sizing: border-box }` だと padding が max-content 幅を食い、
-   右・下が枠ごと欠ける。ここだけ content-box にして余白を外に出す。 */
+   外側の透明余白は saveElementAsPng が margin + 大きい viewBox で付ける（CSS padding だと右下欠け）。 */
 .gear-root.coord-png-export-scope {
   position: fixed;
   left: 0;
@@ -2912,8 +2913,8 @@
   min-height: 0;
   height: auto;
   margin: 0;
-  padding: 8px;
-  box-sizing: content-box;
+  padding: 0;
+  box-sizing: border-box;
   background: transparent;
   background-image: none;
   opacity: 0;

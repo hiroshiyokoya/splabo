@@ -373,7 +373,12 @@ function applyGearThemeVars(node: HTMLElement): () => void {
 /**
  * 任意の DOM を PNG にして保存ダイアログへ渡す（コーデ書き出しなど・#880）。
  * 画面外ノードは html-to-image が真っ黒になることがあるので、撮るあいだだけ画面内へ出す。
- * パネル書き出しと同様、width/height は渡さない（押し込むとクローン側レイアウト差で右が欠ける）。
+ *
+ * 右・下だけ欠ける問題への対処:
+ * html-to-image は SVG viewBox を clientWidth 基準で切り、枠やサブピクセルが右下で落ちることがある。
+ * そこで「余白込みの大きい width/height」を渡しつつ、applyStyle が載せる style.width は
+ * options.style で実寸に上書きし、余白は margin で確保する（ライブラリ issue の定番回避）。
+ *
  * キャンセルされたら null。
  */
 export async function saveElementAsPng(node: HTMLElement, filename: string): Promise<string | null> {
@@ -387,6 +392,10 @@ export async function saveElementAsPng(node: HTMLElement, filename: string): Pro
     zIndex: node.style.zIndex,
     pointerEvents: node.style.pointerEvents,
     visibility: node.style.visibility,
+    width: node.style.width,
+    height: node.style.height,
+    margin: node.style.margin,
+    boxSizing: node.style.boxSizing,
   }
   const restoreTheme = applyGearThemeVars(node)
   // 画面内に置く（一瞬フラッシュしうるが、真っ黒よりマシ。pointer-events なし）
@@ -399,17 +408,30 @@ export async function saveElementAsPng(node: HTMLElement, filename: string): Pro
   node.style.visibility = 'visible'
   node.style.zIndex = '2147483646'
   node.style.pointerEvents = 'none'
+  // キャプチャ用の外側 CSS padding は寸法計算を狂わせるので撮るあいだだけ消す
+  node.style.padding = '0'
+  node.style.margin = '0'
+  node.style.boxSizing = 'border-box'
   try {
     await nextFrames()
-    // width/height を渡すと applyStyle が clone に style.width を押し込み欠ける。
-    // 寸法はライブラリ任せ（getNodeWidth = clientWidth+border）。外側余白は CSS の content-box。
+    const w = Math.ceil(node.getBoundingClientRect().width)
+    const h = Math.ceil(node.getBoundingClientRect().height)
+    // 四辺に同じ透明余白。viewBox だけ広げ、ノード実寸は style で固定する
+    const pad = 12
     const dataUrl = await toPng(node, {
       pixelRatio: 2,
       skipFonts: true,
       cacheBust: true,
+      width: w + pad * 2,
+      height: h + pad * 2,
       style: {
         opacity: '1',
         transform: 'none',
+        // applyStyle が options.width を style.width に載せるので、ここで実寸に上書き
+        width: `${w}px`,
+        height: `${h}px`,
+        margin: `${pad}px`,
+        boxSizing: 'border-box',
       },
     })
     const dataBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
@@ -425,6 +447,11 @@ export async function saveElementAsPng(node: HTMLElement, filename: string): Pro
     node.style.zIndex = prev.zIndex
     node.style.pointerEvents = prev.pointerEvents
     node.style.visibility = prev.visibility
+    node.style.width = prev.width
+    node.style.height = prev.height
+    node.style.margin = prev.margin
+    node.style.boxSizing = prev.boxSizing
+    node.style.padding = ''
   }
 }
 
