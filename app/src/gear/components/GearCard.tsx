@@ -1,7 +1,9 @@
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { GearItem, Skill } from '../types'
 import { skillDisplayName } from '../utils/skillDisplayName'
 import { gearItemDisplayName, gearBrandDisplayName } from '../utils/gearItemDisplayName'
+import { longestSegmentWidth } from '../utils/nameBreaks'
 
 interface Props {
   gear:      GearItem
@@ -16,6 +18,9 @@ interface Props {
 }
 
 const MAX_RARITY = 5
+
+/** ギア名の切れ端を欄に入れるために縮めてよい下限（#888）。これより小さくするなら折り返す */
+const MIN_NAME_SCALE = 0.8
 
 function Stars({ rarity }: { rarity: number }) {
   return (
@@ -43,8 +48,41 @@ export function GearCard({ gear, selected, onSelect, forExport = false, breakNam
   const subSlots = Array.from({ length: 3 }, (_, i) => gear.additional_skills[i] ?? null)
   const name = gearItemDisplayName(gear)
   const brokenName = breakName ? breakName(name) : name
-  // 切れ目があるときだけ、単語の途中で改行しない（無い名前は今までどおり長さをそろえて折り返す）
-  const phrased = brokenName !== name
+  const hasBreaks = brokenName !== name
+  // いちばん長い切れ端が欄に入るように、文字を縮める倍率（#888）。
+  // 1 = そのまま、0 = MIN_NAME_SCALE まで縮めても入らない（keep-all をやめて長さをそろえて折り返す）。
+  // 入らないまま keep-all にすると、非常改行で行末ぎりぎりで切られ、禁則も効かない。
+  const nameRef = useRef<HTMLDivElement>(null)
+  const appliedScale = useRef(1)
+  const [nameScale, setNameScale] = useState(1)
+  useLayoutEffect(() => {
+    const el = nameRef.current
+    if (!el || !hasBreaks) return
+    const check = () => {
+      const width = el.clientWidth
+      if (width <= 0) return // 非表示などで測れない
+      // 縮めたあとの大きさではなく、元の大きさで測る
+      const baseSize = parseFloat(getComputedStyle(el).fontSize) / appliedScale.current
+      const need = longestSegmentWidth(el, brokenName, baseSize)
+      const ratio = need <= width ? 1 : width / need
+      // 端数の丸めで 1px あふれないよう少しだけ余分に縮める
+      const next = ratio >= 1 ? 1 : ratio >= MIN_NAME_SCALE ? Math.floor(ratio * 0.98 * 100) / 100 : 0
+      appliedScale.current = next > 0 ? next : 1
+      setNameScale(next)
+    }
+    check()
+    // 欄の幅は flex で決まり、中身（文字の大きさ・keep-all）では変わらないので、測り直しでループしない
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    // ウェブフォント（スマホ版の丸ゴシック）が後から読み込まれると幅が変わる
+    void document.fonts?.ready.then(check)
+    return () => ro.disconnect()
+  }, [hasBreaks, brokenName])
+  // 切れ目があって（縮めれば）入るときだけ、単語の途中で改行しない
+  const phrased = hasBreaks && nameScale > 0
+  const nameStyle = phrased && nameScale < 1
+    ? { fontSize: `calc(var(--card-font-size) * ${nameScale})` }
+    : undefined
   const brand = gearBrandDisplayName(gear)
 
   return (
@@ -64,7 +102,14 @@ export function GearCard({ gear, selected, onSelect, forExport = false, breakNam
           alt={brand}
           title={brand}
         />
-        <div className={`gear-card__name${phrased ? ' gear-card__name--phrased' : ''}`} title={name}>{brokenName}</div>
+        <div
+          ref={nameRef}
+          className={`gear-card__name${phrased ? ' gear-card__name--phrased' : ''}`}
+          style={nameStyle}
+          title={name}
+        >
+          {brokenName}
+        </div>
         <Stars rarity={gear.rarity} />
       </div>
 

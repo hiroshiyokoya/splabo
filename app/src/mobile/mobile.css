@@ -12,6 +12,12 @@ body,
   font-family: 'M PLUS Rounded 1c', system-ui, 'Hiragino Maru Gothic ProN', 'Hiragino Sans', sans-serif;
 }
 
+/* コーデ PNG の写し（#882・#888）。画像は SVG 越しに描くのでウェブフォント（丸ゴシック）が使えず、
+   端末のフォントになる。画面上の写しも同じフォントにして、ギア名の幅を測る側と描く側を揃える */
+.m-app .gear-root.coord-png-export-scope {
+  font-family: system-ui, 'Hiragino Maru Gothic ProN', 'Hiragino Sans', sans-serif;
+}
+
 .m-app {
   min-height: 100dvh;
   display: flex;
