@@ -72,6 +72,42 @@ export function SavedCoordinateList({ data, coordinates, onApply, onEdit, onDele
         const ap = sortApEntries(totalApBySkill(GEAR_CATEGORIES.map(cat => resolved[cat].gear)))
         return (
           <div key={coord.id} className="coord-card">
+            {/* 上: 名前・メモ・ボタンを 1 行（#878）。警告はギア行の上に出す */}
+            <div className="coord-card__top">
+              <div className="coord-card__heading">
+                <div className="coord-card__title">{coord.title}</div>
+                {coord.memo && <div className="coord-card__memo" title={coord.memo}>{coord.memo}</div>}
+              </div>
+              <div className="coord-card__actions">
+                {anyChanged && !anyMissing && (
+                  <button type="button" className="coord-btn" onClick={() => onResave(coord, resolved)}>
+                    {t('gear.saved.resave')}
+                  </button>
+                )}
+                {(anyChanged || anyMissing) && (
+                  <button type="button" className="coord-btn" onClick={() => onSearchOriginal(coord)}>
+                    {t('gear.saved.searchOriginal')}
+                  </button>
+                )}
+                <button type="button" className="coord-btn" onClick={() => onEdit(coord)}>
+                  {t('gear.saved.edit')}
+                </button>
+                <button
+                  type="button"
+                  className={`coord-btn coord-btn--danger${confirmingId === coord.id ? ' coord-btn--confirm' : ''}`}
+                  onClick={() => handleDelete(coord)}
+                >
+                  {confirmingId === coord.id ? t('gear.saved.deleteConfirm') : t('gear.saved.delete')}
+                </button>
+              </div>
+            </div>
+            {(anyMissing || anyChanged) && (
+              <div className="coord-card__warns">
+                {anyMissing && <div className="coord-card__warn">{t('gear.saved.missingWarn')}</div>}
+                {anyChanged && <div className="coord-card__warn">{t('gear.saved.changed')}</div>}
+              </div>
+            )}
+            {/* 中: ギア / 下: パワー。クリックで適用 */}
             <button
               type="button"
               className="coord-card__main"
@@ -96,47 +132,24 @@ export function SavedCoordinateList({ data, coordinates, onApply, onEdit, onDele
                   )
                 })}
               </div>
-              <div className="coord-card__body">
-                <div className="coord-card__title">{coord.title}</div>
-                {coord.memo && <div className="coord-card__memo">{coord.memo}</div>}
-                <div className="coord-card__ap">
-                  {ap.map(([id, pts]) => {
-                    const skill = skillById.get(id)
-                    const name = skillDisplayName({ id, name: skill?.name ?? '' }, t)
-                    return (
-                      <div key={id} className="combo-result-ap-chip" title={name}>
-                        {skill ? <img src={skill.image} alt={name} /> : <span className="combo-result-ap-chip__id">{id}</span>}
-                        {!isMainOnly(id) && <span>{t('gear.combo.points', { count: pts })}</span>}
-                      </div>
-                    )
-                  })}
-                </div>
-                {anyMissing && <div className="coord-card__warn">{t('gear.saved.missingWarn')}</div>}
-                {anyChanged && <div className="coord-card__warn">{t('gear.saved.changed')}</div>}
+              <div className="coord-card__ap">
+                {ap.map(([id, pts]) => {
+                  const skill = skillById.get(id)
+                  const name = skillDisplayName({ id, name: skill?.name ?? '' }, t)
+                  const mainOnly = isMainOnly(id)
+                  return (
+                    <div
+                      key={id}
+                      className={`combo-result-ap-chip${mainOnly ? ' combo-result-ap-chip--main-only' : ''}`}
+                      title={name}
+                    >
+                      {skill ? <img src={skill.image} alt={name} /> : <span className="combo-result-ap-chip__id">{id}</span>}
+                      {!mainOnly && <span>{t('gear.combo.points', { count: pts })}</span>}
+                    </div>
+                  )
+                })}
               </div>
             </button>
-            <div className="coord-card__actions">
-              {anyChanged && !anyMissing && (
-                <button type="button" className="coord-btn" onClick={() => onResave(coord, resolved)}>
-                  {t('gear.saved.resave')}
-                </button>
-              )}
-              {(anyChanged || anyMissing) && (
-                <button type="button" className="coord-btn" onClick={() => onSearchOriginal(coord)}>
-                  {t('gear.saved.searchOriginal')}
-                </button>
-              )}
-              <button type="button" className="coord-btn" onClick={() => onEdit(coord)}>
-                {t('gear.saved.edit')}
-              </button>
-              <button
-                type="button"
-                className={`coord-btn coord-btn--danger${confirmingId === coord.id ? ' coord-btn--confirm' : ''}`}
-                onClick={() => handleDelete(coord)}
-              >
-                {confirmingId === coord.id ? t('gear.saved.deleteConfirm') : t('gear.saved.delete')}
-              </button>
-            </div>
           </div>
         )
       })}

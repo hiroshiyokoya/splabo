@@ -23,11 +23,17 @@ export function SaveCoordinateDialog({ mode, initialTitle, initialMemo, gears, e
   const [title, setTitle] = useState(initialTitle)
   const [memo, setMemo] = useState(initialMemo)
   const titleRef = useRef<HTMLInputElement>(null)
+  const memoRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
+    // 新規はタイトル、メモボタンからの編集はメモにフォーカス（#878）
+    if (mode === 'edit') {
+      memoRef.current?.focus()
+      return
+    }
     titleRef.current?.focus()
     titleRef.current?.select()
-  }, [])
+  }, [mode])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -75,6 +81,7 @@ export function SaveCoordinateDialog({ mode, initialTitle, initialMemo, gears, e
         <label className="coord-dialog__field">
           <span>{t('gear.saved.memoLabel')}</span>
           <textarea
+            ref={memoRef}
             value={memo}
             rows={4}
             maxLength={1000}
