@@ -614,7 +614,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                 ? <span className="panel-export-btn__spinner" />
                 : (
                   // 「保存」（コーデを保存）と区別するため、ダウンロード矢印ではなく画像マーク
-                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+                  <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false">
                     <g fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="1.8" y="2.5" width="12.4" height="11" rx="1.6" />
                       <circle cx="5.6" cy="6.1" r="1.2" />

@@ -1104,8 +1104,11 @@
   }
 
   /* ダッシュボードのパネル保存と同じ↓アイコン（#880） */
+  /* 画像マーク 18px に合わせて、共通の 24px より一回り大きく */
   .combo-sheet__download-btn {
     margin-top: 6px;
+    width: 28px;
+    height: 28px;
   }
 
   .combo-sheet__clear-btn {
