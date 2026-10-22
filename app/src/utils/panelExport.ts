@@ -7,7 +7,7 @@
  *
  * PNG は角丸の外側を透過のまま残す。HTML は単体ファイルで、散布図はホバー tip が動く。
  */
-import { toPng } from 'html-to-image'
+import { toCanvas, toPng } from 'html-to-image'
 import { call } from './backend'
 import { getVersion } from '@tauri-apps/api/app'
 import { displayVersion } from './version'
@@ -370,14 +370,79 @@ function applyGearThemeVars(node: HTMLElement): () => void {
   }
 }
 
+/** 1 行に収めるために文字を縮めてよい下限を指定する属性（例: `data-export-shrink="0.85"`）。 */
+const EXPORT_SHRINK_ATTR = 'data-export-shrink'
+
+/**
+ * 少しだけ 1 行からあふれる文字を、縮めて 1 行に収める（数文字だけ 2 行目に落ちるのを防ぐ）。
+ * 下限まで縮めても収まらなければ何もしない（折り返し・line-clamp に任せる）。
+ * 戻り値は元へ戻す関数。
+ */
+function shrinkToOneLine(node: HTMLElement): () => void {
+  const changed: { el: HTMLElement; fontSize: string; whiteSpace: string }[] = []
+  node.querySelectorAll<HTMLElement>(`[${EXPORT_SHRINK_ATTR}]`).forEach(el => {
+    const min = parseFloat(el.getAttribute(EXPORT_SHRINK_ATTR) ?? '')
+    if (!(min > 0 && min < 1)) return
+    const prev = { el, fontSize: el.style.fontSize, whiteSpace: el.style.whiteSpace }
+    el.style.whiteSpace = 'nowrap'
+    const ratio = el.clientWidth / el.scrollWidth
+    if (ratio >= 1 || ratio < min) {
+      el.style.whiteSpace = prev.whiteSpace
+      return
+    }
+    changed.push(prev)
+    // 端数の丸めで 1px あふれないよう少しだけ余分に縮める
+    el.style.fontSize = `${parseFloat(getComputedStyle(el).fontSize) * ratio * 0.98}px`
+  })
+  return () => {
+    for (const c of changed) {
+      c.el.style.fontSize = c.fontSize
+      c.el.style.whiteSpace = c.whiteSpace
+    }
+  }
+}
+
+/**
+ * `line-clamp` で切れている文字を、実際に詰めて末尾に「…」を付ける。
+ * html-to-image の画像では line-clamp の「…」が描かれず、文字が黙って途切れるため。
+ * 戻り値は元へ戻す関数。
+ */
+function bakeLineClampEllipsis(node: HTMLElement): () => void {
+  const changed: { textNode: Text; text: string }[] = []
+  node.querySelectorAll<HTMLElement>('*').forEach(el => {
+    const clamp = getComputedStyle(el).getPropertyValue('-webkit-line-clamp')
+    if (!clamp || clamp === 'none') return
+    if (el.scrollHeight <= el.clientHeight + 1) return
+    // React が持っているテキストノードを差し替えないよう、中身(nodeValue)だけ書き換える
+    const textNode = el.firstChild
+    if (!(textNode instanceof Text) || el.childNodes.length !== 1) return
+    const text = textNode.nodeValue ?? ''
+    changed.push({ textNode, text })
+    // 収まる最長の長さを二分探索で探す
+    let lo = 0
+    let hi = text.length
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2)
+      textNode.nodeValue = text.slice(0, mid).trimEnd() + '…'
+      if (el.scrollHeight <= el.clientHeight + 1) lo = mid
+      else hi = mid - 1
+    }
+    textNode.nodeValue = text.slice(0, lo).trimEnd() + '…'
+  })
+  return () => {
+    for (const c of changed) c.textNode.nodeValue = c.text
+  }
+}
+
 /**
  * 任意の DOM を PNG にして保存ダイアログへ渡す（コーデ書き出しなど・#880）。
  * 画面外ノードは html-to-image が真っ黒になることがあるので、撮るあいだだけ画面内へ出す。
  *
- * 右・下だけ欠ける問題への対処:
- * html-to-image は SVG viewBox を clientWidth 基準で切り、枠やサブピクセルが右下で落ちることがある。
- * そこで「余白込みの大きい width/height」を渡しつつ、applyStyle が載せる style.width は
- * options.style で実寸に上書きし、余白は margin で確保する（ライブラリ issue の定番回避）。
+ * 右下が欠けていた原因:
+ * html-to-image はクローンに元ノードの算出スタイルをすべて写すので、撮るために付けた
+ * `position: fixed; left/top: 16px` も乗り、画像の中で中身が右下へ 16px ずれていた。
+ * クローンの位置指定は options.style で消す。余白は html-to-image に任せず、
+ * 実寸で撮ったキャンバスを一回り大きいキャンバスの中央に描いて付ける。
  *
  * キャンセルされたら null。
  */
@@ -412,31 +477,48 @@ export async function saveElementAsPng(node: HTMLElement, filename: string): Pro
   node.style.padding = '0'
   node.style.margin = '0'
   node.style.boxSizing = 'border-box'
+  let unshrink: (() => void) | null = null
+  let unbake: (() => void) | null = null
   try {
     await nextFrames()
-    const w = Math.ceil(node.getBoundingClientRect().width)
-    const h = Math.ceil(node.getBoundingClientRect().height)
-    // 四辺に同じ透明余白。viewBox だけ広げ、ノード実寸は style で固定する
-    const pad = 12
-    const dataUrl = await toPng(node, {
-      pixelRatio: 2,
+    unshrink = shrinkToOneLine(node)
+    unbake = bakeLineClampEllipsis(node)
+    const rect = node.getBoundingClientRect()
+    const w = Math.ceil(rect.width)
+    const h = Math.ceil(rect.height)
+    const ratio = 2
+    const inner = await toCanvas(node, {
+      pixelRatio: ratio,
       skipFonts: true,
       cacheBust: true,
-      width: w + pad * 2,
-      height: h + pad * 2,
+      width: w,
+      height: h,
       style: {
         opacity: '1',
         transform: 'none',
-        // applyStyle が options.width を style.width に載せるので、ここで実寸に上書き
-        width: `${w}px`,
-        height: `${h}px`,
-        margin: `${pad}px`,
-        boxSizing: 'border-box',
+        // 画面内へ出すための位置指定をクローンから外す（残すと画像内でずれて右下が欠ける）
+        position: 'static',
+        left: 'auto',
+        top: 'auto',
+        right: 'auto',
+        bottom: 'auto',
+        margin: '0',
       },
     })
+    // 四辺に同じ透明余白
+    const pad = 12
+    const canvas = document.createElement('canvas')
+    canvas.width = (w + pad * 2) * ratio
+    canvas.height = (h + pad * 2) * ratio
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('canvas 2d context unavailable')
+    ctx.drawImage(inner, pad * ratio, pad * ratio, w * ratio, h * ratio)
+    const dataUrl = canvas.toDataURL('image/png')
     const dataBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
     return await invokeSave(filename, dataBase64, 'png')
   } finally {
+    unbake?.()
+    unshrink?.()
     restoreTheme()
     node.style.position = prev.position
     node.style.left = prev.left
