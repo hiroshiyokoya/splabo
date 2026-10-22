@@ -986,7 +986,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
         </div>
       </div>
 
-      {/* PNG 用の写し（× なし・合計 AP 付き・画面外・#880） */}
+      {/* PNG 用の写し（× なし・合計 AP・右下ブランド・#880） */}
       {fullSlots && (
         <div ref={exportRef} className="coord-png-export" aria-hidden="true">
           <div className="coord-png-export__gears">
@@ -1012,7 +1012,10 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                 })}
             </div>
           </div>
-          <div className="panel-export-credit" />
+          <div className="coord-png-export__brand">
+            <img className="coord-png-export__logo" src="/splabo-logo.png" alt="" draggable={false} />
+            <span className="coord-png-export__legacy">(geartoon)</span>
+          </div>
         </div>
       )}
     </div>

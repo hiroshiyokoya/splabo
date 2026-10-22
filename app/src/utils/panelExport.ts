@@ -374,9 +374,20 @@ export async function saveElementAsPng(node: HTMLElement, filename: string): Pro
     fillExportCredit(node, buildExportCredit(await appVersion()))
     await nextFrames()
     const bg = getComputedStyle(node).backgroundColor
+    // scroll 寸法で撮らないと、固定幅より広い中身の右端が欠ける（#880）
+    const w = Math.ceil(node.scrollWidth)
+    const h = Math.ceil(node.scrollHeight)
     const dataUrl = await toPng(node, {
       pixelRatio: 2,
       skipFonts: true,
+      width: w,
+      height: h,
+      style: {
+        width: `${w}px`,
+        height: `${h}px`,
+        opacity: '1',
+        transform: 'none',
+      },
       // 背景が透明扱いに落ちるのを防ぐ
       backgroundColor: bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent' ? bg : cssVar('--surface', '#17172a'),
       cacheBust: true,
