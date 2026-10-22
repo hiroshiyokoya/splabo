@@ -2781,9 +2781,21 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     width: 100px;
     flex-shrink: 0;
+  }
+
+  .coord-png-export__name {
+    width: 100%;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text);
+    text-align: center;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .coord-png-export__gear {
@@ -2853,11 +2865,22 @@
 
   .coord-png-export .combo-ap-chip {
     flex-shrink: 0;
+    padding: 0.1rem 0.4rem 0.1rem 0.2rem;
+  }
+
+  .coord-png-export .combo-ap-chip--main-only {
+    width: 26px;
+    height: 26px;
+    padding: 2px;
   }
 
   .coord-png-export .combo-ap-chip__icon {
-    width: 24px;
-    height: 24px;
+    width: 18px;
+    height: 18px;
+  }
+
+  .coord-png-export .combo-ap-chip__val {
+    font-size: 0.66rem;
   }
 
   .coord-png-export__credit {

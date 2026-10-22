@@ -1000,9 +1000,11 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
               <div className="coord-png-export__gears">
                 {(['head', 'clothing', 'shoes'] as GearCategory[]).map(cat => {
                   const gear = fullSlots[cat]
+                  const gearName = gearItemDisplayName(gear)
                   const mainName = skillDisplayName(gear.primary_skill, t)
                   return (
                     <div key={cat} className="coord-png-export__col">
+                      <div className="coord-png-export__name" title={gearName}>{gearName}</div>
                       <div className="coord-png-export__gear">
                         <GearIcon gear={gear} />
                       </div>
