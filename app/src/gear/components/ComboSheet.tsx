@@ -11,7 +11,7 @@ import type { ComboConditions, FullSlots } from '../utils/savedCoordinates'
 import { GearIcon } from './GearIcon'
 import { GearCard } from './GearCard'
 import { isTauri } from '../utils/tauri'
-import { buildPanelExportFilename, saveElementAsPng } from '../../utils/panelExport'
+import { buildPanelExportFilename, renderElementToPng, saveElementAsPng } from '../../utils/panelExport'
 
 export type ComboSlots = {
   head:     GearItem | null
@@ -97,12 +97,16 @@ interface Props {
   openRequest?:     number
   /** nonce が変わるたびに、この条件で探す(保存コーデの「元のパワーで探す」・#860) */
   searchRequest?:   { nonce: number; conditions: ComboConditions } | null
+  /** スマホ Web 版でコーデ PNG ができたとき（プレビューを出す・#882）。PC は保存ダイアログなので使わない */
+  onPngReady?:      (png: { dataUrl: string; filename: string }) => void
 }
 
-export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '', comboLimit = 50, nearLimit = 10, onSaveCombo, openRequest = 0, searchRequest = null }: Props) {
+export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '', comboLimit = 50, nearLimit = 10, onSaveCombo, openRequest = 0, searchRequest = null, onPngReady }: Props) {
   const { t, i18n } = useTranslation()
   const emptyLabel = t('gear.empty')
   const exportRef = useRef<HTMLDivElement>(null)
+  // スマホ Web 版はプレビューの受け手（onPngReady）があるときだけ出す
+  const canExportPng = isTauri() || onPngReady !== undefined
   // PNG のギア名も一覧と同じ切れ目で改行する（#886）
   const breakName = useMemo(() => buildNameBreaker(allGearDisplayNames(data)), [data, i18n.language])
   const [exportingPng, setExportingPng] = useState(false)
@@ -593,8 +597,8 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
           <span className="combo-sheet__title">{t('gear.combo.title')}</span>
           <div className="combo-sheet__header-actions">
           {/* 画像はアイコンだけなので先頭に置き、文字のボタン（保存・クリア）を並べる。
-              保存はデスクトップの保存ダイアログ経由。スマホ Web 版では出さない（ダッシュボードと同じ） */}
-          {fullSlots && isTauri() && (
+              PC は保存ダイアログ、スマホ Web 版はプレビュー（長押し・ダウンロードで保存・#882） */}
+          {fullSlots && canExportPng && (
             <button
               type="button"
               className="panel-export-btn combo-sheet__download-btn"
@@ -603,11 +607,13 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                 const node = exportRef.current
                 if (!node || exportingPng) return
                 setExportingPng(true)
-                void saveElementAsPng(
-                  node,
-                  // gear.combo.title は 🎮 付きなので、ファイル名には使わない（#880）
-                  buildPanelExportFilename(t('gear.saved.tab'), t('gear.saved.heading'), 'png'),
-                )
+                // gear.combo.title は 🎮 付きなので、ファイル名には使わない（#880）
+                const filename = buildPanelExportFilename(t('gear.saved.tab'), t('gear.saved.heading'), 'png')
+                const run = isTauri()
+                  ? saveElementAsPng(node, filename)
+                  : renderElementToPng(node, { warmUp: true })
+                    .then(dataUrl => onPngReady?.({ dataUrl, filename }))
+                void run
                   .catch(err => console.error('[coord png]', err))
                   .finally(() => setExportingPng(false))
               }}
@@ -996,7 +1002,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
 
       {/* PNG 用の写し。gear-root を根にしてクローンでもネスト CSS が効くようにする（#880）。
           lang はクローンに祖先から継がれないので根に付ける（日本語の禁則で改行させるため） */}
-      {fullSlots && isTauri() && (
+      {fullSlots && canExportPng && (
         <div ref={exportRef} className="gear-root coord-png-export-scope" lang={i18n.language} aria-hidden="true">
           <div className="coord-png-export">
             <div className="coord-png-export__card">

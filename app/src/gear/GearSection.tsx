@@ -5,6 +5,7 @@ import { FilterDrawer, emptyFilter, countActiveFilters } from './components/Filt
 import { ComboSheet, emptySlots } from './components/ComboSheet'
 import { SavedCoordinateList } from './components/SavedCoordinateList'
 import { SaveCoordinateDialog } from './components/SaveCoordinateDialog'
+import { CoordPngPreview } from './components/CoordPngPreview'
 import {
   listSavedCoordinates, saveCoordinate, deleteSavedCoordinate,
   toCoordinateGears, resolveCoordinate, conditionsFromSnapshot,
@@ -232,6 +233,9 @@ export function GearSection() {
   }, [updatePhase, isCoolingDown, t])
   const [sortKey, setSortKey]       = useState<SortKey>('skill')
   const [drawerOpen, setDrawerOpen]       = useState(false)
+  // スマホ Web 版のコーデ PNG プレビュー（#882）
+  const [pngPreview, setPngPreview] = useState<{ dataUrl: string; filename: string } | null>(null)
+  const closePngPreview = useCallback(() => setPngPreview(null), [])
   const [comboLimit] = useState<ComboLimitValue>(loadComboLimit)
   const [nearLimit]  = useState<NearLimitValue>(loadNearLimit)
 
@@ -738,7 +742,16 @@ export function GearSection() {
           onSaveCombo={handleOpenSaveDialog}
           openRequest={comboOpenRequest}
           searchRequest={comboSearchRequest}
+          onPngReady={isTauri() ? undefined : setPngPreview}
         />
+
+        {pngPreview && (
+          <CoordPngPreview
+            dataUrl={pngPreview.dataUrl}
+            filename={pngPreview.filename}
+            onClose={closePngPreview}
+          />
+        )}
 
         {saveDialog && (
           <SaveCoordinateDialog
