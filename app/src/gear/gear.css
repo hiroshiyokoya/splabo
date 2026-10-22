@@ -2749,10 +2749,10 @@
 
   .coord-png-export__card {
     position: relative;
-    /* 100×3 + gap12×2 + padding12×2 + border2×2 */
-    width: 352px;
+    width: max-content;
     box-sizing: border-box;
-    padding: 14px 12px 20px;
+    /* 下はクレジットを端に寄せるため薄く */
+    padding: 12px 10px 4px;
     background: var(--surface);
     border: 2px solid var(--border);
     border-radius: 16px;
@@ -2883,11 +2883,9 @@
     font-size: 0.66rem;
   }
 
+  /* absolute だと計測外・overflow で欠けやすいのでフローに置き、余白だけで端へ */
   .coord-png-export__credit {
-    position: absolute;
-    right: 6px;
-    bottom: 4px;
-    margin: 0;
+    margin: 0.45rem 0 0;
     padding: 0;
     text-align: right;
     font-size: 0.58rem;
@@ -2903,7 +2901,9 @@
      打ち消しだけだったので、ヘッダーの撤去（#419 / #424）に伴いブロックごと削除した。 */
 }
 
-/* キャプチャ根。クローンは祖先を持たないので、ここ自体を .gear-root にしてネスト CSS を効かせる */
+/* キャプチャ根。クローンは祖先を持たないので、ここ自体を .gear-root にしてネスト CSS を効かせる。
+   ※ `.gear-root * { box-sizing: border-box }` だと padding が max-content 幅を食い、
+   右・下が枠ごと欠ける。ここだけ content-box にして余白を外に出す。 */
 .gear-root.coord-png-export-scope {
   position: fixed;
   left: 0;
@@ -2913,7 +2913,7 @@
   height: auto;
   margin: 0;
   padding: 8px;
-  box-sizing: border-box;
+  box-sizing: content-box;
   background: transparent;
   background-image: none;
   opacity: 0;

@@ -401,7 +401,8 @@ export async function saveElementAsPng(node: HTMLElement, filename: string): Pro
   node.style.pointerEvents = 'none'
   try {
     await nextFrames()
-    // パネル書き出しと同じ: 寸法はライブラリに任せる（こちらで測って押し付けると欠ける）
+    // width/height を渡すと applyStyle が clone に style.width を押し込み欠ける。
+    // 寸法はライブラリ任せ（getNodeWidth = clientWidth+border）。外側余白は CSS の content-box。
     const dataUrl = await toPng(node, {
       pixelRatio: 2,
       skipFonts: true,
