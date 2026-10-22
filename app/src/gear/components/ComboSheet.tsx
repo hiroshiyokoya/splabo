@@ -588,17 +588,8 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
         <div className="combo-sheet__header">
           <span className="combo-sheet__title">{t('gear.combo.title')}</span>
           <div className="combo-sheet__header-actions">
-          {onSaveCombo && fullSlots && (
-            <button
-              type="button"
-              className="combo-sheet__clear-btn combo-sheet__save-btn"
-              onClick={() => onSaveCombo(fullSlots)}
-              title={t('gear.saved.saveCombo')}
-            >
-              {t('gear.saved.saveButton')}
-            </button>
-          )}
-          {/* 保存はデスクトップの保存ダイアログ経由。スマホ Web 版では出さない（ダッシュボードと同じ） */}
+          {/* 画像はアイコンだけなので先頭に置き、文字のボタン（保存・クリア）を並べる。
+              保存はデスクトップの保存ダイアログ経由。スマホ Web 版では出さない（ダッシュボードと同じ） */}
           {fullSlots && isTauri() && (
             <button
               type="button"
@@ -622,14 +613,25 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
               {exportingPng
                 ? <span className="panel-export-btn__spinner" />
                 : (
-                  <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false">
-                    <path
-                      d="M8 1.5v7.6M4.8 6.3 8 9.5l3.2-3.2M2.5 11.5v1.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1.5"
-                      fill="none" stroke="currentColor" strokeWidth="1.4"
-                      strokeLinecap="round" strokeLinejoin="round"
-                    />
+                  // 「保存」（コーデを保存）と区別するため、ダウンロード矢印ではなく画像マーク
+                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+                    <g fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="1.8" y="2.5" width="12.4" height="11" rx="1.6" />
+                      <circle cx="5.6" cy="6.1" r="1.2" />
+                      <path d="M2.2 12.2 6.4 8.4l2.6 2.4 1.9-1.7 2.9 2.7" />
+                    </g>
                   </svg>
                 )}
+            </button>
+          )}
+          {onSaveCombo && fullSlots && (
+            <button
+              type="button"
+              className="combo-sheet__clear-btn combo-sheet__save-btn"
+              onClick={() => onSaveCombo(fullSlots)}
+              title={t('gear.saved.saveCombo')}
+            >
+              {t('gear.saved.saveButton')}
             </button>
           )}
           {anyFilled && (
