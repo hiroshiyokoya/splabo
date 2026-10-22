@@ -1103,6 +1103,11 @@
     gap: 0.75rem;
   }
 
+  /* ダッシュボードのパネル保存と同じ↓アイコン（#880） */
+  .combo-sheet__download-btn {
+    margin-top: 6px;
+  }
+
   .combo-sheet__clear-btn {
     margin-top: 6px;
     background: none;

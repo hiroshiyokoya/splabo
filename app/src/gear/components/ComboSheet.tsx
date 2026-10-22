@@ -600,7 +600,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
           {fullSlots && (
             <button
               type="button"
-              className="combo-sheet__clear-btn combo-sheet__save-btn"
+              className="panel-export-btn combo-sheet__download-btn"
               disabled={exportingPng}
               onClick={() => {
                 const node = exportRef.current
@@ -613,9 +613,20 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
                   .catch(err => console.error('[coord png]', err))
                   .finally(() => setExportingPng(false))
               }}
+              aria-label={t('gear.saved.downloadPng')}
               title={t('gear.saved.downloadPng')}
             >
-              {exportingPng ? t('gear.saved.downloadingPng') : t('gear.saved.downloadPng')}
+              {exportingPng
+                ? <span className="panel-export-btn__spinner" />
+                : (
+                  <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false">
+                    <path
+                      d="M8 1.5v7.6M4.8 6.3 8 9.5l3.2-3.2M2.5 11.5v1.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1.5"
+                      fill="none" stroke="currentColor" strokeWidth="1.4"
+                      strokeLinecap="round" strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
             </button>
           )}
           {anyFilled && (
