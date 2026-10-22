@@ -136,10 +136,15 @@ export function SavedCoordinateList({ data, coordinates, onApply, onEdit, onDele
                 {ap.map(([id, pts]) => {
                   const skill = skillById.get(id)
                   const name = skillDisplayName({ id, name: skill?.name ?? '' }, t)
+                  const mainOnly = isMainOnly(id)
                   return (
-                    <div key={id} className="combo-result-ap-chip" title={name}>
+                    <div
+                      key={id}
+                      className={`combo-result-ap-chip${mainOnly ? ' combo-result-ap-chip--main-only' : ''}`}
+                      title={name}
+                    >
                       {skill ? <img src={skill.image} alt={name} /> : <span className="combo-result-ap-chip__id">{id}</span>}
-                      {!isMainOnly(id) && <span>{t('gear.combo.points', { count: pts })}</span>}
+                      {!mainOnly && <span>{t('gear.combo.points', { count: pts })}</span>}
                     </div>
                   )
                 })}

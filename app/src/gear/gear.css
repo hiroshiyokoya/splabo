@@ -2592,6 +2592,12 @@
     height: 20px;
   }
 
+  /* 発動型は pt が無いので、スタック型より少し大きく（#878） */
+  .coord-card__ap .combo-result-ap-chip--main-only img {
+    width: 22px;
+    height: 22px;
+  }
+
   .coord-card__warn {
     font-size: 0.72rem;
     color: #ffc04a;
