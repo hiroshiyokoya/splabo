@@ -26,6 +26,27 @@ const SEPARATORS = '・ 　'
 
 const ZWSP = '​'
 
+let measureCtx: CanvasRenderingContext2D | null | undefined
+
+/**
+ * 切れ目で区切った切れ端のうち、いちばん長いものの幅（px・#888）。
+ *
+ * 切れ端が 1 行に入らないと、`word-break: keep-all` のままでは `overflow-wrap: anywhere` の
+ * 非常改行で行末ぎりぎりで切られ、禁則も効かない（タカアシプロテクタ／ーライム）。
+ * 呼び出し側はこの幅と欄の幅を比べて、文字を縮めるか、ふつうの折り返しに戻す。
+ *
+ * フォントの種類は el の算出スタイル、大きさは fontSizePx で測る（縮めたあとの大きさで
+ * 測り直して、縮め続けないように）。測れないときは 0。
+ */
+export function longestSegmentWidth(el: HTMLElement, broken: string, fontSizePx: number): number {
+  if (measureCtx === undefined) measureCtx = document.createElement('canvas').getContext('2d')
+  if (!measureCtx) return 0
+  const cs = getComputedStyle(el)
+  measureCtx.font = `${cs.fontStyle} ${cs.fontWeight} ${fontSizePx}px ${cs.fontFamily}`
+  const ctx = measureCtx
+  return Math.max(0, ...broken.split(/[​ 　]/).map(seg => ctx.measureText(seg).width))
+}
+
 const isAsciiAlnum = (c: string) => /^[0-9A-Za-z]$/.test(c)
 
 function addCount(map: Map<string, number>, key: string): void {
