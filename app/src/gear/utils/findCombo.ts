@@ -289,11 +289,14 @@ function comboSortKeyStrictEqual(a: ComboResult, b: ComboResult): boolean {
 /**
  * (減点, targetSum, allSum, perSkillDesc) でグループ化し、
  * 累計が NEAR_LIMIT を超えないグループまでを返す。
- * 超えるグループは丸ごと出さない。
+ * 超えるグループは丸ごと出さない（同点を途中で切らない）。
+ * ただし最初のグループだけは超えても全部出す。出さないと、同点が上限より多いときに
+ * 「惜しい」が 1 件も出なくなる（#891）。それでも全体の上限 maxTotal 件では止める。
  */
 function pickNearGroups(
   nearEntries: { deficit: number; combo: ComboResult }[],
   nearLimit: number,
+  maxTotal: number,
 ): { deficit: number; combo: ComboResult }[] {
   if (nearLimit <= 0 || nearEntries.length === 0) return []
 
@@ -309,8 +312,8 @@ function pickNearGroups(
       && comboSortKeyStrictEqual(sorted[i].combo, sorted[j].combo)
     ) j++
     const groupSize = j - i
-    if (result.length + groupSize > nearLimit) break
-    result.push(...sorted.slice(i, j))
+    if (result.length > 0 && result.length + groupSize > nearLimit) break
+    result.push(...sorted.slice(i, Math.min(j, i + maxTotal)))
     i = j
   }
 
@@ -390,7 +393,7 @@ export function findCombo(
   if (valid.length >= 10) return perfectTagged
 
   const byGear = new Map<GearItem, GAp>([...heads, ...clothings, ...shoesAll].map(x => [x.gear, x]))
-  const nearPicks = pickNearGroups(nearHeap.sorted(), effectiveNearLimit)
+  const nearPicks = pickNearGroups(nearHeap.sorted(), effectiveNearLimit, limit)
   const nearTagged: ComboResult[] = nearPicks.map(({ combo, deficit }) => {
     const hAp = byGear.get(combo.head)!
     const cAp = byGear.get(combo.clothing)!
