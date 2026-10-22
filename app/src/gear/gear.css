@@ -467,6 +467,12 @@
     text-wrap: balance;
   }
 
+  /* 名前に切れ目（ゼロ幅スペース・#886）があるときは、切れ目でだけ改行する。
+     それでも入りきらなければ overflow-wrap: anywhere でどこでも折り返す */
+  .gear-card__name--phrased {
+    word-break: keep-all;
+  }
+
   .gear-card__exp {
     /* パワーとの間を 10px に（カードの gap 0.15rem を差し引く） */
     margin-top: calc(10px - 0.15rem);

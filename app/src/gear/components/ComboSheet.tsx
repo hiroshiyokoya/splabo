@@ -5,7 +5,8 @@ import { findCombo, MAIN_AP, SUB_AP, getComboSortKey, comboBestBadgeKeysEqual } 
 import type { ComboResult, ComboSortKey } from '../utils/findCombo'
 import { isMainOnly, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank, makeSkillDisplayComparator } from '../constants/gearPowerMeta'
 import { skillDisplayName } from '../utils/skillDisplayName'
-import { gearItemDisplayName, gearBrandDisplayName } from '../utils/gearItemDisplayName'
+import { allGearDisplayNames, gearItemDisplayName, gearBrandDisplayName } from '../utils/gearItemDisplayName'
+import { buildNameBreaker } from '../utils/nameBreaks'
 import type { ComboConditions, FullSlots } from '../utils/savedCoordinates'
 import { GearIcon } from './GearIcon'
 import { GearCard } from './GearCard'
@@ -106,6 +107,8 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
   const exportRef = useRef<HTMLDivElement>(null)
   // スマホ Web 版はプレビューの受け手（onPngReady）があるときだけ出す
   const canExportPng = isTauri() || onPngReady !== undefined
+  // PNG のギア名も一覧と同じ切れ目で改行する（#886）
+  const breakName = useMemo(() => buildNameBreaker(allGearDisplayNames(data)), [data, i18n.language])
   const [exportingPng, setExportingPng] = useState(false)
   const [isOpen, setIsOpen]             = useState(false)
   const [snapExpanded, setSnapExpanded] = useState(false)
@@ -1006,7 +1009,7 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
               {/* ギア一覧と同じカードを 3 枚（ケイケン値なし・#883） */}
               <div className="coord-png-export__gears">
                 {(['head', 'clothing', 'shoes'] as GearCategory[]).map(cat => (
-                  <GearCard key={cat} gear={fullSlots[cat]} forExport />
+                  <GearCard key={cat} gear={fullSlots[cat]} forExport breakName={breakName} />
                 ))}
               </div>
               <div className="coord-png-export__ap">
