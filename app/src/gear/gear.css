@@ -2742,13 +2742,14 @@
   }
 
   /* コーデ PNG 書き出し用（通常は隠す。撮るときだけ JS が画面内へ出す・#880）
-     外側に余白を取り、枠線がクリップされないようにする */
+     外側に余白を取り、枠線がクリップされないようにする。
+     角丸はカード側で overflow:hidden し、4 隅を同じ半径に揃える。 */
   .coord-png-export {
     position: fixed;
     left: 0;
     top: 0;
     width: max-content;
-    padding: 10px;
+    padding: 12px;
     box-sizing: border-box;
     background: transparent;
     opacity: 0;
@@ -2758,16 +2759,25 @@
   }
 
   .coord-png-export__card {
+    position: relative;
     width: max-content;
     /* ギア 100×3 + gap 12×2 + 内側 padding */
     min-width: 364px;
-    padding: 20px 24px 16px;
+    padding: 16px 24px 14px;
     box-sizing: border-box;
     background: var(--surface);
-    border: 1.5px solid var(--border);
-    border-radius: 14px;
+    border: 2px solid var(--border);
+    border-radius: 16px;
     color: var(--text);
-    overflow: visible;
+    overflow: hidden;
+  }
+
+  .coord-png-export__app-icon {
+    display: block;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    margin-bottom: 12px;
   }
 
   .coord-png-export__gears {
@@ -2809,7 +2819,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.35rem 0.4rem;
-    overflow: visible;
   }
 
   .coord-png-export .combo-ap-chip {
@@ -2821,27 +2830,25 @@
     height: 24px;
   }
 
-  .coord-png-export__brand {
+  .coord-png-export__credit {
     display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.45rem;
-    margin-top: 1.1rem;
-    padding-top: 0.65rem;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.15rem;
+    margin-top: 1rem;
+    padding-top: 0.6rem;
     border-top: 1px solid var(--border);
-  }
-
-  .coord-png-export__logo {
-    height: 28px;
-    width: auto;
-    display: block;
-  }
-
-  .coord-png-export__legacy {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     font-weight: 600;
     color: var(--text-muted);
     letter-spacing: 0.02em;
+    line-height: 1.25;
+  }
+
+  .coord-png-export__credit-note {
+    font-size: 0.62rem;
+    font-weight: 500;
+    opacity: 0.85;
   }
 
   /* ── Mobile responsive ──
