@@ -72,13 +72,11 @@ export function SavedCoordinateList({ data, coordinates, onApply, onEdit, onDele
         const ap = sortApEntries(totalApBySkill(GEAR_CATEGORIES.map(cat => resolved[cat].gear)))
         return (
           <div key={coord.id} className="coord-card">
-            {/* 上: 名前・メモ・ボタン（#878） */}
+            {/* 上: 名前・メモ・ボタンを 1 行（#878）。警告はギア行の上に出す */}
             <div className="coord-card__top">
               <div className="coord-card__heading">
                 <div className="coord-card__title">{coord.title}</div>
-                {coord.memo && <div className="coord-card__memo">{coord.memo}</div>}
-                {anyMissing && <div className="coord-card__warn">{t('gear.saved.missingWarn')}</div>}
-                {anyChanged && <div className="coord-card__warn">{t('gear.saved.changed')}</div>}
+                {coord.memo && <div className="coord-card__memo" title={coord.memo}>{coord.memo}</div>}
               </div>
               <div className="coord-card__actions">
                 {anyChanged && !anyMissing && (
@@ -103,6 +101,12 @@ export function SavedCoordinateList({ data, coordinates, onApply, onEdit, onDele
                 </button>
               </div>
             </div>
+            {(anyMissing || anyChanged) && (
+              <div className="coord-card__warns">
+                {anyMissing && <div className="coord-card__warn">{t('gear.saved.missingWarn')}</div>}
+                {anyChanged && <div className="coord-card__warn">{t('gear.saved.changed')}</div>}
+              </div>
+            )}
             {/* 中: ギア / 下: パワー。クリックで適用 */}
             <button
               type="button"

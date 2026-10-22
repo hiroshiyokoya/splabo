@@ -2444,19 +2444,24 @@
     overflow: hidden;
   }
 
-  /* 上段: 名前・メモ・ボタン（#878） */
+  /* 上段: 名前・メモ・ボタンを 1 行（#878） */
   .coord-card__top {
     display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
     padding: 0.65rem 0.75rem 0.5rem;
+    min-width: 0;
   }
 
   .coord-card__heading {
     display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
+    flex-direction: row;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.55rem;
     min-width: 0;
+    flex: 1;
   }
 
   .coord-card__main {
@@ -2547,14 +2552,27 @@
     font-size: 0.95rem;
     font-weight: 700;
     color: var(--text);
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 0;
+    max-width: 40%;
+  }
+
+  .coord-card__warns {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0 0.75rem 0.35rem;
   }
 
   .coord-card__memo {
     font-size: 0.78rem;
     color: var(--chip-text);
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 
   .coord-card__ap {
@@ -2570,8 +2588,9 @@
 
   .coord-card__actions {
     display: flex;
-    justify-content: flex-start;
-    flex-wrap: wrap;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
     gap: 0.35rem;
   }
 
