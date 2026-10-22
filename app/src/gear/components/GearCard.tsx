@@ -9,6 +9,8 @@ interface Props {
   selected?: boolean
   /** コーデモードでタップ時のコールバック */
   onSelect?: () => void
+  /** コーデ PNG 用（#883）。ケイケン値を出さず、画像は遅延読み込みしない（写る前に撮らないため） */
+  forExport?: boolean
 }
 
 const MAX_RARITY = 5
@@ -34,7 +36,7 @@ function SkillIcon({ image, skill, size }: { image: string; skill: Skill; size: 
   )
 }
 
-export function GearCard({ gear, selected, onSelect }: Props) {
+export function GearCard({ gear, selected, onSelect, forExport = false }: Props) {
   const { t } = useTranslation()
   const subSlots = Array.from({ length: 3 }, (_, i) => gear.additional_skills[i] ?? null)
   const name = gearItemDisplayName(gear)
@@ -67,7 +69,7 @@ export function GearCard({ gear, selected, onSelect }: Props) {
           className="gear-card__image"
           src={gear.image}
           alt={name}
-          loading="lazy"
+          loading={forExport ? 'eager' : 'lazy'}
         />
       </div>
 
@@ -84,7 +86,9 @@ export function GearCard({ gear, selected, onSelect }: Props) {
       </div>
 
       {/* ケイケン値（パワーの下・右寄り） */}
-      <div className="gear-card__exp">{t('gear.exp', { value: gear.exp.toLocaleString() })}</div>
+      {!forExport && (
+        <div className="gear-card__exp">{t('gear.exp', { value: gear.exp.toLocaleString() })}</div>
+      )}
 
     </div>
   )
