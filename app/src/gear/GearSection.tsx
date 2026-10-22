@@ -21,7 +21,8 @@ import { initAppSettings, loadComboLimit, loadNearLimit } from './utils/appSetti
 import type { ComboLimitValue, NearLimitValue } from './utils/appSettings'
 import { formatInvokeError } from '../utils/notify'
 import { call, MOBILE_REFRESH_EVENT } from '../utils/backend'
-import { gearBrandDisplayName } from './utils/gearItemDisplayName'
+import { allGearDisplayNames, gearBrandDisplayName } from './utils/gearItemDisplayName'
+import { buildNameBreaker } from './utils/nameBreaks'
 import './gear.css'
 
 // ── 空状態 CTA 用のギア取得ステート ─────────────────────────
@@ -137,8 +138,13 @@ function applyFilter(items: GearItem[], filter: FilterState): GearItem[] {
  * `check_auth_status` を使う。未ログイン・データ無しでもクラッシュせず空状態を描画する。
  */
 export function GearSection() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { data, loading, error, lastFetchedAt, reload } = useGearDB()
+  // ギア名の改行位置（#886）。表示言語で名前が変わるので言語も見る
+  const breakName = useMemo(
+    () => buildNameBreaker(data ? allGearDisplayNames(data) : []),
+    [data, i18n.language],
+  )
   const tabs = useMemo(() => gearTabs(t), [t])
   const sortOpts = useMemo(() => sortOptions(t), [t])
   const [activeTab, setActiveTab]   = useState<GearCategory>('head')
@@ -662,6 +668,7 @@ export function GearSection() {
               gear={gear}
               selected={comboOpen && comboSlots[activeTab]?.id === gear.id}
               onSelect={comboOpen ? () => handleSelectForCombo(gear) : undefined}
+              breakName={breakName}
             />
           ))}
           {items.length === 0 && (

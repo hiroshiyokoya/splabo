@@ -11,6 +11,8 @@ interface Props {
   onSelect?: () => void
   /** コーデ PNG 用（#883）。ケイケン値を出さず、画像は遅延読み込みしない（写る前に撮らないため） */
   forExport?: boolean
+  /** ギア名に改行の切れ目を入れる（buildNameBreaker・#886） */
+  breakName?: (name: string) => string
 }
 
 const MAX_RARITY = 5
@@ -36,10 +38,13 @@ function SkillIcon({ image, skill, size }: { image: string; skill: Skill; size: 
   )
 }
 
-export function GearCard({ gear, selected, onSelect, forExport = false }: Props) {
+export function GearCard({ gear, selected, onSelect, forExport = false, breakName }: Props) {
   const { t } = useTranslation()
   const subSlots = Array.from({ length: 3 }, (_, i) => gear.additional_skills[i] ?? null)
   const name = gearItemDisplayName(gear)
+  const brokenName = breakName ? breakName(name) : name
+  // 切れ目があるときだけ、単語の途中で改行しない（無い名前は今までどおり長さをそろえて折り返す）
+  const phrased = brokenName !== name
   const brand = gearBrandDisplayName(gear)
 
   return (
@@ -59,7 +64,7 @@ export function GearCard({ gear, selected, onSelect, forExport = false }: Props)
           alt={brand}
           title={brand}
         />
-        <div className="gear-card__name" title={name}>{name}</div>
+        <div className={`gear-card__name${phrased ? ' gear-card__name--phrased' : ''}`} title={name}>{brokenName}</div>
         <Stars rarity={gear.rarity} />
       </div>
 
