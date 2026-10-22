@@ -8,6 +8,8 @@ import { skillDisplayName } from '../utils/skillDisplayName'
 import { gearItemDisplayName, gearBrandDisplayName } from '../utils/gearItemDisplayName'
 import type { ComboConditions, FullSlots } from '../utils/savedCoordinates'
 import { GearIcon } from './GearIcon'
+import { isTauri } from '../utils/tauri'
+import { buildPanelExportFilename, saveElementAsPng } from '../../utils/panelExport'
 
 export type ComboSlots = {
   head:     GearItem | null
@@ -96,8 +98,10 @@ interface Props {
 }
 
 export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll, onApplyCombo, onIsOpenChange, emptySkillImage = '', comboLimit = 50, nearLimit = 10, onSaveCombo, openRequest = 0, searchRequest = null }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const emptyLabel = t('gear.empty')
+  const exportRef = useRef<HTMLDivElement>(null)
+  const [exportingPng, setExportingPng] = useState(false)
   const [isOpen, setIsOpen]             = useState(false)
   const [snapExpanded, setSnapExpanded] = useState(false)
   const [skillPoints, setSkillPoints]   = useState<Map<number, number>>(new Map())
@@ -584,6 +588,42 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
         <div className="combo-sheet__header">
           <span className="combo-sheet__title">{t('gear.combo.title')}</span>
           <div className="combo-sheet__header-actions">
+          {/* 画像はアイコンだけなので先頭に置き、文字のボタン（保存・クリア）を並べる。
+              保存はデスクトップの保存ダイアログ経由。スマホ Web 版では出さない（ダッシュボードと同じ） */}
+          {fullSlots && isTauri() && (
+            <button
+              type="button"
+              className="panel-export-btn combo-sheet__download-btn"
+              disabled={exportingPng}
+              onClick={() => {
+                const node = exportRef.current
+                if (!node || exportingPng) return
+                setExportingPng(true)
+                void saveElementAsPng(
+                  node,
+                  // gear.combo.title は 🎮 付きなので、ファイル名には使わない（#880）
+                  buildPanelExportFilename(t('gear.saved.tab'), t('gear.saved.heading'), 'png'),
+                )
+                  .catch(err => console.error('[coord png]', err))
+                  .finally(() => setExportingPng(false))
+              }}
+              aria-label={t('gear.saved.downloadPng')}
+              title={t('gear.saved.downloadPng')}
+            >
+              {exportingPng
+                ? <span className="panel-export-btn__spinner" />
+                : (
+                  // 「保存」（コーデを保存）と区別するため、ダウンロード矢印ではなく画像マーク
+                  <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false">
+                    <g fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="1.8" y="2.5" width="12.4" height="11" rx="1.6" />
+                      <circle cx="5.6" cy="6.1" r="1.2" />
+                      <path d="M2.2 12.2 6.4 8.4l2.6 2.4 1.9-1.7 2.9 2.7" />
+                    </g>
+                  </svg>
+                )}
+            </button>
+          )}
           {onSaveCombo && fullSlots && (
             <button
               type="button"
@@ -949,6 +989,80 @@ export function ComboSheet({ data, slots, onClearSlot, onRestoreSlot, onClearAll
 
         </div>
       </div>
+
+      {/* PNG 用の写し。gear-root を根にしてクローンでもネスト CSS が効くようにする（#880）。
+          lang はクローンに祖先から継がれないので根に付ける（日本語の禁則で改行させるため） */}
+      {fullSlots && isTauri() && (
+        <div ref={exportRef} className="gear-root coord-png-export-scope" lang={i18n.language} aria-hidden="true">
+          <div className="coord-png-export">
+            <div className="coord-png-export__card">
+              <div className="coord-png-export__gears">
+                {(['head', 'clothing', 'shoes'] as GearCategory[]).map(cat => {
+                  const gear = fullSlots[cat]
+                  const gearName = gearItemDisplayName(gear)
+                  const mainName = skillDisplayName(gear.primary_skill, t)
+                  return (
+                    <div key={cat} className="coord-png-export__col">
+                      <div className="coord-png-export__name" title={gearName}>
+                        {gear.brand_image && (
+                          <img
+                            className="coord-png-export__brand"
+                            src={gear.brand_image}
+                            alt={gearBrandDisplayName(gear)}
+                          />
+                        )}
+                        {/* 数文字だけ 2 行目に落ちるなら縮めて 1 行に（#880） */}
+                        <span className="coord-png-export__name-text" data-export-shrink="0.85">{gearName}</span>
+                      </div>
+                      <div className="coord-png-export__gear">
+                        <GearIcon gear={gear} />
+                      </div>
+                      <div className="coord-png-export__skills">
+                        <div className="coord-png-export__skill coord-png-export__skill--main" title={mainName}>
+                          <img src={gear.primary_skill.image} alt={mainName} />
+                        </div>
+                        {gear.additional_skills.map((s, i) => {
+                          const subName = skillDisplayName(s, t)
+                          return (
+                            <div key={i} className="coord-png-export__skill coord-png-export__skill--sub" title={subName}>
+                              <img src={s.image} alt={subName} />
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="coord-png-export__ap">
+                <span className="coord-png-export__ap-label">{t('gear.combo.totalAp')}</span>
+                <div className="coord-png-export__ap-chips">
+                  {[...totalAp.entries()]
+                    .sort(([aId], [bId]) => compareSkill(aId, bId))
+                    .map(([id, { name, ap, image }]) => {
+                      const displayName = skillDisplayName({ id, name }, t)
+                      return (
+                        <div key={id} className={`combo-ap-chip${isMainOnly(id) ? ' combo-ap-chip--main-only' : ''}`}>
+                          <img className="combo-ap-chip__icon" src={image} alt={displayName} />
+                          {!isMainOnly(id) && <span className="combo-ap-chip__val">{t('gear.combo.points', { count: ap })}</span>}
+                        </div>
+                      )
+                    })}
+                </div>
+              </div>
+              <div className="coord-png-export__credit">
+                <img
+                  className="coord-png-export__app-icon"
+                  src="/splabo-favicon.png"
+                  alt=""
+                  draggable={false}
+                />
+                Generated by SpLabo / geartoon · Images © Nintendo
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1103,6 +1103,14 @@
     gap: 0.75rem;
   }
 
+  /* ダッシュボードのパネル保存と同じ↓アイコン（#880） */
+  /* 画像マーク 18px に合わせて、共通の 24px より一回り大きく */
+  .combo-sheet__download-btn {
+    margin-top: 6px;
+    width: 28px;
+    height: 28px;
+  }
+
   .combo-sheet__clear-btn {
     margin-top: 6px;
     background: none;
@@ -2736,7 +2744,216 @@
     gap: 0.5rem;
   }
 
+  /* コーデ PNG 書き出し（#880）。アプリアイコンは右下クレジットの頭に置く。
+     幅はギア3列に固定し、AP チップは折り返す（max-content で広がって欠けないように）。 */
+  .coord-png-export {
+    width: max-content;
+  }
+
+  .coord-png-export__card {
+    position: relative;
+    width: max-content;
+    box-sizing: border-box;
+    /* 下はクレジットを端に寄せるため薄く。枠は border ではなく内側の box-shadow
+       （html-to-image が右下の border を落としやすいため） */
+    padding: 12px 10px 5px;
+    background: var(--surface);
+    border: none;
+    border-radius: 16px;
+    box-shadow: inset 0 0 0 2px var(--border);
+    color: var(--text);
+    overflow: hidden;
+  }
+
+  /* クレジット文字と同じ高さで「Generated」の前に置く */
+  .coord-png-export__app-icon {
+    width: 1.3em;
+    height: 1.3em;
+    border-radius: 0.3em;
+    flex-shrink: 0;
+  }
+
+  /* 3 列 × (名前 / ギア絵 / パワー) のグリッド。名前の行は 3 列で一番高いものに揃うので、
+     誰かが 2 行になってもギア絵の上端は揃い、全員 1 行なら余白も出ない */
+  .coord-png-export__gears {
+    display: grid;
+    grid-template-columns: repeat(3, 100px);
+    grid-template-rows: auto auto auto;
+    grid-auto-flow: column;
+    justify-items: center;
+    justify-content: center;
+    gap: 5px 12px;
+    /* ギア絵の一辺。パワー列（メイン 26 + サブ 18×3 + 間隔 3×3）の左右端に揃える */
+    --coord-png-gear: calc(26px + 18px * 3 + 3px * 3);
+  }
+
+  .coord-png-export__col {
+    display: contents;
+  }
+
+  /* 名前は 2 行まで折り返す */
+  .coord-png-export__name {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.25em;
+    /* 左端をギア絵のフチに揃える */
+    width: var(--coord-png-gear);
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.25;
+  }
+
+  /* ブランドはギア名の頭に、文字と同じ高さで（ギア絵の上には重ねない）。白地は .gear-icon__brand と同じ */
+  .coord-png-export__brand {
+    width: 1.4em;
+    height: 1.4em;
+    object-fit: contain;
+    flex-shrink: 0;
+    /* 1 行目の中央に合わせる（行の高さ 1.25em との差の半分） */
+    margin-top: -0.075em;
+    background: #fff;
+    border-radius: 22%;
+  }
+
+  .coord-png-export__name-text {
+    min-width: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    /* 小書きの仮名（ォ・ッ など）を行頭に置かない */
+    line-break: strict;
+  }
+
+  .coord-png-export__gear {
+    width: var(--coord-png-gear);
+    height: var(--coord-png-gear);
+    border-radius: 12px;
+    background: #000;
+    overflow: hidden;
+  }
+
+  .coord-png-export__gear .gear-icon {
+    width: 100%;
+    height: 100%;
+  }
+
+  .coord-png-export__gear .gear-icon__brand {
+    display: none;
+  }
+
+  .coord-png-export__skills {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 3px;
+  }
+
+  .coord-png-export__skill {
+    border-radius: 50%;
+    overflow: hidden;
+    background: #000;
+    flex-shrink: 0;
+  }
+
+  .coord-png-export__skill--main {
+    width: 26px;
+    height: 26px;
+  }
+
+  .coord-png-export__skill--sub {
+    width: 18px;
+    height: 18px;
+  }
+
+  .coord-png-export__skill img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  .coord-png-export__ap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-top: 0.7rem;
+  }
+
+  .coord-png-export__ap-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+  }
+
+  .coord-png-export__ap-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.4rem;
+  }
+
+  .coord-png-export .combo-ap-chip {
+    flex-shrink: 0;
+    padding: 0.1rem 0.4rem 0.1rem 0.2rem;
+  }
+
+  .coord-png-export .combo-ap-chip--main-only {
+    width: 26px;
+    height: 26px;
+    padding: 2px;
+  }
+
+  .coord-png-export .combo-ap-chip__icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .coord-png-export .combo-ap-chip__val {
+    font-size: 0.66rem;
+  }
+
+  /* absolute だと計測外・overflow で欠けやすいのでフローに置き、余白だけで端へ */
+  .coord-png-export__credit {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.3em;
+    margin: 0.45rem 0 0;
+    padding: 0;
+    text-align: right;
+    font-size: 0.58rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
   /* ── Mobile responsive ──
      @media (max-width: 600px) の中身はヘッダー（.app-header 一式）専用の
      打ち消しだけだったので、ヘッダーの撤去（#419 / #424）に伴いブロックごと削除した。 */
+}
+
+/* キャプチャ根。クローンは祖先を持たないので、ここ自体を .gear-root にしてネスト CSS を効かせる。
+   外側の透明余白は saveElementAsPng がキャンバス上で付ける。 */
+.gear-root.coord-png-export-scope {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: max-content;
+  min-height: 0;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  background: transparent;
+  background-image: none;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+  overflow: visible;
 }

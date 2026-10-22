@@ -451,6 +451,8 @@
       "defaultTitle": "コーデ{{n}}",
       "empty": "保存したコーデはありません。コーデで 3 部位をそろえるか、候補の「保存」から保存できます",
       "saveButton": "保存",
+      "downloadPng": "画像を作成（PNG）",
+      "downloadingPng": "書き出し中…",
       "saveCombo": "このコーデを保存",
       "saveHeading": "コーデを保存",
       "editHeading": "コーデを編集",
