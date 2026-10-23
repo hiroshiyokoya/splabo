@@ -72,18 +72,15 @@ CHANGELOG の書き方の要点は [`AGENTS.md`](./AGENTS.md) 参照。リリー
 
 タグを打つ前に、[`docs/release-checklist.md`](./docs/release-checklist.md) を出荷バイナリ（または同等の release ビルド）で確認する。開発ビルドだけでは足りない。
 
-### 2c. 開発ビルドの版を次の版へ上げる（#898・定期リリースのみ）
+### 2c. リリース準備 PR では版を触らない（#900）
 
-リポジトリの版は「次に出す版-dev」（例: `1.0.0-dev`）で、dev 版はこの版で動き、stat.ink には `-dev` を外した版で送る。**定期リリースの準備 PR で、次のマイナーの `-dev` に上げる**（1.0.0 を出すなら `1.1.0-dev`）。タグを打つとリリース WF が数値の版で上書きするので、出荷物には影響しない。**緊急リリース（パッチ）では上げない。**
-
-- 書き換える: `app/src-tauri/Cargo.toml` の `[package] version`・`app/src-tauri/tauri.conf.json` の `version`・`app/package.json` の `version`
-- ロックファイルは手で直さずツールで作り直す: `npm install --package-lock-only --ignore-scripts`（ルート）と `cargo metadata --format-version 1 > /dev/null`（`Cargo.lock` の splabo の行が変わる）
+リポジトリの版（`X.Y.Z-dev`）は、**リリース準備 PR では上げない**。上げるのはタグを push したあと（下の「5. リリースのあと」）。準備 PR の中で上げると、準備 PR だけ先にマージしてタグを打たないあいだ、まだ出していない版の次を dev 版が名乗ってしまう。
 
 ### 3. ブランチ・PR を作成してマージ
 
 ```bash
 git -C D:/develop/splatoon-gear/splabo checkout -b release/vX.Y.Z
-git -C D:/develop/splatoon-gear/splabo add CHANGELOG.md README.md app/src-tauri/Cargo.toml app/src-tauri/tauri.conf.json app/package.json package-lock.json Cargo.lock
+git -C D:/develop/splatoon-gear/splabo add CHANGELOG.md README.md
 git -C D:/develop/splatoon-gear/splabo commit -m "chore: リリース準備 vX.Y.Z"
 git -C D:/develop/splatoon-gear/splabo push origin release/vX.Y.Z
 gh pr create -R hiroshiyokoya/splabo --base develop --title "chore: リリース準備 vX.Y.Z" --body "..."
@@ -108,6 +105,8 @@ git -C D:/develop/splatoon-gear/splabo tag splabo-v0.12.2
 git -C D:/develop/splatoon-gear/splabo push origin splabo-v0.12.2
 ```
 
+定期リリースなら、このコマンドと一緒に「タグを push したら、版上げの PR（下の 5）を出す」ことも伝える。
+
 ビルドが終わったら GitHub でドラフトを **Publish** する。Publish すると Slack に X 用の告知文が届く（#648）。2 通目のコードブロックをコピーして X に貼る（改行付き、#704）。プレリリースでは飛ばない。タグ push や CI 完了だけでは飛ばない。
 
 **英語版の投稿も作る（#688 以降、英語 UI 対応済みのため）。** CHANGELOG.md は日本語一本のまま維持し（英語版 CHANGELOG は作らない）、Slack に届いた日本語の投稿文をその都度英訳する。自動化はせず、リリースのたびに Claude が訳す。
@@ -116,6 +115,40 @@ git -C D:/develop/splatoon-gear/splabo push origin splabo-v0.12.2
 - 箇条書きは日本語版の要約と同じ粒度で英訳する（Query 名等の実装詳細は出さない）
 - X の加重文字数 280 に収める（`.github/scripts/x_release_post.py` の `tweet_weight()` と同じ考え方：ASCII は 1、非 ASCII は 2）
 - 日本語版と同じ投稿にスレッド返信として続ける、または独立した投稿として出す（アカウント運用次第、ユーザーに確認）
+
+### 5. リリースのあと（#900・定期リリースのみ）
+
+**定期リリースのタグを push したら、すぐに次の 2 つをする。** 緊急リリース（パッチ）ではしない（develop はすでに次の定期リリースの版を名乗っているため）。
+
+#### 5a. dev 版の版を次のマイナーの `-dev` に上げる
+
+リポジトリの版は「次に出す版-dev」（#898）。`X.Y.0` を出したら `X.(Y+1).0-dev` にする（例: 1.0.0 を出したら `1.1.0-dev`、1.1.0 を出したら `1.2.0-dev`）。dev 版はこの版を名乗り、stat.ink には `-dev` を外した版（`v1.1.0`）で送る。出荷物の版はタグからリリース WF が書き込むので、ここでの版は出荷物に影響しない。
+
+- 書き換える 3 つ: `app/src-tauri/Cargo.toml` の `[package] version`・`app/src-tauri/tauri.conf.json` の `version`・`app/package.json` の `version`
+- ロックファイルは手で直さず、ツールで作り直す（`package-lock.json` と `Cargo.lock` の splabo の行が 1 行ずつ変わる）
+- Issue は立てない（リリース準備 PR と同じ扱い）。ブランチは `chore/dev-version-X.Y.0`、PR タイトルは `chore: dev 版の版を X.Y.0-dev に上げる`
+- **差分は上の 5 ファイルだけ**。CHANGELOG には書かない（利用者に見えない）
+
+エージェントが作業するときの手順（例: 1.0.0 を出したあと）:
+
+```bash
+git fetch origin develop
+git checkout -b chore/dev-version-1.1.0 origin/develop
+# 3 ファイルの "1.0.0-dev" を "1.1.0-dev" に置き換える
+npm install --package-lock-only --ignore-scripts          # ルートで。package-lock.json を作り直す
+cargo metadata --format-version 1 --offline > /dev/null   # Cargo.lock を作り直す（PowerShell では > $null）
+git diff --stat   # 5 ファイル・各 1 行だけ変わっていることを確かめる
+git commit -am "chore: dev 版の版を 1.1.0-dev に上げる"
+git push -u origin chore/dev-version-1.1.0
+```
+
+マージ後、dev 版を起動し直すと版表示が `1.1.0-dev (コミット ID)` になる。
+
+#### 5b. マイルストーンを切り替える
+
+- 出した版のマイルストーンを閉じる（開いた Issue が残っていたら、次の版かバックログへ移してから）
+- 次の版のマイルストーン（例: `v1.1.0`）を作り、説明にテーマ 1 行、締め日（due date）を入れる。中身はバックログから 3〜6 件を選ぶ（AGENTS.md「リリースの区切り方」）
+- トラッキング #15 に、出した版の節（リリース日）と次の版の節を足す
 
 ---
 
