@@ -215,7 +215,6 @@
     "apiKey": "API key",
     "apiKeyPlaceholder": "Paste your stat.ink API key",
     "autoUpload": "Upload automatically after fetching battles",
-    "devUploadDisabled": "⚠ Dev builds (0.0.0-dev) disable stat.ink upload so real data is not sent by mistake.",
     "uploading": "Uploading…",
     "uploadNow": "Upload now",
     "uploaded": "Uploaded {{count}} battles",

@@ -24,7 +24,8 @@ pub struct NewerRelease {
 
 /// 最新リリースを確かめ、今の版より新しければ返す。同じか古ければ `None`。
 ///
-/// 開発ビルド（`0.0.0-dev`）は比べても意味がないので、問い合わせずに `None` を返す。
+/// 開発ビルド（`1.0.0-dev` のように版に `-dev` が付く・#898）は、まだ出していない版を名乗るので
+/// 比べても意味がない。問い合わせずに `None` を返す。
 #[tauri::command]
 pub async fn check_for_update(app: AppHandle) -> Result<Option<NewerRelease>, String> {
     let current = app.package_info().version.clone();

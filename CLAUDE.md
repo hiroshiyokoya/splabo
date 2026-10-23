@@ -46,6 +46,8 @@ develop への push / PR で走る。`dorny/paths-filter` で `app/**` / `tools/
 
 リリース作業を依頼されたとき（または「リリース準備して」と言われたとき）は、以下を順番に確認・実施する。
 
+いつ・どの単位で出すか（定期リリースと緊急リリース・マイルストーンの運用）は [`AGENTS.md`](./AGENTS.md) の「リリースの区切り方」に従う。版を出したら、そのマイルストーンを閉じて次の版のマイルストーンを作る。
+
 ### 1. CHANGELOG.md を更新
 
 CHANGELOG の書き方の要点は [`AGENTS.md`](./AGENTS.md) 参照。リリース時の手順は以下。
@@ -70,11 +72,18 @@ CHANGELOG の書き方の要点は [`AGENTS.md`](./AGENTS.md) 参照。リリー
 
 タグを打つ前に、[`docs/release-checklist.md`](./docs/release-checklist.md) を出荷バイナリ（または同等の release ビルド）で確認する。開発ビルドだけでは足りない。
 
+### 2c. 開発ビルドの版を次の版へ上げる（#898・定期リリースのみ）
+
+リポジトリの版は「次に出す版-dev」（例: `1.0.0-dev`）で、dev 版はこの版で動き、stat.ink には `-dev` を外した版で送る。**定期リリースの準備 PR で、次のマイナーの `-dev` に上げる**（1.0.0 を出すなら `1.1.0-dev`）。タグを打つとリリース WF が数値の版で上書きするので、出荷物には影響しない。**緊急リリース（パッチ）では上げない。**
+
+- 書き換える: `app/src-tauri/Cargo.toml` の `[package] version`・`app/src-tauri/tauri.conf.json` の `version`・`app/package.json` の `version`
+- ロックファイルは手で直さずツールで作り直す: `npm install --package-lock-only --ignore-scripts`（ルート）と `cargo metadata --format-version 1 > /dev/null`（`Cargo.lock` の splabo の行が変わる）
+
 ### 3. ブランチ・PR を作成してマージ
 
 ```bash
 git -C D:/develop/splatoon-gear/splabo checkout -b release/vX.Y.Z
-git -C D:/develop/splatoon-gear/splabo add CHANGELOG.md README.md
+git -C D:/develop/splatoon-gear/splabo add CHANGELOG.md README.md app/src-tauri/Cargo.toml app/src-tauri/tauri.conf.json app/package.json package-lock.json Cargo.lock
 git -C D:/develop/splatoon-gear/splabo commit -m "chore: リリース準備 vX.Y.Z"
 git -C D:/develop/splatoon-gear/splabo push origin release/vX.Y.Z
 gh pr create -R hiroshiyokoya/splabo --base develop --title "chore: リリース準備 vX.Y.Z" --body "..."
