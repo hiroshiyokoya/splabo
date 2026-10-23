@@ -119,8 +119,8 @@ jobs:
             fs.writeFileSync(path, updated);
             console.log('Cargo.toml updated');
           "
-          # 書き換えが空振りしていないか確かめる（#537）。空振りすると 0.0.0-dev のまま
-          # 出荷され、開発ビルド扱い（stat.ink 送信が無効など）のアプリが配られてしまう。
+          # 書き換えが空振りしていないか確かめる（#537）。空振りすると `1.0.0-dev` のような
+          # 開発ビルドの版のまま出荷され、開発ビルド扱い（新しい版の案内が出ないなど）のアプリが配られてしまう。
           node -e "
             const fs = require('fs');
             const want = '${NUMERIC_VERSION}';
