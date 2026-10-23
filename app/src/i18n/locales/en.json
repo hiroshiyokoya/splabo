@@ -377,6 +377,7 @@
     "sort": {
       "brand": "Brand",
       "skill": "Ability",
+      "main": "Main ability",
       "name": "Name",
       "rarity": "Rarity",
       "exp": "Experience",
@@ -406,6 +407,8 @@
     "filterStackableNote": "Main 10 pt / Sub 3 pt",
     "filterBrand": "Brand",
     "filterClear": "Clear",
+    "filterDuplicate": "Duplicates",
+    "filterDuplicateOnly": "Show only gear with identical abilities",
     "decreaseSkill": "Decrease {{name}}",
     "increaseSkill": "Increase {{name}}",
     "decreaseEmptySlot": "Decrease empty slots",

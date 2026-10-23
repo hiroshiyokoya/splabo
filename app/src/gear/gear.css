@@ -862,6 +862,14 @@
     background: var(--chip-bg);
   }
 
+  /* ── チェック（重複・#894） ── */
+
+  .skill-chip--check input {
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
   /* ── Stepper (スタック型pt指定) ── */
 
   .skill-chip--stepper {

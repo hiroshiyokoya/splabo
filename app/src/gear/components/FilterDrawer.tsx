@@ -16,6 +16,8 @@ export interface FilterState {
   brands: Set<string>
   /** アキ枠の最低個数（0 = フィルターなし） */
   akiMin: number
+  /** 同じパワーのギアがほかにもあるものだけ残す（#894） */
+  duplicatesOnly: boolean
 }
 
 export function emptyFilter(): FilterState {
@@ -24,13 +26,14 @@ export function emptyFilter(): FilterState {
     skillMinPoints: new Map(),
     brands: new Set(),
     akiMin: 0,
+    duplicatesOnly: false,
   }
 }
 
 /** アクティブなフィルター数（バッジ用） */
 export function countActiveFilters(f: FilterState): number {
   const activePoints = [...f.skillMinPoints.values()].filter(v => v > 0).length
-  return f.mainOnlyIds.size + activePoints + f.brands.size + (f.akiMin > 0 ? 1 : 0)
+  return f.mainOnlyIds.size + activePoints + f.brands.size + (f.akiMin > 0 ? 1 : 0) + (f.duplicatesOnly ? 1 : 0)
 }
 
 export interface BrandFilterOption {
@@ -51,6 +54,7 @@ interface Props {
   onSetAkiMin: (n: number) => void
   onToggleBrand: (brand: string) => void
   onClearBrands: () => void
+  onSetDuplicatesOnly: (on: boolean) => void
   onReset: () => void
   emptySkillImage?: string
 }
@@ -81,6 +85,7 @@ export function FilterDrawer({
   onSetAkiMin,
   onToggleBrand,
   onClearBrands,
+  onSetDuplicatesOnly,
   onReset,
   emptySkillImage = '',
 }: Props) {
@@ -275,6 +280,21 @@ export function FilterDrawer({
                 </button>
               ))}
             </div>
+          </section>
+
+          {/* 重複（#894） */}
+          <section className="drawer-section">
+            <div className="drawer-section__label">
+              {t('gear.filterDuplicate')}
+            </div>
+            <label className={`skill-chip skill-chip--check ${filter.duplicatesOnly ? 'skill-chip--active' : ''}`}>
+              <input
+                type="checkbox"
+                checked={filter.duplicatesOnly}
+                onChange={e => onSetDuplicatesOnly(e.target.checked)}
+              />
+              <span>{t('gear.filterDuplicateOnly')}</span>
+            </label>
           </section>
 
         </div>
