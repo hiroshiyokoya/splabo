@@ -230,6 +230,17 @@ export function hasMainOnlySkill(gear: GearItem, skillId: number): boolean {
 }
 
 /**
+ * ギアのパワー構成を表すキー。メインと、サブ 3 枠（アキを含む）を位置によらず並べたもの。
+ * 同じキーのギアは「まったく同じパワー」（#894 の重複判定）。
+ */
+export function gearPowerSignature(gear: GearItem): string {
+  const subs = gear.additional_skills.map(s => s.id)
+  while (subs.length < 3) subs.push(-1)
+  subs.sort((x, y) => x - y)
+  return [gear.primary_skill.id, ...subs].join(',')
+}
+
+/**
  * スタック型のポイント（メイン10 + サブ3）を、設定した順位で高い方を先にする。
  * スロット位置は見ない。同じ構成は同じキーになる。
  */
