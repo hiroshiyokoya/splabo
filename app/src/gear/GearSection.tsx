@@ -17,7 +17,7 @@ import type { FilterState } from './components/FilterDrawer'
 import type { ComboSlots } from './components/ComboSheet'
 import type { ComboResult } from './utils/findCombo'
 import type { GearCategory, GearItem, Skill } from './types'
-import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, compareStackablePowerDesc } from './constants/gearPowerMeta'
+import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank, compareStackablePowerDesc } from './constants/gearPowerMeta'
 import { initAppSettings, loadComboLimit, loadNearLimit } from './utils/appSettings'
 import type { ComboLimitValue, NearLimitValue } from './utils/appSettings'
 import { formatInvokeError } from '../utils/notify'
@@ -43,7 +43,7 @@ type SaveDialogState =
   | { mode: 'new'; slots: FullSlots }
   | { mode: 'edit'; coord: SavedCoordinate; resolved: ResolvedCoordinate }
 
-type SortKey = 'name' | 'rarity' | 'exp' | 'brand' | 'skill'
+type SortKey = 'name' | 'rarity' | 'exp' | 'brand' | 'skill' | 'main'
 
 function gearTabs(t: (key: string) => string): { key: GearCategory; label: string; icon: string }[] {
   // スマホは幅が狭いので「ギア」を付けず「頭・服・靴」にする（#807）
@@ -58,6 +58,7 @@ function gearTabs(t: (key: string) => string): { key: GearCategory; label: strin
 function sortOptions(t: (key: string) => string): { key: SortKey; label: string }[] {
   return [
     { key: 'skill',  label: t('gear.sort.skill') },
+    { key: 'main',   label: t('gear.sort.main') },
     { key: 'rarity', label: t('gear.sort.rarity') },
     { key: 'exp',    label: t('gear.sort.exp') },
     { key: 'brand',  label: t('gear.sort.brand') },
@@ -72,8 +73,10 @@ function sortItems(items: GearItem[], key: SortKey, category: GearCategory): Gea
       case 'rarity': return b.rarity - a.rarity
       case 'exp':    return b.exp - a.exp
       case 'brand':  return a.brand.localeCompare(b.brand, 'ja')
-      case 'skill': {
+      case 'skill':
+      case 'main': {
         // 発動型メインを先に。そのあとスタック型は順位順にポイント高い順（スロット位置は見ない）
+        // メインパワー（#893）: スタック型もメインを順位順にまとめ、その中をサブで同じ規則に並べる
         const aId = a.primary_skill.id
         const bId = b.primary_skill.id
 
@@ -86,6 +89,13 @@ function sortItems(items: GearItem[], key: SortKey, category: GearCategory): Gea
           const rb = getMainOnlySkillSortRank(bId, category)
           if (ra !== rb) return ra - rb
           if (aId !== bId) return aId - bId
+        }
+
+        if (key === 'main' && aType === 1 && bType === 1 && aId !== bId) {
+          const ra = getStackableSkillSortRank(aId)
+          const rb = getStackableSkillSortRank(bId)
+          if (ra !== rb) return ra - rb
+          return aId - bId
         }
 
         return compareStackablePowerDesc(a, b)

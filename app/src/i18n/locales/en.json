@@ -377,6 +377,7 @@
     "sort": {
       "brand": "Brand",
       "skill": "Ability",
+      "main": "Main ability",
       "name": "Name",
       "rarity": "Rarity",
       "exp": "Experience",
