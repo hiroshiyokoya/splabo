@@ -8,16 +8,29 @@
 use reqwest::Client;
 use tauri::{AppHandle, Emitter};
 
+/// stat.ink に名乗る版の数字部分（`1.0.0`）。
+///
+/// 開発ビルドは版が `1.0.0-dev` のように `-dev` 付きになるが、stat.ink には付けずに送る（#898）。
+/// 数字の 3 組だけを使うので、リリースビルド（タグから数値の版が入る）とも同じ形になる。
+/// `concat!` は定数を受け取れないので、使う側で展開するマクロにしている。
+macro_rules! statink_version {
+    () => {
+        concat!(
+            env!("CARGO_PKG_VERSION_MAJOR"),
+            ".",
+            env!("CARGO_PKG_VERSION_MINOR"),
+            ".",
+            env!("CARGO_PKG_VERSION_PATCH"),
+        )
+    };
+}
+
 /// stat.ink への HTTP リクエストに付与する User-Agent。
 /// 他クライアント（s3s 等）の表示形式に揃えてバージョン部分を `v` 始まりにする。
-const USER_AGENT: &str = concat!("splabo/chartoon/v", env!("CARGO_PKG_VERSION"));
+const USER_AGENT: &str = concat!("splabo/chartoon/v", statink_version!());
 
-/// 開発ビルド（バージョン `0.0.0-dev`）かどうか（#320）。
-/// リリースワークフローが Cargo.toml の version を数値版（例: 0.9.1）へ書き換えるため、
-/// 開発中のみ `0.0.0-dev` になる。stat.ink への誤アップロード防止ガードに使う。
-pub fn is_dev_build() -> bool {
-    env!("CARGO_PKG_VERSION") == "0.0.0-dev"
-}
+/// stat.ink の `agent_version`（`v1.0.0`）。
+const AGENT_VERSION: &str = concat!("v", statink_version!());
 
 /// stat.ink への通信・HTTP 失敗を、#399 の `FailureKind` で分類したうえで
 /// 機械可読プリフィクス付きのエラー文字列にする（#402）。
@@ -568,7 +581,7 @@ fn build_payload(detail: &serde_json::Value, parent: Option<&serde_json::Value>)
 
     // --- エージェント情報 ---
     payload["agent"]         = serde_json::json!("splabo/chartoon");
-    payload["agent_version"] = serde_json::json!(concat!("v", env!("CARGO_PKG_VERSION")));
+    payload["agent_version"] = serde_json::json!(AGENT_VERSION);
     // automated は既に上で "yes" を入れている（s3s 準拠の文字列値）
 
     // --- 生 JSON（s3s 準拠の保険データ）---
@@ -618,14 +631,6 @@ pub async fn upload_pending_battles(
     limit: Option<usize>,
     app: Option<&AppHandle>,
 ) -> Result<usize, String> {
-    // 開発ビルド（0.0.0-dev）では stat.ink への実アップロードを行わない（#320）。
-    // 手動アップロード（upload_to_statink / _one）も自動アップロード（fetch 後）も
-    // この関数に集約されているため、ここ 1 箇所で両経路の誤アップロードを防げる。
-    // リリースワークフローが version を数値版に書き換えるので dev のみ 0.0.0-dev になる。
-    if is_dev_build() {
-        log::warn!("[stat.ink] 開発ビルド(0.0.0-dev)のためアップロードをスキップします");
-        return Ok(0);
-    }
     if api_key.is_empty() {
         return Ok(0);
     }
@@ -827,6 +832,22 @@ pub async fn delete_all_uploaded_battles(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// stat.ink に名乗る版は、開発ビルド（`1.0.0-dev`）でも `-dev` を付けない（#898）。
+    #[test]
+    fn statink_version_has_no_prerelease() {
+        assert_eq!(
+            AGENT_VERSION,
+            format!(
+                "v{}.{}.{}",
+                env!("CARGO_PKG_VERSION_MAJOR"),
+                env!("CARGO_PKG_VERSION_MINOR"),
+                env!("CARGO_PKG_VERSION_PATCH"),
+            )
+        );
+        assert!(!AGENT_VERSION.contains('-'));
+        assert!(USER_AGENT.ends_with(AGENT_VERSION));
+    }
 
     /// 5xx（stat.ink 側の不調）は UPSTREAM_UNAVAILABLE プリフィクスが付く（#402）。
     #[test]

@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { call } from '../utils/backend'
 import { listen } from '@tauri-apps/api/event'
-import { getVersion } from '@tauri-apps/api/app'
-import { isDevVersion } from '../utils/version'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { QRCodeSVG } from 'qrcode.react'
 import type { AppSettings, SettingsTab } from '../types'
@@ -119,15 +117,6 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   const [importResult, setImportResult] = useState<string | null>(null)
   const [weaponUpdating, setWeaponUpdating] = useState(false)
   const [weaponUpdateResult, setWeaponUpdateResult] = useState<string | null>(null)
-  // 開発ビルド(0.0.0-dev)では stat.ink アップロードを無効化する(#320)。
-  // 実ガードは Rust の upload_pending_battles 側。ここは UI 表示のためだけ。
-  const [isDevBuild, setIsDevBuild] = useState(false)
-
-  useEffect(() => {
-    // 🔴 判定は getVersion() の生の値に対して行う。表示用の displayVersion() は
-    // 開発ビルドで `0.0.0-dev (a1b2c3d)` になるため、比較に使うと常に false になる(#569)。
-    getVersion().then(v => setIsDevBuild(isDevVersion(v))).catch(() => {})
-  }, [])
   // ── ギア設定 ──────────────────────────────────────────────
   const [gearDensity, setGearDensity] = useState<DensityId>(loadDensityId)
   const [gearComboLimit, setGearComboLimit] = useState<ComboLimitValue>(loadComboLimit)
@@ -479,20 +468,15 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
             type="checkbox"
             checked={settings.statink.autoUpload}
             onChange={(e) => update({ statink: { ...settings.statink, autoUpload: e.target.checked } })}
-            disabled={!settings.statink.apiKey || isDevBuild}
+            disabled={!settings.statink.apiKey}
           />
           {t('settings.autoUpload')}
         </label>
-        {isDevBuild && (
-          <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '6px 0 0' }}>
-            {t('settings.devUploadDisabled')}
-          </p>
-        )}
         <button
           className="btn-primary"
           style={{ marginTop: 10 }}
           onClick={handleUploadStatink}
-          disabled={uploading || !settings.statink.apiKey || isDevBuild}
+          disabled={uploading || !settings.statink.apiKey}
         >
           {uploading ? t('settings.uploading') : t('settings.uploadNow')}
         </button>

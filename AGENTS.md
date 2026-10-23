@@ -134,6 +134,7 @@ CHANGELOG は **前回リリースを使っていた人が、今回何が変わ�
 - タグ push はユーザーが実施。ドラフト Publish もユーザー。Publish 後に Slack の X 告知文が届く
 - 古い GitHub リリースを消しても **タグは消さない**（AGPL サイドカーの対応ソースのため）
 - CI は frontend build に加え `cargo clippy --all-targets -- -D warnings` と `cargo test --lib`（#536）
+- リポジトリの版は「次に出す版-dev」（例: `1.0.0-dev`・#898）。**定期リリースの準備 PR で次のマイナーの `-dev` に上げる**（緊急リリースでは上げない）。dev 版からも stat.ink に送り、送る版には `-dev` を付けない
 
 ---
 

@@ -215,7 +215,6 @@
     "apiKey": "API キー",
     "apiKeyPlaceholder": "stat.ink の API キーを入力",
     "autoUpload": "バトルデータ取得後に自動でアップロードする",
-    "devUploadDisabled": "⚠ 開発ビルド(0.0.0-dev)では、実データの誤送信を防ぐため stat.ink へのアップロードは無効化されています。",
     "uploading": "アップロード中...",
     "uploadNow": "今すぐアップロード",
     "uploaded": "{{count}}件アップロードしました",
