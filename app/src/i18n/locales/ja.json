@@ -377,6 +377,7 @@
     "sort": {
       "brand": "ブランド",
       "skill": "ギアパワー",
+      "main": "メインパワー",
       "name": "名前",
       "rarity": "レア度",
       "exp": "ケイケン値",
@@ -406,6 +407,8 @@
     "filterStackableNote": "メイン 10pt / サブ 3pt",
     "filterBrand": "ブランド",
     "filterClear": "クリア",
+    "filterDuplicate": "重複",
+    "filterDuplicateOnly": "同じパワーのギアだけ残す",
     "decreaseSkill": "{{name}} を下げる",
     "increaseSkill": "{{name}} を上げる",
     "decreaseEmptySlot": "アキ枠を減らす",

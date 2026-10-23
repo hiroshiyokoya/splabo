@@ -17,7 +17,7 @@ import type { FilterState } from './components/FilterDrawer'
 import type { ComboSlots } from './components/ComboSheet'
 import type { ComboResult } from './utils/findCombo'
 import type { GearCategory, GearItem, Skill } from './types'
-import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, compareStackablePowerDesc } from './constants/gearPowerMeta'
+import { isMainOnly, calcSkillPoints, hasMainOnlySkill, MAIN_ONLY_SKILL_CATEGORY, getMainOnlySkillSortRank, getStackableSkillSortRank, compareStackablePowerDesc, gearPowerSignature } from './constants/gearPowerMeta'
 import { initAppSettings, loadComboLimit, loadNearLimit } from './utils/appSettings'
 import type { ComboLimitValue, NearLimitValue } from './utils/appSettings'
 import { formatInvokeError } from '../utils/notify'
@@ -43,7 +43,7 @@ type SaveDialogState =
   | { mode: 'new'; slots: FullSlots }
   | { mode: 'edit'; coord: SavedCoordinate; resolved: ResolvedCoordinate }
 
-type SortKey = 'name' | 'rarity' | 'exp' | 'brand' | 'skill'
+type SortKey = 'name' | 'rarity' | 'exp' | 'brand' | 'skill' | 'main'
 
 function gearTabs(t: (key: string) => string): { key: GearCategory; label: string; icon: string }[] {
   // スマホは幅が狭いので「ギア」を付けず「頭・服・靴」にする（#807）
@@ -58,6 +58,7 @@ function gearTabs(t: (key: string) => string): { key: GearCategory; label: strin
 function sortOptions(t: (key: string) => string): { key: SortKey; label: string }[] {
   return [
     { key: 'skill',  label: t('gear.sort.skill') },
+    { key: 'main',   label: t('gear.sort.main') },
     { key: 'rarity', label: t('gear.sort.rarity') },
     { key: 'exp',    label: t('gear.sort.exp') },
     { key: 'brand',  label: t('gear.sort.brand') },
@@ -72,8 +73,10 @@ function sortItems(items: GearItem[], key: SortKey, category: GearCategory): Gea
       case 'rarity': return b.rarity - a.rarity
       case 'exp':    return b.exp - a.exp
       case 'brand':  return a.brand.localeCompare(b.brand, 'ja')
-      case 'skill': {
+      case 'skill':
+      case 'main': {
         // 発動型メインを先に。そのあとスタック型は順位順にポイント高い順（スロット位置は見ない）
+        // メインパワー（#893）: スタック型もメインを順位順にまとめ、その中をサブで同じ規則に並べる
         const aId = a.primary_skill.id
         const bId = b.primary_skill.id
 
@@ -86,6 +89,13 @@ function sortItems(items: GearItem[], key: SortKey, category: GearCategory): Gea
           const rb = getMainOnlySkillSortRank(bId, category)
           if (ra !== rb) return ra - rb
           if (aId !== bId) return aId - bId
+        }
+
+        if (key === 'main' && aType === 1 && bType === 1 && aId !== bId) {
+          const ra = getStackableSkillSortRank(aId)
+          const rb = getStackableSkillSortRank(bId)
+          if (ra !== rb) return ra - rb
+          return aId - bId
         }
 
         return compareStackablePowerDesc(a, b)
@@ -120,6 +130,16 @@ function applyFilter(items: GearItem[], filter: FilterState): GearItem[] {
     result = result.filter(gear =>
       gear.additional_skills.filter(s => s.id === -1).length >= filter.akiMin
     )
+  }
+
+  // 重複: 同じパワー（メイン + サブ 3 枠、アキを含む・位置は問わない）のギアが 2 つ以上あるものだけ（#894）
+  if (filter.duplicatesOnly) {
+    const counts = new Map<string, number>()
+    for (const gear of result) {
+      const key = gearPowerSignature(gear)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    result = result.filter(gear => (counts.get(gearPowerSignature(gear)) ?? 0) >= 2)
   }
 
   return result
@@ -359,7 +379,7 @@ export function GearSection() {
     setFilter(prev => {
       // シングルセレクト: 選択済みならOFF、未選択なら差し替え
       const next = prev.mainOnlyIds.has(id) ? new Set<number>() : new Set([id])
-      return { ...prev, mainOnlyIds: next }
+      return { ...prev, mainOnlyIds: next, duplicatesOnly: false }
     })
   }, [])
 
@@ -367,7 +387,7 @@ export function GearSection() {
     setFilter(prev => {
       const next = new Map(prev.skillMinPoints)
       next.set(id, points)
-      return { ...prev, skillMinPoints: next }
+      return { ...prev, skillMinPoints: next, duplicatesOnly: false }
     })
   }, [])
 
@@ -375,7 +395,7 @@ export function GearSection() {
     setFilter(prev => {
       const next = new Set(prev.brands)
       next.has(brand) ? next.delete(brand) : next.add(brand)
-      return { ...prev, brands: next }
+      return { ...prev, brands: next, duplicatesOnly: false }
     })
   }, [])
 
@@ -383,7 +403,12 @@ export function GearSection() {
     setFilter(prev => ({ ...prev, brands: new Set() })), [])
 
   const handleSetAkiMin = useCallback((n: number) =>
-    setFilter(prev => ({ ...prev, akiMin: n })), [])
+    setFilter(prev => ({ ...prev, akiMin: n, duplicatesOnly: false })), [])
+
+  // 重複はほかの絞り込みと切り替えて使う（#894）: オンでほかを外し、外すと全件に戻る。
+  // 重複がオンのときにほかの絞り込みを触ると、重複は外れる。
+  const handleSetDuplicatesOnly = useCallback((on: boolean) =>
+    setFilter({ ...emptyFilter(), duplicatesOnly: on }), [])
 
   const handleReset = useCallback(() => setFilter(emptyFilter()), [])
 
@@ -780,6 +805,7 @@ export function GearSection() {
           onSetAkiMin={handleSetAkiMin}
           onToggleBrand={handleToggleBrand}
           onClearBrands={handleClearBrands}
+          onSetDuplicatesOnly={handleSetDuplicatesOnly}
           onReset={handleReset}
           emptySkillImage={emptySkillImage}
         />
