@@ -1889,6 +1889,18 @@
     box-shadow: 0 0 0 2.5px rgba(85, 135, 195, 0.95);
   }
 
+  /* 枠の無いアイコンは、枠付き（16px + 枠 2.5px × 2）と外径をそろえて 21px に（#906） */
+  .combo-result-row__ap .combo-result-ap-chip:not(.combo-result-ap-chip--missing):not(.combo-result-ap-chip--off-target) img {
+    width: 21px;
+    height: 21px;
+  }
+
+  /* 枠（box-shadow）は場所を取らないので、枠の分の余白を付けて高さと中心をそろえる（#906） */
+  .combo-result-row__ap .combo-result-ap-chip--missing img,
+  .combo-result-row__ap .combo-result-ap-chip--off-target img {
+    margin: 2.5px;
+  }
+
   /* 惜しい: 目標を超えた pt と目標外スキルの pt は灰青（#876）。薄すぎると読めないのでやや濃く */
   .combo-result-ap-chip--surplus span:not(.combo-result-ap-chip__id),
   .combo-result-ap-chip--off-target span:not(.combo-result-ap-chip__id) {
