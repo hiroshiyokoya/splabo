@@ -122,7 +122,7 @@ git -C D:/develop/splatoon-gear/splabo push origin splabo-v0.12.2
 
 #### 5a. dev 版の版を次のマイナーの `-dev` に上げる
 
-リポジトリの版は「次に出す版-dev」（#898）。`X.Y.0` を出したら `X.(Y+1).0-dev` にする（例: 1.0.0 を出したら `1.1.0-dev`、1.1.0 を出したら `1.2.0-dev`）。dev 版はこの版を名乗り、stat.ink には `-dev` を外した版（`v1.1.0`）で送る。出荷物の版はタグからリリース WF が書き込むので、ここでの版は出荷物に影響しない。
+リポジトリの版は「次に出す版-dev」（#898）。`X.Y.0` を出したら `X.(Y+1).0-dev` にする（例: 1.0.0 を出したら `1.1.0-dev`、1.1.0 を出したら `1.2.0-dev`）。dev 版はこの版を名乗り、stat.ink にもコミット ID を付けた版（`v1.1.0-dev+c0d78c3`・#904）で送る。出荷物の版はタグからリリース WF が書き込むので、ここでの版は出荷物に影響しない。
 
 - 書き換える 3 つ: `app/src-tauri/Cargo.toml` の `[package] version`・`app/src-tauri/tauri.conf.json` の `version`・`app/package.json` の `version`
 - ロックファイルは手で直さず、ツールで作り直す（`package-lock.json` と `Cargo.lock` の splabo の行が 1 行ずつ変わる）

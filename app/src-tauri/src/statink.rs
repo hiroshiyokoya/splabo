@@ -8,29 +8,15 @@
 use reqwest::Client;
 use tauri::{AppHandle, Emitter};
 
-/// stat.ink に名乗る版の数字部分（`1.0.0`）。
+/// stat.ink の `agent_version`（`v1.0.0`）。build.rs が `src/statink_version.rs` で組み立てる。
 ///
-/// 開発ビルドは版が `1.0.0-dev` のように `-dev` 付きになるが、stat.ink には付けずに送る（#898）。
-/// 数字の 3 組だけを使うので、リリースビルド（タグから数値の版が入る）とも同じ形になる。
-/// `concat!` は定数を受け取れないので、使う側で展開するマクロにしている。
-macro_rules! statink_version {
-    () => {
-        concat!(
-            env!("CARGO_PKG_VERSION_MAJOR"),
-            ".",
-            env!("CARGO_PKG_VERSION_MINOR"),
-            ".",
-            env!("CARGO_PKG_VERSION_PATCH"),
-        )
-    };
-}
+/// 開発ビルド（版が `1.0.0-dev`）は `v1.0.0-dev+c0d78c3` のようにコミット ID まで付け、
+/// 正式版から送ったバトルと見分けられるようにする（#904）。
+const AGENT_VERSION: &str = env!("SPLABO_STATINK_VERSION");
 
 /// stat.ink への HTTP リクエストに付与する User-Agent。
 /// 他クライアント（s3s 等）の表示形式に揃えてバージョン部分を `v` 始まりにする。
-const USER_AGENT: &str = concat!("splabo/chartoon/v", statink_version!());
-
-/// stat.ink の `agent_version`（`v1.0.0`）。
-const AGENT_VERSION: &str = concat!("v", statink_version!());
+const USER_AGENT: &str = concat!("splabo/chartoon/", env!("SPLABO_STATINK_VERSION"));
 
 /// stat.ink への通信・HTTP 失敗を、#399 の `FailureKind` で分類したうえで
 /// 機械可読プリフィクス付きのエラー文字列にする（#402）。
@@ -833,19 +819,35 @@ pub async fn delete_all_uploaded_battles(
 mod tests {
     use super::*;
 
-    /// stat.ink に名乗る版は、開発ビルド（`1.0.0-dev`）でも `-dev` を付けない（#898）。
+    mod version {
+        include!("statink_version.rs");
+
+        /// リリースビルド（版が数字だけ）は数字の版だけを名乗る（#904）。
+        #[test]
+        fn release_build_is_plain_version() {
+            assert_eq!(statink_version("1", "0", "0", "", Some("c0d78c3")), "v1.0.0");
+        }
+
+        /// 開発ビルドは `-dev` とコミット ID を付ける。コミット ID が無ければ `-dev` まで（#904）。
+        #[test]
+        fn dev_build_has_prerelease_and_sha() {
+            assert_eq!(statink_version("1", "0", "0", "dev", Some("c0d78c3")), "v1.0.0-dev+c0d78c3");
+            assert_eq!(statink_version("1", "0", "0", "dev", None), "v1.0.0-dev");
+            assert_eq!(statink_version("1", "0", "0", "dev", Some("")), "v1.0.0-dev");
+        }
+    }
+
+    /// 今のビルドが名乗る版は、Cargo.toml の版から作られ、User-Agent にも同じ版が入る（#904）。
     #[test]
-    fn statink_version_has_no_prerelease() {
-        assert_eq!(
-            AGENT_VERSION,
-            format!(
-                "v{}.{}.{}",
-                env!("CARGO_PKG_VERSION_MAJOR"),
-                env!("CARGO_PKG_VERSION_MINOR"),
-                env!("CARGO_PKG_VERSION_PATCH"),
-            )
-        );
-        assert!(!AGENT_VERSION.contains('-'));
+    fn statink_version_matches_package_version() {
+        let pre = env!("CARGO_PKG_VERSION_PRE");
+        let base = format!("v{}", env!("CARGO_PKG_VERSION"));
+        if pre.is_empty() {
+            assert_eq!(AGENT_VERSION, base);
+        } else {
+            assert!(AGENT_VERSION == base || AGENT_VERSION.starts_with(&format!("{base}+")), "got {AGENT_VERSION}");
+        }
+        assert!(AGENT_VERSION.len() <= 255);
         assert!(USER_AGENT.ends_with(AGENT_VERSION));
     }
 
