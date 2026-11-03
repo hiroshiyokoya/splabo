@@ -1,7 +1,7 @@
 {
   "name": "splabo-app",
   "private": true,
-  "version": "1.0.0-dev",
+  "version": "1.1.0-dev",
   "type": "module",
   "scripts": {
     "dev": "vite",
