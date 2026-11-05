@@ -539,7 +539,7 @@ async function withAuthContext(storage, nsid, message) {
   }
   if (/upgrade required/i.test(message)) {
     parts.push(
-      '任天堂が Nintendo Switch Online アプリの版を上げたため、いまの認証では通れません。' +
+      '任天堂が Nintendo Switch App の版を上げましたが、認証に使っている外部サービスがまだ対応していません。' +
         'ログインし直しても、すぐ再試行しても直りません。認証の回数だけ減ります。',
     );
   }

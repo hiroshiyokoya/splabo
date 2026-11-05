@@ -179,8 +179,8 @@
     "statinkNoApiKeyMessage": "Enter your stat.ink API key in Settings.",
     "rateLimitedTitle": "Auth rate limit reached",
     "rateLimitedMessage": "{{detail}}\n\nWait a while and retry (you do not need to sign in again).",
-    "coralUpgradeTitle": "Waiting for Nintendo app update support",
-    "coralUpgradeMessage": "Nintendo raised the Nintendo Switch Online app version, so sign-in cannot complete right now. Signing in again will not help. Retrying only uses up the hourly limit — wait until auth support catches up.",
+    "coralUpgradeTitle": "Waiting for sign-in service support",
+    "coralUpgradeMessage": "Nintendo raised the Nintendo Switch App version, but the external service used for sign-in does not support it yet. Signing in again will not help. Retrying only uses up the hourly limit — wait until it is supported.",
     "gearNotLoggedInMessage": "Not signed in with a Nintendo Account. Sign in from the Settings tab."
   },
   "notify": {
