@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, MetricKey, BattleMetricKey } from '../types'
+import type { CustomChart, GroupedStatsRow, GroupedStatsRow2D, BattleRow, MetricKey, BattleMetricKey, PowerSeries } from '../types'
 import {
   stageAbbr, modeLabel, ruleLabel, autoChartTitle, chartMetrics,
   METRIC_LABELS, BATTLE_METRIC_LABELS, BATTLE_NUMERIC_METRIC_LABELS,
@@ -454,7 +454,7 @@ function sortAndSlice(
  * - 同じキー再クリックで昇順/降順トグル(#509)。
  */
 export function CustomChartCard({
-  chart, data, data2d, battleData, onEdit, onDelete, weaponImages, weaponMeta,
+  chart, data, data2d, battleData, power, onEdit, onDelete, weaponImages, weaponMeta,
   subImages, spImages, stageImages,
   since = null, until = null, filterSummary = '',
   readOnly = false, mobileEdit, expanded, onExpand, onCollapse,
@@ -472,6 +472,8 @@ export function CustomChartCard({
   data2d?:  GroupedStatsRow2D[]
   /** shape='scatter' で dotUnit='battle' のときの 1 バトル単位データ。 */
   battleData?: BattleRow[]
+  /** shape='line' で X パワー・ブキチャレパワーを選んだときのデータ（#914）。 */
+  power?: PowerSeries | null
   onEdit:   () => void
   onDelete: () => void
   /** ブキ名 → 画像 URL の対応。X 軸が `weapon` のときラベルをアイコンに置換する。 */
@@ -621,7 +623,7 @@ export function CustomChartCard({
         )}
       </div>
       <PanelExportCaption conditions={filterSummary} />
-      {renderChartBody(chart, sliced, data2d, battleData, nameTransform, tickAngle, weaponImages, weaponMeta, subImages, spImages, stageImages, since, until)}
+      {renderChartBody(chart, sliced, data2d, battleData, power, nameTransform, tickAngle, weaponImages, weaponMeta, subImages, spImages, stageImages, since, until)}
     </div>
   )
 }
@@ -634,6 +636,7 @@ function renderChartBody(
   data:          GroupedStatsRow[],
   data2d:        GroupedStatsRow2D[] | undefined,
   battleData:    BattleRow[] | undefined,
+  power:         PowerSeries | null | undefined,
   nameTransform: ((s: string) => string) | undefined,
   tickAngle:     number | undefined,
   weaponImages:  Map<string, string> | undefined,
@@ -664,7 +667,7 @@ function renderChartBody(
   if (chart.shape === 'line') {
     const metrics = chartMetrics(chart)
     if (metrics.length > 0) {
-      return <LineChart data={data} metrics={metrics} groupBy={chart.groupBy} />
+      return <LineChart data={data} metrics={metrics} groupBy={chart.groupBy} power={power} />
     }
     return (
       <div className="chart-not-implemented">

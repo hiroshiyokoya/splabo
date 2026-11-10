@@ -15,8 +15,8 @@ import {
 import {
   SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable'
-import type { Summary, SummaryEntry, Filters, BattleStats, BattleRow, GroupedStatsRow, GroupedStatsRow2D, CustomChart, GroupByKey, WeaponRecord } from '../types'
-import { BATTLE_NUMERIC_DEFAULT_BIN } from '../types'
+import type { Summary, SummaryEntry, Filters, BattleStats, BattleRow, GroupedStatsRow, GroupedStatsRow2D, CustomChart, GroupByKey, WeaponRecord, PowerSeries } from '../types'
+import { BATTLE_NUMERIC_DEFAULT_BIN, LINE_WEAPON_POWER_TOP_N, chartMetrics, isPowerMetric } from '../types'
 import {
   filtersToRange, modeLabel, ruleLabel, modeFilterArg, ruleFilterArg,
   fmtKillWithAssist, fmtKillRatioWithContrib,
@@ -35,6 +35,16 @@ import { EXPORT_HIDE_CLASS } from '../utils/panelExport'
 import { describeFilters, buildExportCaption, useStageNames } from '../utils/filterSummary'
 import { rankRowsForBarChart } from '../utils/chartSort'
 import { WIN_RATE_HI, WIN_RATE_LO, WIN_RATE_MID, winRateColor } from '../utils/heatmapColors'
+
+/** 線グラフで X パワー・ブキチャレパワーを使うとき、db_power_series に渡す軸と本数（#914）。使わないなら null。 */
+function powerSeriesSpec(c: CustomChart): { groupBy: GroupByKey; topN: number } | null {
+  if (c.shape !== 'line' || !chartMetrics(c).some(isPowerMetric)) return null
+  return { groupBy: c.groupBy, topN: c.topN ?? LINE_WEAPON_POWER_TOP_N }
+}
+
+function powerSeriesKey(s: { groupBy: GroupByKey; topN: number }): string {
+  return `${s.groupBy}|${s.topN}`
+}
 
 const COLOR_WIN  = '#22c55e'
 const COLOR_LOSE = '#ef4444'
@@ -104,6 +114,8 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching, r
   const [grouped2dCache, setGrouped2dCache] = useState<Record<string, GroupedStatsRow2D[]>>({})
   // バトル単位散布図のキャッシュ (フィルター変更時のみ再取得)
   const [battleData, setBattleData] = useState<BattleRow[]>([])
+  // 線グラフの X パワー・ブキチャレパワー（#914）。キーは powerSeriesKey。
+  const [powerCache, setPowerCache] = useState<Record<string, PowerSeries>>({})
   // モーダル状態：null=閉じる、{ chart: null }=新規、{ chart: 既存 }=編集
   const [modalState, setModalState] = useState<{ chart: CustomChart | null } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -204,6 +216,23 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching, r
       })
       .catch(console.error)
       .finally(() => setLoading(false))
+  }, [refreshKey, filters, customCharts])
+
+  // 線グラフの X パワー・ブキチャレパワー（#914）。絞り込みは期間とブキだけ使う。
+  useEffect(() => {
+    const specs = new Map<string, { groupBy: GroupByKey; topN: number }>()
+    for (const c of customCharts) {
+      const s = powerSeriesSpec(c)
+      if (s) specs.set(powerSeriesKey(s), s)
+    }
+    if (specs.size === 0) { setPowerCache({}); return }
+    const { since, until } = filtersToRange(filters)
+    const weapon = filters.weapon.length > 0 ? filters.weapon.join('|') : null
+    Promise.all([...specs].map(([key, s]) =>
+      call<PowerSeries>('db_power_series', { groupBy: s.groupBy, topN: s.topN, since, until, weapon })
+        .then(r => [key, r] as const)))
+      .then(pairs => setPowerCache(Object.fromEntries(pairs)))
+      .catch(console.error)
   }, [refreshKey, filters, customCharts])
 
   // fetch_complete イベントでデータを自動リフレッシュ（Tauri の中だけ）
@@ -503,6 +532,7 @@ export function Dashboard({ filters, onFetchRequest, onOpenSettings, fetching, r
                       chart={c}
                       data={groupedStatsCache[c.groupBy] ?? []}
                       data2d={data2d}
+                      power={(() => { const s = powerSeriesSpec(c); return s ? powerCache[powerSeriesKey(s)] ?? null : null })()}
                       battleData={c.shape === 'scatter' && c.dotUnit === 'battle' ? battleData : undefined}
                       onEdit={() => handleEdit(c.id)}
                       onDelete={() => handleDelete(c.id)}

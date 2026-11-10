@@ -723,7 +723,7 @@
     "official_weapon_level": "Freshness",
     "official_win_count": "Lifetime wins",
     "official_paint": "Lifetime turf",
-    "official_weapon_power": "Challenge Power",
+    "official_weapon_power": "Current Challenge Power",
     "official_weapon_power_max": "Max Challenge Power",
     "official_last_used_at": "Last used",
     "official_win_rate_tw": "Official WR Turf War",
@@ -731,6 +731,11 @@
     "official_win_rate_lf": "Official WR Tower",
     "official_win_rate_gl": "Official WR Rainmaker",
     "official_win_rate_cl": "Official WR Clam Blitz",
+    "x_power_ar": "X Power Splat Zones",
+    "x_power_lf": "X Power Tower Control",
+    "x_power_gl": "X Power Rainmaker",
+    "x_power_cl": "X Power Clam Blitz",
+    "weapon_power": "Challenge Power",
     "winLoseBreakdown": "{{wins}}W {{losses}}L",
     "winLoseBreakdownDraw": "{{wins}}W {{losses}}L {{draws}}D",
     "winCountTooltip": "Battles: {{total}} ({{breakdown}})"
@@ -768,7 +773,8 @@
     "per_battle": "Per battle",
     "win_rate": "Win rate",
     "count": "Count",
-    "paint": "Turf"
+    "paint": "Turf",
+    "power": "Power"
   },
   "battleNumeric": {
     "kill": "Kills",
@@ -985,6 +991,9 @@
     "metric": "Metric",
     "metricsMulti": "Metrics (multi-select)",
     "axisLimitHint": "At most 2 axis types (using {{groups}}).",
+    "powerHint": "X Power and Challenge Power show the last value in each period. Only the period filter applies (Challenge Power also follows the weapon filter).",
+    "weaponPowerLines": "Challenge Power lines",
+    "weaponPowerLinesHint": "Weapons you used most in Anarchy Series battles in the period come first (default {{n}}).",
     "pickOne": "Pick at least one.",
     "dotUnit": "Dot unit",
     "dotUnitHint": "1 dot = 1 {{unit}}.",

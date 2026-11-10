@@ -93,13 +93,16 @@ export interface TimeSeriesSlot {
 /**
  * 時系列バケットの GroupedStatsRow[] を、欠測バケットを null 埋めした連続スロット列に変換する。
  * データが 1 件も無ければ空配列を返す。
+ *
+ * `extraKeys` は行の無いバケットキー（X パワー・ブキチャレパワーの点など・#914）。
+ * スロットの範囲を、行のキーとあわせた最初から最後までに広げる。
  */
-export function buildTimeSeries(data: GroupedStatsRow[], groupBy: GroupByKey): TimeSeriesSlot[] {
-  if (data.length === 0) return []
-  const sorted = [...data].sort((a, b) => a.name.localeCompare(b.name))
-  const byKey = new Map(sorted.map(d => [d.name, d]))
-  const first = parseBucketDate(sorted[0].name, groupBy)
-  const last  = parseBucketDate(sorted[sorted.length - 1].name, groupBy)
+export function buildTimeSeries(data: GroupedStatsRow[], groupBy: GroupByKey, extraKeys: string[] = []): TimeSeriesSlot[] {
+  const keys = [...new Set([...data.map(d => d.name), ...extraKeys])].sort((a, b) => a.localeCompare(b))
+  if (keys.length === 0) return []
+  const byKey = new Map(data.map(d => [d.name, d]))
+  const first = parseBucketDate(keys[0], groupBy)
+  const last  = parseBucketDate(keys[keys.length - 1], groupBy)
   if (isNaN(first.getTime()) || isNaN(last.getTime())) return []
 
   const out: TimeSeriesSlot[] = []
