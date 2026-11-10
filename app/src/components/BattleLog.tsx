@@ -494,24 +494,28 @@ function MyStatsCard({ battle, weaponImages }: {
 
 function RankChangeRow({ battle }: { battle: BattleRow }) {
   const { t } = useTranslation()
-  if (!battle.parent_json) return null
-  const parent = tryParse(battle.parent_json) as ParentJson | null
-  if (!parent) return null
+  // セットの途中経過（#916）。同じセットのバトルがそろっているときだけ一覧が返す。
+  const setIndex = battle.set_index ?? null
+  const hasProgress = setIndex !== null && battle.set_win != null && battle.set_lose != null
+  if (!battle.parent_json && !hasProgress) return null
+  // セット結果（parent_json）はセットの最新バトルにしか無い。途中のバトルは経過だけで出す。
+  const parent: ParentJson = (battle.parent_json ? tryParse(battle.parent_json) as ParentJson | null : null) ?? {}
 
-  const setWin    = parent.winCount  ?? null
-  const setLose   = parent.loseCount ?? null
+  // 経過があればそれを、無ければ SplatNet 3 のセット結果をそのまま出す。
+  const setWin    = hasProgress ? battle.set_win!  : parent.winCount  ?? null
+  const setLose   = hasProgress ? battle.set_lose! : parent.loseCount ?? null
   const hasSet    = setWin !== null && setLose !== null
 
-  // バンカラチャレンジのウデマエ前後
-  // detail(raw_json)から udemae を取り、parent.udemaeAfter があれば「→ <after>」を表示
-  const detail = tryParse(battle.raw_json) as { udemae?: string } | null
-  const udemaeBefore = detail?.udemae ?? null
+  // バンカラチャレンジのウデマエ前後。
+  // 前は一覧取得時に保存した列（"S+15" の形）。詳細の raw_json には入っていない（#912）。
+  // 前が分からない行（詳細取得後に保存していた古い行）は、確定後だけ出す。
+  const udemaeBefore = battle.rank_before ?? null
   const udemaeAfter  = parent.udemaeAfter ?? null
-  const isPromo      = parent.isPromo === true
+  const isPromo      = parent.isPromo === true || battle.set_is_promo === true
   const isPromoSuccess = isPromo && parent.isUdemaeUp === true
 
-  // X マッチ評価戦のパワー前後
-  const xPowerBefore = battle.x_power ?? null  // BattleRow.x_power は xMatch.lastXPower
+  // X マッチのパワー前後。前はセット開始時の値（BattleRow.x_power = x_power_before 列）
+  const xPowerBefore = battle.x_power ?? null
   const xPowerAfter  = parent.xPowerAfter ?? null
 
   const showRank   = udemaeBefore || udemaeAfter || isPromo
@@ -524,9 +528,9 @@ function RankChangeRow({ battle }: { battle: BattleRow }) {
         <div className="rank-change-line">
           <span className="rank-change-label">{t('battles.rank')}</span>
           <span className="rank-change-value">
-            {udemaeBefore ?? '?'}
+            {udemaeBefore}
             {udemaeAfter && udemaeAfter !== udemaeBefore && (
-              <> → <strong>{udemaeAfter}</strong></>
+              <>{udemaeBefore && ' → '}<strong>{udemaeAfter}</strong></>
             )}
             {isPromo && (
               <span className={`promo-tag ${isPromoSuccess ? 'promo-success' : 'promo-attempt'}`}>
@@ -540,9 +544,9 @@ function RankChangeRow({ battle }: { battle: BattleRow }) {
         <div className="rank-change-line">
           <span className="rank-change-label">{t('battles.xPower')}</span>
           <span className="rank-change-value">
-            {xPowerBefore !== null ? xPowerBefore.toFixed(1) : '?'}
+            {xPowerBefore !== null && xPowerBefore.toFixed(1)}
             {xPowerAfter !== null && (
-              <> → <strong>{xPowerAfter.toFixed(1)}</strong></>
+              <>{xPowerBefore !== null && ' → '}<strong>{xPowerAfter.toFixed(1)}</strong></>
             )}
           </span>
         </div>
@@ -551,6 +555,7 @@ function RankChangeRow({ battle }: { battle: BattleRow }) {
         <div className="rank-change-line">
           <span className="rank-change-label">{t('battles.set')}</span>
           <span className="rank-change-value">
+            {hasProgress && <>{t('battles.setNth', { n: setIndex })}{' · '}</>}
             <span style={{ color: 'var(--win)' }}>{t('battles.setWin', { n: setWin })}</span>
             {' '}
             <span style={{ color: 'var(--lose)' }}>{t('battles.setLose', { n: setLose })}</span>

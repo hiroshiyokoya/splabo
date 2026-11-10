@@ -74,6 +74,7 @@
     "promoSuccess": "昇格！",
     "xPower": "X パワー",
     "set": "セット",
+    "setNth": "{{n}} 戦目",
     "setWin": "{{n}}勝",
     "setLose": "{{n}}敗",
     "openStatink": "stat.ink で開く",

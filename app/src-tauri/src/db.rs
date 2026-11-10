@@ -388,6 +388,101 @@ fn old_result_to_result_id(result: &str) -> Option<i64> {
 }
 
 // ---------------------------------------------------------------------------
+// ウデマエと X パワーの前後（#912）
+// ---------------------------------------------------------------------------
+
+/// `battle b` の rank_before / rank_before_s_plus から、表示用のウデマエ（"S+15" など）を作る SQL 式。
+/// stat.ink から取り込んだ行（"s+" と 1）も、SplatNet 3 から取った行も同じ形で出る。
+pub(crate) const UDEMAE_BEFORE_SQL: &str =
+    "CASE WHEN b.rank_before IS NULL THEN NULL \
+          ELSE UPPER(b.rank_before) || COALESCE(CAST(b.rank_before_s_plus AS TEXT), '') END";
+
+/// ウデマエと X パワーの前後。DB の列にそのまま入れる形。
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct RankPower {
+    pub rank_before:        Option<String>,
+    pub rank_before_s_plus: Option<i64>,
+    pub rank_after:         Option<String>,
+    pub rank_after_s_plus:  Option<i64>,
+    pub x_power_before:     Option<f64>,
+    pub x_power_after:      Option<f64>,
+}
+
+/// SplatNet 3 のバトルの JSON と履歴グループの親から、ウデマエと X パワーの前後を取り出す（#912）。
+///
+/// - `raw_json`: 一覧クエリのノード、または詳細クエリの vsHistoryDetail。
+///   - `udemae`（バトル前のウデマエ）は**一覧にしか無い**。詳細に置き換わると消える。
+///   - `xMatch.lastXPower`（バトル前＝セット開始時の X パワー）は**詳細にしか無い**。
+/// - `parent_json`: 履歴グループの親（bankaraMatchChallenge / xMatchMeasurement）。
+///   グループの最新バトルにだけ付く。`udemaeAfter` / `xPowerAfter` はセットが終わったときだけ値が入る。
+///
+/// stat.ink から取り込んだ行の JSON にはどれも無いので、すべて None になる。
+pub(crate) fn rank_power_from_json(raw_json: &str, parent_json: Option<&str>) -> RankPower {
+    let raw: serde_json::Value = serde_json::from_str(raw_json).unwrap_or(serde_json::Value::Null);
+    let parent: serde_json::Value = parent_json
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or(serde_json::Value::Null);
+
+    let split = |s: Option<&str>| match s.filter(|s| !s.is_empty()) {
+        Some(s) => {
+            let (rank, sp) = crate::statink::parse_udemae(s);
+            (Some(rank), sp)
+        }
+        None => (None, None),
+    };
+    let (rank_before, rank_before_s_plus) = split(raw.pointer("/udemae").and_then(|v| v.as_str()));
+    let (rank_after, rank_after_s_plus) = split(parent.pointer("/udemaeAfter").and_then(|v| v.as_str()));
+
+    RankPower {
+        rank_before,
+        rank_before_s_plus,
+        rank_after,
+        rank_after_s_plus,
+        x_power_before: raw.pointer("/xMatch/lastXPower").and_then(|v| v.as_f64()),
+        x_power_after:  parent.pointer("/xPowerAfter").and_then(|v| v.as_f64()),
+    }
+}
+
+/// セットの途中経過を数える CTE（#916）。`set_progress(id, set_index, set_win, set_lose, set_is_promo)` を作る。
+///
+/// - 同じ `set_key` のバトルを時刻順に並べ、何戦目か・そこまでの勝数と負数を積み上げる。
+///   引き分け（切断で負けにならなかった試合を含む）は勝敗に数えない。
+/// - SplatNet 3 のセット結果（`parent_json` の winCount / loseCount）は、それが付いたバトルの時点の成績。
+///   積み上げがそれと 1 つでも合わないセットは、取れなかったバトルがあるとみなして**丸ごと出さない**。
+///   セット結果が 1 つも無いセットも、確かめようがないので出さない。
+/// - 昇格戦かは、セット結果のどれかが isPromo なら全バトルに出す。
+pub(crate) const SET_PROGRESS_CTE: &str = "
+WITH set_rows AS (
+    SELECT b.id, b.set_key,
+           ROW_NUMBER() OVER w                                              AS set_index,
+           SUM(CASE WHEN res.key = 'win'  THEN 1 ELSE 0 END) OVER w         AS run_win,
+           SUM(CASE WHEN res.key = 'lose' THEN 1 ELSE 0 END) OVER w         AS run_lose,
+           CASE WHEN json_valid(b.parent_json) THEN json_extract(b.parent_json, '$.winCount')  END AS p_win,
+           CASE WHEN json_valid(b.parent_json) THEN json_extract(b.parent_json, '$.loseCount') END AS p_lose,
+           CASE WHEN json_valid(b.parent_json) THEN json_extract(b.parent_json, '$.isPromo')   END AS p_promo
+      FROM battle b
+      JOIN result res ON res.id = b.result_id
+     WHERE b.set_key IS NOT NULL
+    WINDOW w AS (PARTITION BY b.set_key ORDER BY b.played_at, b.id
+                 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+),
+set_ok AS (
+    SELECT set_key, MAX(COALESCE(p_promo, 0)) AS is_promo
+      FROM set_rows
+     GROUP BY set_key
+    HAVING COUNT(p_win) > 0
+       AND SUM(CASE WHEN p_win IS NOT NULL
+                     AND (p_win <> run_win OR COALESCE(p_lose, -1) <> run_lose)
+                    THEN 1 ELSE 0 END) = 0
+),
+set_progress AS (
+    SELECT s.id, s.set_index, s.run_win AS set_win, s.run_lose AS set_lose,
+           o.is_promo AS set_is_promo
+      FROM set_rows s
+      JOIN set_ok o ON o.set_key = s.set_key
+)";
+
+// ---------------------------------------------------------------------------
 // 型
 // ---------------------------------------------------------------------------
 
@@ -425,6 +520,17 @@ pub struct BattleRow {
     /// 履歴クエリの親ノード（bankaraMatchChallenge / xMatchMeasurement）の JSON。
     /// 各 historyGroup の最新バトルのみ非 NULL。stat.ink へのアップロード時に使用。
     pub parent_json: Option<String>,
+    /// セットの途中経過（#916）。セットの何戦目か・そこまでの勝数・負数（引き分けは数えない）・昇格戦か。
+    /// 取れなかったバトルがあって SplatNet 3 のセット結果と合わないセットは、すべて None。
+    /// 一覧（`get_battles`）だけが返す。
+    #[sqlx(default)]
+    pub set_index: Option<i64>,
+    #[sqlx(default)]
+    pub set_win: Option<i64>,
+    #[sqlx(default)]
+    pub set_lose: Option<i64>,
+    #[sqlx(default)]
+    pub set_is_promo: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -535,14 +641,17 @@ async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), Strin
 
     let kill_or_assist = row.kill + row.assist;
     let is_knockout: Option<i64> = knockout_flag(row.knockout.as_deref());
+    // ウデマエ・X パワーの前後は JSON から取り出す（#912）。
+    let rp = rank_power_from_json(&row.raw_json, row.parent_json.as_deref());
 
     sqlx::query(
         "INSERT OR IGNORE INTO battle
             (id, played_at, lobby_id, rule_id, map_id, result_id, weapon_id,
              is_knockout, kill, assist, kill_or_assist, death, special, inked, duration,
-             rank_before, rank_after, x_power_after, raw_json, fetched_at, statink_uuid, parent_json,
+             rank_before, rank_before_s_plus, rank_after, rank_after_s_plus,
+             x_power_before, x_power_after, raw_json, fetched_at, statink_uuid, parent_json,
              knockout, sub_weapon, special_weapon, awards, my_team, other_teams)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&row.id)
     .bind(&row.played_at)
@@ -559,9 +668,12 @@ async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), Strin
     .bind(row.special)
     .bind(row.inked)
     .bind(row.duration)
-    .bind(&row.rank_before)
-    .bind(&row.rank_after)
-    .bind(row.x_power)
+    .bind(&rp.rank_before)
+    .bind(rp.rank_before_s_plus)
+    .bind(&rp.rank_after)
+    .bind(rp.rank_after_s_plus)
+    .bind(rp.x_power_before)
+    .bind(rp.x_power_after)
     .bind(&row.raw_json)
     .bind(&row.fetched_at)
     .bind(&row.statink_uuid)
@@ -647,6 +759,45 @@ pub async fn insert_battles(pool: &DbPool, rows: Vec<BattleRow>) -> Result<usize
     Ok(inserted)
 }
 
+/// 同じセットのバトルに共通のキー（`battle.set_key`）を付ける（#916）。
+///
+/// `groups` は [`crate::splatnet3`] がセットごとに並べたバトル ID（新しい順）。
+/// - グループの中にすでにキーを持つバトルがあれば、そのキーを使う。セットが伸びても、
+///   古いバトルが SplatNet 3 の履歴（各モード直近 50 戦）から消えても、キーが変わらないようにするため。
+/// - 無ければ、グループで一番古いバトルの ID をキーにする。
+/// - キーが空のバトルにだけ入れる。DB に無いバトルは何もしない。
+///
+/// 返り値: キーを入れたバトルの数。
+pub async fn assign_set_keys(pool: &DbPool, groups: &[Vec<String>]) -> Result<u64, String> {
+    let mut assigned = 0u64;
+    for ids in groups {
+        let Some(oldest) = ids.last() else { continue };
+        let placeholders = vec!["?"; ids.len()].join(", ");
+
+        let sql = format!(
+            "SELECT set_key FROM battle
+              WHERE id IN ({placeholders}) AND set_key IS NOT NULL
+              ORDER BY played_at LIMIT 1"
+        );
+        let mut q = sqlx::query_scalar::<_, String>(&sql);
+        for id in ids {
+            q = q.bind(id);
+        }
+        let existing = q.fetch_optional(pool.as_ref()).await.map_err(|e| e.to_string())?;
+        let key = existing.unwrap_or_else(|| oldest.clone());
+
+        let sql = format!(
+            "UPDATE battle SET set_key = ? WHERE id IN ({placeholders}) AND set_key IS NULL"
+        );
+        let mut q = sqlx::query(&sql).bind(&key);
+        for id in ids {
+            q = q.bind(id);
+        }
+        assigned += q.execute(pool.as_ref()).await.map_err(|e| e.to_string())?.rows_affected();
+    }
+    Ok(assigned)
+}
+
 /// 詳細取得が未完了のバトル ID 一覧を返す。新スキーマから読む。
 pub async fn get_battles_without_detail(pool: &DbPool) -> Result<Vec<String>, String> {
     let rows = sqlx::query("SELECT id FROM battle WHERE detail_fetched = 0 ORDER BY played_at DESC")
@@ -713,12 +864,16 @@ async fn shadow_update_battle_detail(
     };
     let is_knockout: Option<i64> = knockout_flag(knockout);
     let kill_or_assist = kill + assist;
+    // バトル前の X パワーは詳細にしか無い（#912）。ウデマエは逆に一覧にしか無いので、
+    // 挿入時に入れた rank_* は触らない。値が取れないときは既存を残す。
+    let x_power_before = rank_power_from_json(raw_json, None).x_power_before;
 
     sqlx::query(
         "UPDATE battle
             SET kill=?, assist=?, kill_or_assist=?, death=?, special=?, inked=?,
                 raw_json=?, rule_id=?, lobby_id=?, is_knockout=?, detail_fetched=1,
-                knockout=?, sub_weapon=?, special_weapon=?, awards=?, my_team=?, other_teams=?
+                knockout=?, sub_weapon=?, special_weapon=?, awards=?, my_team=?, other_teams=?,
+                x_power_before=COALESCE(?, x_power_before)
           WHERE id=?",
     )
     .bind(kill)
@@ -737,6 +892,7 @@ async fn shadow_update_battle_detail(
     .bind(awards)
     .bind(my_team)
     .bind(other_teams)
+    .bind(x_power_before)
     .bind(id)
     .execute(pool.as_ref())
     .await
@@ -1242,6 +1398,7 @@ pub async fn db_battle_count(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn db_list_battles(
     db: tauri::State<'_, DbPool>,
     limit: i64,
@@ -1255,6 +1412,29 @@ pub async fn db_list_battles(
     stage: Option<String>,
     order_by: Option<String>,       // JS: orderBy
     order_asc: Option<bool>,        // JS: orderAsc
+) -> Result<Vec<BattleRow>, String> {
+    list_battles(
+        db.inner(), limit, offset, since, until, mode, rule, result_filter, weapon, stage,
+        order_by, order_asc,
+    )
+    .await
+}
+
+/// [`db_list_battles`] の本体。テストから DB を直接渡せるように分けてある（#916）。
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn list_battles(
+    db: &DbPool,
+    limit: i64,
+    offset: i64,
+    since: Option<String>,
+    until: Option<String>,
+    mode: Option<String>,
+    rule: Option<String>,
+    result_filter: Option<String>,
+    weapon: Option<String>,
+    stage: Option<String>,
+    order_by: Option<String>,
+    order_asc: Option<bool>,
 ) -> Result<Vec<BattleRow>, String> {
     let until = inclusive_until(until);
     let mode = translate_mode_filter(mode);
@@ -1272,8 +1452,10 @@ pub async fn db_list_battles(
     };
     let order_dir = if order_asc.unwrap_or(false) { "ASC" } else { "DESC" };
     // フロントが期待する旧 slug 形式へ逆翻訳して BattleRow に詰める。
+    // セットの途中経過（SET_PROGRESS_CTE）は絞り込みの前に全バトルで数える（#916）。
     let sql = format!(
-        "SELECT b.id                     AS id,
+        "{SET_PROGRESS_CTE}
+         SELECT b.id                     AS id,
                 b.played_at              AS played_at,
                 CASE WHEN l.key LIKE 'bankara%' THEN l.key ELSE {LOBBY_KEY_AS_OLD} END AS mode,
                 COALESCE({RULE_KEY_AS_OLD}, '') AS rule,
@@ -1290,9 +1472,9 @@ pub async fn db_list_battles(
                 b.special                AS special,
                 b.inked                  AS inked,
                 b.duration               AS duration,
-                b.rank_before            AS rank_before,
+                {UDEMAE_BEFORE_SQL}      AS rank_before,
                 b.rank_after             AS rank_after,
-                b.x_power_after          AS x_power,
+                b.x_power_before         AS x_power,
                 COALESCE(b.raw_json, '') AS raw_json,
                 b.fetched_at             AS fetched_at,
                 b.knockout               AS knockout,
@@ -1302,13 +1484,18 @@ pub async fn db_list_battles(
                 b.my_team                AS my_team,
                 b.other_teams            AS other_teams,
                 b.statink_uuid           AS statink_uuid,
-                b.parent_json            AS parent_json
+                b.parent_json            AS parent_json,
+                sp.set_index             AS set_index,
+                sp.set_win               AS set_win,
+                sp.set_lose              AS set_lose,
+                sp.set_is_promo          AS set_is_promo
          FROM battle b
          JOIN      lobby  l   ON l.id   = b.lobby_id
          LEFT JOIN rule   r   ON r.id   = b.rule_id
          JOIN      result res ON res.id = b.result_id
          JOIN      weapon w   ON w.id   = b.weapon_id
          JOIN      map    m   ON m.id   = b.map_id
+         LEFT JOIN set_progress sp ON sp.id = b.id
          WHERE (? IS NULL OR b.played_at >= ?)
            AND (? IS NULL OR b.played_at <= ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
@@ -2610,7 +2797,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// 適用済みマイグレーションの最新版。**新しい `if current_version < N` ブロックを足したら
 /// 必ずここを N に更新する。** 更新を忘れると `migrate_battle_ids` 冒頭の早期 return に
 /// 阻まれ、追加したマイグレーションが一度も実行されない（#206・#306 の再発防止）。
-const LATEST_MIGRATION_VERSION: i64 = 25;
+const LATEST_MIGRATION_VERSION: i64 = 27;
 
 /// version 2: mode 判定バグ修正版で全件再処理
 /// version 3: kill カウントを kill_or_assist から実キル数に修正
@@ -2637,6 +2824,8 @@ const LATEST_MIGRATION_VERSION: i64 = 25;
 /// version 24: ブキ・ステージの英語名を静的マスターで backfill (#712)
 /// version 25: v24 backfill の再実行救済（#712 の追補。v24 導入時に本コメント下の
 ///             注意書きどおり LATEST_MIGRATION_VERSION の更新を怠り、三度目の #206 / #306 を踏んだ）
+/// version 26: ウデマエ・X パワーの前後を raw_json / parent_json から埋め直す (#912)
+/// version 27: 同じセットのバトルを束ねる battle.set_key を追加 (#916)
 ///
 /// ⚠ **マイグレーションを追加したら `LATEST_MIGRATION_VERSION` も必ず上げること。**
 ///    ここが古いままだと早期 return に阻まれて新しい版が一度も走らない（#206 / #306 / #712 で 3 度踏んだ）。
@@ -3960,7 +4149,108 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         );
     }
 
+    // version 26: ウデマエ・X パワーの前後を JSON から埋め直す（#912）。
+    if current_version < 26 {
+        let (cleared, filled) = backfill_rank_and_x_power(pool).await?;
+        sqlx::query("PRAGMA user_version = 26")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!(
+            "migrate v26: ウデマエ・X パワーの前後を埋め直し（誤った rank_before を {cleared} 件消去・{filled} 件に値を入れた）"
+        );
+    }
+
+    // version 27: 同じセットのバトルを束ねるキー列を足す（#916）。
+    //             中身はバトル取得のたびに `assign_set_keys` が入れる。過去分は SplatNet 3 に
+    //             残っている直近 50 戦だけが、更新後の最初の取得で埋まる（推測では埋めない）。
+    if current_version < 27 {
+        // 既にある（再実行など）ときの失敗は無視する。
+        let _ = sqlx::query("ALTER TABLE battle ADD COLUMN set_key TEXT")
+            .execute(pool.as_ref())
+            .await;
+        sqlx::query("CREATE INDEX IF NOT EXISTS battle_set_key ON battle(set_key)")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        sqlx::query("PRAGMA user_version = 27")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!("migrate v27: battle.set_key を追加");
+    }
+
     Ok(updated)
+}
+
+/// 既存のバトルのウデマエ・X パワーの前後を、raw_json / parent_json から埋め直す（#912・migrate v26）。
+///
+/// 1. SplatNet 3 から取った行の `rank_before` には、ウデマエではなく
+///    ウデマエポイントの増減（"-20" など）が入っていたので消す。
+/// 2. バンカラ・X マッチの行を [`rank_power_from_json`] で埋める。
+///    - 入れるのは空の列だけ。stat.ink から取り込んだ行（どの列も入っている）は変わらない。
+///    - 詳細を取ったあとの行は、raw_json からバトル前のウデマエが消えているので戻せない（空のまま）。
+///
+/// 返り値: (消した行数, 値を入れた行数)。
+pub(crate) async fn backfill_rank_and_x_power(pool: &DbPool) -> Result<(u64, u64), String> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    let cleared = sqlx::query(
+        "UPDATE battle SET rank_before = NULL
+          WHERE rank_before_s_plus IS NULL
+            AND (rank_before GLOB '[0-9]*' OR rank_before GLOB '-[0-9]*')",
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?
+    .rows_affected();
+
+    let rows = sqlx::query(
+        "SELECT b.id, b.raw_json, b.parent_json
+           FROM battle b
+           JOIN lobby l ON l.id = b.lobby_id
+          WHERE l.key IN ('bankara_open', 'bankara_challenge', 'xmatch')
+            AND b.raw_json IS NOT NULL",
+    )
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut filled = 0u64;
+    for r in rows {
+        let id: String = r.get("id");
+        let raw: String = r.get("raw_json");
+        let parent: Option<String> = r.get("parent_json");
+        let rp = rank_power_from_json(&raw, parent.as_deref());
+        if rp == RankPower::default() {
+            continue;
+        }
+        // SET の右辺は更新前の値で評価されるので、ウデマエと S+ の数字は組で入れられる。
+        sqlx::query(
+            "UPDATE battle SET
+                rank_before        = COALESCE(rank_before, ?),
+                rank_before_s_plus = CASE WHEN rank_before IS NULL THEN ? ELSE rank_before_s_plus END,
+                rank_after         = COALESCE(rank_after, ?),
+                rank_after_s_plus  = CASE WHEN rank_after IS NULL THEN ? ELSE rank_after_s_plus END,
+                x_power_before     = COALESCE(x_power_before, ?),
+                x_power_after      = COALESCE(x_power_after, ?)
+              WHERE id = ?",
+        )
+        .bind(&rp.rank_before)
+        .bind(rp.rank_before_s_plus)
+        .bind(&rp.rank_after)
+        .bind(rp.rank_after_s_plus)
+        .bind(rp.x_power_before)
+        .bind(rp.x_power_after)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        filled += 1;
+    }
+
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok((cleared, filled))
 }
 
 // ---------------------------------------------------------------------------
@@ -5271,17 +5561,20 @@ pub struct StatinkBattleRow {
     pub id: String,
     pub raw_json: String,
     pub parent_json: Option<String>,
+    /// バトル前のウデマエ（"S+15" など）。詳細の raw_json には無いので列から補う（#912）。
+    pub udemae_before: Option<String>,
 }
 
 /// statink_uuid が未設定のバトル一覧を返す（古い順）。新スキーマから読む。
 pub async fn get_battles_not_uploaded(pool: &DbPool) -> Result<Vec<StatinkBattleRow>, String> {
-    let rows = sqlx::query_as::<_, StatinkBattleRow>(
-        "SELECT id, raw_json, parent_json FROM battle
-         WHERE statink_uuid IS NULL
-           AND detail_fetched = 1
-           AND raw_json IS NOT NULL
-         ORDER BY played_at ASC",
-    )
+    let sql = format!(
+        "SELECT b.id, b.raw_json, b.parent_json, {UDEMAE_BEFORE_SQL} AS udemae_before FROM battle b
+         WHERE b.statink_uuid IS NULL
+           AND b.detail_fetched = 1
+           AND b.raw_json IS NOT NULL
+         ORDER BY b.played_at ASC"
+    );
+    let rows = sqlx::query_as::<_, StatinkBattleRow>(&sql)
     .fetch_all(pool.as_ref())
     .await
     .map_err(|e| e.to_string())?;
@@ -5810,5 +6103,316 @@ mod weapon_record_upsert_tests {
             .await
             .unwrap();
         assert_eq!(read_power(&pool, "スシ").await, (Some(1800.0), Some(2600.0)));
+    }
+}
+
+/// ウデマエ・X パワーの前後の保存（#912）。
+#[cfg(test)]
+mod rank_power_tests {
+    use super::*;
+
+    /// 本番と同じ順序（SCHEMA → LEGACY_ALTERS → マイグレーション）で組んだ空の DB。
+    async fn pool() -> DbPool {
+        let raw = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::raw_sql(SCHEMA).execute(&raw).await.unwrap();
+        for sql in LEGACY_ALTERS {
+            let _ = sqlx::query(sql).execute(&raw).await;
+        }
+        let pool: DbPool = Arc::new(raw);
+        migrate_battle_ids(&pool).await.unwrap();
+        pool
+    }
+
+    fn row(id: &str, mode: &str, raw_json: serde_json::Value, parent: Option<serde_json::Value>) -> BattleRow {
+        BattleRow {
+            id: id.to_string(),
+            played_at: "2026-11-09T14:23:32Z".to_string(),
+            mode: mode.to_string(),
+            rule: String::new(),
+            stage: "yunohana".to_string(),
+            stage_name: None,
+            stage_name_en: None,
+            weapon: "スプラシューター".to_string(),
+            weapon_name_ja: None,
+            weapon_name_en: None,
+            result: "win".to_string(),
+            kill: 0, death: 0, assist: 0, special: 0, inked: 0, duration: 0,
+            rank_before: None,
+            rank_after: None,
+            x_power: None,
+            raw_json: raw_json.to_string(),
+            fetched_at: "2026-11-09T15:00:00Z".to_string(),
+            knockout: None, sub_weapon: None, special_weapon: None, awards: None,
+            my_team: None, other_teams: None, statink_uuid: None,
+            parent_json: parent.map(|p| p.to_string()),
+            set_index: None, set_win: None, set_lose: None, set_is_promo: None,
+        }
+    }
+
+    type Cols = (Option<String>, Option<i64>, Option<String>, Option<i64>, Option<f64>, Option<f64>);
+
+    async fn cols(pool: &DbPool, id: &str) -> Cols {
+        let r = sqlx::query(
+            "SELECT rank_before, rank_before_s_plus, rank_after, rank_after_s_plus,
+                    x_power_before, x_power_after FROM battle WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+        (r.get(0), r.get(1), r.get(2), r.get(3), r.get(4), r.get(5))
+    }
+
+    #[test]
+    fn extracts_from_list_node_and_parent() {
+        let raw = r#"{"udemae":"S+15","bankaraMatch":{"earnedUdemaePoint":-20}}"#;
+        let parent = r#"{"udemaeAfter":"S+16","state":"SUCCEEDED"}"#;
+        let rp = rank_power_from_json(raw, Some(parent));
+        assert_eq!(rp.rank_before.as_deref(), Some("s+"));
+        assert_eq!(rp.rank_before_s_plus, Some(15));
+        assert_eq!(rp.rank_after.as_deref(), Some("s+"));
+        assert_eq!(rp.rank_after_s_plus, Some(16));
+        assert_eq!(rp.x_power_before, None);
+    }
+
+    /// 進行中のセットでは xPowerAfter が null なので入れない。
+    #[test]
+    fn in_progress_set_has_no_x_power_after() {
+        let raw = r#"{"xMatch":{"lastXPower":1489.3}}"#;
+        let parent = r#"{"state":"INPROGRESS","xPowerAfter":null}"#;
+        let rp = rank_power_from_json(raw, Some(parent));
+        assert_eq!(rp.x_power_before, Some(1489.3));
+        assert_eq!(rp.x_power_after, None);
+    }
+
+    /// 壊れた JSON・stat.ink 形式の JSON では何も取り出さない。
+    #[test]
+    fn unknown_json_gives_nothing() {
+        assert_eq!(rank_power_from_json("not json", Some("{")), RankPower::default());
+        let statink = r#"{"rank_before":{"key":"s+"},"x_power_before":2000.0}"#;
+        assert_eq!(rank_power_from_json(statink, None), RankPower::default());
+    }
+
+    /// 一覧で入れた時点でウデマエと確定後 X パワーが入り、詳細を取ると X パワーの前が埋まる。
+    /// ウデマエは詳細で消えない。
+    #[tokio::test]
+    async fn insert_then_detail_fills_columns() {
+        let pool = pool().await;
+        let bankara = row(
+            "bk1", "bankara_challenge",
+            serde_json::json!({ "udemae": "S+15" }),
+            Some(serde_json::json!({ "udemaeAfter": "S+16" })),
+        );
+        let xmatch = row(
+            "x1", "x",
+            serde_json::json!({ "id": "x1" }),
+            Some(serde_json::json!({ "state": "COMPLETED", "xPowerAfter": 1514.3 })),
+        );
+        assert_eq!(insert_battles(&pool, vec![bankara, xmatch]).await.unwrap(), 2);
+
+        assert_eq!(
+            cols(&pool, "bk1").await,
+            (Some("s+".into()), Some(15), Some("s+".into()), Some(16), None, None)
+        );
+        assert_eq!(cols(&pool, "x1").await, (None, None, None, None, None, Some(1514.3)));
+
+        let detail_x = serde_json::json!({ "xMatch": { "lastXPower": 1489.3 } }).to_string();
+        update_battle_detail(&pool, "x1", 0, 0, 0, 0, 0, &detail_x, "asari", "x",
+            None, None, None, None, None, None).await.unwrap();
+        assert_eq!(cols(&pool, "x1").await, (None, None, None, None, Some(1489.3), Some(1514.3)));
+
+        // 詳細の raw_json には udemae が無いが、列のウデマエは残る。
+        let detail_bk = serde_json::json!({ "bankaraMatch": { "mode": "CHALLENGE" } }).to_string();
+        update_battle_detail(&pool, "bk1", 0, 0, 0, 0, 0, &detail_bk, "area", "bankara_challenge",
+            None, None, None, None, None, None).await.unwrap();
+        assert_eq!(cols(&pool, "bk1").await.0.as_deref(), Some("s+"));
+
+        // 画面と stat.ink 送信は "S+15" の形で読む。
+        let shown: Option<String> = sqlx::query_scalar(&format!(
+            "SELECT {UDEMAE_BEFORE_SQL} FROM battle b WHERE b.id = 'bk1'"
+        ))
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+        assert_eq!(shown.as_deref(), Some("S+15"));
+        let pending = get_battles_not_uploaded(&pool).await.unwrap();
+        let bk = pending.iter().find(|b| b.id == "bk1").unwrap();
+        assert_eq!(bk.udemae_before.as_deref(), Some("S+15"));
+    }
+
+    // ---- セットの途中経過（#916） ----
+
+    fn row_at(id: &str, mode: &str, played_at: &str, result: &str, parent: Option<serde_json::Value>) -> BattleRow {
+        let mut r = row(id, mode, serde_json::json!({ "id": id }), parent);
+        r.played_at = played_at.to_string();
+        r.result = result.to_string();
+        r
+    }
+
+    type Progress = (String, Option<i64>, Option<i64>, Option<i64>, Option<bool>);
+
+    async fn progress(pool: &DbPool) -> Vec<Progress> {
+        let sql = format!(
+            "{SET_PROGRESS_CTE}
+             SELECT b.id, sp.set_index, sp.set_win, sp.set_lose, sp.set_is_promo
+               FROM battle b LEFT JOIN set_progress sp ON sp.id = b.id
+              ORDER BY b.played_at"
+        );
+        sqlx::query_as::<_, Progress>(&sql).fetch_all(pool.as_ref()).await.unwrap()
+    }
+
+    /// 11-09 のアサリのセット（勝 勝 負 負 分 勝）。14:54 の時点で 2 勝 2 敗、最後に 3 勝 2 敗で確定。
+    fn asari_set() -> Vec<BattleRow> {
+        vec![
+            row_at("a1", "x", "2026-11-09T14:32:20Z", "win", None),
+            row_at("a2", "x", "2026-11-09T14:38:44Z", "win", None),
+            row_at("a3", "x", "2026-11-09T14:47:38Z", "lose", None),
+            row_at("a4", "x", "2026-11-09T14:54:20Z", "lose",
+                Some(serde_json::json!({ "state": "INPROGRESS", "winCount": 2, "loseCount": 2 }))),
+            row_at("a5", "x", "2026-11-09T15:01:21Z", "draw", None),
+            row_at("a6", "x", "2026-11-09T15:02:53Z", "win",
+                Some(serde_json::json!({ "state": "COMPLETED", "winCount": 3, "loseCount": 2, "xPowerAfter": 1514.3 }))),
+        ]
+    }
+
+    fn ids(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[tokio::test]
+    async fn set_progress_counts_every_battle_in_the_set() {
+        let pool = pool().await;
+        insert_battles(&pool, asari_set()).await.unwrap();
+        // historyDetails の並び（新しい順）
+        let n = assign_set_keys(&pool, &[ids(&["a6", "a5", "a4", "a3", "a2", "a1"])]).await.unwrap();
+        assert_eq!(n, 6);
+
+        let got = progress(&pool).await;
+        let expect = [(1, 1, 0), (2, 2, 0), (3, 2, 1), (4, 2, 2), (5, 2, 2), (6, 3, 2)];
+        for (g, (idx, w, l)) in got.iter().zip(expect) {
+            assert_eq!((g.1, g.2, g.3, g.4), (Some(idx), Some(w), Some(l), Some(false)), "{}", g.0);
+        }
+    }
+
+    /// 一覧（db_list_battles の本体）で返る。勝ちだけに絞っても、経過は絞る前の全バトルで数える。
+    #[tokio::test]
+    async fn list_battles_returns_progress_even_when_filtered() {
+        let pool = pool().await;
+        insert_battles(&pool, asari_set()).await.unwrap();
+        assign_set_keys(&pool, &[ids(&["a6", "a5", "a4", "a3", "a2", "a1"])]).await.unwrap();
+
+        let rows = list_battles(&pool, 50, 0, None, None, None, None, Some("win".into()),
+            None, None, None, Some(true)).await.unwrap();
+        let got: Vec<(String, Option<i64>, Option<i64>, Option<i64>)> = rows
+            .into_iter()
+            .map(|r| (r.id, r.set_index, r.set_win, r.set_lose))
+            .collect();
+        assert_eq!(got, vec![
+            ("a1".to_string(), Some(1), Some(1), Some(0)),
+            ("a2".to_string(), Some(2), Some(2), Some(0)),
+            ("a6".to_string(), Some(6), Some(3), Some(2)),
+        ]);
+    }
+
+    /// セットの前半が取れていない（SplatNet 3 の履歴から消えていた）ときは、セットごと出さない。
+    #[tokio::test]
+    async fn set_progress_hides_sets_with_missing_battles() {
+        let pool = pool().await;
+        let rows: Vec<BattleRow> = asari_set().into_iter().skip(1).collect();
+        insert_battles(&pool, rows).await.unwrap();
+        assign_set_keys(&pool, &[ids(&["a6", "a5", "a4", "a3", "a2"])]).await.unwrap();
+
+        for g in progress(&pool).await {
+            assert_eq!((g.1, g.2, g.3), (None, None, None), "{}", g.0);
+        }
+    }
+
+    /// セット結果が 1 つも無いセット（確かめようがない）も出さない。
+    #[tokio::test]
+    async fn set_progress_needs_at_least_one_set_result() {
+        let pool = pool().await;
+        insert_battles(&pool, vec![
+            row_at("c1", "bankara_challenge", "2026-11-09T14:05:33Z", "win", None),
+            row_at("c2", "bankara_challenge", "2026-11-09T14:10:00Z", "win", None),
+        ]).await.unwrap();
+        assign_set_keys(&pool, &[ids(&["c2", "c1"])]).await.unwrap();
+        assert!(progress(&pool).await.iter().all(|g| g.1.is_none()));
+    }
+
+    /// 昇格戦のチャレンジは、途中のバトルにも昇格戦と出す。
+    #[tokio::test]
+    async fn set_progress_marks_promo_on_every_battle() {
+        let pool = pool().await;
+        insert_battles(&pool, vec![
+            row_at("p1", "bankara_challenge", "2026-11-09T14:05:33Z", "win", None),
+            row_at("p2", "bankara_challenge", "2026-11-09T14:10:00Z", "win",
+                Some(serde_json::json!({ "winCount": 2, "loseCount": 0, "isPromo": true }))),
+        ]).await.unwrap();
+        assign_set_keys(&pool, &[ids(&["p2", "p1"])]).await.unwrap();
+        let got = progress(&pool).await;
+        assert_eq!(got[0].4, Some(true));
+        assert_eq!(got[1].4, Some(true));
+    }
+
+    /// セットが伸びても、古いバトルが履歴から消えても、キーは最初に付けたものを保つ。
+    #[tokio::test]
+    async fn set_key_stays_when_group_grows_or_loses_old_battles() {
+        let pool = pool().await;
+        insert_battles(&pool, asari_set()).await.unwrap();
+
+        // 1 回目の取得: a1〜a3 だけのグループ
+        assign_set_keys(&pool, &[ids(&["a3", "a2", "a1"])]).await.unwrap();
+        // 2 回目: セットが伸び、a1 は履歴から消えている
+        assign_set_keys(&pool, &[ids(&["a6", "a5", "a4", "a3", "a2"])]).await.unwrap();
+
+        let keys: Vec<Option<String>> =
+            sqlx::query_scalar("SELECT set_key FROM battle ORDER BY played_at")
+                .fetch_all(pool.as_ref())
+                .await
+                .unwrap();
+        assert!(keys.iter().all(|k| k.as_deref() == Some("a1")), "{keys:?}");
+    }
+
+    /// 移行: 誤った rank_before（ウデマエポイント）を消し、JSON から空の列だけ埋める。
+    /// stat.ink から取り込んだ行の値は変えない。
+    #[tokio::test]
+    async fn backfill_fixes_old_rows_and_keeps_statink_rows() {
+        let pool = pool().await;
+        insert_battles(&pool, vec![
+            row("bk_list", "bankara_challenge", serde_json::json!({ "udemae": "S+15" }), None),
+            row("bk_detail", "bankara_challenge", serde_json::json!({ "bankaraMatch": {} }),
+                Some(serde_json::json!({ "udemaeAfter": "S+16" }))),
+            row("x_old", "x", serde_json::json!({ "xMatch": { "lastXPower": 1489.3 } }),
+                Some(serde_json::json!({ "state": "COMPLETED", "xPowerAfter": 1514.3 }))),
+            row("statink", "x", serde_json::json!({ "x_power_before": 2000.0 }), None),
+        ]).await.unwrap();
+
+        // 直す前の状態を作る: SplatNet 3 の行は列が空・rank_before にはポイントの増減。
+        sqlx::query(
+            "UPDATE battle SET rank_before = '-20', rank_before_s_plus = NULL, rank_after = NULL,
+                rank_after_s_plus = NULL, x_power_before = NULL, x_power_after = NULL
+              WHERE id IN ('bk_list', 'bk_detail', 'x_old')",
+        ).execute(pool.as_ref()).await.unwrap();
+        sqlx::query(
+            "UPDATE battle SET rank_before = 's+', rank_before_s_plus = 1,
+                x_power_before = 2000.0, x_power_after = 2025.0 WHERE id = 'statink'",
+        ).execute(pool.as_ref()).await.unwrap();
+
+        let (cleared, _filled) = backfill_rank_and_x_power(&pool).await.unwrap();
+        assert_eq!(cleared, 3);
+
+        assert_eq!(cols(&pool, "bk_list").await.0.as_deref(), Some("s+"));
+        assert_eq!(cols(&pool, "bk_list").await.1, Some(15));
+        // 詳細を取ったあとの行はバトル前のウデマエを戻せない。確定後だけ入る。
+        assert_eq!(cols(&pool, "bk_detail").await, (None, None, Some("s+".into()), Some(16), None, None));
+        assert_eq!(cols(&pool, "x_old").await, (None, None, None, None, Some(1489.3), Some(1514.3)));
+        assert_eq!(
+            cols(&pool, "statink").await,
+            (Some("s+".into()), Some(1), None, None, Some(2000.0), Some(2025.0))
+        );
     }
 }
