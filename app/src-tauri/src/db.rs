@@ -443,6 +443,45 @@ pub(crate) fn rank_power_from_json(raw_json: &str, parent_json: Option<&str>) ->
     }
 }
 
+/// セットの途中経過を数える CTE（#916）。`set_progress(id, set_index, set_win, set_lose, set_is_promo)` を作る。
+///
+/// - 同じ `set_key` のバトルを時刻順に並べ、何戦目か・そこまでの勝数と負数を積み上げる。
+///   引き分け（切断で負けにならなかった試合を含む）は勝敗に数えない。
+/// - SplatNet 3 のセット結果（`parent_json` の winCount / loseCount）は、それが付いたバトルの時点の成績。
+///   積み上げがそれと 1 つでも合わないセットは、取れなかったバトルがあるとみなして**丸ごと出さない**。
+///   セット結果が 1 つも無いセットも、確かめようがないので出さない。
+/// - 昇格戦かは、セット結果のどれかが isPromo なら全バトルに出す。
+pub(crate) const SET_PROGRESS_CTE: &str = "
+WITH set_rows AS (
+    SELECT b.id, b.set_key,
+           ROW_NUMBER() OVER w                                              AS set_index,
+           SUM(CASE WHEN res.key = 'win'  THEN 1 ELSE 0 END) OVER w         AS run_win,
+           SUM(CASE WHEN res.key = 'lose' THEN 1 ELSE 0 END) OVER w         AS run_lose,
+           CASE WHEN json_valid(b.parent_json) THEN json_extract(b.parent_json, '$.winCount')  END AS p_win,
+           CASE WHEN json_valid(b.parent_json) THEN json_extract(b.parent_json, '$.loseCount') END AS p_lose,
+           CASE WHEN json_valid(b.parent_json) THEN json_extract(b.parent_json, '$.isPromo')   END AS p_promo
+      FROM battle b
+      JOIN result res ON res.id = b.result_id
+     WHERE b.set_key IS NOT NULL
+    WINDOW w AS (PARTITION BY b.set_key ORDER BY b.played_at, b.id
+                 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+),
+set_ok AS (
+    SELECT set_key, MAX(COALESCE(p_promo, 0)) AS is_promo
+      FROM set_rows
+     GROUP BY set_key
+    HAVING COUNT(p_win) > 0
+       AND SUM(CASE WHEN p_win IS NOT NULL
+                     AND (p_win <> run_win OR COALESCE(p_lose, -1) <> run_lose)
+                    THEN 1 ELSE 0 END) = 0
+),
+set_progress AS (
+    SELECT s.id, s.set_index, s.run_win AS set_win, s.run_lose AS set_lose,
+           o.is_promo AS set_is_promo
+      FROM set_rows s
+      JOIN set_ok o ON o.set_key = s.set_key
+)";
+
 // ---------------------------------------------------------------------------
 // 型
 // ---------------------------------------------------------------------------
@@ -481,6 +520,17 @@ pub struct BattleRow {
     /// 履歴クエリの親ノード（bankaraMatchChallenge / xMatchMeasurement）の JSON。
     /// 各 historyGroup の最新バトルのみ非 NULL。stat.ink へのアップロード時に使用。
     pub parent_json: Option<String>,
+    /// セットの途中経過（#916）。セットの何戦目か・そこまでの勝数・負数（引き分けは数えない）・昇格戦か。
+    /// 取れなかったバトルがあって SplatNet 3 のセット結果と合わないセットは、すべて None。
+    /// 一覧（`get_battles`）だけが返す。
+    #[sqlx(default)]
+    pub set_index: Option<i64>,
+    #[sqlx(default)]
+    pub set_win: Option<i64>,
+    #[sqlx(default)]
+    pub set_lose: Option<i64>,
+    #[sqlx(default)]
+    pub set_is_promo: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -707,6 +757,45 @@ pub async fn insert_battles(pool: &DbPool, rows: Vec<BattleRow>) -> Result<usize
         }
     }
     Ok(inserted)
+}
+
+/// 同じセットのバトルに共通のキー（`battle.set_key`）を付ける（#916）。
+///
+/// `groups` は [`crate::splatnet3`] がセットごとに並べたバトル ID（新しい順）。
+/// - グループの中にすでにキーを持つバトルがあれば、そのキーを使う。セットが伸びても、
+///   古いバトルが SplatNet 3 の履歴（各モード直近 50 戦）から消えても、キーが変わらないようにするため。
+/// - 無ければ、グループで一番古いバトルの ID をキーにする。
+/// - キーが空のバトルにだけ入れる。DB に無いバトルは何もしない。
+///
+/// 返り値: キーを入れたバトルの数。
+pub async fn assign_set_keys(pool: &DbPool, groups: &[Vec<String>]) -> Result<u64, String> {
+    let mut assigned = 0u64;
+    for ids in groups {
+        let Some(oldest) = ids.last() else { continue };
+        let placeholders = vec!["?"; ids.len()].join(", ");
+
+        let sql = format!(
+            "SELECT set_key FROM battle
+              WHERE id IN ({placeholders}) AND set_key IS NOT NULL
+              ORDER BY played_at LIMIT 1"
+        );
+        let mut q = sqlx::query_scalar::<_, String>(&sql);
+        for id in ids {
+            q = q.bind(id);
+        }
+        let existing = q.fetch_optional(pool.as_ref()).await.map_err(|e| e.to_string())?;
+        let key = existing.unwrap_or_else(|| oldest.clone());
+
+        let sql = format!(
+            "UPDATE battle SET set_key = ? WHERE id IN ({placeholders}) AND set_key IS NULL"
+        );
+        let mut q = sqlx::query(&sql).bind(&key);
+        for id in ids {
+            q = q.bind(id);
+        }
+        assigned += q.execute(pool.as_ref()).await.map_err(|e| e.to_string())?.rows_affected();
+    }
+    Ok(assigned)
 }
 
 /// 詳細取得が未完了のバトル ID 一覧を返す。新スキーマから読む。
@@ -1309,6 +1398,7 @@ pub async fn db_battle_count(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn db_list_battles(
     db: tauri::State<'_, DbPool>,
     limit: i64,
@@ -1322,6 +1412,29 @@ pub async fn db_list_battles(
     stage: Option<String>,
     order_by: Option<String>,       // JS: orderBy
     order_asc: Option<bool>,        // JS: orderAsc
+) -> Result<Vec<BattleRow>, String> {
+    list_battles(
+        db.inner(), limit, offset, since, until, mode, rule, result_filter, weapon, stage,
+        order_by, order_asc,
+    )
+    .await
+}
+
+/// [`db_list_battles`] の本体。テストから DB を直接渡せるように分けてある（#916）。
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn list_battles(
+    db: &DbPool,
+    limit: i64,
+    offset: i64,
+    since: Option<String>,
+    until: Option<String>,
+    mode: Option<String>,
+    rule: Option<String>,
+    result_filter: Option<String>,
+    weapon: Option<String>,
+    stage: Option<String>,
+    order_by: Option<String>,
+    order_asc: Option<bool>,
 ) -> Result<Vec<BattleRow>, String> {
     let until = inclusive_until(until);
     let mode = translate_mode_filter(mode);
@@ -1339,8 +1452,10 @@ pub async fn db_list_battles(
     };
     let order_dir = if order_asc.unwrap_or(false) { "ASC" } else { "DESC" };
     // フロントが期待する旧 slug 形式へ逆翻訳して BattleRow に詰める。
+    // セットの途中経過（SET_PROGRESS_CTE）は絞り込みの前に全バトルで数える（#916）。
     let sql = format!(
-        "SELECT b.id                     AS id,
+        "{SET_PROGRESS_CTE}
+         SELECT b.id                     AS id,
                 b.played_at              AS played_at,
                 CASE WHEN l.key LIKE 'bankara%' THEN l.key ELSE {LOBBY_KEY_AS_OLD} END AS mode,
                 COALESCE({RULE_KEY_AS_OLD}, '') AS rule,
@@ -1369,13 +1484,18 @@ pub async fn db_list_battles(
                 b.my_team                AS my_team,
                 b.other_teams            AS other_teams,
                 b.statink_uuid           AS statink_uuid,
-                b.parent_json            AS parent_json
+                b.parent_json            AS parent_json,
+                sp.set_index             AS set_index,
+                sp.set_win               AS set_win,
+                sp.set_lose              AS set_lose,
+                sp.set_is_promo          AS set_is_promo
          FROM battle b
          JOIN      lobby  l   ON l.id   = b.lobby_id
          LEFT JOIN rule   r   ON r.id   = b.rule_id
          JOIN      result res ON res.id = b.result_id
          JOIN      weapon w   ON w.id   = b.weapon_id
          JOIN      map    m   ON m.id   = b.map_id
+         LEFT JOIN set_progress sp ON sp.id = b.id
          WHERE (? IS NULL OR b.played_at >= ?)
            AND (? IS NULL OR b.played_at <= ?)
            AND (? IS NULL OR instr('|' || ? || '|', '|' || l.key || '|') > 0)
@@ -2677,7 +2797,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// 適用済みマイグレーションの最新版。**新しい `if current_version < N` ブロックを足したら
 /// 必ずここを N に更新する。** 更新を忘れると `migrate_battle_ids` 冒頭の早期 return に
 /// 阻まれ、追加したマイグレーションが一度も実行されない（#206・#306 の再発防止）。
-const LATEST_MIGRATION_VERSION: i64 = 26;
+const LATEST_MIGRATION_VERSION: i64 = 27;
 
 /// version 2: mode 判定バグ修正版で全件再処理
 /// version 3: kill カウントを kill_or_assist から実キル数に修正
@@ -2705,6 +2825,7 @@ const LATEST_MIGRATION_VERSION: i64 = 26;
 /// version 25: v24 backfill の再実行救済（#712 の追補。v24 導入時に本コメント下の
 ///             注意書きどおり LATEST_MIGRATION_VERSION の更新を怠り、三度目の #206 / #306 を踏んだ）
 /// version 26: ウデマエ・X パワーの前後を raw_json / parent_json から埋め直す (#912)
+/// version 27: 同じセットのバトルを束ねる battle.set_key を追加 (#916)
 ///
 /// ⚠ **マイグレーションを追加したら `LATEST_MIGRATION_VERSION` も必ず上げること。**
 ///    ここが古いままだと早期 return に阻まれて新しい版が一度も走らない（#206 / #306 / #712 で 3 度踏んだ）。
@@ -4038,6 +4159,25 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         log::info!(
             "migrate v26: ウデマエ・X パワーの前後を埋め直し（誤った rank_before を {cleared} 件消去・{filled} 件に値を入れた）"
         );
+    }
+
+    // version 27: 同じセットのバトルを束ねるキー列を足す（#916）。
+    //             中身はバトル取得のたびに `assign_set_keys` が入れる。過去分は SplatNet 3 に
+    //             残っている直近 50 戦だけが、更新後の最初の取得で埋まる（推測では埋めない）。
+    if current_version < 27 {
+        // 既にある（再実行など）ときの失敗は無視する。
+        let _ = sqlx::query("ALTER TABLE battle ADD COLUMN set_key TEXT")
+            .execute(pool.as_ref())
+            .await;
+        sqlx::query("CREATE INDEX IF NOT EXISTS battle_set_key ON battle(set_key)")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        sqlx::query("PRAGMA user_version = 27")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!("migrate v27: battle.set_key を追加");
     }
 
     Ok(updated)
@@ -6009,6 +6149,7 @@ mod rank_power_tests {
             knockout: None, sub_weapon: None, special_weapon: None, awards: None,
             my_team: None, other_teams: None, statink_uuid: None,
             parent_json: parent.map(|p| p.to_string()),
+            set_index: None, set_win: None, set_lose: None, set_is_promo: None,
         }
     }
 
@@ -6101,6 +6242,139 @@ mod rank_power_tests {
         let pending = get_battles_not_uploaded(&pool).await.unwrap();
         let bk = pending.iter().find(|b| b.id == "bk1").unwrap();
         assert_eq!(bk.udemae_before.as_deref(), Some("S+15"));
+    }
+
+    // ---- セットの途中経過（#916） ----
+
+    fn row_at(id: &str, mode: &str, played_at: &str, result: &str, parent: Option<serde_json::Value>) -> BattleRow {
+        let mut r = row(id, mode, serde_json::json!({ "id": id }), parent);
+        r.played_at = played_at.to_string();
+        r.result = result.to_string();
+        r
+    }
+
+    type Progress = (String, Option<i64>, Option<i64>, Option<i64>, Option<bool>);
+
+    async fn progress(pool: &DbPool) -> Vec<Progress> {
+        let sql = format!(
+            "{SET_PROGRESS_CTE}
+             SELECT b.id, sp.set_index, sp.set_win, sp.set_lose, sp.set_is_promo
+               FROM battle b LEFT JOIN set_progress sp ON sp.id = b.id
+              ORDER BY b.played_at"
+        );
+        sqlx::query_as::<_, Progress>(&sql).fetch_all(pool.as_ref()).await.unwrap()
+    }
+
+    /// 11-09 のアサリのセット（勝 勝 負 負 分 勝）。14:54 の時点で 2 勝 2 敗、最後に 3 勝 2 敗で確定。
+    fn asari_set() -> Vec<BattleRow> {
+        vec![
+            row_at("a1", "x", "2026-11-09T14:32:20Z", "win", None),
+            row_at("a2", "x", "2026-11-09T14:38:44Z", "win", None),
+            row_at("a3", "x", "2026-11-09T14:47:38Z", "lose", None),
+            row_at("a4", "x", "2026-11-09T14:54:20Z", "lose",
+                Some(serde_json::json!({ "state": "INPROGRESS", "winCount": 2, "loseCount": 2 }))),
+            row_at("a5", "x", "2026-11-09T15:01:21Z", "draw", None),
+            row_at("a6", "x", "2026-11-09T15:02:53Z", "win",
+                Some(serde_json::json!({ "state": "COMPLETED", "winCount": 3, "loseCount": 2, "xPowerAfter": 1514.3 }))),
+        ]
+    }
+
+    fn ids(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[tokio::test]
+    async fn set_progress_counts_every_battle_in_the_set() {
+        let pool = pool().await;
+        insert_battles(&pool, asari_set()).await.unwrap();
+        // historyDetails の並び（新しい順）
+        let n = assign_set_keys(&pool, &[ids(&["a6", "a5", "a4", "a3", "a2", "a1"])]).await.unwrap();
+        assert_eq!(n, 6);
+
+        let got = progress(&pool).await;
+        let expect = [(1, 1, 0), (2, 2, 0), (3, 2, 1), (4, 2, 2), (5, 2, 2), (6, 3, 2)];
+        for (g, (idx, w, l)) in got.iter().zip(expect) {
+            assert_eq!((g.1, g.2, g.3, g.4), (Some(idx), Some(w), Some(l), Some(false)), "{}", g.0);
+        }
+    }
+
+    /// 一覧（db_list_battles の本体）で返る。勝ちだけに絞っても、経過は絞る前の全バトルで数える。
+    #[tokio::test]
+    async fn list_battles_returns_progress_even_when_filtered() {
+        let pool = pool().await;
+        insert_battles(&pool, asari_set()).await.unwrap();
+        assign_set_keys(&pool, &[ids(&["a6", "a5", "a4", "a3", "a2", "a1"])]).await.unwrap();
+
+        let rows = list_battles(&pool, 50, 0, None, None, None, None, Some("win".into()),
+            None, None, None, Some(true)).await.unwrap();
+        let got: Vec<(String, Option<i64>, Option<i64>, Option<i64>)> = rows
+            .into_iter()
+            .map(|r| (r.id, r.set_index, r.set_win, r.set_lose))
+            .collect();
+        assert_eq!(got, vec![
+            ("a1".to_string(), Some(1), Some(1), Some(0)),
+            ("a2".to_string(), Some(2), Some(2), Some(0)),
+            ("a6".to_string(), Some(6), Some(3), Some(2)),
+        ]);
+    }
+
+    /// セットの前半が取れていない（SplatNet 3 の履歴から消えていた）ときは、セットごと出さない。
+    #[tokio::test]
+    async fn set_progress_hides_sets_with_missing_battles() {
+        let pool = pool().await;
+        let rows: Vec<BattleRow> = asari_set().into_iter().skip(1).collect();
+        insert_battles(&pool, rows).await.unwrap();
+        assign_set_keys(&pool, &[ids(&["a6", "a5", "a4", "a3", "a2"])]).await.unwrap();
+
+        for g in progress(&pool).await {
+            assert_eq!((g.1, g.2, g.3), (None, None, None), "{}", g.0);
+        }
+    }
+
+    /// セット結果が 1 つも無いセット（確かめようがない）も出さない。
+    #[tokio::test]
+    async fn set_progress_needs_at_least_one_set_result() {
+        let pool = pool().await;
+        insert_battles(&pool, vec![
+            row_at("c1", "bankara_challenge", "2026-11-09T14:05:33Z", "win", None),
+            row_at("c2", "bankara_challenge", "2026-11-09T14:10:00Z", "win", None),
+        ]).await.unwrap();
+        assign_set_keys(&pool, &[ids(&["c2", "c1"])]).await.unwrap();
+        assert!(progress(&pool).await.iter().all(|g| g.1.is_none()));
+    }
+
+    /// 昇格戦のチャレンジは、途中のバトルにも昇格戦と出す。
+    #[tokio::test]
+    async fn set_progress_marks_promo_on_every_battle() {
+        let pool = pool().await;
+        insert_battles(&pool, vec![
+            row_at("p1", "bankara_challenge", "2026-11-09T14:05:33Z", "win", None),
+            row_at("p2", "bankara_challenge", "2026-11-09T14:10:00Z", "win",
+                Some(serde_json::json!({ "winCount": 2, "loseCount": 0, "isPromo": true }))),
+        ]).await.unwrap();
+        assign_set_keys(&pool, &[ids(&["p2", "p1"])]).await.unwrap();
+        let got = progress(&pool).await;
+        assert_eq!(got[0].4, Some(true));
+        assert_eq!(got[1].4, Some(true));
+    }
+
+    /// セットが伸びても、古いバトルが履歴から消えても、キーは最初に付けたものを保つ。
+    #[tokio::test]
+    async fn set_key_stays_when_group_grows_or_loses_old_battles() {
+        let pool = pool().await;
+        insert_battles(&pool, asari_set()).await.unwrap();
+
+        // 1 回目の取得: a1〜a3 だけのグループ
+        assign_set_keys(&pool, &[ids(&["a3", "a2", "a1"])]).await.unwrap();
+        // 2 回目: セットが伸び、a1 は履歴から消えている
+        assign_set_keys(&pool, &[ids(&["a6", "a5", "a4", "a3", "a2"])]).await.unwrap();
+
+        let keys: Vec<Option<String>> =
+            sqlx::query_scalar("SELECT set_key FROM battle ORDER BY played_at")
+                .fetch_all(pool.as_ref())
+                .await
+                .unwrap();
+        assert!(keys.iter().all(|k| k.as_deref() == Some("a1")), "{keys:?}");
     }
 
     /// 移行: 誤った rank_before（ウデマエポイント）を消し、JSON から空の列だけ埋める。

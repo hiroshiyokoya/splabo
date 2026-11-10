@@ -315,6 +315,12 @@ export interface BattleRow {
   /** 履歴クエリの親ノード(bankaraMatchChallenge / xMatchMeasurement)の JSON。
    *  各 historyGroup の最新バトルのみ非 null。stat.ink 連携や詳細表示で使う。 */
   parent_json: string | null
+  /** セットの途中経過（#916）。何戦目か・そこまでの勝数と負数（引き分けは数えない）・昇格戦か。
+   *  取れなかったバトルがあって SplatNet 3 のセット結果と合わないセットは null。一覧だけが返す。 */
+  set_index?: number | null
+  set_win?: number | null
+  set_lose?: number | null
+  set_is_promo?: boolean | null
 }
 
 export interface SummaryEntry {

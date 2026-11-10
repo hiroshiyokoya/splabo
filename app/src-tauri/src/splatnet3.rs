@@ -214,6 +214,10 @@ fn parse_regular_node(node: &serde_json::Value, fetched_at: &str, parent: Option
         other_teams: None,
         statink_uuid: None,
         parent_json: parent.map(|p| p.to_string()),
+        set_index: None,
+        set_win: None,
+        set_lose: None,
+        set_is_promo: None,
     }
 }
 
@@ -269,6 +273,10 @@ fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str, parent: Option
         other_teams: None,
         statink_uuid: None,
         parent_json: parent.map(|p| p.to_string()),
+        set_index: None,
+        set_win: None,
+        set_lose: None,
+        set_is_promo: None,
     }
 }
 
@@ -317,6 +325,10 @@ fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str, parent: Option<
         other_teams: None,
         statink_uuid: None,
         parent_json: parent.map(|p| p.to_string()),
+        set_index: None,
+        set_win: None,
+        set_lose: None,
+        set_is_promo: None,
     }
 }
 
@@ -364,6 +376,10 @@ fn parse_event_node(node: &serde_json::Value, fetched_at: &str, parent: Option<&
         other_teams: None,
         statink_uuid: None,
         parent_json: parent.map(|p| p.to_string()),
+        set_index: None,
+        set_win: None,
+        set_lose: None,
+        set_is_promo: None,
     }
 }
 
@@ -472,6 +488,45 @@ fn extract_battle_nodes(
     nodes
 }
 
+/// セット（バンカラチャレンジ 1 回・X マッチのセット 1 回）ごとに、バトル ID を並べて返す（#916）。
+///
+/// 各要素はグループ内の ID で、**新しい順**（historyDetails の並びのまま。先頭が最新）。
+/// セットではないグループ（レギュラー・オープン・イベント）は含めない。
+fn extract_set_groups(resp: &serde_json::Value) -> Vec<Vec<String>> {
+    let mut sets = Vec::new();
+    for key in ["bankaraBattleHistories", "xBattleHistories"] {
+        let Some(groups) = resp
+            .pointer(&format!("/data/{key}/historyGroups/nodes"))
+            .and_then(|x| x.as_array())
+        else {
+            continue;
+        };
+        for group in groups {
+            let is_set = ["bankaraMatchChallenge", "xMatchMeasurement"]
+                .iter()
+                .any(|k| group.get(*k).is_some_and(|v| !v.is_null()));
+            if !is_set {
+                continue;
+            }
+            let ids: Vec<String> = group
+                .pointer("/historyDetails/nodes")
+                .and_then(|x| x.as_array())
+                .map(|details| {
+                    details
+                        .iter()
+                        .map(|d| str_val(d, "id"))
+                        .filter(|id| !id.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default();
+            if !ids.is_empty() {
+                sets.push(ids);
+            }
+        }
+    }
+    sets
+}
+
 /// historyGroup のノードから親情報（bankaraMatchChallenge or xMatchMeasurement）を取り出す。
 /// 該当する子オブジェクトが無い・null の場合は None。
 fn extract_parent_for_group(group: &serde_json::Value) -> Option<serde_json::Value> {
@@ -525,6 +580,8 @@ pub async fn fetch_and_store_battles(
         .map(|(n, p)| parse_bankara_node(n, &fetched_at, p.as_ref()))
         .collect();
     total_inserted += crate::db::insert_battles(pool, bankara_rows).await?;
+    // 同じチャレンジのバトルにセットのキーを付ける（入れたあとに。既存行も対象・#916）
+    crate::db::assign_set_keys(pool, &extract_set_groups(&bankara_resp)).await?;
 
     // --- Xマッチ ---
     let xmatch_resp =
@@ -535,6 +592,7 @@ pub async fn fetch_and_store_battles(
         .map(|(n, p)| parse_xmatch_node(n, &fetched_at, p.as_ref()))
         .collect();
     total_inserted += crate::db::insert_battles(pool, xmatch_rows).await?;
+    crate::db::assign_set_keys(pool, &extract_set_groups(&xmatch_resp)).await?;
 
     // --- イベントマッチ ---
     // ⚠ HASH_EVENT が Nintendo 側で廃止されている場合、graphql_request が
@@ -1434,6 +1492,36 @@ mod ability_image_tests {
             crate::abilities::cache_key_from_url(&ability_image_url(empty_hash)),
             Some(crate::abilities::EMPTY_SLOT_KEY)
         );
+    }
+}
+
+#[cfg(test)]
+mod set_group_tests {
+    use super::*;
+
+    /// チャレンジと X マッチのグループだけを、historyDetails の並び（新しい順）で取り出す（#916）。
+    #[test]
+    fn extracts_only_set_groups_in_order() {
+        let resp = serde_json::json!({ "data": {
+            "bankaraBattleHistories": { "historyGroups": { "nodes": [
+                { "bankaraMatchChallenge": { "winCount": 1 },
+                  "historyDetails": { "nodes": [ { "id": "c2" }, { "id": "c1" } ] } },
+                { "bankaraMatchChallenge": null,
+                  "historyDetails": { "nodes": [ { "id": "o1" } ] } }
+            ] } },
+            "xBattleHistories": { "historyGroups": { "nodes": [
+                { "xMatchMeasurement": { "winCount": 3 },
+                  "historyDetails": { "nodes": [ { "id": "x3" }, { "id": "x2" }, { "id": "x1" } ] } }
+            ] } },
+            "regularBattleHistories": { "historyGroups": { "nodes": [
+                { "historyDetails": { "nodes": [ { "id": "r1" } ] } }
+            ] } }
+        } });
+        let sets = extract_set_groups(&resp);
+        assert_eq!(sets, vec![
+            vec!["c2".to_string(), "c1".to_string()],
+            vec!["x3".to_string(), "x2".to_string(), "x1".to_string()],
+        ]);
     }
 }
 

@@ -74,6 +74,7 @@
     "promoSuccess": "Promoted!",
     "xPower": "X Power",
     "set": "Set",
+    "setNth": "Game {{n}}",
     "setWin": "{{n}}W",
     "setLose": "{{n}}L",
     "openStatink": "Open on stat.ink",
