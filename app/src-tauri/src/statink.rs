@@ -223,7 +223,8 @@ fn build_team_players(players_val: Option<&serde_json::Value>) -> Vec<serde_json
 ///   "S"    → ("s",  None)
 ///   "A+"   → ("a+", None)
 /// s3s の `re.split('([0-9]+)', child["udemae"].lower())` と同等。
-fn parse_udemae(s: &str) -> (String, Option<i64>) {
+/// DB の `rank_before` / `rank_before_s_plus` もこの形で持つ（#912・stat.ink から取り込んだ行と揃える）。
+pub(crate) fn parse_udemae(s: &str) -> (String, Option<i64>) {
     let lower = s.to_lowercase();
     match lower.find(|c: char| c.is_ascii_digit()) {
         Some(pos) => {
@@ -232,6 +233,18 @@ fn parse_udemae(s: &str) -> (String, Option<i64>) {
             (rank, num)
         }
         None => (lower, None),
+    }
+}
+
+/// 詳細の JSON に `udemae` が無ければ、DB の列から作ったウデマエ（"S+15" など）を入れる（#912）。
+/// 詳細に値があるときはそちらを優先して触らない。
+fn fill_udemae_from_column(detail: &mut serde_json::Value, udemae: Option<&str>) {
+    let Some(udemae) = udemae.filter(|s| !s.is_empty()) else { return };
+    if detail.pointer("/udemae").and_then(|v| v.as_str()).is_some() {
+        return;
+    }
+    if let Some(obj) = detail.as_object_mut() {
+        obj.insert("udemae".to_string(), serde_json::json!(udemae));
     }
 }
 
@@ -634,13 +647,16 @@ pub async fn upload_pending_battles(
 
     for battle in &battles {
         // raw_json は detail_fetched 後は vsHistoryDetail の内容
-        let detail: serde_json::Value = match serde_json::from_str(&battle.raw_json) {
+        let mut detail: serde_json::Value = match serde_json::from_str(&battle.raw_json) {
             Ok(v) => v,
             Err(e) => {
                 log::warn!("[stat.ink] raw_json パース失敗 id={}: {e}", &battle.id[..battle.id.len().min(20)]);
                 continue;
             }
         };
+        // バトル前のウデマエは一覧クエリにしか無く、詳細の raw_json には入らない（#912）。
+        // 一覧から保存した列の値を補って、s3s と同じく rank_before を送る。
+        fill_udemae_from_column(&mut detail, battle.udemae_before.as_deref());
 
         // parent_json は履歴クエリの親ノード（最新バトルのみ非 NULL）
         let parent: Option<serde_json::Value> = battle.parent_json.as_deref()
@@ -896,5 +912,36 @@ mod tests {
     #[test]
     fn parse_udemae_lowercase_input() {
         assert_eq!(parse_udemae("s+0"), ("s+".to_string(), Some(0)));
+    }
+
+    /// 詳細に udemae が無いときは列の値で補い、rank_before として送られる（#912）。
+    #[test]
+    fn udemae_from_column_reaches_rank_before() {
+        let mut detail = serde_json::json!({
+            "id": "VnNIaXN0b3J5RGV0YWlsLXUtYTpCQU5LQVJBOjIwMjYxMTA5VDE0MjMzMl94",
+            "vsMode": { "mode": "BANKARA" },
+            "bankaraMatch": { "mode": "CHALLENGE" }
+        });
+        fill_udemae_from_column(&mut detail, Some("S+15"));
+        assert_eq!(detail["udemae"], "S+15");
+
+        let parent = serde_json::json!({ "udemaeAfter": "S+16", "isPromo": false });
+        let payload = build_payload(&detail, Some(&parent));
+        assert_eq!(payload["rank_before"], "s+");
+        assert_eq!(payload["rank_before_s_plus"], 15);
+        assert_eq!(payload["rank_after_s_plus"], 16);
+    }
+
+    /// 詳細に udemae があればそちらを優先する。列が空なら何もしない。
+    #[test]
+    fn udemae_from_column_keeps_detail_value() {
+        let mut detail = serde_json::json!({ "udemae": "A+" });
+        fill_udemae_from_column(&mut detail, Some("S+15"));
+        assert_eq!(detail["udemae"], "A+");
+
+        let mut empty = serde_json::json!({});
+        fill_udemae_from_column(&mut empty, None);
+        fill_udemae_from_column(&mut empty, Some(""));
+        assert!(empty.get("udemae").is_none());
     }
 }

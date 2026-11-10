@@ -388,6 +388,62 @@ fn old_result_to_result_id(result: &str) -> Option<i64> {
 }
 
 // ---------------------------------------------------------------------------
+// ウデマエと X パワーの前後（#912）
+// ---------------------------------------------------------------------------
+
+/// `battle b` の rank_before / rank_before_s_plus から、表示用のウデマエ（"S+15" など）を作る SQL 式。
+/// stat.ink から取り込んだ行（"s+" と 1）も、SplatNet 3 から取った行も同じ形で出る。
+pub(crate) const UDEMAE_BEFORE_SQL: &str =
+    "CASE WHEN b.rank_before IS NULL THEN NULL \
+          ELSE UPPER(b.rank_before) || COALESCE(CAST(b.rank_before_s_plus AS TEXT), '') END";
+
+/// ウデマエと X パワーの前後。DB の列にそのまま入れる形。
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct RankPower {
+    pub rank_before:        Option<String>,
+    pub rank_before_s_plus: Option<i64>,
+    pub rank_after:         Option<String>,
+    pub rank_after_s_plus:  Option<i64>,
+    pub x_power_before:     Option<f64>,
+    pub x_power_after:      Option<f64>,
+}
+
+/// SplatNet 3 のバトルの JSON と履歴グループの親から、ウデマエと X パワーの前後を取り出す（#912）。
+///
+/// - `raw_json`: 一覧クエリのノード、または詳細クエリの vsHistoryDetail。
+///   - `udemae`（バトル前のウデマエ）は**一覧にしか無い**。詳細に置き換わると消える。
+///   - `xMatch.lastXPower`（バトル前＝セット開始時の X パワー）は**詳細にしか無い**。
+/// - `parent_json`: 履歴グループの親（bankaraMatchChallenge / xMatchMeasurement）。
+///   グループの最新バトルにだけ付く。`udemaeAfter` / `xPowerAfter` はセットが終わったときだけ値が入る。
+///
+/// stat.ink から取り込んだ行の JSON にはどれも無いので、すべて None になる。
+pub(crate) fn rank_power_from_json(raw_json: &str, parent_json: Option<&str>) -> RankPower {
+    let raw: serde_json::Value = serde_json::from_str(raw_json).unwrap_or(serde_json::Value::Null);
+    let parent: serde_json::Value = parent_json
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or(serde_json::Value::Null);
+
+    let split = |s: Option<&str>| match s.filter(|s| !s.is_empty()) {
+        Some(s) => {
+            let (rank, sp) = crate::statink::parse_udemae(s);
+            (Some(rank), sp)
+        }
+        None => (None, None),
+    };
+    let (rank_before, rank_before_s_plus) = split(raw.pointer("/udemae").and_then(|v| v.as_str()));
+    let (rank_after, rank_after_s_plus) = split(parent.pointer("/udemaeAfter").and_then(|v| v.as_str()));
+
+    RankPower {
+        rank_before,
+        rank_before_s_plus,
+        rank_after,
+        rank_after_s_plus,
+        x_power_before: raw.pointer("/xMatch/lastXPower").and_then(|v| v.as_f64()),
+        x_power_after:  parent.pointer("/xPowerAfter").and_then(|v| v.as_f64()),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 型
 // ---------------------------------------------------------------------------
 
@@ -535,14 +591,17 @@ async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), Strin
 
     let kill_or_assist = row.kill + row.assist;
     let is_knockout: Option<i64> = knockout_flag(row.knockout.as_deref());
+    // ウデマエ・X パワーの前後は JSON から取り出す（#912）。
+    let rp = rank_power_from_json(&row.raw_json, row.parent_json.as_deref());
 
     sqlx::query(
         "INSERT OR IGNORE INTO battle
             (id, played_at, lobby_id, rule_id, map_id, result_id, weapon_id,
              is_knockout, kill, assist, kill_or_assist, death, special, inked, duration,
-             rank_before, rank_after, x_power_after, raw_json, fetched_at, statink_uuid, parent_json,
+             rank_before, rank_before_s_plus, rank_after, rank_after_s_plus,
+             x_power_before, x_power_after, raw_json, fetched_at, statink_uuid, parent_json,
              knockout, sub_weapon, special_weapon, awards, my_team, other_teams)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&row.id)
     .bind(&row.played_at)
@@ -559,9 +618,12 @@ async fn shadow_write_battle(pool: &DbPool, row: &BattleRow) -> Result<(), Strin
     .bind(row.special)
     .bind(row.inked)
     .bind(row.duration)
-    .bind(&row.rank_before)
-    .bind(&row.rank_after)
-    .bind(row.x_power)
+    .bind(&rp.rank_before)
+    .bind(rp.rank_before_s_plus)
+    .bind(&rp.rank_after)
+    .bind(rp.rank_after_s_plus)
+    .bind(rp.x_power_before)
+    .bind(rp.x_power_after)
     .bind(&row.raw_json)
     .bind(&row.fetched_at)
     .bind(&row.statink_uuid)
@@ -713,12 +775,16 @@ async fn shadow_update_battle_detail(
     };
     let is_knockout: Option<i64> = knockout_flag(knockout);
     let kill_or_assist = kill + assist;
+    // バトル前の X パワーは詳細にしか無い（#912）。ウデマエは逆に一覧にしか無いので、
+    // 挿入時に入れた rank_* は触らない。値が取れないときは既存を残す。
+    let x_power_before = rank_power_from_json(raw_json, None).x_power_before;
 
     sqlx::query(
         "UPDATE battle
             SET kill=?, assist=?, kill_or_assist=?, death=?, special=?, inked=?,
                 raw_json=?, rule_id=?, lobby_id=?, is_knockout=?, detail_fetched=1,
-                knockout=?, sub_weapon=?, special_weapon=?, awards=?, my_team=?, other_teams=?
+                knockout=?, sub_weapon=?, special_weapon=?, awards=?, my_team=?, other_teams=?,
+                x_power_before=COALESCE(?, x_power_before)
           WHERE id=?",
     )
     .bind(kill)
@@ -737,6 +803,7 @@ async fn shadow_update_battle_detail(
     .bind(awards)
     .bind(my_team)
     .bind(other_teams)
+    .bind(x_power_before)
     .bind(id)
     .execute(pool.as_ref())
     .await
@@ -1290,9 +1357,9 @@ pub async fn db_list_battles(
                 b.special                AS special,
                 b.inked                  AS inked,
                 b.duration               AS duration,
-                b.rank_before            AS rank_before,
+                {UDEMAE_BEFORE_SQL}      AS rank_before,
                 b.rank_after             AS rank_after,
-                b.x_power_after          AS x_power,
+                b.x_power_before         AS x_power,
                 COALESCE(b.raw_json, '') AS raw_json,
                 b.fetched_at             AS fetched_at,
                 b.knockout               AS knockout,
@@ -2610,7 +2677,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// 適用済みマイグレーションの最新版。**新しい `if current_version < N` ブロックを足したら
 /// 必ずここを N に更新する。** 更新を忘れると `migrate_battle_ids` 冒頭の早期 return に
 /// 阻まれ、追加したマイグレーションが一度も実行されない（#206・#306 の再発防止）。
-const LATEST_MIGRATION_VERSION: i64 = 25;
+const LATEST_MIGRATION_VERSION: i64 = 26;
 
 /// version 2: mode 判定バグ修正版で全件再処理
 /// version 3: kill カウントを kill_or_assist から実キル数に修正
@@ -2637,6 +2704,7 @@ const LATEST_MIGRATION_VERSION: i64 = 25;
 /// version 24: ブキ・ステージの英語名を静的マスターで backfill (#712)
 /// version 25: v24 backfill の再実行救済（#712 の追補。v24 導入時に本コメント下の
 ///             注意書きどおり LATEST_MIGRATION_VERSION の更新を怠り、三度目の #206 / #306 を踏んだ）
+/// version 26: ウデマエ・X パワーの前後を raw_json / parent_json から埋め直す (#912)
 ///
 /// ⚠ **マイグレーションを追加したら `LATEST_MIGRATION_VERSION` も必ず上げること。**
 ///    ここが古いままだと早期 return に阻まれて新しい版が一度も走らない（#206 / #306 / #712 で 3 度踏んだ）。
@@ -3960,7 +4028,89 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
         );
     }
 
+    // version 26: ウデマエ・X パワーの前後を JSON から埋め直す（#912）。
+    if current_version < 26 {
+        let (cleared, filled) = backfill_rank_and_x_power(pool).await?;
+        sqlx::query("PRAGMA user_version = 26")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!(
+            "migrate v26: ウデマエ・X パワーの前後を埋め直し（誤った rank_before を {cleared} 件消去・{filled} 件に値を入れた）"
+        );
+    }
+
     Ok(updated)
+}
+
+/// 既存のバトルのウデマエ・X パワーの前後を、raw_json / parent_json から埋め直す（#912・migrate v26）。
+///
+/// 1. SplatNet 3 から取った行の `rank_before` には、ウデマエではなく
+///    ウデマエポイントの増減（"-20" など）が入っていたので消す。
+/// 2. バンカラ・X マッチの行を [`rank_power_from_json`] で埋める。
+///    - 入れるのは空の列だけ。stat.ink から取り込んだ行（どの列も入っている）は変わらない。
+///    - 詳細を取ったあとの行は、raw_json からバトル前のウデマエが消えているので戻せない（空のまま）。
+///
+/// 返り値: (消した行数, 値を入れた行数)。
+pub(crate) async fn backfill_rank_and_x_power(pool: &DbPool) -> Result<(u64, u64), String> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    let cleared = sqlx::query(
+        "UPDATE battle SET rank_before = NULL
+          WHERE rank_before_s_plus IS NULL
+            AND (rank_before GLOB '[0-9]*' OR rank_before GLOB '-[0-9]*')",
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?
+    .rows_affected();
+
+    let rows = sqlx::query(
+        "SELECT b.id, b.raw_json, b.parent_json
+           FROM battle b
+           JOIN lobby l ON l.id = b.lobby_id
+          WHERE l.key IN ('bankara_open', 'bankara_challenge', 'xmatch')
+            AND b.raw_json IS NOT NULL",
+    )
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut filled = 0u64;
+    for r in rows {
+        let id: String = r.get("id");
+        let raw: String = r.get("raw_json");
+        let parent: Option<String> = r.get("parent_json");
+        let rp = rank_power_from_json(&raw, parent.as_deref());
+        if rp == RankPower::default() {
+            continue;
+        }
+        // SET の右辺は更新前の値で評価されるので、ウデマエと S+ の数字は組で入れられる。
+        sqlx::query(
+            "UPDATE battle SET
+                rank_before        = COALESCE(rank_before, ?),
+                rank_before_s_plus = CASE WHEN rank_before IS NULL THEN ? ELSE rank_before_s_plus END,
+                rank_after         = COALESCE(rank_after, ?),
+                rank_after_s_plus  = CASE WHEN rank_after IS NULL THEN ? ELSE rank_after_s_plus END,
+                x_power_before     = COALESCE(x_power_before, ?),
+                x_power_after      = COALESCE(x_power_after, ?)
+              WHERE id = ?",
+        )
+        .bind(&rp.rank_before)
+        .bind(rp.rank_before_s_plus)
+        .bind(&rp.rank_after)
+        .bind(rp.rank_after_s_plus)
+        .bind(rp.x_power_before)
+        .bind(rp.x_power_after)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        filled += 1;
+    }
+
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok((cleared, filled))
 }
 
 // ---------------------------------------------------------------------------
@@ -5271,17 +5421,20 @@ pub struct StatinkBattleRow {
     pub id: String,
     pub raw_json: String,
     pub parent_json: Option<String>,
+    /// バトル前のウデマエ（"S+15" など）。詳細の raw_json には無いので列から補う（#912）。
+    pub udemae_before: Option<String>,
 }
 
 /// statink_uuid が未設定のバトル一覧を返す（古い順）。新スキーマから読む。
 pub async fn get_battles_not_uploaded(pool: &DbPool) -> Result<Vec<StatinkBattleRow>, String> {
-    let rows = sqlx::query_as::<_, StatinkBattleRow>(
-        "SELECT id, raw_json, parent_json FROM battle
-         WHERE statink_uuid IS NULL
-           AND detail_fetched = 1
-           AND raw_json IS NOT NULL
-         ORDER BY played_at ASC",
-    )
+    let sql = format!(
+        "SELECT b.id, b.raw_json, b.parent_json, {UDEMAE_BEFORE_SQL} AS udemae_before FROM battle b
+         WHERE b.statink_uuid IS NULL
+           AND b.detail_fetched = 1
+           AND b.raw_json IS NOT NULL
+         ORDER BY b.played_at ASC"
+    );
+    let rows = sqlx::query_as::<_, StatinkBattleRow>(&sql)
     .fetch_all(pool.as_ref())
     .await
     .map_err(|e| e.to_string())?;
@@ -5810,5 +5963,182 @@ mod weapon_record_upsert_tests {
             .await
             .unwrap();
         assert_eq!(read_power(&pool, "スシ").await, (Some(1800.0), Some(2600.0)));
+    }
+}
+
+/// ウデマエ・X パワーの前後の保存（#912）。
+#[cfg(test)]
+mod rank_power_tests {
+    use super::*;
+
+    /// 本番と同じ順序（SCHEMA → LEGACY_ALTERS → マイグレーション）で組んだ空の DB。
+    async fn pool() -> DbPool {
+        let raw = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::raw_sql(SCHEMA).execute(&raw).await.unwrap();
+        for sql in LEGACY_ALTERS {
+            let _ = sqlx::query(sql).execute(&raw).await;
+        }
+        let pool: DbPool = Arc::new(raw);
+        migrate_battle_ids(&pool).await.unwrap();
+        pool
+    }
+
+    fn row(id: &str, mode: &str, raw_json: serde_json::Value, parent: Option<serde_json::Value>) -> BattleRow {
+        BattleRow {
+            id: id.to_string(),
+            played_at: "2026-11-09T14:23:32Z".to_string(),
+            mode: mode.to_string(),
+            rule: String::new(),
+            stage: "yunohana".to_string(),
+            stage_name: None,
+            stage_name_en: None,
+            weapon: "スプラシューター".to_string(),
+            weapon_name_ja: None,
+            weapon_name_en: None,
+            result: "win".to_string(),
+            kill: 0, death: 0, assist: 0, special: 0, inked: 0, duration: 0,
+            rank_before: None,
+            rank_after: None,
+            x_power: None,
+            raw_json: raw_json.to_string(),
+            fetched_at: "2026-11-09T15:00:00Z".to_string(),
+            knockout: None, sub_weapon: None, special_weapon: None, awards: None,
+            my_team: None, other_teams: None, statink_uuid: None,
+            parent_json: parent.map(|p| p.to_string()),
+        }
+    }
+
+    type Cols = (Option<String>, Option<i64>, Option<String>, Option<i64>, Option<f64>, Option<f64>);
+
+    async fn cols(pool: &DbPool, id: &str) -> Cols {
+        let r = sqlx::query(
+            "SELECT rank_before, rank_before_s_plus, rank_after, rank_after_s_plus,
+                    x_power_before, x_power_after FROM battle WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+        (r.get(0), r.get(1), r.get(2), r.get(3), r.get(4), r.get(5))
+    }
+
+    #[test]
+    fn extracts_from_list_node_and_parent() {
+        let raw = r#"{"udemae":"S+15","bankaraMatch":{"earnedUdemaePoint":-20}}"#;
+        let parent = r#"{"udemaeAfter":"S+16","state":"SUCCEEDED"}"#;
+        let rp = rank_power_from_json(raw, Some(parent));
+        assert_eq!(rp.rank_before.as_deref(), Some("s+"));
+        assert_eq!(rp.rank_before_s_plus, Some(15));
+        assert_eq!(rp.rank_after.as_deref(), Some("s+"));
+        assert_eq!(rp.rank_after_s_plus, Some(16));
+        assert_eq!(rp.x_power_before, None);
+    }
+
+    /// 進行中のセットでは xPowerAfter が null なので入れない。
+    #[test]
+    fn in_progress_set_has_no_x_power_after() {
+        let raw = r#"{"xMatch":{"lastXPower":1489.3}}"#;
+        let parent = r#"{"state":"INPROGRESS","xPowerAfter":null}"#;
+        let rp = rank_power_from_json(raw, Some(parent));
+        assert_eq!(rp.x_power_before, Some(1489.3));
+        assert_eq!(rp.x_power_after, None);
+    }
+
+    /// 壊れた JSON・stat.ink 形式の JSON では何も取り出さない。
+    #[test]
+    fn unknown_json_gives_nothing() {
+        assert_eq!(rank_power_from_json("not json", Some("{")), RankPower::default());
+        let statink = r#"{"rank_before":{"key":"s+"},"x_power_before":2000.0}"#;
+        assert_eq!(rank_power_from_json(statink, None), RankPower::default());
+    }
+
+    /// 一覧で入れた時点でウデマエと確定後 X パワーが入り、詳細を取ると X パワーの前が埋まる。
+    /// ウデマエは詳細で消えない。
+    #[tokio::test]
+    async fn insert_then_detail_fills_columns() {
+        let pool = pool().await;
+        let bankara = row(
+            "bk1", "bankara_challenge",
+            serde_json::json!({ "udemae": "S+15" }),
+            Some(serde_json::json!({ "udemaeAfter": "S+16" })),
+        );
+        let xmatch = row(
+            "x1", "x",
+            serde_json::json!({ "id": "x1" }),
+            Some(serde_json::json!({ "state": "COMPLETED", "xPowerAfter": 1514.3 })),
+        );
+        assert_eq!(insert_battles(&pool, vec![bankara, xmatch]).await.unwrap(), 2);
+
+        assert_eq!(
+            cols(&pool, "bk1").await,
+            (Some("s+".into()), Some(15), Some("s+".into()), Some(16), None, None)
+        );
+        assert_eq!(cols(&pool, "x1").await, (None, None, None, None, None, Some(1514.3)));
+
+        let detail_x = serde_json::json!({ "xMatch": { "lastXPower": 1489.3 } }).to_string();
+        update_battle_detail(&pool, "x1", 0, 0, 0, 0, 0, &detail_x, "asari", "x",
+            None, None, None, None, None, None).await.unwrap();
+        assert_eq!(cols(&pool, "x1").await, (None, None, None, None, Some(1489.3), Some(1514.3)));
+
+        // 詳細の raw_json には udemae が無いが、列のウデマエは残る。
+        let detail_bk = serde_json::json!({ "bankaraMatch": { "mode": "CHALLENGE" } }).to_string();
+        update_battle_detail(&pool, "bk1", 0, 0, 0, 0, 0, &detail_bk, "area", "bankara_challenge",
+            None, None, None, None, None, None).await.unwrap();
+        assert_eq!(cols(&pool, "bk1").await.0.as_deref(), Some("s+"));
+
+        // 画面と stat.ink 送信は "S+15" の形で読む。
+        let shown: Option<String> = sqlx::query_scalar(&format!(
+            "SELECT {UDEMAE_BEFORE_SQL} FROM battle b WHERE b.id = 'bk1'"
+        ))
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+        assert_eq!(shown.as_deref(), Some("S+15"));
+        let pending = get_battles_not_uploaded(&pool).await.unwrap();
+        let bk = pending.iter().find(|b| b.id == "bk1").unwrap();
+        assert_eq!(bk.udemae_before.as_deref(), Some("S+15"));
+    }
+
+    /// 移行: 誤った rank_before（ウデマエポイント）を消し、JSON から空の列だけ埋める。
+    /// stat.ink から取り込んだ行の値は変えない。
+    #[tokio::test]
+    async fn backfill_fixes_old_rows_and_keeps_statink_rows() {
+        let pool = pool().await;
+        insert_battles(&pool, vec![
+            row("bk_list", "bankara_challenge", serde_json::json!({ "udemae": "S+15" }), None),
+            row("bk_detail", "bankara_challenge", serde_json::json!({ "bankaraMatch": {} }),
+                Some(serde_json::json!({ "udemaeAfter": "S+16" }))),
+            row("x_old", "x", serde_json::json!({ "xMatch": { "lastXPower": 1489.3 } }),
+                Some(serde_json::json!({ "state": "COMPLETED", "xPowerAfter": 1514.3 }))),
+            row("statink", "x", serde_json::json!({ "x_power_before": 2000.0 }), None),
+        ]).await.unwrap();
+
+        // 直す前の状態を作る: SplatNet 3 の行は列が空・rank_before にはポイントの増減。
+        sqlx::query(
+            "UPDATE battle SET rank_before = '-20', rank_before_s_plus = NULL, rank_after = NULL,
+                rank_after_s_plus = NULL, x_power_before = NULL, x_power_after = NULL
+              WHERE id IN ('bk_list', 'bk_detail', 'x_old')",
+        ).execute(pool.as_ref()).await.unwrap();
+        sqlx::query(
+            "UPDATE battle SET rank_before = 's+', rank_before_s_plus = 1,
+                x_power_before = 2000.0, x_power_after = 2025.0 WHERE id = 'statink'",
+        ).execute(pool.as_ref()).await.unwrap();
+
+        let (cleared, _filled) = backfill_rank_and_x_power(&pool).await.unwrap();
+        assert_eq!(cleared, 3);
+
+        assert_eq!(cols(&pool, "bk_list").await.0.as_deref(), Some("s+"));
+        assert_eq!(cols(&pool, "bk_list").await.1, Some(15));
+        // 詳細を取ったあとの行はバトル前のウデマエを戻せない。確定後だけ入る。
+        assert_eq!(cols(&pool, "bk_detail").await, (None, None, Some("s+".into()), Some(16), None, None));
+        assert_eq!(cols(&pool, "x_old").await, (None, None, None, None, Some(1489.3), Some(1514.3)));
+        assert_eq!(
+            cols(&pool, "statink").await,
+            (Some("s+".into()), Some(1), None, None, Some(2000.0), Some(2025.0))
+        );
     }
 }

@@ -298,8 +298,10 @@ export interface BattleRow {
   special: number
   inked: number
   duration: number
+  /** バトル前のウデマエ（"S+15" など）。一覧取得時に保存した列から作る（#912）。 */
   rank_before: string | null
   rank_after: string | null
+  /** バトル前（セット開始時）の X パワー。DB の x_power_before 列（#912）。 */
   x_power: number | null
   raw_json: string
   fetched_at: string

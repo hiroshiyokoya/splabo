@@ -237,11 +237,7 @@ fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str, parent: Option
         .unwrap_or("");
     let mode = if bankara_mode == "CHALLENGE" { "bankara_challenge" } else { "bankara_open" };
 
-    let rank_before = node
-        .pointer("/bankaraMatch/earnedUdemaePoint")
-        .and_then(|x| x.as_i64())
-        .map(|p| p.to_string());
-
+    // ウデマエの前後は DB に入れるときに raw_json / parent_json から取り出す（db::rank_power_from_json・#912）。
     BattleRow {
         id,
         played_at,
@@ -260,7 +256,7 @@ fn parse_bankara_node(node: &serde_json::Value, fetched_at: &str, parent: Option
         special,
         inked,
         duration,
-        rank_before,
+        rank_before: None,
         rank_after: None,
         x_power: None,
         raw_json: node.to_string(),
@@ -288,10 +284,8 @@ fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str, parent: Option<
     let result = parse_judgement(node);
     let duration = i64_val(node, "duration");
 
-    let x_power = node
-        .pointer("/xMatch/lastXPower")
-        .and_then(|x| x.as_f64());
-
+    // X パワーの前後は DB に入れるときに raw_json / parent_json から取り出す（db::rank_power_from_json・#912）。
+    // バトル前の値（xMatch.lastXPower）は一覧には無く、詳細を取ったときに埋まる。
     BattleRow {
         id,
         played_at,
@@ -312,7 +306,7 @@ fn parse_xmatch_node(node: &serde_json::Value, fetched_at: &str, parent: Option<
         duration,
         rank_before: None,
         rank_after: None,
-        x_power,
+        x_power: None,
         raw_json: node.to_string(),
         fetched_at: fetched_at.to_string(),
         knockout: None,
