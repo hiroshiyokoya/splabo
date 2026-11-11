@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { call } from '../utils/backend'
 import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import type { BattleRow, BattleStats, CurrentPower, Filters, ParentJson, Player, Team, VsHistoryDetail, Award } from '../types'
+import type { BattleRow, BattleStats, Filters, ParentJson, Player, Team, VsHistoryDetail, Award } from '../types'
 import {
   filtersToRange, modeLabel, ruleLabel, resultLabel, modeFilterArg, ruleFilterArg,
   fmtKillWithAssist, fmtKillRatioWithContrib,
@@ -66,8 +66,6 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
 
   // 集計
   const [stats, setStats] = useState<BattleStats | null>(null)
-  // 今の X パワーとウデマエ（絞り込みには従わない・#913）
-  const [power, setPower] = useState<CurrentPower | null>(null)
 
   // データ取得
   const [refreshKey, setRefreshKey] = useState(0)
@@ -92,7 +90,6 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
       })
     })
     loadAbilityImages().then(setAbilityImages)
-    call<CurrentPower>('db_current_power').then(setPower).catch(console.error)
     call<{ id: string; name: string }[]>('db_stages_used').then(stages => {
       Promise.all(
         stages.map(s =>
@@ -142,7 +139,6 @@ export function BattleLog({ filters, statinkScreenName }: Props) {
 
   return (
     <div className="battle-log book--fill">
-      {power && <CurrentPowerCards power={power} />}
       {stats && (
         <div className="stat-cards" style={{ marginBottom: 12 }}>
           <LogStatCard label={t('dashboard.totalBattles')}        value={stats.total.toLocaleString()} />
@@ -753,61 +749,11 @@ function StatItem({ label, value }: { label: string; value: number | string }) {
   )
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
-/**
- * バトルタブの上のパネル（#913）。ルールごとの今の X パワー 4 枚と、今のウデマエ。
- * どれも分からない（X マッチもバンカラもしていない）ときは出さない。
- * 値の時点はカードに重ねると出る。1 日以上前の値には「n 日前」を添える。
- */
-function CurrentPowerCards({ power }: { power: CurrentPower }) {
-  const { t, i18n } = useTranslation()
-  if (power.x_powers.every(x => x.x_power === null) && power.udemae === null) return null
-
-  const asOf = (at: string | null) =>
-    at ? t('battles.asOf', {
-      time: new Date(at).toLocaleString(dateLocale(i18n.language), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
-    }) : undefined
-  const ago = (at: string | null) => {
-    if (!at) return undefined
-    const days = Math.floor((Date.now() - new Date(at).getTime()) / DAY_MS)
-    return days >= 1 ? t('battles.daysAgo', { n: days }) : undefined
-  }
-
+function LogStatCard({ label, value, valueColor, small }: { label: string; value: string; valueColor?: string; small?: boolean }) {
   return (
-    <div className="stat-cards stat-cards--current" style={{ marginBottom: 12 }}>
-      {power.x_powers.map(x => (
-        <LogStatCard
-          key={x.rule}
-          label={`${ruleLabel(x.rule)} XP`}
-          value={x.x_power !== null ? x.x_power.toFixed(1) : t('battles.notMeasured')}
-          small={x.x_power === null}
-          title={asOf(x.at)}
-          sub={x.x_power !== null ? ago(x.at) : undefined}
-        />
-      ))}
-      <LogStatCard
-        label={t('battles.currentUdemae')}
-        value={power.udemae ?? '-'}
-        title={asOf(power.udemae_at)}
-        sub={ago(power.udemae_at)}
-      />
-    </div>
-  )
-}
-
-function LogStatCard({ label, value, valueColor, small, title, sub }: {
-  label: string; value: string; valueColor?: string; small?: boolean
-  /** カードに重ねたときに出す説明 */
-  title?: string
-  /** 値の下に小さく添える一言 */
-  sub?: string
-}) {
-  return (
-    <div className="stat-card" title={title}>
+    <div className="stat-card">
       <div className="stat-label">{label}</div>
       <div className={`stat-value${small ? ' stat-value--small' : ''}`} style={valueColor ? { color: valueColor } : undefined}>{value}</div>
-      {sub && <div className="stat-sub">{sub}</div>}
     </div>
   )
 }

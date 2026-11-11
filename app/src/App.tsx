@@ -4,6 +4,7 @@ import { call } from './utils/backend'
 import { listen } from '@tauri-apps/api/event'
 import { Dashboard } from './components/Dashboard'
 import { BattleLog } from './components/BattleLog'
+import { CurrentPowerPanel } from './components/CurrentPowerPanel'
 import { FilterBar } from './components/FilterBar'
 import { WeaponBook } from './components/WeaponBook'
 import { StageBook } from './components/StageBook'
@@ -454,6 +455,8 @@ export default function App() {
                 />
               </div>
             </div>
+            {/* 今の X パワーとウデマエ（#913）。ダッシュボード / 一覧の両方に出す。 */}
+            <CurrentPowerPanel />
             {battlesView === 'dashboard' ? (
               <Dashboard
                 filters={filters}

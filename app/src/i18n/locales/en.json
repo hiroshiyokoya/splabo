@@ -75,6 +75,7 @@
     "xPower": "X Power",
     "set": "Set",
     "setNth": "Game {{n}}",
+    "currentPowerTitle": "Current X Power and Rank (latest values, regardless of period or filters)",
     "currentUdemae": "Rank",
     "notMeasured": "Not measured",
     "asOf": "As of {{time}}",

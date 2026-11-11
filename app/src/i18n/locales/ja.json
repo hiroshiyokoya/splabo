@@ -75,6 +75,7 @@
     "xPower": "X パワー",
     "set": "セット",
     "setNth": "{{n}} 戦目",
+    "currentPowerTitle": "現在の X パワーとウデマエ（期間・絞り込みに関係なく最新の値）",
     "currentUdemae": "ウデマエ",
     "notMeasured": "未計測",
     "asOf": "{{time}} 時点",
