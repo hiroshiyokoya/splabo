@@ -165,6 +165,7 @@ const axisLabelStyle = {
  *   （connectNulls={false}）。孤立バケット（両隣が欠測）は点のみ描かれる。
  * - X パワー・ブキチャレパワー（#914）は `power` から取る。値の無い期間をまたいで線をつなぐ。
  *   ブキチャレパワーはブキごとに 1 本ずつ線を引く。
+ * - X 軸の範囲は、どれかの線に値がある最初のバケットから最後のバケットまで。
  * - 勝率グループの軸は固定 0–100% スケール、その他は相対スケール。
  * - 勝率以外の Y 軸目盛は整数（#639）。回/バトルが 1.5 のように割れるのを防ぐ。
  * - ツールチップは Recharts 標準 Tooltip（#443）。全系列の値を 1 つにまとめて表示。
@@ -185,7 +186,7 @@ export function LineChart({
     ? [...power.x_power.map(p => p.key), ...power.weapon_power.map(p => p.key)]
     : []
   const slots = buildTimeSeries(data, groupBy, powerKeys)
-  const chartData: LinePoint[] = slots.map(s => {
+  const allPoints: LinePoint[] = slots.map(s => {
     const key = bucketKeyOf(new Date(s.t), groupBy)
     return {
       t:      s.t,
@@ -194,6 +195,12 @@ export function LineChart({
       values: Object.fromEntries(series.map(ls => [ls.id, ls.value(s, key)])),
     }
   })
+  // X 軸は、選んだ線のどれかに値がある最初から最後まで（#914）。パワーだけを選んだとき、
+  // 試合はあっても値の無い期間（X マッチ・チャレンジをしていない期間）から始めない。
+  const hasValue = (p: LinePoint) => series.some(s => p.values[s.id] !== null)
+  const first = allPoints.findIndex(hasValue)
+  const last  = allPoints.length - 1 - [...allPoints].reverse().findIndex(hasValue)
+  const chartData = first < 0 ? allPoints : allPoints.slice(first, last + 1)
 
   // 軸の左右割当: 最初に選んだ系列のグループ = 左軸、2 つ目に現れた別グループ = 右軸。
   // それ以降の同グループ系列は同じ軸に同居する（UI 側で軸グループは 2 つまでに制限済み）。

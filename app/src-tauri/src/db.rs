@@ -1754,6 +1754,7 @@ pub struct PowerSeries {
 /// - ブキチャレパワー: バンカラチャレンジの詳細（raw_json）の `bankaraMatch.weaponPower`。
 ///   そのバケットでそのブキを最後に使った試合の値。期間とブキの絞り込みだけに従う。
 ///   線を引くのは、期間内にチャレンジで使った回数（値のある試合）が多い順に `top_n` 本。
+/// - どちらも 0 以下の値は使わない（ブキチャレパワーは計測前に 0 が入ることがある）。
 pub(crate) async fn power_series(
     pool: &DbPool,
     group_by: &str,
@@ -1773,7 +1774,7 @@ pub(crate) async fn power_series(
                FROM battle b
                JOIN lobby l ON l.id = b.lobby_id
                JOIN rule  r ON r.id = b.rule_id
-              WHERE l.key = 'xmatch' AND b.x_power_after IS NOT NULL AND {period}
+              WHERE l.key = 'xmatch' AND b.x_power_after > 0 AND {period}
          ) WHERE rn = 1
          ORDER BY key, rule_key"
     );
@@ -1799,7 +1800,7 @@ pub(crate) async fn power_series(
                JOIN weapon w ON w.id = b.weapon_id
               WHERE l.key = 'bankara_challenge' AND {period}
                 AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
-         ) WHERE wp IS NOT NULL"
+         ) WHERE wp > 0"
     );
     let weapons_sql = format!(
         "WITH rows AS ({wp_rows})
@@ -6632,6 +6633,9 @@ mod rank_power_tests {
             // 詳細を取る前（値なし）は数えない
             challenge("c7", "N-ZAP85",          "2026-11-09T14:00:00Z", None),
             challenge("c8", "N-ZAP85",          "2026-11-09T14:30:00Z", None),
+            // 0 も数えない・点にしない
+            challenge("c9", "わかばシューター", "2026-11-11T12:00:00Z", Some(0.0)),
+            challenge("c10", "わかばシューター", "2026-11-11T13:00:00Z", Some(0.0)),
         ]).await.unwrap();
 
         let s = power_series(&pool, "day", None, None, None, 2).await.unwrap();
