@@ -119,6 +119,7 @@ pub fn run() {
             db::db_battle_count,
             db::db_list_battles,
             db::db_power_series,
+            db::db_current_power,
             db::db_weapons_used,
             db::db_stages_used,
             db::db_summary,

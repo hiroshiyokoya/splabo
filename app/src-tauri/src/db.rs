@@ -798,6 +798,169 @@ pub async fn assign_set_keys(pool: &DbPool, groups: &[Vec<String>]) -> Result<u6
     Ok(assigned)
 }
 
+// ---------------------------------------------------------------------------
+// 今の X パワーとウデマエ（#913）
+// ---------------------------------------------------------------------------
+
+/// `player_status` のキー: XBattleHistories の `summary`（ルールごとの今の X パワー）の JSON。
+pub(crate) const STATUS_X_SUMMARY: &str = "x_power_summary";
+/// `player_status` のキー: HistoryRecordQuery の `playHistory.udemae`（"S+15" など）。
+pub(crate) const STATUS_UDEMAE: &str = "udemae";
+
+/// (ルールのキー, summary の中のキー)。並びは返す順。
+const X_SUMMARY_RULES: [(&str, &str); 4] = [
+    ("area", "xPowerAr"),
+    ("yagura", "xPowerLf"),
+    ("hoko", "xPowerGl"),
+    ("asari", "xPowerCl"),
+];
+
+/// 取得した今の状態を、取得時刻と一緒に置く（#913）。同じキーは上書きする。
+pub async fn set_player_status(pool: &DbPool, key: &str, value: &str, fetched_at: &str) -> Result<(), String> {
+    sqlx::query(
+        "INSERT INTO player_status (key, value, fetched_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, fetched_at = excluded.fetched_at",
+    )
+    .bind(key)
+    .bind(value)
+    .bind(fetched_at)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// (値, 取得時刻)。
+async fn get_player_status(pool: &DbPool, key: &str) -> Result<Option<(String, String)>, String> {
+    sqlx::query_as::<_, (String, String)>("SELECT value, fetched_at FROM player_status WHERE key = ?")
+        .bind(key)
+        .fetch_optional(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// ルール 1 つ分の今の X パワー。
+#[derive(Debug, Serialize, PartialEq)]
+pub struct CurrentXPower {
+    /// area / yagura / hoko / asari
+    pub rule: String,
+    /// None は未計測。
+    pub x_power: Option<f64>,
+    /// 値の時点。summary から出したときは取得時刻、試合から出したときはその試合の時刻。
+    pub at: Option<String>,
+}
+
+/// 今の X パワーとウデマエ（#913）。画面にはまだ出していない。
+#[derive(Debug, Serialize, PartialEq)]
+pub struct CurrentPower {
+    pub x_powers: Vec<CurrentXPower>,
+    /// "S+15" など。分からないときは None。
+    pub udemae: Option<String>,
+    pub udemae_at: Option<String>,
+}
+
+/// RFC 3339 の時刻を比べられる形にする。読めなければ None。
+fn parse_time(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::DateTime::parse_from_rfc3339(s).ok().map(|t| t.with_timezone(&chrono::Utc))
+}
+
+/// 今の X パワーとウデマエを出す（#913）。
+///
+/// **X パワー**
+/// - バトル取得のたびに保存する summary があれば、それを出す。null のルールは未計測。
+/// - まだ無い（更新後に一度も取得していない）ときは、保存済みの X マッチから、ルールごとに
+///   一番新しい値を出す。セットが終わった試合は確定後（`x_power_after`）、それ以外はセット開始時
+///   （`x_power_before`。X パワーはセットの途中では変わらない）。
+///
+/// **ウデマエ**
+/// - HistoryRecordQuery の値と、一番新しいバンカラの試合のウデマエ（チャレンジが終わった試合は
+///   確定後、それ以外はバトル前）のうち、新しいほうを出す。HistoryRecordQuery はブキ一覧と一緒に
+///   ときどきしか取らないので、試合のほうが新しいことが多い。
+///   試合の時点は、終わった時刻（開始 + 試合時間）で比べる。
+pub(crate) async fn current_power(pool: &DbPool) -> Result<CurrentPower, String> {
+    let x_powers = match get_player_status(pool, STATUS_X_SUMMARY).await? {
+        Some((json, fetched_at)) => {
+            let summary: serde_json::Value = serde_json::from_str(&json).unwrap_or(serde_json::Value::Null);
+            X_SUMMARY_RULES
+                .iter()
+                .map(|(rule, key)| CurrentXPower {
+                    rule: rule.to_string(),
+                    x_power: summary.pointer(&format!("/{key}/lastXPower")).and_then(|v| v.as_f64()),
+                    at: Some(fetched_at.clone()),
+                })
+                .collect()
+        }
+        None => {
+            let rows = sqlx::query_as::<_, (String, f64, String)>(
+                "SELECT rule_key, xp, played_at FROM (
+                     SELECT r.key AS rule_key,
+                            COALESCE(b.x_power_after, b.x_power_before) AS xp,
+                            b.played_at,
+                            ROW_NUMBER() OVER (PARTITION BY r.key ORDER BY b.played_at DESC, b.id DESC) AS rn
+                       FROM battle b
+                       JOIN lobby l ON l.id = b.lobby_id
+                       JOIN rule  r ON r.id = b.rule_id
+                      WHERE l.key = 'xmatch'
+                        AND (b.x_power_after IS NOT NULL OR b.x_power_before IS NOT NULL)
+                 ) WHERE rn = 1",
+            )
+            .fetch_all(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+            X_SUMMARY_RULES
+                .iter()
+                .map(|(rule, _)| {
+                    let hit = rows.iter().find(|(r, _, _)| r == rule);
+                    CurrentXPower {
+                        rule: rule.to_string(),
+                        x_power: hit.map(|(_, xp, _)| *xp),
+                        at: hit.map(|(_, _, at)| at.clone()),
+                    }
+                })
+                .collect()
+        }
+    };
+
+    let from_battle = sqlx::query_as::<_, (String, String, i64)>(&format!(
+        "SELECT CASE WHEN b.rank_after IS NOT NULL
+                     THEN UPPER(b.rank_after) || COALESCE(CAST(b.rank_after_s_plus AS TEXT), '')
+                     ELSE {UDEMAE_BEFORE_SQL} END,
+                b.played_at, b.duration
+           FROM battle b
+           JOIN lobby l ON l.id = b.lobby_id
+          WHERE l.key IN ('bankara_open', 'bankara_challenge')
+            AND (b.rank_after IS NOT NULL OR b.rank_before IS NOT NULL)
+          ORDER BY b.played_at DESC, b.id DESC
+          LIMIT 1"
+    ))
+    .fetch_optional(pool.as_ref())
+    .await
+    .map_err(|e| e.to_string())?;
+    let from_record = get_player_status(pool, STATUS_UDEMAE).await?;
+
+    let (udemae, udemae_at) = match (from_record, from_battle) {
+        (Some((rec, rec_at)), Some((bat, played_at, duration))) => {
+            let battle_end = parse_time(&played_at).map(|t| t + chrono::Duration::seconds(duration));
+            match (parse_time(&rec_at), battle_end) {
+                (Some(rec_t), Some(bat_t)) if bat_t > rec_t => (Some(bat), Some(played_at)),
+                (Some(_), _) => (Some(rec), Some(rec_at)),
+                (None, _) => (Some(bat), Some(played_at)),
+            }
+        }
+        (Some((rec, rec_at)), None) => (Some(rec), Some(rec_at)),
+        (None, Some((bat, played_at, _))) => (Some(bat), Some(played_at)),
+        (None, None) => (None, None),
+    };
+
+    Ok(CurrentPower { x_powers, udemae, udemae_at })
+}
+
+/// 今の X パワーとウデマエを返す（#913）。
+#[tauri::command]
+pub async fn db_current_power(db: tauri::State<'_, DbPool>) -> Result<CurrentPower, String> {
+    current_power(&db).await
+}
+
 /// 詳細取得が未完了のバトル ID 一覧を返す。新スキーマから読む。
 pub async fn get_battles_without_detail(pool: &DbPool) -> Result<Vec<String>, String> {
     let rows = sqlx::query("SELECT id FROM battle WHERE detail_fetched = 0 ORDER BY played_at DESC")
@@ -2952,7 +3115,7 @@ pub async fn populate_weapons_from_battles(pool: &DbPool) -> Result<usize, Strin
 /// 適用済みマイグレーションの最新版。**新しい `if current_version < N` ブロックを足したら
 /// 必ずここを N に更新する。** 更新を忘れると `migrate_battle_ids` 冒頭の早期 return に
 /// 阻まれ、追加したマイグレーションが一度も実行されない（#206・#306 の再発防止）。
-const LATEST_MIGRATION_VERSION: i64 = 27;
+const LATEST_MIGRATION_VERSION: i64 = 28;
 
 /// version 2: mode 判定バグ修正版で全件再処理
 /// version 3: kill カウントを kill_or_assist から実キル数に修正
@@ -2981,6 +3144,7 @@ const LATEST_MIGRATION_VERSION: i64 = 27;
 ///             注意書きどおり LATEST_MIGRATION_VERSION の更新を怠り、三度目の #206 / #306 を踏んだ）
 /// version 26: ウデマエ・X パワーの前後を raw_json / parent_json から埋め直す (#912)
 /// version 27: 同じセットのバトルを束ねる battle.set_key を追加 (#916)
+/// version 28: 今の X パワーとウデマエを置く player_status を追加 (#913)
 ///
 /// ⚠ **マイグレーションを追加したら `LATEST_MIGRATION_VERSION` も必ず上げること。**
 ///    ここが古いままだと早期 return に阻まれて新しい版が一度も走らない（#206 / #306 / #712 で 3 度踏んだ）。
@@ -4333,6 +4497,26 @@ pub async fn migrate_battle_ids(pool: &DbPool) -> Result<usize, String> {
             .await
             .map_err(|e| e.to_string())?;
         log::info!("migrate v27: battle.set_key を追加");
+    }
+
+    // version 28: 今の X パワー（summary）とウデマエを置く表を足す（#913）。
+    //             中身はバトル取得・ブキ一覧の取得のたびに入る。
+    if current_version < 28 {
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS player_status (
+                key        TEXT PRIMARY KEY,
+                value      TEXT NOT NULL,
+                fetched_at TEXT NOT NULL
+            )",
+        )
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| format!("v28 player_status 作成失敗: {e}"))?;
+        sqlx::query("PRAGMA user_version = 28")
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        log::info!("migrate v28: player_status を追加");
     }
 
     Ok(updated)
@@ -6667,5 +6851,108 @@ mod rank_power_tests {
     async fn power_series_rejects_non_time_axis() {
         let pool = pool().await;
         assert!(power_series(&pool, "weapon", None, None, None, 9).await.is_err());
+    }
+
+    // --- 今の X パワーとウデマエ（#913） ---
+
+    fn xp_of(p: &CurrentPower) -> Vec<(String, Option<f64>)> {
+        p.x_powers.iter().map(|x| (x.rule.clone(), x.x_power)).collect()
+    }
+
+    /// summary があればそれを出す。null のルールは未計測。
+    #[tokio::test]
+    async fn current_power_uses_summary() {
+        let pool = pool().await;
+        let summary = serde_json::json!({
+            "xPowerAr": { "lastXPower": 1897.1 },
+            "xPowerLf": { "lastXPower": null },
+            "xPowerGl": null,
+            "xPowerCl": { "lastXPower": 1514.3 }
+        });
+        set_player_status(&pool, STATUS_X_SUMMARY, &summary.to_string(), "2026-11-10T12:00:00+00:00")
+            .await.unwrap();
+        // 試合のほうは見ない
+        let mut x = row_at("x1", "x", "2026-11-10T13:00:00Z", "win",
+            Some(serde_json::json!({ "state": "COMPLETED", "xPowerAfter": 2100.0 })));
+        x.rule = "area".into();
+        insert_battles(&pool, vec![x]).await.unwrap();
+
+        let p = current_power(&pool).await.unwrap();
+        assert_eq!(xp_of(&p), vec![
+            ("area".into(), Some(1897.1)),
+            ("yagura".into(), None),
+            ("hoko".into(), None),
+            ("asari".into(), Some(1514.3)),
+        ]);
+        assert!(p.x_powers.iter().all(|x| x.at.as_deref() == Some("2026-11-10T12:00:00+00:00")));
+    }
+
+    /// summary がまだ無いときは、ルールごとに一番新しい試合の値を出す。
+    /// セットが終わった試合は確定後、途中の試合はセット開始時の値。
+    #[tokio::test]
+    async fn current_power_falls_back_to_battles() {
+        let pool = pool().await;
+        let mut done = row_at("x1", "x", "2026-11-09T15:02:53Z", "win",
+            Some(serde_json::json!({ "state": "COMPLETED", "xPowerAfter": 1514.3 })));
+        done.rule = "asari".into();
+        let mut older = row_at("x0", "x", "2026-11-08T10:00:00Z", "win",
+            Some(serde_json::json!({ "state": "COMPLETED", "xPowerAfter": 1400.0 })));
+        older.rule = "asari".into();
+        let mut mid = row_at("x2", "x", "2026-11-10T09:00:00Z", "lose", None);
+        mid.rule = "area".into();
+        insert_battles(&pool, vec![done, older, mid]).await.unwrap();
+        // 途中の試合は詳細を取ると x_power_before が入る
+        let detail = serde_json::json!({ "xMatch": { "lastXPower": 1897.1 } }).to_string();
+        update_battle_detail(&pool, "x2", 0, 0, 0, 0, 0, &detail, "area", "x",
+            None, None, None, None, None, None).await.unwrap();
+
+        let p = current_power(&pool).await.unwrap();
+        assert_eq!(xp_of(&p), vec![
+            ("area".into(), Some(1897.1)),
+            ("yagura".into(), None),
+            ("hoko".into(), None),
+            ("asari".into(), Some(1514.3)),
+        ]);
+        assert_eq!(p.x_powers[3].at.as_deref(), Some("2026-11-09T15:02:53Z"));
+        assert_eq!(p.udemae, None);
+    }
+
+    /// ウデマエは、HistoryRecordQuery の値と一番新しいバンカラの試合のうち、新しいほう。
+    #[tokio::test]
+    async fn current_udemae_takes_newer_source() {
+        let pool = pool().await;
+        // チャレンジが終わって S+16 に上がった試合（開始 14:23・3 分）
+        let mut bk = row("bk1", "bankara_challenge",
+            serde_json::json!({ "udemae": "S+15" }),
+            Some(serde_json::json!({ "udemaeAfter": "S+16" })));
+        bk.played_at = "2026-11-09T14:23:32Z".into();
+        bk.duration = 180;
+        insert_battles(&pool, vec![bk]).await.unwrap();
+
+        // 記録のほうが古い → 試合の確定後
+        set_player_status(&pool, STATUS_UDEMAE, "S+15", "2026-11-09T14:00:00+00:00").await.unwrap();
+        let p = current_power(&pool).await.unwrap();
+        assert_eq!(p.udemae.as_deref(), Some("S+16"));
+        assert_eq!(p.udemae_at.as_deref(), Some("2026-11-09T14:23:32Z"));
+
+        // 試合が終わる前（14:25）の記録も古い扱い
+        set_player_status(&pool, STATUS_UDEMAE, "S+15", "2026-11-09T14:25:00+00:00").await.unwrap();
+        assert_eq!(current_power(&pool).await.unwrap().udemae.as_deref(), Some("S+16"));
+
+        // 記録のほうが新しい → 記録
+        set_player_status(&pool, STATUS_UDEMAE, "S+17", "2026-11-10T08:00:00+00:00").await.unwrap();
+        let p = current_power(&pool).await.unwrap();
+        assert_eq!(p.udemae.as_deref(), Some("S+17"));
+        assert_eq!(p.udemae_at.as_deref(), Some("2026-11-10T08:00:00+00:00"));
+    }
+
+    /// オープンの試合はバトル前のウデマエを出す。
+    #[tokio::test]
+    async fn current_udemae_from_open_battle() {
+        let pool = pool().await;
+        insert_battles(&pool, vec![
+            row("bo1", "bankara_open", serde_json::json!({ "udemae": "S+3" }), None),
+        ]).await.unwrap();
+        assert_eq!(current_power(&pool).await.unwrap().udemae.as_deref(), Some("S+3"));
     }
 }

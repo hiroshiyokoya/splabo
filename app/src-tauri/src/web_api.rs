@@ -31,6 +31,8 @@ pub const ALLOWED_COMMANDS: &[&str] = &[
     "db_battle_stats",
     "db_summary",
     "db_battle_count",
+    // 今の X パワーとウデマエ（#913）
+    "db_current_power",
     "db_grouped_stats",
     "db_grouped_stats_2d",
     // 時系列の線グラフの X パワー・ブキチャレパワー（#914）
@@ -274,6 +276,7 @@ pub fn dispatch(app: &AppHandle, cmd: &str, args: Value) -> Result<Value, ApiErr
                 db()?, f.since, f.until, f.mode, f.rule, f.result_filter, f.weapon, f.stage,
             )))
         }
+        "db_current_power" => to_json(tauri::async_runtime::block_on(crate::db::db_current_power(db()?))),
         "db_grouped_stats" => {
             let a: GroupedStatsArgs = parse_args(args)?;
             let f = a.filter;
