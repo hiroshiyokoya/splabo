@@ -152,11 +152,17 @@ function LineAxisLegend({ series, axisOf, padLeft, padRight }: {
   )
 }
 
-type PowerScale = { domain: [number, number]; ticks: number[] }
+type PowerScale = {
+  domain: [number, number]
+  ticks:  number[]
+  /** 横の補助線を引く値。目盛の間隔の 2 倍の倍数だけ（100 ごとの目盛なら 200 ごと）。 */
+  grid:   number[]
+}
 
 /**
  * パワー（X パワー・ブキチャレパワー）の軸の範囲と目盛（#914）。
  * 間隔は 50 → 100 → 200 のうち、目盛が 8 本以下に収まる最小のもの。範囲は値を含む間隔の倍数で切る。
+ * 横の補助線は目盛 1 本おき（間隔の 2 倍の倍数）。
  */
 function powerScale(min: number, max: number): PowerScale {
   const step = [50, 100, 200, 500].find(s => (Math.ceil(max / s) - Math.floor(min / s)) <= 8) ?? 500
@@ -165,7 +171,7 @@ function powerScale(min: number, max: number): PowerScale {
   if (hi === lo) hi = lo + step
   const ticks: number[] = []
   for (let v = lo; v <= hi; v += step) ticks.push(v)
-  return { domain: [lo, hi], ticks }
+  return { domain: [lo, hi], ticks, grid: ticks.filter(v => v % (step * 2) === 0) }
 }
 
 /** Y 軸ラベル（軸グループ名）の共通スタイル。 */
@@ -262,8 +268,10 @@ export function LineChart({
     <ResponsiveContainer width="100%" height={height}>
       <RLineChart data={chartData} margin={{ top: 4, right: chartMarginRight, left: 0, bottom: 4 }}>
         {/* 横線は左軸の目盛に合わせる。Y 軸に id を付けているので、grid にも同じ id を渡さないと
-            目盛が見つからず、上端の 1 本しか引かれない（Recharts v3 の既定は yAxisId=0）。 */}
-        <CartesianGrid yAxisId="left" strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+            目盛が見つからず、上端の 1 本しか引かれない（Recharts v3 の既定は yAxisId=0）。
+            左軸がパワーのときは、目盛 1 本おきにだけ引く。 */}
+        <CartesianGrid yAxisId="left" strokeDasharray="3 3" stroke="var(--border)" vertical={false}
+          horizontalValues={leftScale?.grid} />
         <XAxis
           dataKey="t"
           type="number"
