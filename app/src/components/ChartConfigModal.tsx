@@ -7,7 +7,7 @@ import {
   scatterDotUnitLabel, canScatterUseImages, SCATTER_IMAGE_SIZE_LABELS,
   BATTLE_NUMERIC_METRIC_LABELS, BATTLE_NUMERIC_DEFAULT_BIN, axisGroupOf, AXIS_GROUP_LABELS, chartMetrics,
   LOCAL_METRIC_KEYS, officialMetricsForGroup, isOfficialRateMetric, OFFICIAL_METRICS,
-  isWeaponGroupBy,
+  isWeaponGroupBy, POWER_METRICS, LINE_WEAPON_POWER_TOP_N,
 } from '../types'
 import { SCATTER_CATEGORY_COLOR_KEYS } from '../utils/scatterCategoryColors'
 import { CHART_BAR_TOP_N } from '../utils/chartSort'
@@ -71,6 +71,10 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   )
   const [topN,         setTopN]         = useState<number>(
     initial?.topN ?? (initial?.shape === 'heatmap' ? 20 : CHART_BAR_TOP_N)
+  )
+  // 線グラフのブキチャレパワーの線の本数（#914）。棒・ヒートマップの topN とは既定が違うので別に持つ。
+  const [lineTopN,     setLineTopN]     = useState<number>(
+    initial?.shape === 'line' ? (initial.topN ?? LINE_WEAPON_POWER_TOP_N) : LINE_WEAPON_POWER_TOP_N
   )
   // ヒートマップの数値メトリクス bin 軸 (#134)。null/undefined ならカテゴリ軸。
   const [xNumericMetric, setXNumericMetric] = useState<BattleNumericMetric | null>(initial?.xNumericMetric ?? null)
@@ -190,6 +194,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
   const showWeaponTopN =
     (shape === 'heatmap' && (isWeaponGroupBy(groupBy) || isWeaponGroupBy(groupBy2))) ||
     (shape === 'bar' && isWeaponGroupBy(groupBy))
+  const showLineWeaponTopN = shape === 'line' && lineMetrics.includes('weapon_power')
 
   function handleSave() {
     const chart: CustomChart = {
@@ -201,7 +206,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
       metric:       shape !== 'line' && yComposition === 'single_metric' ? metric : undefined,
       metrics:      shape === 'line' ? lineMetrics : undefined,
       groupBy2:     shape === 'heatmap' ? groupBy2 : undefined,
-      topN:         showWeaponTopN ? topN : undefined,
+      topN:         showWeaponTopN ? topN : showLineWeaponTopN ? lineTopN : undefined,
       dotUnit:      shape === 'scatter' ? dotUnit : undefined,
       xMetric:      shape === 'scatter' ? xMetric : undefined,
       yMetric:      shape === 'scatter' ? yMetric : undefined,
@@ -461,7 +466,7 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
             <div className="form-field">
               <label className="form-label">{t('chartConfig.metricsMulti')}</label>
               <div className="metric-checkbox-group">
-                {(LOCAL_METRIC_KEYS).map(m => {
+                {[...LOCAL_METRIC_KEYS, ...POWER_METRICS].map(m => {
                   const group = axisGroupOf(m)
                   const checked = lineMetrics.includes(m)
                   const disabled = !checked && !lineUsedGroups.has(group) && lineUsedGroups.size >= 2
@@ -486,6 +491,24 @@ export function ChartConfigModal({ initial, onSave, onClose }: Props) {
               {lineMetrics.length === 0 && (
                 <p className="form-hint form-hint--warn">{t('chartConfig.pickOne')}</p>
               )}
+              {lineMetrics.some(m => POWER_METRICS.includes(m)) && (
+                <p className="form-hint">{t('chartConfig.powerHint')}</p>
+              )}
+            </div>
+          )}
+
+          {showLineWeaponTopN && (
+            <div className="form-field">
+              <label className="form-label">{t('chartConfig.weaponPowerLines')}</label>
+              <input
+                type="number"
+                className="form-input"
+                min={1}
+                max={30}
+                value={lineTopN}
+                onChange={e => setLineTopN(Math.max(1, Math.min(30, Math.floor(Number(e.target.value)) || LINE_WEAPON_POWER_TOP_N)))}
+              />
+              <p className="form-hint">{t('chartConfig.weaponPowerLinesHint', { n: LINE_WEAPON_POWER_TOP_N })}</p>
             </div>
           )}
 

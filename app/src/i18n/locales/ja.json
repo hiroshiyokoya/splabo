@@ -723,7 +723,7 @@
     "official_weapon_level": "熟練度",
     "official_win_count": "通算勝利",
     "official_paint": "通算塗りP",
-    "official_weapon_power": "ブキチャレパワー",
+    "official_weapon_power": "今のブキチャレパワー",
     "official_weapon_power_max": "最大ブキチャレパワー",
     "official_last_used_at": "最終使用日",
     "official_win_rate_tw": "公式勝率 ナワバリ",
@@ -731,6 +731,11 @@
     "official_win_rate_lf": "公式勝率 ヤグラ",
     "official_win_rate_gl": "公式勝率 ホコ",
     "official_win_rate_cl": "公式勝率 アサリ",
+    "x_power_ar": "X パワー エリア",
+    "x_power_lf": "X パワー ヤグラ",
+    "x_power_gl": "X パワー ホコ",
+    "x_power_cl": "X パワー アサリ",
+    "weapon_power": "ブキチャレパワー",
     "winLoseBreakdown": "{{wins}} 勝 {{losses}} 敗",
     "winLoseBreakdownDraw": "{{wins}} 勝 {{losses}} 敗 {{draws}} 分",
     "winCountTooltip": "バトル数: {{total}} ({{breakdown}})"
@@ -768,7 +773,8 @@
     "per_battle": "回/バトル",
     "win_rate": "勝率",
     "count": "カウント",
-    "paint": "塗り"
+    "paint": "塗り",
+    "power": "パワー"
   },
   "battleNumeric": {
     "kill": "キル数",
@@ -985,6 +991,9 @@
     "metric": "メトリクス",
     "metricsMulti": "メトリクス(複数選択可)",
     "axisLimitHint": "軸は 2 種類までです({{groups}} を使用中)。",
+    "powerHint": "X パワーとブキチャレパワーは、各期間の最後の値です。絞り込みは期間だけに従います（ブキチャレパワーはブキの絞り込みにも従います）。",
+    "weaponPowerLines": "ブキチャレパワーの線の本数",
+    "weaponPowerLinesHint": "期間内のチャレンジで使った回数が多いブキから引きます（既定 {{n}} 本）。",
     "pickOne": "少なくとも 1 つ選んでください。",
     "dotUnit": "ドット単位",
     "dotUnitHint": "1 ドット = 1 {{unit}}。",

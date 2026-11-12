@@ -1862,6 +1862,164 @@ pub async fn db_summary(
     }))
 }
 
+/// 時系列バケット（線グラフ・カレンダー）の SQL 式。`battle b` の played_at から作る。時系列キーでなければ None。
+///
+/// 返す値は ISO 日付（day / three_day）・`YYYY-Www`（week）・`YYYY-MM`（month）。
+/// SplatNet 3 の playedTime は UTC で来るので、UTC 0:00 = JST 9:00 = Splatoon の日の境目になり、
+/// そのまま strftime で日付を取れば 9 時境界のバケットになる。
+/// three_day だけは「今日から 3 日ごとに遡る」ので、バケットの開始日を計算する。
+fn time_bucket_expr(group_by: &str) -> Option<&'static str> {
+    match group_by {
+        "day" => Some("strftime('%Y-%m-%d', b.played_at)"),
+        "three_day" => Some(
+            "DATE(DATE('now'), \
+                  '-' || (3 * CAST((julianday(DATE('now')) - julianday(DATE(b.played_at))) / 3 AS INTEGER) + 2) || ' days')",
+        ),
+        "week" => Some("strftime('%Y-W%W', b.played_at)"),
+        "month" => Some("strftime('%Y-%m', b.played_at)"),
+        _ => None,
+    }
+}
+
+/// 時系列の X パワー・ブキチャレパワーの 1 点（#914）。
+#[derive(Debug, Serialize, PartialEq)]
+pub struct PowerPoint {
+    /// バケットのキー（db_grouped_stats の時系列キーと同じ形）
+    pub key: String,
+    /// X パワーはルール（area / yagura / hoko / asari）、ブキチャレパワーはブキのキー
+    pub series: String,
+    pub value: f64,
+}
+
+/// ブキチャレパワーの線を引くブキ（#914）。チャレンジで使った回数が多い順。
+#[derive(Debug, Serialize, PartialEq)]
+pub struct PowerWeapon {
+    pub key: String,
+    pub name: String,
+    pub name_ja: Option<String>,
+    pub name_en: Option<String>,
+    pub count: i64,
+}
+
+/// 時系列の線グラフに出す X パワーとブキチャレパワー（#914）。
+#[derive(Debug, Serialize, PartialEq)]
+pub struct PowerSeries {
+    pub x_power: Vec<PowerPoint>,
+    pub weapon_power: Vec<PowerPoint>,
+    pub weapons: Vec<PowerWeapon>,
+}
+
+/// 各バケットの最後の X パワーとブキチャレパワーを返す（#914）。
+///
+/// どちらも「その時点の状態」なので、合計や平均ではなく各バケットの終値にする。
+/// - X パワー: そのバケットで最後に確定したセットの `x_power_after`（X パワーはセットが終わったときにしか変わらない）。
+///   ルールごと。絞り込みは期間だけに従う（ルールはメトリクスの側で決まる）。
+/// - ブキチャレパワー: バンカラチャレンジの詳細（raw_json）の `bankaraMatch.weaponPower`。
+///   そのバケットでそのブキを最後に使った試合の値。期間とブキの絞り込みだけに従う。
+///   線を引くのは、期間内にチャレンジで使った回数（値のある試合）が多い順に `top_n` 本。
+/// - どちらも 0 以下の値は使わない（ブキチャレパワーは計測前に 0 が入ることがある）。
+pub(crate) async fn power_series(
+    pool: &DbPool,
+    group_by: &str,
+    since: Option<String>,
+    until: Option<String>,
+    weapon: Option<String>,
+    top_n: i64,
+) -> Result<PowerSeries, String> {
+    let bucket = time_bucket_expr(group_by).ok_or_else(|| format!("時系列ではない group_by: {group_by}"))?;
+    let until = inclusive_until(until);
+    let period = "(? IS NULL OR b.played_at >= ?) AND (? IS NULL OR b.played_at <= ?)";
+
+    let x_sql = format!(
+        "SELECT key, rule_key, xp FROM (
+             SELECT {bucket} AS key, r.key AS rule_key, b.x_power_after AS xp,
+                    ROW_NUMBER() OVER (PARTITION BY {bucket}, r.key ORDER BY b.played_at DESC, b.id DESC) AS rn
+               FROM battle b
+               JOIN lobby l ON l.id = b.lobby_id
+               JOIN rule  r ON r.id = b.rule_id
+              WHERE l.key = 'xmatch' AND b.x_power_after > 0 AND {period}
+         ) WHERE rn = 1
+         ORDER BY key, rule_key"
+    );
+    let x_power = sqlx::query_as::<_, (String, String, f64)>(&x_sql)
+        .bind(&since).bind(&since)
+        .bind(&until).bind(&until)
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|(key, series, value)| PowerPoint { key, series, value })
+        .collect();
+
+    // 値のあるチャレンジの試合（期間・ブキで絞る）。詳細を取る前の試合には値が無い。
+    let wp_rows = format!(
+        "SELECT * FROM (
+             SELECT {bucket} AS key, b.played_at, b.id, w.key AS wkey,
+                    COALESCE(w.name_ja, w.key) AS name, w.name_ja, w.name_en,
+                    CASE WHEN json_valid(b.raw_json)
+                         THEN json_extract(b.raw_json, '$.bankaraMatch.weaponPower') END AS wp
+               FROM battle b
+               JOIN lobby  l ON l.id = b.lobby_id
+               JOIN weapon w ON w.id = b.weapon_id
+              WHERE l.key = 'bankara_challenge' AND {period}
+                AND (? IS NULL OR instr('|' || ? || '|', '|' || w.key || '|') > 0)
+         ) WHERE wp > 0"
+    );
+    let weapons_sql = format!(
+        "WITH rows AS ({wp_rows})
+         SELECT wkey, MAX(name), MAX(name_ja), MAX(name_en), COUNT(*) AS cnt
+           FROM rows GROUP BY wkey ORDER BY cnt DESC, wkey LIMIT ?"
+    );
+    let weapons: Vec<PowerWeapon> =
+        sqlx::query_as::<_, (String, String, Option<String>, Option<String>, i64)>(&weapons_sql)
+            .bind(&since).bind(&since)
+            .bind(&until).bind(&until)
+            .bind(&weapon).bind(&weapon)
+            .bind(top_n.max(0))
+            .fetch_all(pool.as_ref())
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|(key, name, name_ja, name_en, count)| PowerWeapon { key, name, name_ja, name_en, count })
+            .collect();
+
+    let points_sql = format!(
+        "WITH rows AS ({wp_rows})
+         SELECT key, wkey, wp FROM (
+             SELECT key, wkey, CAST(wp AS REAL) AS wp,
+                    ROW_NUMBER() OVER (PARTITION BY key, wkey ORDER BY played_at DESC, id DESC) AS rn
+               FROM rows
+         ) WHERE rn = 1
+         ORDER BY key, wkey"
+    );
+    let weapon_power = sqlx::query_as::<_, (String, String, f64)>(&points_sql)
+        .bind(&since).bind(&since)
+        .bind(&until).bind(&until)
+        .bind(&weapon).bind(&weapon)
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(|(_, wkey, _)| weapons.iter().any(|w| &w.key == wkey))
+        .map(|(key, series, value)| PowerPoint { key, series, value })
+        .collect();
+
+    Ok(PowerSeries { x_power, weapon_power, weapons })
+}
+
+/// 時系列の線グラフの X パワー・ブキチャレパワー（#914）。
+#[tauri::command]
+pub async fn db_power_series(
+    db: tauri::State<'_, DbPool>,
+    group_by: String,
+    since: Option<String>,
+    until: Option<String>,
+    weapon: Option<String>,
+    top_n: i64,
+) -> Result<PowerSeries, String> {
+    power_series(&db, &group_by, since, until, weapon, top_n).await
+}
+
 /// 任意の `group_by` キーで集計し、平均キル/デス/アシスト/SP/塗り/バトル時間まで返す汎用集計コマンド。
 ///
 /// カスタムグラフ（#86）の供給元として使う。`db_summary` が「勝率と件数」しか返さないのに対し、
@@ -1907,10 +2065,7 @@ pub async fn db_grouped_stats(
     // 時系列キー (day/three_day/week/month) は全粒度で「9 時境界の Splatoon 日」基準。
     // SplatNet 3 の playedTime は UTC で来るので、UTC 0:00 = JST 9:00 = Splatoon 日境界
     // となり、追加シフトせず strftime で日付抽出すれば 9 時境界バケットが得られる。
-    // three_day だけは「今日基準で 3 日ごとに遡る」ためバケット開始日を計算する。
-    const THREE_DAY_BUCKET: &str =
-        "DATE(DATE('now'), \
-              '-' || (3 * CAST((julianday(DATE('now')) - julianday(DATE(b.played_at))) / 3 AS INTEGER) + 2) || ' days')";
+    // three_day だけは「今日基準で 3 日ごとに遡る」ためバケット開始日を計算する（time_bucket_expr）。
     // 公式アプリの値は自分のブキ / ステージの全期間スナップショット。
     // 他の group_by に JOIN すると MAX が混ざるので、軸が一致するときだけ足す。
     let (extra_join, extra_select): (&str, &str) = match group_by.as_str() {
@@ -1944,11 +2099,11 @@ pub async fn db_grouped_stats(
         "special_weapon"  => ("COALESCE(w.special_key, '(不明)')",                                                     "COALESCE(w.special_key, '(不明)')"),
         "weapon_category" => ("COALESCE(NULLIF(w.category_key, ''), '(未分類)')",                                      "COALESCE(NULLIF(w.category_key, ''), '(未分類)')"),
         "result"          => ("res.key",                                                                              "res.key"),
-        // 時系列バケット（線グラフ / カレンダー用）。すべて返値は ISO 日付 or `YYYY-Www` / `YYYY-MM` 文字列。
-        "day"             => ("strftime('%Y-%m-%d', b.played_at)",                                                    "strftime('%Y-%m-%d', b.played_at)"),
-        "three_day"       => (THREE_DAY_BUCKET,                                                                       THREE_DAY_BUCKET),
-        "week"            => ("strftime('%Y-W%W', b.played_at)",                                                      "strftime('%Y-W%W', b.played_at)"),
-        "month"           => ("strftime('%Y-%m', b.played_at)",                                                       "strftime('%Y-%m', b.played_at)"),
+        // 時系列バケット（線グラフ / カレンダー用）。
+        g @ ("day" | "three_day" | "week" | "month") => {
+            let e = time_bucket_expr(g).expect("時系列キー");
+            (e, e)
+        }
         _ => return Err(format!("未対応の group_by: {group_by}")),
     };
 
@@ -6598,6 +6753,104 @@ mod rank_power_tests {
             cols(&pool, "statink").await,
             (Some("s+".into()), Some(1), None, None, Some(2000.0), Some(2025.0))
         );
+    }
+
+    // --- 時系列の X パワー・ブキチャレパワー（#914） ---
+
+    fn xmatch_set_end(id: &str, rule: &str, played_at: &str, xp: Option<f64>) -> BattleRow {
+        let parent = xp.map(|v| serde_json::json!({ "state": "COMPLETED", "xPowerAfter": v }));
+        let mut r = row_at(id, "x", played_at, "win", parent);
+        r.rule = rule.into();
+        r
+    }
+
+    fn challenge(id: &str, weapon: &str, played_at: &str, wp: Option<f64>) -> BattleRow {
+        let raw = match wp {
+            Some(v) => serde_json::json!({ "bankaraMatch": { "mode": "CHALLENGE", "weaponPower": v } }),
+            None => serde_json::json!({ "id": id }),
+        };
+        let mut r = row(id, "bankara_challenge", raw, None);
+        r.played_at = played_at.into();
+        r.weapon = weapon.into();
+        r
+    }
+
+    fn points(list: &[PowerPoint]) -> Vec<(&str, &str, f64)> {
+        list.iter().map(|p| (p.key.as_str(), p.series.as_str(), p.value)).collect()
+    }
+
+    /// X パワーは、日ごと・ルールごとに最後に確定したセットの値。セットの途中（値なし）は使わない。
+    #[tokio::test]
+    async fn power_series_x_power_is_last_set_of_each_day() {
+        let pool = pool().await;
+        insert_battles(&pool, vec![
+            xmatch_set_end("x1", "asari", "2026-11-09T10:00:00Z", Some(1500.0)),
+            xmatch_set_end("x2", "asari", "2026-11-09T15:00:00Z", Some(1514.3)),
+            xmatch_set_end("x3", "asari", "2026-11-09T16:00:00Z", None),
+            xmatch_set_end("x4", "area",  "2026-11-09T12:00:00Z", Some(1897.1)),
+            xmatch_set_end("x5", "asari", "2026-11-10T09:00:00Z", Some(1490.0)),
+        ]).await.unwrap();
+
+        let s = power_series(&pool, "day", None, None, None, 9).await.unwrap();
+        assert_eq!(points(&s.x_power), vec![
+            ("2026-11-09", "area", 1897.1),
+            ("2026-11-09", "asari", 1514.3),
+            ("2026-11-10", "asari", 1490.0),
+        ]);
+
+        // 期間に従う
+        let s = power_series(&pool, "day", Some("2026-11-10".into()), None, None, 9).await.unwrap();
+        assert_eq!(points(&s.x_power), vec![("2026-11-10", "asari", 1490.0)]);
+    }
+
+    /// ブキチャレパワーは、使った回数の多いブキから top_n 本。各日のそのブキの最後の値。
+    #[tokio::test]
+    async fn power_series_weapon_power_top_n() {
+        let pool = pool().await;
+        insert_battles(&pool, vec![
+            challenge("c1", "スプラシューター", "2026-11-09T10:00:00Z", Some(2000.0)),
+            challenge("c2", "スプラシューター", "2026-11-09T11:00:00Z", Some(2020.5)),
+            challenge("c3", "スプラシューター", "2026-11-10T10:00:00Z", Some(1990.0)),
+            challenge("c4", "わかばシューター", "2026-11-09T12:00:00Z", Some(1800.0)),
+            challenge("c5", "わかばシューター", "2026-11-10T12:00:00Z", Some(1850.0)),
+            challenge("c6", "N-ZAP85",          "2026-11-09T13:00:00Z", Some(1700.0)),
+            // 詳細を取る前（値なし）は数えない
+            challenge("c7", "N-ZAP85",          "2026-11-09T14:00:00Z", None),
+            challenge("c8", "N-ZAP85",          "2026-11-09T14:30:00Z", None),
+            // 0 も数えない・点にしない
+            challenge("c9", "わかばシューター", "2026-11-11T12:00:00Z", Some(0.0)),
+            challenge("c10", "わかばシューター", "2026-11-11T13:00:00Z", Some(0.0)),
+        ]).await.unwrap();
+
+        let s = power_series(&pool, "day", None, None, None, 2).await.unwrap();
+        let names: Vec<(&str, i64)> = s.weapons.iter().map(|w| (w.name.as_str(), w.count)).collect();
+        assert_eq!(names, vec![("スプラシューター", 3), ("わかばシューター", 2)]);
+        let splash = s.weapons[0].key.as_str();
+        let wakaba = s.weapons[1].key.as_str();
+        let mut got = points(&s.weapon_power);
+        got.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+        let mut expect = vec![
+            ("2026-11-09", splash, 2020.5),
+            ("2026-11-09", wakaba, 1800.0),
+            ("2026-11-10", splash, 1990.0),
+            ("2026-11-10", wakaba, 1850.0),
+        ];
+        expect.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+        assert_eq!(got, expect);
+
+        // ブキで絞ると、選んだブキだけ
+        let s = power_series(&pool, "day", None, None, Some(wakaba.to_string()), 9).await.unwrap();
+        assert_eq!(s.weapons.len(), 1);
+        assert_eq!(s.weapons[0].key, wakaba);
+        assert!(s.weapon_power.iter().all(|p| p.series == wakaba));
+        assert!(s.x_power.is_empty());
+    }
+
+    /// 時系列でない軸はエラーにする。
+    #[tokio::test]
+    async fn power_series_rejects_non_time_axis() {
+        let pool = pool().await;
+        assert!(power_series(&pool, "weapon", None, None, None, 9).await.is_err());
     }
 
     // --- 今の X パワーとウデマエ（#913） ---

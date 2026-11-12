@@ -50,6 +50,15 @@ export const THEMES: Theme[] = [
       '--scatter-cat-4':         '#6c71c4', // violet
       '--scatter-cat-5':         '#cb4b16', // orange
       '--scatter-cat-6':         '#2aa198', // cyan
+      // 線グラフの線の色（#914）。並びは BASE_VARS と同じで、明るい背景向けの段
+      '--line-1':                '#008300', // green
+      '--line-2':                '#e87ba4', // magenta
+      '--line-3':                '#c98500', // yellow
+      '--line-4':                '#2a78d6', // blue
+      '--line-5':                '#eb6834', // orange
+      '--line-6':                '#1baf7a', // aqua
+      '--line-7':                '#6250d6', // violet
+      '--line-8':                '#e34948', // red
     },
   },
   {
@@ -127,6 +136,16 @@ const BASE_VARS: Record<string, string> = {
   '--scatter-cat-4':         '#a855f7',
   '--scatter-cat-5':         '#f97316',
   '--scatter-cat-6':         '#14b8a6',
+  // 線グラフの線の色（#914）。先頭 4 本がどの組でも見分けやすく、隣どうしも離れる順。
+  // 暗い背景向けの段。ライトテーマは上書きする
+  '--line-1':                '#008300', // green
+  '--line-2':                '#d55181', // magenta
+  '--line-3':                '#c98500', // yellow
+  '--line-4':                '#3987e5', // blue
+  '--line-5':                '#d95926', // orange
+  '--line-6':                '#199e70', // aqua
+  '--line-7':                '#9085e9', // violet
+  '--line-8':                '#e66767', // red
 }
 
 export function applyTheme(themeId: string): void {

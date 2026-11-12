@@ -35,6 +35,8 @@ pub const ALLOWED_COMMANDS: &[&str] = &[
     "db_current_power",
     "db_grouped_stats",
     "db_grouped_stats_2d",
+    // 時系列の線グラフの X パワー・ブキチャレパワー（#914）
+    "db_power_series",
     "list_seasons",
     "db_list_weapons",
     "db_weapons_used",
@@ -161,6 +163,17 @@ pub struct GroupedStatsArgs {
     pub filter: FilterArgs,
 }
 
+/// 時系列の線グラフの X パワー・ブキチャレパワー（`db_power_series`・#914）。
+/// 絞り込みは期間とブキだけ使う（ほかは送られてきても無視する）。
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PowerSeriesArgs {
+    pub group_by: String,
+    pub top_n: i64,
+    #[serde(flatten)]
+    pub filter: FilterArgs,
+}
+
 /// ヒートマップ用の 2 軸集計（`db_grouped_stats_2d`・#800）。
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -277,6 +290,13 @@ pub fn dispatch(app: &AppHandle, cmd: &str, args: Value) -> Result<Value, ApiErr
             to_json(tauri::async_runtime::block_on(crate::db::db_grouped_stats_2d(
                 db()?, a.group_by_x, a.group_by_y, f.since, f.until, f.mode, f.rule, f.result_filter,
                 f.weapon, f.stage, a.top_n, a.x_bin_width, a.y_bin_width,
+            )))
+        }
+        "db_power_series" => {
+            let a: PowerSeriesArgs = parse_args(args)?;
+            let f = a.filter;
+            to_json(tauri::async_runtime::block_on(crate::db::db_power_series(
+                db()?, a.group_by, f.since, f.until, f.weapon, a.top_n,
             )))
         }
         "list_seasons" => {

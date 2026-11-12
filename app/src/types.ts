@@ -705,6 +705,12 @@ export type MetricKey =
   | 'official_win_rate_lf'
   | 'official_win_rate_gl'
   | 'official_win_rate_cl'
+  // パワーの推移（#914）。時系列の線グラフだけで使う。値は db_power_series から取る（GroupedStatsRow には無い）。
+  | 'x_power_ar'
+  | 'x_power_lf'
+  | 'x_power_gl'
+  | 'x_power_cl'
+  | 'weapon_power'    // ブキチャレパワー。ブキごとに 1 本ずつ線を引く
 
 /**
  * カスタムグラフ 1 個分の設定。localStorage に CustomChart[] として保存する想定。
@@ -746,7 +752,8 @@ export interface CustomChart {
   /** shape='heatmap' のときの Y 軸。groupBy が X 軸となる。 */
   groupBy2?:    GroupByKey
   /** ブキ軸（ヒートマップ）／ブキの X 軸（棒グラフ）で表示する件数。
-   *  ヒートマップ未指定時 20、棒グラフ未指定時 14。 */
+   *  ヒートマップ未指定時 20、棒グラフ未指定時 14。
+   *  線グラフでは、ブキチャレパワーの線の本数（未指定時 {@link LINE_WEAPON_POWER_TOP_N}・#914）。 */
   topN?:        number
   /** shape='heatmap' で X 軸を「数値メトリクス bin」にする場合のメトリクス。
    *  指定があれば groupBy を無視して battle 単位の数値ヒストグラム軸を使う (#134)。 */
@@ -959,6 +966,38 @@ export const OFFICIAL_METRICS: MetricKey[] = [
   ...OFFICIAL_STAGE_METRICS,
 ]
 
+/** パワーの推移（#914）。時系列の線グラフだけで選べる。絞り込みは期間（とブキチャレパワーのブキ）だけに従う。 */
+export const POWER_METRICS: MetricKey[] = ['x_power_ar', 'x_power_lf', 'x_power_gl', 'x_power_cl', 'weapon_power']
+
+/** X パワーのメトリクス → db_power_series のルールキー。 */
+export const X_POWER_METRIC_RULE: Partial<Record<MetricKey, string>> = {
+  x_power_ar: 'area',
+  x_power_lf: 'yagura',
+  x_power_gl: 'hoko',
+  x_power_cl: 'asari',
+}
+
+/** 線グラフのブキチャレパワーの線の本数の既定（#914）。線の色（`--line-1`〜`--line-8`）の数に合わせる。 */
+export const LINE_WEAPON_POWER_TOP_N = 8
+
+export function isPowerMetric(metric: MetricKey): boolean {
+  return POWER_METRICS.includes(metric)
+}
+
+/** db_power_series の 1 点（#914）。`series` は X パワーならルール、ブキチャレパワーならブキのキー。 */
+export interface PowerPoint {
+  key:    string
+  series: string
+  value:  number
+}
+
+/** db_power_series の返り値（#914）。`weapons` はチャレンジで使った回数が多い順。 */
+export interface PowerSeries {
+  x_power:      PowerPoint[]
+  weapon_power: PowerPoint[]
+  weapons: { key: string; name: string; name_ja: string | null; name_en: string | null; count: number }[]
+}
+
 export function officialMetricsForGroup(group: string): MetricKey[] {
   if (group === 'weapon') return OFFICIAL_WEAPON_METRICS
   if (group === 'stage') return OFFICIAL_STAGE_METRICS
@@ -1028,6 +1067,11 @@ export function getMetric2D(row: GroupedStatsRow2D, metric: MetricKey): number |
     case 'official_win_rate_lf':
     case 'official_win_rate_gl':
     case 'official_win_rate_cl':
+    case 'x_power_ar':
+    case 'x_power_lf':
+    case 'x_power_gl':
+    case 'x_power_cl':
+    case 'weapon_power':
       return null
   }
 }
@@ -1073,18 +1117,21 @@ export function metricGroup(metric: MetricKey): MetricGroup {
  * - win_rate:   勝率。0~100% 固定域。
  * - count:      バトル数・勝数・キル/デス/アシスト合計。期間依存の整数。
  * - paint:      平均塗り・塗りP合計。数百~千 P。
+ * - power:      X パワー・ブキチャレパワー（#914）。どちらも 1,000~3,000 前後。
  *
  * キルレ (avg_kd) ・貢献キルレ (avg_contrib_kd) は厳密には無次元比だが、
  * 値域が per_battle と同オーダーなので同居させる。貢献キルも同様。
  */
-export type AxisGroup = 'per_battle' | 'win_rate' | 'count' | 'paint'
+export type AxisGroup = 'per_battle' | 'win_rate' | 'count' | 'paint' | 'power'
 export const AXIS_GROUP_LABELS: Record<AxisGroup, string> = liveLabels('axisGroup', {
   per_battle: '回/バトル',
   win_rate:   '勝率',
   count:      'カウント',
   paint:      '塗り',
+  power:      'パワー',
 })
 export function axisGroupOf(metric: MetricKey): AxisGroup {
+  if (isPowerMetric(metric)) return 'power'
   if (metric === 'win_rate' || metric.startsWith('official_win_rate_')) return 'win_rate'
   if (metric === 'avg_inked' || metric === 'sum_inked' || metric === 'official_paint') return 'paint'
   if (metric === 'total' || metric === 'wins' ||
@@ -1263,7 +1310,7 @@ export const METRIC_LABELS: Record<MetricKey, string> = liveLabels('metrics', {
   official_weapon_level:      '熟練度',
   official_win_count:         '通算勝利',
   official_paint:             '通算塗りP',
-  official_weapon_power:      'ブキチャレパワー',
+  official_weapon_power:      '今のブキチャレパワー',
   official_weapon_power_max:  '最大ブキチャレパワー',
   official_last_used_at:      '最終使用日',
   official_win_rate_tw:       '公式勝率 ナワバリ',
@@ -1271,11 +1318,16 @@ export const METRIC_LABELS: Record<MetricKey, string> = liveLabels('metrics', {
   official_win_rate_lf:       '公式勝率 ヤグラ',
   official_win_rate_gl:       '公式勝率 ホコ',
   official_win_rate_cl:       '公式勝率 アサリ',
+  x_power_ar:                 'X パワー エリア',
+  x_power_lf:                 'X パワー ヤグラ',
+  x_power_gl:                 'X パワー ホコ',
+  x_power_cl:                 'X パワー アサリ',
+  weapon_power:               'ブキチャレパワー',
 })
 
-/** 折れ線・ヒートマップ・カレンダーなど、公式値を出さないセレクト用。 */
+/** 折れ線・ヒートマップ・カレンダーなど、公式値を出さないセレクト用。パワーの推移（#914）も除く。 */
 export const LOCAL_METRIC_KEYS: MetricKey[] =
-  (Object.keys(METRIC_LABELS) as MetricKey[]).filter(k => !OFFICIAL_METRICS.includes(k))
+  (Object.keys(METRIC_LABELS) as MetricKey[]).filter(k => !OFFICIAL_METRICS.includes(k) && !POWER_METRICS.includes(k))
 
 /**
  * 合計系メトリクス。2D クロス集計(GroupedStatsRow2D)には列が無く、
@@ -1330,6 +1382,12 @@ export function getMetric(row: GroupedStatsRow, metric: MetricKey): number | nul
     case 'official_win_rate_lf':       return row.official_win_rate_lf ?? null
     case 'official_win_rate_gl':       return row.official_win_rate_gl ?? null
     case 'official_win_rate_cl':       return row.official_win_rate_cl ?? null
+    // パワーの推移は db_power_series から取る（#914）
+    case 'x_power_ar':
+    case 'x_power_lf':
+    case 'x_power_gl':
+    case 'x_power_cl':
+    case 'weapon_power':               return null
   }
 }
 
@@ -1338,6 +1396,7 @@ export function formatMetric(value: number | null, metric: MetricKey): string {
   if (value === null) return '-'
   if (metric === 'win_rate' || metric.startsWith('official_win_rate_')) return `${(value * 100).toFixed(1)}%`
   if (metric === 'official_last_used_at') return fmtOfficialDate(value)
+  if (isPowerMetric(metric)) return value.toFixed(1)
   if (metric === 'total' || metric === 'wins' ||
       metric === 'sum_kill' || metric === 'sum_death' ||
       metric === 'sum_assist' || metric === 'sum_contrib_kill' || metric === 'sum_inked' ||
