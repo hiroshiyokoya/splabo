@@ -261,7 +261,9 @@ export function LineChart({
     <div className="chart-hover-area">
     <ResponsiveContainer width="100%" height={height}>
       <RLineChart data={chartData} margin={{ top: 4, right: chartMarginRight, left: 0, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+        {/* 横線は左軸の目盛に合わせる。Y 軸に id を付けているので、grid にも同じ id を渡さないと
+            目盛が見つからず、上端の 1 本しか引かれない（Recharts v3 の既定は yAxisId=0）。 */}
+        <CartesianGrid yAxisId="left" strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
         <XAxis
           dataKey="t"
           type="number"
