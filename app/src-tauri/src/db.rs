@@ -808,8 +808,6 @@ pub(crate) const STATUS_X_SUMMARY: &str = "x_power_summary";
 pub(crate) const STATUS_UDEMAE: &str = "udemae";
 /// `player_status` のキー: ニンテンドーアカウントのニックネーム（#919）。
 pub(crate) const STATUS_NA_NICKNAME: &str = "na_nickname";
-/// `player_status` のキー: Switch（Nintendo Switch Online）のユーザー名（#919）。
-pub(crate) const STATUS_NSO_NAME: &str = "nso_name";
 
 /// (ルールのキー, summary の中のキー)。並びは返す順。
 const X_SUMMARY_RULES: [(&str, &str); 4] = [
@@ -974,8 +972,6 @@ pub async fn db_current_power(db: tauri::State<'_, DbPool>) -> Result<CurrentPow
 pub struct AccountInfo {
     /// ニンテンドーアカウントのニックネーム（bullet token を取るときに保存）
     pub na_nickname: Option<String>,
-    /// Switch（Nintendo Switch Online）のユーザー名（同上）
-    pub nso_name: Option<String>,
     /// スプラトゥーンの名前（一番新しい試合の詳細の `player.name`）
     pub splatoon_name: Option<String>,
     /// 名前の後ろの番号（`player.nameId`。"4496" など）
@@ -986,7 +982,6 @@ pub struct AccountInfo {
 
 pub(crate) async fn account_info(pool: &DbPool) -> Result<AccountInfo, String> {
     let na_nickname = get_player_status(pool, STATUS_NA_NICKNAME).await?.map(|(v, _)| v);
-    let nso_name = get_player_status(pool, STATUS_NSO_NAME).await?.map(|(v, _)| v);
     // 名前は変えられるので、一番新しい試合のものを使う。played_at の索引を新しい順にたどり、
     // 最初に名前のある試合で止まる。
     let player = sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>)>(
@@ -1002,14 +997,13 @@ pub(crate) async fn account_info(pool: &DbPool) -> Result<AccountInfo, String> {
     .await
     .map_err(|e| e.to_string())?;
     let (splatoon_name, splatoon_name_id, byname) = player.unwrap_or((None, None, None));
-    Ok(AccountInfo { na_nickname, nso_name, splatoon_name, splatoon_name_id, byname })
+    Ok(AccountInfo { na_nickname, splatoon_name, splatoon_name_id, byname })
 }
 
-/// ログアウトのときに、保存したアカウント名を消す（#919）。スプラトゥーンの名前は試合から出すので残る。
+/// ログアウトのときに、保存したニックネームを消す（#919）。スプラトゥーンの名前は試合から出すので残る。
 pub(crate) async fn clear_account_names(pool: &DbPool) -> Result<(), String> {
-    sqlx::query("DELETE FROM player_status WHERE key IN (?, ?)")
+    sqlx::query("DELETE FROM player_status WHERE key = ?")
         .bind(STATUS_NA_NICKNAME)
-        .bind(STATUS_NSO_NAME)
         .execute(pool.as_ref())
         .await
         .map_err(|e| e.to_string())?;
@@ -7039,11 +7033,9 @@ mod rank_power_tests {
             row("p3", "regular", serde_json::json!({ "id": "p3" }), None),
         ]).await.unwrap();
         set_player_status(&pool, STATUS_NA_NICKNAME, "ひろし", "2026-11-12T00:00:00+00:00").await.unwrap();
-        set_player_status(&pool, STATUS_NSO_NAME, "ひろ", "2026-11-12T00:00:00+00:00").await.unwrap();
 
         assert_eq!(account_info(&pool).await.unwrap(), AccountInfo {
             na_nickname: Some("ひろし".into()),
-            nso_name: Some("ひろ".into()),
             splatoon_name: Some("イカてん".into()),
             splatoon_name_id: Some("4496".into()),
             byname: Some("なんちゃって遊び人".into()),
@@ -7052,7 +7044,7 @@ mod rank_power_tests {
         // ログアウトでアカウント名は消え、スプラトゥーンの名前は残る
         clear_account_names(&pool).await.unwrap();
         let info = account_info(&pool).await.unwrap();
-        assert_eq!((info.na_nickname, info.nso_name), (None, None));
+        assert_eq!(info.na_nickname, None);
         assert_eq!(info.splatoon_name.as_deref(), Some("イカてん"));
     }
 }

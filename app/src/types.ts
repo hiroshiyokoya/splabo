@@ -1002,8 +1002,6 @@ export interface PowerSeries {
 export interface AccountInfo {
   /** ニンテンドーアカウントのニックネーム */
   na_nickname:      string | null
-  /** Switch（Nintendo Switch Online）のユーザー名 */
-  nso_name:         string | null
   /** スプラトゥーンの名前（一番新しい試合のもの） */
   splatoon_name:    string | null
   /** 名前の後ろの番号（"4496" など） */

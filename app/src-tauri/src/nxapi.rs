@@ -9,20 +9,10 @@ pub struct BulletTokenResult {
     pub language: String,
 }
 
-/// つないでいるアカウントの名前（#919）。サイドカーが bullet token と一緒に返す。
-/// 古いサイドカーや、nxapi のキャッシュに無いときは None。
-#[derive(Debug, Default, PartialEq)]
-pub struct AccountNames {
-    /// ニンテンドーアカウントのニックネーム
-    pub na_nickname: Option<String>,
-    /// Switch（Nintendo Switch Online）のユーザー名
-    pub nso_name: Option<String>,
-}
-
-/// サイドカーの応答から名前を取り出す。空文字は無いものとする。
-pub fn account_names_from(result: &serde_json::Value) -> AccountNames {
-    let s = |k: &str| result[k].as_str().filter(|v| !v.is_empty()).map(str::to_string);
-    AccountNames { na_nickname: s("na_nickname"), nso_name: s("nso_name") }
+/// つないでいるニンテンドーアカウントのニックネーム（#919）。サイドカーが bullet token と一緒に返す。
+/// 古いサイドカーや、nxapi のキャッシュに無いとき・空文字は None。
+pub fn nickname_from(result: &serde_json::Value) -> Option<String> {
+    result["na_nickname"].as_str().filter(|v| !v.is_empty()).map(str::to_string)
 }
 
 /// サイドカー（nxapi）呼び出しが失敗した「理由」（#399）。
@@ -284,24 +274,19 @@ pub async fn nxapi_get_bullet_token(app: &AppHandle) -> Result<BulletTokenResult
         country: field("country")?,
         language: field("language")?,
     };
-    save_account_names(app, &account_names_from(&result)).await;
+    if let Some(nickname) = nickname_from(&result) {
+        save_nickname(app, &nickname).await;
+    }
     Ok(token)
 }
 
-/// つないでいるアカウントの名前を保存する（#919）。取れなかった名前は前の値を残す。
+/// ニックネームを保存する（#919）。取れなかったときは呼ばない（前の値を残す）。
 /// DB がまだ無い・書けないときはログだけ出す（トークンの取得は失敗させない）。
-async fn save_account_names(app: &AppHandle, names: &AccountNames) {
+async fn save_nickname(app: &AppHandle, nickname: &str) {
     let Some(pool) = app.try_state::<crate::db::DbPool>() else { return };
     let now = chrono::Utc::now().to_rfc3339();
-    for (key, value) in [
-        (crate::db::STATUS_NA_NICKNAME, &names.na_nickname),
-        (crate::db::STATUS_NSO_NAME, &names.nso_name),
-    ] {
-        if let Some(v) = value {
-            if let Err(e) = crate::db::set_player_status(&pool, key, v, &now).await {
-                log::warn!("アカウント名（{key}）の保存に失敗: {e}");
-            }
-        }
+    if let Err(e) = crate::db::set_player_status(&pool, crate::db::STATUS_NA_NICKNAME, nickname, &now).await {
+        log::warn!("ニックネームの保存に失敗: {e}");
     }
 }
 
@@ -355,17 +340,14 @@ fn nxapi_data_dir(app: &AppHandle) -> Result<String, NxapiError> {
 mod tests {
     use super::*;
 
-    /// サイドカーの応答の名前（#919）。古いサイドカー（項目なし）・null・空文字は None。
+    /// サイドカーの応答のニックネーム（#919）。古いサイドカー（項目なし）・null・空文字は None。
     #[test]
-    fn account_names_from_sidecar_output() {
-        let r = serde_json::json!({ "ok": true, "na_nickname": "ひろし", "nso_name": "ひろ" });
-        assert_eq!(account_names_from(&r), AccountNames {
-            na_nickname: Some("ひろし".into()),
-            nso_name: Some("ひろ".into()),
-        });
-        assert_eq!(account_names_from(&serde_json::json!({ "ok": true })), AccountNames::default());
-        let r = serde_json::json!({ "na_nickname": null, "nso_name": "" });
-        assert_eq!(account_names_from(&r), AccountNames::default());
+    fn nickname_from_sidecar_output() {
+        let r = serde_json::json!({ "ok": true, "na_nickname": "ひろし" });
+        assert_eq!(nickname_from(&r).as_deref(), Some("ひろし"));
+        assert_eq!(nickname_from(&serde_json::json!({ "ok": true })), None);
+        assert_eq!(nickname_from(&serde_json::json!({ "na_nickname": null })), None);
+        assert_eq!(nickname_from(&serde_json::json!({ "na_nickname": "" })), None);
     }
 
     #[test]
