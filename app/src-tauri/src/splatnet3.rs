@@ -488,6 +488,12 @@ fn extract_battle_nodes(
     nodes
 }
 
+/// XBattleHistories の応答から `summary`（ルールごとの今の X パワー。`xPowerAr.lastXPower` など）を取り出す（#913）。
+/// 無い・オブジェクトでないときは None。
+fn x_power_summary(resp: &serde_json::Value) -> Option<&serde_json::Value> {
+    resp.pointer("/data/xBattleHistories/summary").filter(|v| v.is_object())
+}
+
 /// セット（バンカラチャレンジ 1 回・X マッチのセット 1 回）ごとに、バトル ID を並べて返す（#916）。
 ///
 /// 各要素はグループ内の ID で、**新しい順**（historyDetails の並びのまま。先頭が最新）。
@@ -593,6 +599,14 @@ pub async fn fetch_and_store_battles(
         .collect();
     total_inserted += crate::db::insert_battles(pool, xmatch_rows).await?;
     crate::db::assign_set_keys(pool, &extract_set_groups(&xmatch_resp)).await?;
+    // ルールごとの今の X パワーを保存する（#913）
+    if let Some(summary) = x_power_summary(&xmatch_resp) {
+        if let Err(e) = crate::db::set_player_status(
+            pool, crate::db::STATUS_X_SUMMARY, &summary.to_string(), &fetched_at,
+        ).await {
+            log::warn!("X パワーの summary の保存に失敗: {e}");
+        }
+    }
 
     // --- イベントマッチ ---
     // ⚠ HASH_EVENT が Nintendo 側で廃止されている場合、graphql_request が
@@ -838,6 +852,14 @@ pub async fn fetch_and_store_weapons(
     app: &tauri::AppHandle,
 ) -> Result<usize, String> {
     let resp = graphql_request(client, bullet_token, country, language, HASH_WEAPONS, None).await?;
+
+    // 今のウデマエを保存する（#913）
+    if let Some(udemae) = resp.pointer("/data/playHistory/udemae").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+        let fetched_at = chrono::Utc::now().to_rfc3339();
+        if let Err(e) = crate::db::set_player_status(pool, crate::db::STATUS_UDEMAE, udemae, &fetched_at).await {
+            log::warn!("ウデマエの保存に失敗: {e}");
+        }
+    }
 
     // weaponHistories は edges/node カーソルページネーション形式。全シーズンをフラットに処理する。
     let edges = resp
@@ -1522,6 +1544,21 @@ mod set_group_tests {
             vec!["c2".to_string(), "c1".to_string()],
             vec!["x3".to_string(), "x2".to_string(), "x1".to_string()],
         ]);
+    }
+
+    /// summary はオブジェクトのときだけ取り出す（#913）。
+    #[test]
+    fn x_power_summary_only_when_object() {
+        let resp = serde_json::json!({ "data": { "xBattleHistories": {
+            "summary": { "xPowerAr": { "lastXPower": 1897.1 }, "xPowerLf": null },
+            "historyGroups": { "nodes": [] }
+        } } });
+        assert_eq!(
+            x_power_summary(&resp).and_then(|s| s.pointer("/xPowerAr/lastXPower")),
+            Some(&serde_json::json!(1897.1))
+        );
+        let none = serde_json::json!({ "data": { "xBattleHistories": { "summary": null } } });
+        assert_eq!(x_power_summary(&none), None);
     }
 }
 
