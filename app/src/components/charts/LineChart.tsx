@@ -9,11 +9,12 @@ import {
 } from '../../types'
 import { buildTimeSeries, bucketKeyOf, formatTickDate, formatBucketLabel, type TimeSeriesSlot } from '../../utils/timeBuckets'
 
-/** 系列の自動配色（#436）。1 系列目は既存の単一メトリクス折れ線と同じ accent を使う。 */
-const LINE_COLORS = [
-  'var(--accent)', 'var(--accent2)', 'var(--win)', 'var(--lose)', 'var(--draw)',
-  '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#6366f1',
-]
+/**
+ * 線の色（#436, #914）。テーマごとの `--line-1`〜`--line-8`（appSettings.ts）。
+ * 先頭 4 本（X パワーの 4 ルールなど）は、どの組み合わせでも見分けやすい色にしてある。
+ * 線が 1 本だけのときは、これまでどおり accent を使う。
+ */
+const LINE_COLORS = Array.from({ length: 8 }, (_, i) => `var(--line-${i + 1})`)
 
 /**
  * 線 1 本分。ふつうはメトリクス 1 つが 1 本だが、ブキチャレパワーはブキごとに 1 本ずつ出る（#914）。
@@ -70,6 +71,7 @@ function buildSeries(metrics: MetricKey[], power: PowerSeries | null | undefined
       out.push({ id: m, metric: m, label: METRIC_LABELS[m], connect: false, value: s => (s.row ? getMetric(s.row, m) : null) })
     }
   }
+  if (out.length === 1) return [{ ...out[0], color: 'var(--accent)' }]
   return out.map((s, i) => ({ ...s, color: LINE_COLORS[i % LINE_COLORS.length] }))
 }
 

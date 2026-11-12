@@ -977,8 +977,8 @@ export const X_POWER_METRIC_RULE: Partial<Record<MetricKey, string>> = {
   x_power_cl: 'asari',
 }
 
-/** 線グラフのブキチャレパワーの線の本数の既定（#914）。 */
-export const LINE_WEAPON_POWER_TOP_N = 9
+/** 線グラフのブキチャレパワーの線の本数の既定（#914）。線の色（`--line-1`〜`--line-8`）の数に合わせる。 */
+export const LINE_WEAPON_POWER_TOP_N = 8
 
 export function isPowerMetric(metric: MetricKey): boolean {
   return POWER_METRICS.includes(metric)
