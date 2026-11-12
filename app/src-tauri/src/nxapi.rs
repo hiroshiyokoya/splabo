@@ -343,8 +343,8 @@ mod tests {
     /// サイドカーの応答のニックネーム（#919）。古いサイドカー（項目なし）・null・空文字は None。
     #[test]
     fn nickname_from_sidecar_output() {
-        let r = serde_json::json!({ "ok": true, "na_nickname": "ひろし" });
-        assert_eq!(nickname_from(&r).as_deref(), Some("ひろし"));
+        let r = serde_json::json!({ "ok": true, "na_nickname": "テストユーザー" });
+        assert_eq!(nickname_from(&r).as_deref(), Some("テストユーザー"));
         assert_eq!(nickname_from(&serde_json::json!({ "ok": true })), None);
         assert_eq!(nickname_from(&serde_json::json!({ "na_nickname": null })), None);
         assert_eq!(nickname_from(&serde_json::json!({ "na_nickname": "" })), None);

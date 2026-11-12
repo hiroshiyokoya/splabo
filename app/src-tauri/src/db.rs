@@ -974,7 +974,7 @@ pub struct AccountInfo {
     pub na_nickname: Option<String>,
     /// スプラトゥーンの名前（一番新しい試合の詳細の `player.name`）
     pub splatoon_name: Option<String>,
-    /// 名前の後ろの番号（`player.nameId`。"4496" など）
+    /// 名前の後ろの番号（`player.nameId`。"1234" など）
     pub splatoon_name_id: Option<String>,
     /// 二つ名（`player.byname`）
     pub byname: Option<String>,
@@ -7014,7 +7014,7 @@ mod rank_power_tests {
     // --- つないでいるアカウントの名前（#919, #920） ---
 
     fn with_player(id: &str, played_at: &str, name: &str, name_id: &str) -> BattleRow {
-        let raw = serde_json::json!({ "player": { "name": name, "nameId": name_id, "byname": "なんちゃって遊び人" } });
+        let raw = serde_json::json!({ "player": { "name": name, "nameId": name_id, "byname": "テストの二つ名" } });
         let mut r = row(id, "regular", raw, None);
         r.played_at = played_at.into();
         r
@@ -7027,24 +7027,24 @@ mod rank_power_tests {
         assert_eq!(account_info(&pool).await.unwrap(), AccountInfo::default());
 
         insert_battles(&pool, vec![
-            with_player("p1", "2026-11-01T10:00:00Z", "むかしのなまえ", "1111"),
-            with_player("p2", "2026-11-10T10:00:00Z", "イカてん", "4496"),
+            with_player("p1", "2026-11-01T10:00:00Z", "まえのなまえ", "1111"),
+            with_player("p2", "2026-11-10T10:00:00Z", "テストイカ", "1234"),
             // 名前の無い（詳細を取る前の）試合は飛ばす
             row("p3", "regular", serde_json::json!({ "id": "p3" }), None),
         ]).await.unwrap();
-        set_player_status(&pool, STATUS_NA_NICKNAME, "ひろし", "2026-11-12T00:00:00+00:00").await.unwrap();
+        set_player_status(&pool, STATUS_NA_NICKNAME, "テストユーザー", "2026-11-12T00:00:00+00:00").await.unwrap();
 
         assert_eq!(account_info(&pool).await.unwrap(), AccountInfo {
-            na_nickname: Some("ひろし".into()),
-            splatoon_name: Some("イカてん".into()),
-            splatoon_name_id: Some("4496".into()),
-            byname: Some("なんちゃって遊び人".into()),
+            na_nickname: Some("テストユーザー".into()),
+            splatoon_name: Some("テストイカ".into()),
+            splatoon_name_id: Some("1234".into()),
+            byname: Some("テストの二つ名".into()),
         });
 
         // ログアウトでアカウント名は消え、スプラトゥーンの名前は残る
         clear_account_names(&pool).await.unwrap();
         let info = account_info(&pool).await.unwrap();
         assert_eq!(info.na_nickname, None);
-        assert_eq!(info.splatoon_name.as_deref(), Some("イカてん"));
+        assert_eq!(info.splatoon_name.as_deref(), Some("テストイカ"));
     }
 }
