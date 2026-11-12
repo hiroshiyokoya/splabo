@@ -261,7 +261,23 @@ async function cmdGetBulletToken([dataDir]) {
     bullet_token: data.bullet_token.bulletToken,
     country: data.country,
     language: data.bullet_token.lang,
+    // つないでいるアカウントのニックネーム（#919）。設定の「連携」欄に出す
+    na_nickname: await accountNickname(storage, sessionToken),
   });
+}
+
+/**
+ * ニンテンドーアカウントのニックネーム（#919）。
+ * Coral の認証のときに nxapi が `NsoToken.<session_token>` に残している。
+ * 新しく問い合わせはしない。無い・形が違うときは null（取得そのものは失敗させない）。
+ */
+async function accountNickname(storage, sessionToken) {
+  try {
+    const nickname = (await storage.getItem('NsoToken.' + sessionToken))?.user?.nickname;
+    return typeof nickname === 'string' && nickname !== '' ? nickname : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

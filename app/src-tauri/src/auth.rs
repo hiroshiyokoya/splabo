@@ -779,6 +779,15 @@ pub fn logout(app: AppHandle) -> Result<(), String> {
         return Err("GEAR_FETCH_IN_PROGRESS: ギア取得中はログアウトできません。".to_string());
     }
     delete_session_token(&app)?;
+    // 保存したアカウント名も消す（#919）。別のアカウントでつなぎ直したときに前の名前を出さない
+    if let Some(pool) = app.try_state::<crate::db::DbPool>() {
+        let pool = pool.inner().clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = crate::db::clear_account_names(&pool).await {
+                log::warn!("アカウント名の削除に失敗: {e}");
+            }
+        });
+    }
     crate::nxapi::clear_nxapi_data(&app)
 }
 

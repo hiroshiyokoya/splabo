@@ -4,7 +4,7 @@ import { call } from '../utils/backend'
 import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { QRCodeSVG } from 'qrcode.react'
-import type { AppSettings, SettingsTab } from '../types'
+import type { AccountInfo, AppSettings, SettingsTab } from '../types'
 import { ViewToggle, type ViewToggleOption } from './ViewToggle'
 import { loadViewPrefs, saveViewPrefs } from '../utils/viewPrefs'
 import { THEMES, saveTheme, getThemeId } from '../utils/appSettings'
@@ -160,6 +160,18 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   useEffect(() => {
     call<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
   }, [loginVersion])
+
+  // つないでいるアカウントの名前（#919）。取得が終わるたびに読み直す（名前はトークンを取るときに保存される）
+  const [nickname, setNickname] = useState<string | null>(null)
+  const [accountKey, setAccountKey] = useState(0)
+  useEffect(() => {
+    const unlistenPromise = listen('fetch_complete', () => setAccountKey(k => k + 1))
+    return () => { unlistenPromise.then(fn => fn()) }
+  }, [])
+  useEffect(() => {
+    if (!loggedIn) { setNickname(null); return }
+    call<AccountInfo>('db_account_info').then(a => setNickname(a.na_nickname)).catch(() => setNickname(null))
+  }, [loggedIn, accountKey])
 
   // 起動時にサーバー稼働中なら QR を復元表示する(start は冪等＝稼働中は現行情報を返す)。
   useEffect(() => {
@@ -422,6 +434,8 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
         <h3>{t('settings.nintendo')}</h3>
         {loggedIn ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* つないでいるアカウントのニックネーム（#919）。次にデータを取得するまでは出ない */}
+            {nickname && <span style={{ fontSize: 13, fontWeight: 600 }}>{nickname}</span>}
             <span style={{ color: 'var(--win)', fontSize: 13 }}>{t('settings.linked')}</span>
             <button className="btn-danger" onClick={handleLogout} disabled={authLoading}>
               {authLoading ? t('common.processing') : t('settings.unlink')}

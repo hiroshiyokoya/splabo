@@ -9,6 +9,12 @@ pub struct BulletTokenResult {
     pub language: String,
 }
 
+/// つないでいるニンテンドーアカウントのニックネーム（#919）。サイドカーが bullet token と一緒に返す。
+/// 古いサイドカーや、nxapi のキャッシュに無いとき・空文字は None。
+pub fn nickname_from(result: &serde_json::Value) -> Option<String> {
+    result["na_nickname"].as_str().filter(|v| !v.is_empty()).map(str::to_string)
+}
+
 /// サイドカー（nxapi）呼び出しが失敗した「理由」（#399）。
 ///
 /// 以前は失敗をすべて文字列に潰していたため、znca-api が 500 を返しただけでも
@@ -263,11 +269,25 @@ pub async fn nxapi_get_bullet_token(app: &AppHandle) -> Result<BulletTokenResult
             .ok_or_else(|| NxapiError::opaque(format!("{name} フィールドが見つかりません")))
     };
 
-    Ok(BulletTokenResult {
+    let token = BulletTokenResult {
         bullet_token: field("bullet_token")?,
         country: field("country")?,
         language: field("language")?,
-    })
+    };
+    if let Some(nickname) = nickname_from(&result) {
+        save_nickname(app, &nickname).await;
+    }
+    Ok(token)
+}
+
+/// ニックネームを保存する（#919）。取れなかったときは呼ばない（前の値を残す）。
+/// DB がまだ無い・書けないときはログだけ出す（トークンの取得は失敗させない）。
+async fn save_nickname(app: &AppHandle, nickname: &str) {
+    let Some(pool) = app.try_state::<crate::db::DbPool>() else { return };
+    let now = chrono::Utc::now().to_rfc3339();
+    if let Err(e) = crate::db::set_player_status(&pool, crate::db::STATUS_NA_NICKNAME, nickname, &now).await {
+        log::warn!("ニックネームの保存に失敗: {e}");
+    }
 }
 
 /// nxapi-sidecar 経由で WeaponRecordQuery を実行し、`data` フィールドを返す (#49)。
@@ -319,6 +339,16 @@ fn nxapi_data_dir(app: &AppHandle) -> Result<String, NxapiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// サイドカーの応答のニックネーム（#919）。古いサイドカー（項目なし）・null・空文字は None。
+    #[test]
+    fn nickname_from_sidecar_output() {
+        let r = serde_json::json!({ "ok": true, "na_nickname": "ひろし" });
+        assert_eq!(nickname_from(&r).as_deref(), Some("ひろし"));
+        assert_eq!(nickname_from(&serde_json::json!({ "ok": true })), None);
+        assert_eq!(nickname_from(&serde_json::json!({ "na_nickname": null })), None);
+        assert_eq!(nickname_from(&serde_json::json!({ "na_nickname": "" })), None);
+    }
 
     #[test]
     fn remove_dir_if_exists_removes_cache_and_tolerates_missing() {
