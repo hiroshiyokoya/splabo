@@ -31,7 +31,7 @@ pub const ALLOWED_COMMANDS: &[&str] = &[
     "db_battle_stats",
     "db_summary",
     "db_battle_count",
-    // バトルタブの上の今の X パワーとウデマエ（#913）
+    // 今の X パワーとウデマエ（#913）
     "db_current_power",
     "db_grouped_stats",
     "db_grouped_stats_2d",

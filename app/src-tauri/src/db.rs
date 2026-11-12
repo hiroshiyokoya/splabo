@@ -807,7 +807,7 @@ pub(crate) const STATUS_X_SUMMARY: &str = "x_power_summary";
 /// `player_status` のキー: HistoryRecordQuery の `playHistory.udemae`（"S+15" など）。
 pub(crate) const STATUS_UDEMAE: &str = "udemae";
 
-/// (ルールのキー, summary の中のキー)。並びはパネルの並び。
+/// (ルールのキー, summary の中のキー)。並びは返す順。
 const X_SUMMARY_RULES: [(&str, &str); 4] = [
     ("area", "xPowerAr"),
     ("yagura", "xPowerLf"),
@@ -850,7 +850,7 @@ pub struct CurrentXPower {
     pub at: Option<String>,
 }
 
-/// バトルタブの上のパネルに出す、今の X パワーとウデマエ（#913）。
+/// 今の X パワーとウデマエ（#913）。画面にはまだ出していない。
 #[derive(Debug, Serialize, PartialEq)]
 pub struct CurrentPower {
     pub x_powers: Vec<CurrentXPower>,
@@ -955,7 +955,7 @@ pub(crate) async fn current_power(pool: &DbPool) -> Result<CurrentPower, String>
     Ok(CurrentPower { x_powers, udemae, udemae_at })
 }
 
-/// バトルタブの上のパネル用（#913）。
+/// 今の X パワーとウデマエを返す（#913）。
 #[tauri::command]
 pub async fn db_current_power(db: tauri::State<'_, DbPool>) -> Result<CurrentPower, String> {
     current_power(&db).await

@@ -983,17 +983,6 @@ body {
   line-height: 1;
 }
 .stat-value--small { font-size: 15px; }
-.stat-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
-/* バトルタブの上の今の X パワー 4 枚とウデマエ（#913）。値が短いので 5 枚を 1 行に並べたまま縮める。
-   とても狭いときだけ 2 列にして、ウデマエを 1 行に広げる（4 + 1 を 2 + 2 + 1 にする）。 */
-/* バトルタブの上の現在の X パワーとウデマエ（#913）。期間の集計と区別するため見出しを付ける。 */
-.current-power { flex: none; margin-bottom: 12px; }
-.current-power-title { color: var(--text-muted); font-size: 12px; font-weight: 600; margin-bottom: 6px; }
-.stat-cards.stat-cards--current { grid-template-columns: repeat(5, 1fr); margin-bottom: 0; }
-@media (max-width: 720px) {
-  .stat-cards.stat-cards--current { grid-template-columns: repeat(2, 1fr); }
-  .stat-cards--current > :last-child { grid-column: 1 / -1; }
-}
 
 /* ── Battle Log ── */
 /* 上限幅は付けない。ウィンドウを広げたぶんだけ一覧と統計パネルを広げる(#560)。

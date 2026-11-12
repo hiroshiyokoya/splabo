@@ -323,24 +323,6 @@ export interface BattleRow {
   set_is_promo?: boolean | null
 }
 
-/** ルール 1 つ分の今の X パワー（db_current_power・#913）。 */
-export interface CurrentXPower {
-  /** area / yagura / hoko / asari */
-  rule: string
-  /** null は未計測 */
-  x_power: number | null
-  /** 値の時点（RFC 3339） */
-  at: string | null
-}
-
-/** バトルタブの上のパネルに出す、今の X パワーとウデマエ（db_current_power・#913）。 */
-export interface CurrentPower {
-  x_powers: CurrentXPower[]
-  /** "S+15" など */
-  udemae: string | null
-  udemae_at: string | null
-}
-
 export interface SummaryEntry {
   name: string
   /** weapon / stage 軸のみ (#693)。 */

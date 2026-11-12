@@ -599,7 +599,7 @@ pub async fn fetch_and_store_battles(
         .collect();
     total_inserted += crate::db::insert_battles(pool, xmatch_rows).await?;
     crate::db::assign_set_keys(pool, &extract_set_groups(&xmatch_resp)).await?;
-    // ルールごとの今の X パワー（バトルタブの上のパネル・#913）
+    // ルールごとの今の X パワーを保存する（#913）
     if let Some(summary) = x_power_summary(&xmatch_resp) {
         if let Err(e) = crate::db::set_player_status(
             pool, crate::db::STATUS_X_SUMMARY, &summary.to_string(), &fetched_at,
@@ -853,7 +853,7 @@ pub async fn fetch_and_store_weapons(
 ) -> Result<usize, String> {
     let resp = graphql_request(client, bullet_token, country, language, HASH_WEAPONS, None).await?;
 
-    // 今のウデマエ（バトルタブの上のパネル・#913）
+    // 今のウデマエを保存する（#913）
     if let Some(udemae) = resp.pointer("/data/playHistory/udemae").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
         let fetched_at = chrono::Utc::now().to_rfc3339();
         if let Err(e) = crate::db::set_player_status(pool, crate::db::STATUS_UDEMAE, udemae, &fetched_at).await {
