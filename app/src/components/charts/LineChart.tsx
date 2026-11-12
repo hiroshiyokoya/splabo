@@ -152,6 +152,22 @@ function LineAxisLegend({ series, axisOf, padLeft, padRight }: {
   )
 }
 
+type PowerScale = { domain: [number, number]; ticks: number[] }
+
+/**
+ * パワー（X パワー・ブキチャレパワー）の軸の範囲と目盛（#914）。
+ * 間隔は 50 → 100 → 200 のうち、目盛が 8 本以下に収まる最小のもの。範囲は値を含む間隔の倍数で切る。
+ */
+function powerScale(min: number, max: number): PowerScale {
+  const step = [50, 100, 200, 500].find(s => (Math.ceil(max / s) - Math.floor(min / s)) <= 8) ?? 500
+  const lo = Math.floor(min / step) * step
+  let hi = Math.ceil(max / step) * step
+  if (hi === lo) hi = lo + step
+  const ticks: number[] = []
+  for (let v = lo; v <= hi; v += step) ticks.push(v)
+  return { domain: [lo, hi], ticks }
+}
+
 /** Y 軸ラベル（軸グループ名）の共通スタイル。 */
 const axisLabelStyle = {
   fill: 'var(--text)',
@@ -217,8 +233,18 @@ export function LineChart({
   const axisOf = (s: LineSeries) => axisOfMetric.get(s.metric) ?? 'left'
   const hasRightAxis = rightGroup !== null
 
-  const domainOf = (g: AxisGroup | null): [number, number] | ['auto', 'auto'] =>
-    g === 'win_rate' ? [0, 1] : ['auto', 'auto']
+  // パワーの軸は、目盛を 50 / 100 / 200 の切りのよい間隔にする（#914）。
+  const powerScaleOf = (side: 'left' | 'right') => {
+    const vals = chartData.flatMap(p =>
+      series.filter(s => axisOf(s) === side).map(s => p.values[s.id]).filter((v): v is number => v !== null))
+    return vals.length > 0 ? powerScale(Math.min(...vals), Math.max(...vals)) : null
+  }
+  const scaleOf = (side: 'left' | 'right', g: AxisGroup | null) => g === 'power' ? powerScaleOf(side) : null
+  const leftScale  = scaleOf('left', leftGroup)
+  const rightScale = scaleOf('right', rightGroup)
+
+  const domainOf = (g: AxisGroup | null, scale: PowerScale | null): [number, number] | ['auto', 'auto'] =>
+    scale ? scale.domain : g === 'win_rate' ? [0, 1] : ['auto', 'auto']
   const tickFormatterOf = (g: AxisGroup | null) =>
     g === 'win_rate'
       ? (v: number) => `${(v * 100).toFixed(0)}%`
@@ -250,7 +276,8 @@ export function LineChart({
           width={leftPad}
           allowDecimals={leftGroup === 'win_rate'}
           tickFormatter={tickFormatterOf(leftGroup)}
-          domain={domainOf(leftGroup)}
+          domain={domainOf(leftGroup, leftScale)}
+          ticks={leftScale?.ticks}
           label={leftGroup ? {
             value: AXIS_GROUP_LABELS[leftGroup],
             angle: -90,
@@ -267,7 +294,8 @@ export function LineChart({
             width={rightPad}
             allowDecimals={rightGroup === 'win_rate'}
             tickFormatter={tickFormatterOf(rightGroup)}
-            domain={domainOf(rightGroup)}
+            domain={domainOf(rightGroup, rightScale)}
+            ticks={rightScale?.ticks}
             label={{
               value: AXIS_GROUP_LABELS[rightGroup],
               angle: 90,
