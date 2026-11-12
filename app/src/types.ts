@@ -1004,13 +1004,13 @@ export interface AccountInfo {
   na_nickname:      string | null
   /** スプラトゥーンの名前（一番新しい試合のもの） */
   splatoon_name:    string | null
-  /** 名前の後ろの番号（"4496" など） */
+  /** 名前の後ろの番号（"1234" など） */
   splatoon_name_id: string | null
   /** 二つ名 */
   byname:           string | null
 }
 
-/** スプラトゥーンの名前を「イカてん #4496」の形にする。名前が無ければ null。 */
+/** スプラトゥーンの名前を「名前 #1234」の形にする。名前が無ければ null。 */
 export function splatoonNameLabel(a: AccountInfo | null): string | null {
   if (!a?.splatoon_name) return null
   return a.splatoon_name_id ? `${a.splatoon_name} #${a.splatoon_name_id}` : a.splatoon_name
