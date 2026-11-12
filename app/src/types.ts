@@ -998,6 +998,26 @@ export interface PowerSeries {
   weapons: { key: string; name: string; name_ja: string | null; name_en: string | null; count: number }[]
 }
 
+/** db_account_info の返り値（#919, #920）。つないでいるアカウントの名前。分からないものは null。 */
+export interface AccountInfo {
+  /** ニンテンドーアカウントのニックネーム */
+  na_nickname:      string | null
+  /** Switch（Nintendo Switch Online）のユーザー名 */
+  nso_name:         string | null
+  /** スプラトゥーンの名前（一番新しい試合のもの） */
+  splatoon_name:    string | null
+  /** 名前の後ろの番号（"4496" など） */
+  splatoon_name_id: string | null
+  /** 二つ名 */
+  byname:           string | null
+}
+
+/** スプラトゥーンの名前を「イカてん #4496」の形にする。名前が無ければ null。 */
+export function splatoonNameLabel(a: AccountInfo | null): string | null {
+  if (!a?.splatoon_name) return null
+  return a.splatoon_name_id ? `${a.splatoon_name} #${a.splatoon_name_id}` : a.splatoon_name
+}
+
 export function officialMetricsForGroup(group: string): MetricKey[] {
   if (group === 'weapon') return OFFICIAL_WEAPON_METRICS
   if (group === 'stage') return OFFICIAL_STAGE_METRICS

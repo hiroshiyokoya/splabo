@@ -2251,6 +2251,12 @@ body {
 .settings-section { margin-bottom: 28px; }
 .settings-section h3 { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
 .settings-note { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+/* つないでいるアカウントの名前（#919） */
+.settings-account { margin-top: 12px; margin-bottom: 0; font-size: 13px; display: grid; gap: 4px; }
+.settings-account-row { display: grid; grid-template-columns: 12em 1fr; gap: 8px; }
+.settings-account dt { color: var(--text-muted); }
+.settings-account dd { margin: 0; }
+.settings-account dd.settings-account-missing { color: var(--text-muted); font-size: 12px; }
 /* タイトル (h3) 以外の直下要素に視覚的なインデントを付ける */
 .settings-section > *:not(h3) { margin-left: 16px; }
 /* チェックボックスに従属する設定項目はもう一段下げる */

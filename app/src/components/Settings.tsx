@@ -4,7 +4,8 @@ import { call } from '../utils/backend'
 import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { QRCodeSVG } from 'qrcode.react'
-import type { AppSettings, SettingsTab } from '../types'
+import type { AccountInfo, AppSettings, SettingsTab } from '../types'
+import { splatoonNameLabel } from '../types'
 import { ViewToggle, type ViewToggleOption } from './ViewToggle'
 import { loadViewPrefs, saveViewPrefs } from '../utils/viewPrefs'
 import { THEMES, saveTheme, getThemeId } from '../utils/appSettings'
@@ -160,6 +161,18 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
   useEffect(() => {
     call<boolean>('check_auth_status').then(setLoggedIn).catch(() => setLoggedIn(false))
   }, [loginVersion])
+
+  // つないでいるアカウントの名前（#919）。取得が終わるたびに読み直す（名前はトークンを取るときに保存される）
+  const [account, setAccount] = useState<AccountInfo | null>(null)
+  const [accountKey, setAccountKey] = useState(0)
+  useEffect(() => {
+    const unlistenPromise = listen('fetch_complete', () => setAccountKey(k => k + 1))
+    return () => { unlistenPromise.then(fn => fn()) }
+  }, [])
+  useEffect(() => {
+    if (!loggedIn) { setAccount(null); return }
+    call<AccountInfo>('db_account_info').then(setAccount).catch(() => setAccount(null))
+  }, [loggedIn, accountKey])
 
   // 起動時にサーバー稼働中なら QR を復元表示する(start は冪等＝稼働中は現行情報を返す)。
   useEffect(() => {
@@ -430,7 +443,9 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
               <span style={{ fontSize: 13, color: 'var(--accent2)' }}>{logoutError}</span>
             )}
           </div>
-        ) : (
+        ) : null}
+        {loggedIn && account && <AccountNames account={account} />}
+        {loggedIn ? null : (
           <div>
             <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 10 }}>
               {t('settings.loginNeeded')}
@@ -980,5 +995,28 @@ export function Settings({ settings, onSave, loginVersion, focus }: Props) {
       </section>
       )}
     </div>
+  )
+}
+
+/**
+ * つないでいるアカウントの名前（#919）。ニンテンドーアカウント・Switch・スプラトゥーンの順。
+ * アカウント名はトークンを取るときに保存するので、つないだ直後は取得が終わるまで出ない。
+ */
+function AccountNames({ account }: { account: AccountInfo }) {
+  const { t } = useTranslation()
+  const rows: [string, string | null][] = [
+    [t('settings.accountNa'), account.na_nickname],
+    [t('settings.accountNso'), account.nso_name],
+    [t('settings.accountSplatoon'), splatoonNameLabel(account)],
+  ]
+  return (
+    <dl className="settings-account">
+      {rows.map(([label, value]) => (
+        <div key={label} className="settings-account-row">
+          <dt>{label}</dt>
+          <dd className={value ? undefined : 'settings-account-missing'}>{value ?? t('settings.accountPending')}</dd>
+        </div>
+      ))}
+    </dl>
   )
 }
