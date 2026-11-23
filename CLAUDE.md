@@ -152,6 +152,26 @@ git push -u origin chore/dev-version-1.1.0
 
 ---
 
+## dev 版の運用（#930）
+
+### develop を更新したら、dev 版も最新にする
+
+develop で dev 版（`tauri dev`）を立ち上げているときに develop を更新したら（「マージした」と言われて `git pull` したときなど）、**毎回すぐに dev 版も最新にする。言われなくてもやる。**
+
+- 動いている dev 版（`splabo.exe`・`tauri dev`・Vite・cargo のプロセス）を止めて、起動し直す。フロントは Vite が読み直し、Rust は tauri dev が作り直すが、どこまで入ったか分かりにくいので、起動し直しにそろえる（版表示のコミット ID も新しくなる）
+- `package.json` / `package-lock.json` が変わっていたら、起動し直す前に `npm ci`
+- `tools/nxapi-wrapper` が変わっていたら、起動し直す前にサイドカーを作り直す（`tools/nxapi-wrapper` で `npm run build:win`）。作り直すと `tools/nxapi-remote-config.json` が上流の中身で書き換わることがある。差分が出たらコミットせず、ユーザーに伝える
+- 起動し直すと、develop に入った DB の移行が実 DB で走る。develop に入ったものなのでそれでよい
+- feature ブランチを試すために dev 版を切り替えているときは、develop に戻すときに最新にする
+
+### 起動のしかた
+
+- `app` で `npm run tauri dev`。`npm run dev:tauri` は `tauri dev` の `beforeDevCommand`（Vite だけが立つ）なので、これだけ動かしてもアプリは立ち上がらない
+- Claude のシェルでは npm に PATH が通っていないことがある。そのときは PowerShell で PATH に `C:\Program Files\nodejs` と `~\.cargo\bin` を足し、`C:\Program Files\nodejs\npm.cmd --prefix D:/develop/splatoon-gear/splabo/app run tauri dev` をバックグラウンドで動かす
+- 立ち上がったかは、出力の ``Running `...\target\debug\splabo.exe` `` で見る
+
+---
+
 ## 旧 geartoon コードの参照
 
 ギア機能は splabo に移植済み（フロント `app/src/gear/`・Rust `app/src-tauri/src/gear.rs` / `gear_crypto.rs`）。移植元の旧 geartoon 単体アプリの実装を参照したい場合は GitHub API で取得できる。
