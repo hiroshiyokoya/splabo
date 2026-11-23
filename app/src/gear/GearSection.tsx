@@ -314,6 +314,13 @@ export function GearSection() {
     }
   }, [])
 
+  // タブ（頭・服・靴・コーデ）を切り替えたら一番上に戻す（#928）。
+  // 位置を残すと、新しい一覧が短いときだけブラウザが詰めて、戻ったり戻らなかったりして見える。
+  // 開いたときにも走るが、そのときは一番上から見せてよい。
+  useEffect(() => {
+    window.scrollTo({ top: 0 })
+  }, [activeTab, showSaved])
+
   useEffect(() => {
     const el = appTopRef.current
     if (!el) return
